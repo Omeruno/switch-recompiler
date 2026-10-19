@@ -11,7 +11,7 @@ root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 out="$root/build-host"
 cxx="${CXX:-g++}"
 flags="-std=c++17 -O1 -Wall -I$root"
-src="$root/source/cpu/*.cpp $root/source/loader/*.cpp $root/source/decoder/*.cpp $root/source/win32/*.cpp"
+src="$root/source/cpu/*.cpp $root/source/runtime/*.cpp $root/source/loader/*.cpp $root/source/decoder/*.cpp $root/source/win32/*.cpp"
 
 mkdir -p "$out"
 failed=0
@@ -33,6 +33,25 @@ for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x
         failed=1
     fi
 done
+
+# Программы Windows из tests/guest через winrun (нужен mingw-w64)
+if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
+    printf '== guest programs\n'
+    # shellcheck disable=SC2086
+    $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
+    sh "$root/tests/guest/build.sh" "$out/guest"
+    for exe in "$out"/guest/*.exe; do
+        if "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1; then
+            tail -n 1 "$out/$(basename "$exe").log"
+        else
+            echo "   $(basename "$exe"): НЕ ПРОЙДЕН"
+            tail -n 20 "$out/$(basename "$exe").log"
+            failed=1
+        fi
+    done
+else
+    echo "(mingw-w64 не найден: гостевые программы пропущены)"
+fi
 
 if [ $# -ge 1 ]; then
     printf '== trace_paint %s\n' "$1"

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Сборка тестовых программ Windows (mingw-w64, i686) в build-host/guest.
+set -eu
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+out="${1:-$here/../../build-host/guest}"
+cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
+mkdir -p "$out"
+# DLL без CRT, намеренно с той же базой, что и EXE: загрузчик обязан её сдвинуть
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -Wl,--image-base,0x400000 \
+    "$here/testdll.c" "$here/testdll.def" -o "$out/testdll.dll" -lkernel32
+$cc -O1 -nostdlib -e _start@0 -Wl,--image-base,0x400000 "$here/dlltest.c" "$out/testdll.dll" \
+    -o "$out/dlltest.exe" -lkernel32
+for t in "$here"/crt_*.c; do
+    [ -e "$t" ] || continue
+    name=$(basename "$t" .c)
+    $cc -O1 "$t" -o "$out/$name.exe" -lm
+done

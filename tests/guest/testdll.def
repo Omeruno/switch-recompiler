@@ -1,0 +1,8 @@
+LIBRARY testdll
+EXPORTS
+    add @1
+    get_counter @2
+    triple@4 @3
+    get_message @4
+    attach_count @5 DATA
+    sum_forward = testdll.add @6

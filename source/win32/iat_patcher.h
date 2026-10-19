@@ -23,6 +23,12 @@ struct PatchResult {
 // напр. _adjust_fdiv, _acmdln) — прописывает адрес реальной ячейки внутри
 // CRT-globals области (crtGlobalsBase), а не host-функции — вызывать их
 // нельзя, это переменные, а не код.
+// Адрес для одного импорта из эмулируемой (HLE) DLL: host-функция,
+// ячейка данных CRT или диагностическая заглушка. implemented — есть ли
+// настоящая реализация.
+uint32_t ResolveHostImport(const std::string& dllName, const pe::ImportedFunction& func,
+                           uint32_t crtGlobalsBase, bool& implemented);
+
 PatchResult PatchImportAddressTable(const pe::PEParser& parser,
                                      uint8_t* imageBuffer,
                                      size_t imageBufferSize,

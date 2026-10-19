@@ -1,6 +1,7 @@
 #include "iat_patcher.h"
 #include "crt_globals.h"
 #include <cstring>
+#include <strings.h>
 
 namespace win32 {
 
@@ -30,7 +31,7 @@ const DataImportEntry g_dataImports[] = {
 
 const DataImportEntry* FindDataImport(const char* dllName, const char* funcName) {
     for (const auto& e : g_dataImports) {
-        if (std::strcmp(e.dllName, dllName) == 0 && std::strcmp(e.funcName, funcName) == 0) {
+        if (strcasecmp(e.dllName, dllName) == 0 && std::strcmp(e.funcName, funcName) == 0) {
             return &e;
         }
     }
@@ -39,62 +40,46 @@ const DataImportEntry* FindDataImport(const char* dllName, const char* funcName)
 
 } // namespace
 
+uint32_t ResolveHostImport(const std::string& dllName, const pe::ImportedFunction& func,
+                           uint32_t crtGlobalsBase, bool& implemented) {
+    implemented = false;
+    if (func.name.empty()) {
+        // Импорт по ординалу (это ВСЯ MFC42u.DLL — 616 из 616 её
+        // импортов у paint.exe) — сначала ищем в таблице реализаций.
+        // Если там нет — заводим запись в диагностическом пуле, чтобы
+        // вызов был виден в логе, а не улетал в никуда.
+        int idx = FindHostFunctionByOrdinal(dllName.c_str(), func.ordinal);
+        if (idx >= 0) { implemented = true; return IndexToHostAddress(idx); }
+        return AllocateMfcStubSlot(dllName, func.ordinal);
+    }
+    if (const DataImportEntry* dataEntry = FindDataImport(dllName.c_str(), func.name.c_str())) {
+        implemented = true;
+        return crtGlobalsBase + dataEntry->crtOffset;
+    }
+    int idx = FindHostFunction(dllName.c_str(), func.name.c_str());
+    if (idx >= 0) { implemented = true; return IndexToHostAddress(idx); }
+    // Страховочная заглушка с корректной очисткой стека и именем в логе.
+    return AllocateNamedStubSlot(dllName, func.name);
+}
+
 PatchResult PatchImportAddressTable(const pe::PEParser& parser,
                                      uint8_t* imageBuffer,
                                      size_t imageBufferSize,
                                      uint32_t crtGlobalsBase) {
     PatchResult result;
-
     for (const auto& mod : parser.GetImports()) {
         for (const auto& func : mod.functions) {
             result.totalImports++;
-
-            uint32_t value = 0;
-            bool implemented = false; // именно РЕАЛИЗОВАНО, а не просто "есть куда прыгнуть"
-
-            if (func.name.empty()) {
-                // Импорт по ординалу (это ВСЯ MFC42u.DLL — 616 из 616 её
-                // импортов у paint.exe) — сначала ищем в статической таблице
-                // (см. FindHostFunctionByOrdinal). Если там нет — заводим
-                // запись в динамическом диагностическом пуле
-                // (AllocateMfcStubSlot), чтобы вызов хотя бы не улетал в
-                // никуда (адрес 0/сырой thunk), а был виден в логе.
-                int idx = FindHostFunctionByOrdinal(mod.dllName.c_str(), func.ordinal);
-                if (idx >= 0) {
-                    value = IndexToHostAddress(idx);
-                    implemented = true;
-                } else {
-                    value = AllocateMfcStubSlot(mod.dllName, func.ordinal);
-                }
-            } else if (const DataImportEntry* dataEntry = FindDataImport(mod.dllName.c_str(), func.name.c_str())) {
-                value = crtGlobalsBase + dataEntry->crtOffset;
-                implemented = true;
-            } else {
-                int idx = FindHostFunction(mod.dllName.c_str(), func.name.c_str());
-                if (idx >= 0) {
-                    value = IndexToHostAddress(idx);
-                    implemented = true;
-                } else {
-                    // Страховочная заглушка (аудит этой сессии): раньше слот
-                    // оставался 0, и вызов нереализованной функции был
-                    // безымянным крашем "адрес 0". Теперь заглушка с
-                    // корректной очисткой стека и именем функции в логе.
-                    // Счётчик unimplemented по-прежнему честно растёт.
-                    value = AllocateNamedStubSlot(mod.dllName, func.name);
-                }
-            }
-
+            bool implemented = false;
+            uint32_t value = ResolveHostImport(mod.dllName, func, crtGlobalsBase, implemented);
             if (implemented) result.patched++;
             else result.unimplemented++;
-
-            // func.iatRva — это RVA, т.е. смещение внутри уже замапленного
-            // parser.MapImageToMemory() образа (см. pe_parser.h)
+            // func.iatRva — RVA внутри уже разложенного образа
             if (static_cast<size_t>(func.iatRva) + 4 <= imageBufferSize) {
                 std::memcpy(imageBuffer + func.iatRva, &value, 4);
             }
         }
     }
-
     return result;
 }
 

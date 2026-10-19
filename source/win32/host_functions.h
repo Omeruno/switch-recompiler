@@ -137,6 +137,10 @@ extern uint32_t (*g_getTickCountImpl)();
 // сэмплов: перемежающиеся int16 стерео, 48000 Гц (уже сконвертировано).
 extern void (*g_playAudioImpl)(const std::vector<int16_t>& samples);
 
+// Вывод консольных программ гостя (WriteFile/WriteConsole в stdout/stderr).
+// nullptr — в stdout/stderr хоста, если консоль доступна.
+extern void (*g_consoleWriteImpl)(const char* data, size_t len, bool isStderr);
+
 // Разобранное меню игры (см. menu_parser.h) — заполняется при вызове
 // LoadMenuW, main.cpp сам рисует полосу меню/выпадающие списки и обрабатывает
 // по ним клики (в реальной Windows это делает системный USER32, у нас его нет).
@@ -198,6 +202,15 @@ struct HostFrameResult {
 // текущего кадра на реальный экран. Если колбэк не установлен (например, в
 // хостовых тестах) — GetMessage ведёт себя как раньше: синтезирует WM_QUIT.
 extern HostFrameResult (*g_pumpHostFrame)();
+
+// Дополнительные таблицы реализаций из других файлов. Регистрация —
+// статическим инициализатором в файле реализации:
+//   static const bool kRegistered = RegisterHostFunctions(kTable, sizeof(kTable) / sizeof(kTable[0]));
+// Записи, зарегистрированные позже, переопределяют более ранние и
+// статическую таблицу host_functions.cpp. Имена DLL — без учёта регистра.
+bool RegisterHostFunctions(const HostFunctionEntry* entries, size_t count);
+size_t HostFunctionCount();
+const HostFunctionEntry& GetHostFunction(int index);
 
 int FindHostFunction(const char* dllName, const char* funcName);
 // Как FindHostFunction, но для функций, зарегистрированных ПО ОРДИНАЛУ

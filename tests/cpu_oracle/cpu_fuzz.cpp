@@ -216,8 +216,11 @@ void GenShift(Builder& g, Rng& r, bool o16) {
         undef |= F_AF;
         if (c != 1) undef |= F_OF;
         if ((sub == 4 || sub == 5 || sub == 6 || sub == 7) && c >= w) undef |= F_CF | F_OF;
-        if (sub < 4 && (count & 31) != 1) undef |= F_OF; // вращения: OF только для счётчика 1
     }
+    // Вращения: OF определён только для счётчика 1. Если (count & 31) != 0, но
+    // после деления по модулю 9/17 вышел 0, OF разные CPU ведут по-разному
+    // (Intel не трогает, AMD меняет) — тоже не сравниваем.
+    if (sub < 4 && (count & 31) != 0 && (count & 31) != 1) undef |= F_OF;
     g.b_.flagMask &= ~undef;
     g.b_.name = "shift";
 }

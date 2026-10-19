@@ -175,6 +175,20 @@ public:
         return optionalHeader_.dataDirectory[2].virtualAddress;
     }
 
+    // Каталог данных по индексу (0 экспорт, 1 импорт, 2 ресурсы, 5 релокации,
+    // 9 TLS, 12 IAT). {0, 0}, если каталога нет.
+    DataDirectory GetDataDirectory(int index) const {
+        if (index < 0 || static_cast<uint32_t>(index) >= optionalHeader_.numberOfRvaAndSizes || index >= 16) return {0, 0};
+        return optionalHeader_.dataDirectory[index];
+    }
+    uint16_t GetCharacteristics() const { return fileHeader_.characteristics; }
+    uint16_t GetDllCharacteristics() const { return optionalHeader_.dllCharacteristics; }
+    bool IsDll() const { return (fileHeader_.characteristics & 0x2000) != 0; }
+    uint32_t GetSizeOfStackReserve() const { return optionalHeader_.sizeOfStackReserve; }
+    uint32_t GetSizeOfStackCommit() const { return optionalHeader_.sizeOfStackCommit; }
+    uint32_t GetSizeOfHeapReserve() const { return optionalHeader_.sizeOfHeapReserve; }
+    uint16_t GetSubsystem() const { return optionalHeader_.subsystem; }
+
     const std::vector<Section>& GetSections() const { return sections_; }
     const std::vector<ImportedModule>& GetImports() const { return imports_; }
 

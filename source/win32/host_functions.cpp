@@ -4762,10 +4762,53 @@ const HostFunctionEntry g_hostFunctionTable[] = {
 };
 const size_t g_hostFunctionTableSize = sizeof(g_hostFunctionTable) / sizeof(g_hostFunctionTable[0]);
 
+namespace {
+
+bool DllNameEquals(const char* a, const char* b) {
+    for (;; ++a, ++b) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x = static_cast<char>(x - 'A' + 'a');
+        if (y >= 'A' && y <= 'Z') y = static_cast<char>(y - 'A' + 'a');
+        if (x != y) return false;
+        if (x == 0) return true;
+    }
+}
+
+// Таблицы, зарегистрированные другими файлами (kernel32_*.cpp и т.п.).
+// Индексы продолжают статическую таблицу: [size .. size + extra).
+std::vector<const HostFunctionEntry*>& ExtraEntries() {
+    static std::vector<const HostFunctionEntry*> entries;
+    return entries;
+}
+
+} // namespace
+
+bool RegisterHostFunctions(const HostFunctionEntry* entries, size_t count) {
+    for (size_t i = 0; i < count; ++i) ExtraEntries().push_back(&entries[i]);
+    return true;
+}
+
+size_t HostFunctionCount() { return g_hostFunctionTableSize + ExtraEntries().size(); }
+
+const HostFunctionEntry& GetHostFunction(int index) {
+    size_t i = static_cast<size_t>(index);
+    if (i < g_hostFunctionTableSize) return g_hostFunctionTable[i];
+    return *ExtraEntries()[i - g_hostFunctionTableSize];
+}
+
+// Сначала ищем в зарегистрированных таблицах (новые реализации
+// переопределяют старые из этого файла), потом в статической.
 int FindHostFunction(const char* dllName, const char* funcName) {
+    const auto& extra = ExtraEntries();
+    for (size_t i = extra.size(); i-- > 0;) {
+        if (extra[i]->funcName[0] && std::strcmp(extra[i]->funcName, funcName) == 0 &&
+            DllNameEquals(extra[i]->dllName, dllName)) {
+            return static_cast<int>(g_hostFunctionTableSize + i);
+        }
+    }
     for (size_t i = 0; i < g_hostFunctionTableSize; i++) {
-        if (std::strcmp(g_hostFunctionTable[i].dllName, dllName) == 0 &&
-            std::strcmp(g_hostFunctionTable[i].funcName, funcName) == 0) {
+        if (std::strcmp(g_hostFunctionTable[i].funcName, funcName) == 0 &&
+            DllNameEquals(g_hostFunctionTable[i].dllName, dllName)) {
             return static_cast<int>(i);
         }
     }
@@ -4773,10 +4816,16 @@ int FindHostFunction(const char* dllName, const char* funcName) {
 }
 
 int FindHostFunctionByOrdinal(const char* dllName, uint16_t ordinal) {
+    const auto& extra = ExtraEntries();
+    for (size_t i = extra.size(); i-- > 0;) {
+        if (extra[i]->funcName[0] == '\0' && extra[i]->ordinal == ordinal && DllNameEquals(extra[i]->dllName, dllName)) {
+            return static_cast<int>(g_hostFunctionTableSize + i);
+        }
+    }
     for (size_t i = 0; i < g_hostFunctionTableSize; i++) {
         if (g_hostFunctionTable[i].funcName[0] == '\0' &&
             g_hostFunctionTable[i].ordinal == ordinal &&
-            std::strcmp(g_hostFunctionTable[i].dllName, dllName) == 0) {
+            DllNameEquals(g_hostFunctionTable[i].dllName, dllName)) {
             return static_cast<int>(i);
         }
     }
@@ -4788,7 +4837,7 @@ int HostAddressToIndex(uint32_t addr) {
     uint32_t delta = addr - HOST_FUNCTION_BASE;
     if (delta % HOST_FUNCTION_STRIDE != 0) return -1;
     uint32_t idx = delta / HOST_FUNCTION_STRIDE;
-    if (idx >= g_hostFunctionTableSize) return -1;
+    if (idx >= HostFunctionCount()) return -1;
     return static_cast<int>(idx);
 }
 
@@ -4886,7 +4935,7 @@ HostCallOutcome Impl_MfcOrdinalStub(cpu::CpuState& cpu, cpu::IGuestMemory& mem, 
 bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutcome& outOutcome) {
     int idx = HostAddressToIndex(cpu.eip);
     if (idx >= 0) {
-        const HostFunctionEntry& entry = g_hostFunctionTable[idx];
+        const HostFunctionEntry& entry = GetHostFunction(idx);
         outOutcome = entry.fn(cpu, mem);
         cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;
 
