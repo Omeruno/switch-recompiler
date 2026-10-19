@@ -1,0 +1,19 @@
+# Сборка Switch
+build/
+build-host/
+*.elf
+*.nro
+*.nacp
+*.lst
+*.map
+*.o
+*.d
+
+# Программы и библиотеки Microsoft: не распространяем
+*.exe
+*.dll
+*.exports
+
+# Артефакты прогонов
+*.ppm
+paint_output*.png
