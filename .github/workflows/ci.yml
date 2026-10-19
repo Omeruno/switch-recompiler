@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    name: Хост-тесты (g++)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Регрессия Сапёра
+        run: sh tools/run_host_tests.sh
+
+  switch-build:
+    name: Сборка для Switch (devkitA64)
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make
+        run: make -j"$(nproc)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-recompiler-nro
+          path: switch-recompiler.nro

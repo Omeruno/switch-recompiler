@@ -4482,10 +4482,10 @@ HostCallOutcome Impl_PlaySoundW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
         return result; // такого звука нет — не страшно, просто молчим
     }
 
-    uint16_t channels, bitsPerSample;
-    uint32_t sampleRate;
-    const uint8_t* pcmData;
-    uint32_t pcmSize;
+    uint16_t channels = 0, bitsPerSample = 0;
+    uint32_t sampleRate = 0;
+    const uint8_t* pcmData = nullptr;
+    uint32_t pcmSize = 0;
     if (!ParseWav(g_imageBuffer + dataRva, dataSize, channels, sampleRate, bitsPerSample, pcmData, pcmSize)) {
         return result; // не смогли разобрать WAV — не крашимся, просто молчим
     }
