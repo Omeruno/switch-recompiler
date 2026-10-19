@@ -188,6 +188,14 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
                 "Неизвестный опкод внутри вложенного вызова гостевой функции "
                 "(WndProc и т.п.)");
         }
+        if (result == cpu::StepResult::Exception) {
+            const cpu::CpuException& e = nestedInterp.LastException();
+            if (cpu::g_consoleAvailable) {
+                std::printf("[EXC] Исключение 0x%08x на 0x%x (адрес 0x%x) внутри вложенного вызова\n",
+                            e.code, e.eip, e.faultAddress);
+            }
+            cpu::FatalError("Исключение гостя внутри вложенного вызова (WndProc и т.п.)");
+        }
         // StepResult::Halted тоже просто пропускаем как "продолжить" — HLT
         // внутри настоящего WndProc не встречается, но не должен нас подвесить
         steps++;

@@ -1,9 +1,8 @@
 #pragma once
 // guest_memory.h
 //
-// Абстракция адресного пространства эмулируемой программы.
-// На Switch это будет обёртка над буфером, выделенным через svcMapMemory.
-// Для хостовых тестов — плоский std::vector.
+// Адресное пространство эмулируемой программы (см. paged_memory.h) и
+// аварийные выходы для фатальных ошибок эмуляции.
 //
 // ВАЖНО: реальная сборка под Switch (devkitA64) идёт с флагом -fno-exceptions —
 // поэтому здесь принципиально нет ни одного throw. Вместо исключений при
@@ -53,100 +52,18 @@ inline uint32_t g_lastKnownEip = 0;
     std::exit(1);
 }
 
-class IGuestMemory {
-public:
-    virtual ~IGuestMemory() = default;
+} // namespace cpu
 
-    virtual uint8_t  Read8(uint32_t addr) const = 0;
-    virtual uint16_t Read16(uint32_t addr) const = 0;
-    virtual uint32_t Read32(uint32_t addr) const = 0;
-    virtual void     Write8(uint32_t addr, uint8_t value) = 0;
-    virtual void     Write16(uint32_t addr, uint16_t value) = 0;
-    virtual void     Write32(uint32_t addr, uint32_t value) = 0;
+#include "paged_memory.h"
 
-    // Удобный доступ для decoder'а — читает N сырых байт (для fetch инструкций)
-    virtual const uint8_t* RawPointer(uint32_t addr) const = 0;
-};
+namespace cpu {
 
-// Простая реализация: один сплошной регион [baseAddress, baseAddress+size)
-class FlatGuestMemory : public IGuestMemory {
-public:
-    FlatGuestMemory(uint32_t baseAddress, size_t size)
-        : baseAddress_(baseAddress), buffer_(size, 0) {}
-
-    uint8_t Read8(uint32_t addr) const override {
-        size_t off = Offset(addr);
-        return buffer_[off];
-    }
-
-    uint16_t Read16(uint32_t addr) const override {
-        size_t off = Offset(addr);
-        if (off + 2 > buffer_.size()) FatalMemoryError("Read16 out of bounds", addr);
-        uint16_t value;
-        std::memcpy(&value, &buffer_[off], 2);
-        return value;
-    }
-
-    uint32_t Read32(uint32_t addr) const override {
-        size_t off = Offset(addr);
-        if (off + 4 > buffer_.size()) FatalMemoryError("Read32 out of bounds", addr);
-        uint32_t value;
-        std::memcpy(&value, &buffer_[off], 4);
-        return value;
-    }
-
-    void Write8(uint32_t addr, uint8_t value) override {
-        size_t off = Offset(addr);
-        buffer_[off] = value;
-    }
-
-    void Write16(uint32_t addr, uint16_t value) override {
-        size_t off = Offset(addr);
-        if (off + 2 > buffer_.size()) FatalMemoryError("Write16 out of bounds", addr);
-        std::memcpy(&buffer_[off], &value, 2);
-    }
-
-    void Write32(uint32_t addr, uint32_t value) override {
-        size_t off = Offset(addr);
-        if (off + 4 > buffer_.size()) FatalMemoryError("Write32 out of bounds", addr);
-        std::memcpy(&buffer_[off], &value, 4);
-    }
-
-    // Максимальная длина x86-инструкции — 15 байт. RawPointer должен
-    // гарантировать, что decoder'у будет ГДЕ читать эти байты, а не только
-    // что начальный адрес валиден — иначе на некоторых платформах (не на
-    // x86, где часто "прокатывает" из-за особенностей аллокатора) чтение
-    // за пределы буфера может честно упасть на невыделенной странице памяти.
-    static constexpr size_t kMaxInstructionLength = 15;
-
-    const uint8_t* RawPointer(uint32_t addr) const override {
-        size_t off = Offset(addr);
-        if (off + kMaxInstructionLength > buffer_.size()) {
-            FatalMemoryError("RawPointer: недостаточно места до конца буфера для декодирования инструкции", addr);
-        }
-        return &buffer_[off];
-    }
-
-    // Для теста: загрузить сырые байты кода по конкретному адресу
-    void LoadBytes(uint32_t addr, const uint8_t* data, size_t len) {
-        size_t off = Offset(addr);
-        if (off + len > buffer_.size()) FatalMemoryError("LoadBytes out of bounds", addr);
-        std::memcpy(&buffer_[off], data, len);
-    }
-
-    uint32_t BaseAddress() const { return baseAddress_; }
-    uint32_t EndAddress() const { return baseAddress_ + static_cast<uint32_t>(buffer_.size()); }
-
-private:
-    size_t Offset(uint32_t addr) const {
-        if (addr < baseAddress_) FatalMemoryError("address below base", addr);
-        size_t off = addr - baseAddress_;
-        if (off >= buffer_.size()) FatalMemoryError("address above region", addr);
-        return off;
-    }
-
-    uint32_t baseAddress_;
-    std::vector<uint8_t> buffer_;
-};
+// Исторические имена: раньше IGuestMemory был виртуальным интерфейсом, а
+// FlatGuestMemory — одним сплошным буфером. Теперь единственная
+// реализация — страничная память (paged_memory.h); имена оставлены, чтобы
+// не трогать сотни сигнатур host-функций и тесты. Вызовы не виртуальные,
+// компилятор их встраивает.
+using IGuestMemory = PagedGuestMemory;
+using FlatGuestMemory = PagedGuestMemory;
 
 } // namespace cpu

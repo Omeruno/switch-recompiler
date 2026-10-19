@@ -340,13 +340,20 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 
         if (shown < maxLinesToShow)
         {
-            SafePrint(" %06x: %s\n", eipBefore, cpu::ToString(instr.mnemonic));
+            SafePrint(" %06x: op %02x (len %u)\n", eipBefore, instr.rawOpcodeForDebug, instr.length);
             shown++;
             SafeConsoleUpdate(); // печатаем прогресс "в реальном времени"
         }
 
         if (result == cpu::StepResult::Halted) { stopReason = "HLT"; break; }
         if (result == cpu::StepResult::UnknownOpcode) { stopReason = "unknown opcode"; break; }
+        if (result == cpu::StepResult::Exception)
+        {
+            const cpu::CpuException& e = interp.LastException();
+            SafePrint("[!] Guest exception 0x%08x at EIP=0x%x (address 0x%x)\n", e.code, e.eip, e.faultAddress);
+            stopReason = "guest exception";
+            break;
+        }
         steps++;
     }
 

@@ -180,6 +180,7 @@ int main(int argc, char** argv) {
             shown++;
         }
 
+        if (result == cpu::StepResult::Exception) { stopReason = "guest exception"; std::printf("[EXC] 0x%08x at 0x%x addr 0x%x\n", interp.LastException().code, interp.LastException().eip, interp.LastException().faultAddress); break; }
         if (result == cpu::StepResult::Halted) { stopReason = "HLT"; break; }
         if (result == cpu::StepResult::UnknownOpcode) {
             printf(" !! Unknown opcode 0x%02x at 0x%x\n", instr.rawOpcodeForDebug, eipBefore);
