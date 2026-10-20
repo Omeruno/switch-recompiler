@@ -22,6 +22,7 @@
 #include "cpu/cpu_state.h"
 #include "cpu/guest_memory.h"
 #include "cpu/interpreter.h"
+#include "runtime/process.h"
 #include "win32/host_functions.h"
 #include "win32/bitmap_font.h"
 #include "win32/iat_patcher.h"
@@ -228,72 +229,33 @@ static void PrintDisassembly(const char* path, int maxLinesToShow)
 // Interpreter, с перехватом вызовов Win32/CRT функций через IAT.
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
-    pe::PEParser parser;
-    if (parser.LoadFromFile(path) != pe::LoadResult::Ok)
+    // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
+    // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
+    // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
+    static cpu::PagedGuestMemory mem;
+    static rt::Process proc(mem);
+    rt::g_process = &proc;
+    proc.ForceHle("mfc42u.dll");
+    proc.SetCommandLine(g_selectedExePath);
+
+    std::string err;
+    cpu::CpuState cpuState;
+    rt::Module* exe = proc.LoadMainExe(path, err);
+    if (!exe || !proc.PrepareMainThread(cpuState, err))
     {
-        SafePrint("[!] Failed to load %s\n", path);
+        SafePrint("[!] Failed to load %s: %s\n", path, err.c_str());
+        return;
+    }
+    SafePrint("[+] %s loaded at 0x%x\n", path, exe->base);
+
+    win32::g_getTickCountImpl = &RealGetTickCount;
+    if (!proc.InitializeModules(cpuState, err))
+    {
+        SafePrint("[!] DLL initialization failed: %s\n", err.c_str());
         return;
     }
 
-    uint32_t imageSize = parser.GetSizeOfImage();
-    constexpr uint32_t STACK_SIZE = 0x10000;
-    constexpr uint32_t TEB_SIZE = 0x1000;
-    uint32_t imageBase = parser.GetImageBase();
-
-    std::vector<uint8_t> image(imageSize, 0);
-    parser.MapImageToMemory(image.data(), image.size());
-
-    uint32_t stackBottom = imageBase + imageSize;
-    uint32_t stackTop = stackBottom + STACK_SIZE;
-    uint32_t tebAddr = stackTop;
-    uint32_t crtGlobalsAddr = tebAddr + TEB_SIZE;
-    // MFC-состояние (см. MFC_STATE_SIZE) — сразу после CRT-глобалов
-    uint32_t mfcStateAddr = crtGlobalsAddr + win32::CRT_GLOBALS_SIZE;
-    // Простая куча для SimpleGuestAlloc (_wcsdup и т.п.) — сразу после MFC-состояния
-    uint32_t heapAddr = mfcStateAddr + win32::MFC_STATE_SIZE;
-
-    // Патчим IAT прямо в `image` (адреса уже известны заранее) — грузим
-    // уже пропатченный образ в память одним куском
-    win32::PatchResult patchStats = win32::PatchImportAddressTable(
-        parser, image.data(), image.size(), crtGlobalsAddr);
-    SafePrint("[+] IAT patched: %d/%d imports implemented\n", patchStats.patched, patchStats.totalImports);
-
-    win32::g_imageBuffer = image.data();
-    win32::g_imageBufferSize = image.size();
-    win32::g_resourceDirRva = parser.GetResourceDirectoryRva();
-
-    // Защитный запас в конце буфера: наш decoder может прочитать до ~15 байт
-    // за раз (макс. длина x86-инструкции), а RawPointer проверяет только
-    // НАЧАЛЬНЫЙ адрес чтения, не "хватит ли места до конца буфера". Если
-    // eip окажется у самого края (по любой причине — легитимной или из-за
-    // бага), декодер прочитает ЗА пределы буфера. На x86 (хост) это часто
-    // "прокатывает" незаметно из-за особенностей аллокатора, а на ARM64
-    // может честно упасть на невыделенной странице — именно это мы поймали
-    // через addr2line (cpu::DecodeCore, x86_decoder.cpp:179).
-    constexpr uint32_t DECODE_SAFETY_MARGIN = 64;
-    cpu::FlatGuestMemory mem(imageBase, imageSize + STACK_SIZE + TEB_SIZE + win32::CRT_GLOBALS_SIZE + win32::MFC_STATE_SIZE + win32::HEAP_SIZE + DECODE_SAFETY_MARGIN);
-    mem.LoadBytes(imageBase, image.data(), image.size());
-
-    win32::InitCrtGlobals(mem, crtGlobalsAddr, g_selectedExePath.c_str());
-    win32::g_mfcStateBase = mfcStateAddr; // память уже честно занулена по умолчанию (FlatGuestMemory)
-    win32::g_heapBase = heapAddr;
-    win32::g_heapNext = heapAddr;
-
-    // Минимальный фейковый TEB — только то, что реально нужно CRT-старту
-    // (SEH-цепочка + границы стека), не полная структура Windows TEB.
-    mem.Write32(tebAddr + 0x00, 0xFFFFFFFF); // SEH: "обработчиков нет"
-    mem.Write32(tebAddr + 0x04, stackTop);
-    mem.Write32(tebAddr + 0x08, stackBottom);
-
-    cpu::CpuState cpuState;
-    cpuState.eip = imageBase + parser.GetEntryPointRva();
-    cpuState.ESP() = stackTop - 16;
-
-    cpu::Interpreter interp(mem, tebAddr, tebAddr);
-
-    win32::g_getTickCountImpl = &RealGetTickCount;
-    win32::g_imageBase = imageBase;
-    win32::g_tebAddr = tebAddr;
+    cpu::Interpreter interp(mem, proc.TebAddress(), proc.TebAddress());
 
     SafePrint("\n[+] Executing from entry point 0x%x:\n", cpuState.eip);
     SafeConsoleUpdate(); // показываем прогресс сразу, на случай если что-то пойдёт не так дальше

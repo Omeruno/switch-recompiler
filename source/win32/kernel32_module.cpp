@@ -44,8 +44,13 @@ rt::Module* ModuleFromHandle(uint32_t h) {
     return rt::g_process->FindByHandle(h);
 }
 
+// Без rt::Process (старые хостовые тесты) модулей нет: LoadLibrary даёт
+// фиктивный хендл, GetProcAddress ищет HLE-функцию по имени в любой DLL.
+constexpr uint32_t kLegacyModuleHandle = 0x69000000u;
+
 HostCallOutcome LoadLibraryCommon(cpu::CpuState& c, cpu::IGuestMemory& m, const std::string& name) {
-    if (!rt::g_process || name.empty()) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
+    if (!rt::g_process) return Ret(name.empty() ? 0 : kLegacyModuleHandle);
+    if (name.empty()) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
     std::string err;
     rt::Module* mod = rt::g_process->LoadLibrary(name, err);
     if (!mod) {
@@ -110,6 +115,17 @@ HostCallOutcome K32_GetModuleHandleExW(cpu::CpuState& c, cpu::IGuestMemory& m) {
 
 HostCallOutcome K32_GetProcAddress(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0), p = Arg(c, m, 1);
+    if (!rt::g_process) {
+        if (p < 0x10000) return Ret(0);
+        std::string fn = ReadAnsi(m, p);
+        // более поздние записи переопределяют ранние — ищем с конца
+        for (int i = static_cast<int>(HostFunctionCount()) - 1; i >= 0; --i) {
+            const HostFunctionEntry& e = GetHostFunction(i);
+            if (e.funcName && fn == e.funcName) return Ret(IndexToHostAddress(i));
+        }
+        if (cpu::g_consoleAvailable) std::printf("[GetProcAddress] %s не найдена\n", fn.c_str());
+        return Ret(0);
+    }
     rt::Module* mod = ModuleFromHandle(h);
     if (!mod) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
     uint32_t addr = p < 0x10000 ? rt::g_process->GetProcAddress(mod, "", static_cast<uint16_t>(p))

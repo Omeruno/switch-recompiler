@@ -13,6 +13,7 @@
 #include "source/win32/crt_globals.h"
 #include "source/win32/window_manager.h"
 #include "source/win32/gdi.h"
+#include "source/runtime/process.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -30,60 +31,22 @@ int main(int argc, char** argv) {
     long maxSteps = argc > 2 ? atol(argv[2]) : 2000000;
     int maxLinesToShow = argc > 3 ? atoi(argv[3]) : 200;
 
-    pe::PEParser parser;
-    if (parser.LoadFromFile(path) != pe::LoadResult::Ok) {
-        printf("[!] Failed to load %s\n", path);
+    // Тот же рантайм, что и на Switch: rt::Process. MFC пока эмулируется
+    // (HLE в host_functions.cpp), даже если mfc42u.dll лежит рядом.
+    cpu::PagedGuestMemory mem;
+    rt::Process proc(mem);
+    rt::g_process = &proc;
+    if (!std::getenv("REAL_MFC")) proc.ForceHle("mfc42u.dll");
+    std::string err;
+    cpu::CpuState cpuState;
+    rt::Module* exe = proc.LoadMainExe(path, err);
+    if (!exe || !proc.PrepareMainThread(cpuState, err) || !proc.InitializeModules(cpuState, err)) {
+        printf("[!] %s: %s\n", path, err.c_str());
         return 1;
     }
-
-    uint32_t imageSize = parser.GetSizeOfImage();
-    constexpr uint32_t STACK_SIZE = 0x10000;
-    constexpr uint32_t TEB_SIZE = 0x1000;
-    uint32_t imageBase = parser.GetImageBase();
-
-    std::vector<uint8_t> image(imageSize, 0);
-    parser.MapImageToMemory(image.data(), image.size());
-
-    uint32_t stackBottom = imageBase + imageSize;
-    uint32_t stackTop = stackBottom + STACK_SIZE;
-    uint32_t tebAddr = stackTop;
-    uint32_t crtGlobalsAddr = tebAddr + TEB_SIZE;
-    uint32_t mfcStateAddr = crtGlobalsAddr + win32::CRT_GLOBALS_SIZE;
-    uint32_t heapAddr = mfcStateAddr + win32::MFC_STATE_SIZE;
-
-    win32::PatchResult patchStats = win32::PatchImportAddressTable(
-        parser, image.data(), image.size(), crtGlobalsAddr);
-    printf("[+] IAT patched: %d/%d imports implemented (unimplemented=%d)\n",
-           patchStats.patched, patchStats.totalImports, patchStats.unimplemented);
-
-    win32::g_imageBuffer = image.data();
-    win32::g_imageBufferSize = image.size();
-    win32::g_resourceDirRva = parser.GetResourceDirectoryRva();
-
-    constexpr uint32_t DECODE_SAFETY_MARGIN = 64;
-    cpu::FlatGuestMemory mem(imageBase, imageSize + STACK_SIZE + TEB_SIZE +
-                             win32::CRT_GLOBALS_SIZE + win32::MFC_STATE_SIZE +
-                             win32::HEAP_SIZE + DECODE_SAFETY_MARGIN);
-    mem.LoadBytes(imageBase, image.data(), image.size());
-
-    win32::InitCrtGlobals(mem, crtGlobalsAddr, path);
-    win32::g_mfcStateBase = mfcStateAddr;
-    win32::g_heapBase = heapAddr;
-    win32::g_heapNext = heapAddr;
-
-    mem.Write32(tebAddr + 0x00, 0xFFFFFFFF);
-    mem.Write32(tebAddr + 0x04, stackTop);
-    mem.Write32(tebAddr + 0x08, stackBottom);
-
-    cpu::CpuState cpuState;
-    cpuState.eip = imageBase + parser.GetEntryPointRva();
-    cpuState.ESP() = stackTop - 16;
-
-    cpu::Interpreter interp(mem, tebAddr, tebAddr);
-
+    const uint32_t imageBase = exe->base;
+    cpu::Interpreter interp(mem, proc.TebAddress(), proc.TebAddress());
     win32::g_getTickCountImpl = &FakeGetTickCount;
-    win32::g_imageBase = imageBase;
-    win32::g_tebAddr = tebAddr;
 
     // УНИВЕРСАЛЬНЫЙ ТЕСТ ИНСТРУМЕНТА. Инструмент задаётся 4-м аргументом
     // (hex id, например 0x280 = Кисть; по умолчанию 0x27c = Карандаш).
@@ -146,8 +109,7 @@ int main(int argc, char** argv) {
         return r;
     };
 
-    printf("\n[+] Executing from entry point 0x%x (imageBase=0x%x, entryRva=0x%x)\n",
-           cpuState.eip, imageBase, parser.GetEntryPointRva());
+    printf("\n[+] Executing from entry point 0x%x (imageBase=0x%x)\n", cpuState.eip, imageBase);
 
     long steps = 0;
     int shown = 0;

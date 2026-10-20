@@ -1,3 +1,4 @@
+#include <strings.h>
 #include "mfc42u_abi_table.h"
 #include "win32_api_abi_table.h"
 #include "host_functions.h"
@@ -1377,6 +1378,12 @@ HostCallOutcome Impl_GdiplusStartup(cpu::CpuState& cpu, cpu::IGuestMemory& mem) 
     HostCallOutcome result;
     result.returnValue = 0; // Status::Ok
     return result;
+}
+
+// void GdiplusShutdown(ULONG_PTR token) — парная к GdiplusStartup; MFC
+// вызывает её из atexit-обработчика при выходе
+HostCallOutcome Impl_GdiplusShutdown(cpu::CpuState&, cpu::IGuestMemory&) {
+    return HostCallOutcome{};
 }
 
 // BOOL SetRectEmpty(LPRECT lprc) — обнуляет все 4 поля RECT
@@ -4648,6 +4655,7 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "msvcrt.dll",   "_itow",              12, CallConv::Cdecl,   &Impl_Itow },
     { "USER32.dll",   "GetSysColor",        4,  CallConv::Stdcall, &Impl_GetSysColor },
     { "gdiplus.dll",  "GdiplusStartup",     12, CallConv::Stdcall, &Impl_GdiplusStartup },
+    { "gdiplus.dll",  "GdiplusShutdown",    4,  CallConv::Stdcall, &Impl_GdiplusShutdown },
     { "USER32.dll",   "SetRectEmpty",       4,  CallConv::Stdcall, &Impl_SetRectEmpty },
     { "KERNEL32.dll", "InterlockedExchange", 8, CallConv::Stdcall, &Impl_InterlockedExchange },
     { "KERNEL32.dll", "GetLastError",       0,  CallConv::Stdcall, &Impl_GetLastError },
@@ -4798,7 +4806,7 @@ const HostFunctionEntry& GetHostFunction(int index) {
 
 // Сначала ищем в зарегистрированных таблицах (новые реализации
 // переопределяют старые из этого файла), потом в статической.
-int FindHostFunction(const char* dllName, const char* funcName) {
+static int FindHostFunctionExact(const char* dllName, const char* funcName) {
     const auto& extra = ExtraEntries();
     for (size_t i = extra.size(); i-- > 0;) {
         if (extra[i]->funcName[0] && std::strcmp(extra[i]->funcName, funcName) == 0 &&
@@ -4811,6 +4819,24 @@ int FindHostFunction(const char* dllName, const char* funcName) {
             DllNameEquals(g_hostFunctionTable[i].dllName, dllName)) {
             return static_cast<int>(i);
         }
+    }
+    return -1;
+}
+
+// DLL «наборов API» Windows 7+ (api-ms-win-core-*.dll) и KERNELBASE — лишь
+// другое имя тех же функций KERNEL32/ADVAPI32: такие импорты делают
+// библиотеки поновее XP (например, mfc42u.dll из Windows 7).
+static bool IsApiSetDll(const char* dll) {
+    return strncasecmp(dll, "api-ms-win-", 11) == 0 || strncasecmp(dll, "ext-ms-win-", 11) == 0 ||
+           strcasecmp(dll, "kernelbase.dll") == 0 || strcasecmp(dll, "kernelbase") == 0;
+}
+
+int FindHostFunction(const char* dllName, const char* funcName) {
+    int idx = FindHostFunctionExact(dllName, funcName);
+    if (idx >= 0 || !IsApiSetDll(dllName)) return idx;
+    for (const char* d : {"KERNEL32.dll", "ADVAPI32.dll", "USER32.dll", "msvcrt.dll"}) {
+        idx = FindHostFunctionExact(d, funcName);
+        if (idx >= 0) return idx;
     }
     return -1;
 }

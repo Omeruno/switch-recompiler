@@ -1,8 +1,11 @@
 #!/bin/sh
 # Сборка и прогон хост-тестов (Linux/WSL, g++).
 #
-#   sh tools/run_host_tests.sh                  5 регрессионных тестов Сапёра
-#   sh tools/run_host_tests.sh path/to/paint.exe  плюс прогон Paint (trace_paint)
+#   sh tools/run_host_tests.sh            регрессионные тесты + программы mingw
+#   sh tools/run_host_tests.sh каталог    плюс winmine.exe / paint.exe из каталога
+#                                         (по умолчанию local/, если он есть)
+#
+# Программы Microsoft в репозиторий не кладём: положите свои копии в local/.
 #
 # Код возврата ненулевой, если хоть один тест не собрался или не прошёл.
 set -eu
@@ -54,11 +57,33 @@ else
     echo "(mingw-w64 не найден: гостевые программы пропущены)"
 fi
 
-if [ $# -ge 1 ]; then
-    printf '== trace_paint %s\n' "$1"
+bins="${1:-$root/local}"
+if [ -f "$bins/winmine.exe" ]; then
+    printf '== winmine.exe\n'
+    # кадр 5: клик в левую верхнюю клетку — поле должно измениться
+    if (cd "$bins" && "$out/winrun" -f 12 -d "$out/winmine_before.ppm" winmine.exe &&
+        "$out/winrun" -f 12 -c 5:20:62 -d "$out/winmine_after.ppm" winmine.exe) > "$out/winmine.log" 2>&1 &&
+       [ -s "$out/winmine_before.ppm" ] && ! cmp -s "$out/winmine_before.ppm" "$out/winmine_after.ppm"; then
+        echo "winmine: PASSED"
+    else
+        echo "   winmine: НЕ ПРОЙДЕН (лог: build-host/winmine.log)"
+        failed=1
+    fi
+fi
+if [ -f "$bins/paint.exe" ]; then
+    printf '== paint.exe\n'
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/trace_paint.cpp" $src -o "$out/trace_paint"
-    "$out/trace_paint" "$1" "${2:-2000000}" || failed=1
+    # Карандаш рисует и рисунок переживает перерисовку; пипетка берёт цвет
+    if (cd "$out" && ./trace_paint "$bins/paint.exe" 3000000 0 0x27c) > "$out/paint_pencil.log" 2>&1 &&
+       grep -q "рисунок сохранился" "$out/paint_pencil.log" &&
+       (cd "$out" && ./trace_paint "$bins/paint.exe" 3000000 0 0x27f) > "$out/paint_picker.log" 2>&1 &&
+       grep -q "ЦВЕТ ПОДОБРАН ВЕРНО" "$out/paint_picker.log"; then
+        echo "paint: PASSED"
+    else
+        echo "   paint: НЕ ПРОЙДЕН (логи: build-host/paint_*.log)"
+        failed=1
+    fi
 fi
 
 [ "$failed" -eq 0 ] && echo "Все тесты пройдены." || echo "Есть ошибки."
