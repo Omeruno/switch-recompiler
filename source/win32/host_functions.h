@@ -192,6 +192,11 @@ extern uint32_t g_tebAddr;
 // То, что реальное железо (Switch) сообщает нам за один "тик" ожидания
 // внутри GetMessage. x,y — уже в НАШИХ виртуальных координатах (640x360),
 // конвертацию из реальных координат тача делает вызывающая сторона (main.cpp).
+// Гость завершает процесс (ExitProcess/exit), возможно из вложенного
+// вызова: циклы исполнения всех уровней останавливаются.
+extern bool g_guestExitRequested;
+extern int32_t g_guestExitCode;
+
 struct HostFrameResult {
     bool shouldQuit = false;    // пользователь запросил выход (кнопка +, HOME и т.п.)
     bool hasTouchEvent = false; // появилось новое событие тача с прошлого опроса
@@ -212,6 +217,14 @@ extern HostFrameResult (*g_pumpHostFrame)();
 // Записи, зарегистрированные позже, переопределяют более ранние и
 // статическую таблицу host_functions.cpp. Имена DLL — без учёта регистра.
 bool RegisterHostFunctions(const HostFunctionEntry* entries, size_t count);
+// Записи слоя действуют, только пока слой включён (EnableHostLayer). Слой
+// "ui2" — новые USER32/GDI32 (win32/user32_*.cpp, gdi32_module.cpp); без
+// него работает прежний HLE окон и GDI, на котором держатся Сапёр и Paint.
+bool RegisterHostFunctionsLayer(const HostFunctionEntry* entries, size_t count, const char* layer);
+void EnableHostLayer(const char* layer, bool on);
+bool IsHostLayerEnabled(const char* layer);
+constexpr const char* kUiLayer = "ui2";
+
 size_t HostFunctionCount();
 const HostFunctionEntry& GetHostFunction(int index);
 

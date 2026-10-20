@@ -15,6 +15,11 @@ for t in "$here"/crt_*.c; do
     name=$(basename "$t" .c)
     $cc -O1 "$t" -o "$out/$name.exe" -lm
 done
+for t in "$here"/gui_*.c; do
+    [ -e "$t" ] || continue
+    name=$(basename "$t" .c)
+    $cc -O1 "$t" -o "$out/$name.exe" -luser32 -lgdi32
+done
 cxx="${MINGW_CXX:-i686-w64-mingw32-g++}"
 for t in "$here"/crt_*.cpp; do
     [ -e "$t" ] || continue

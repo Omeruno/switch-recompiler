@@ -9,6 +9,7 @@
 #include <string>
 
 #include "hle_util.h"
+#include "../runtime/clock.h"
 #include "../runtime/process.h"
 
 namespace win32 {
@@ -296,13 +297,7 @@ uint64_t NowFileTime() {
     uint64_t us = static_cast<uint64_t>(duration_cast<microseconds>(system_clock::now().time_since_epoch()).count());
     return us * 10 + 116444736000000000ull;
 }
-uint64_t g_startMs = 0;
-uint32_t TickCount() {
-    using namespace std::chrono;
-    uint64_t ms = static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
-    if (!g_startMs) g_startMs = ms - 1000000; // «система работает уже ~17 минут»
-    return static_cast<uint32_t>(ms - g_startMs);
-}
+uint32_t TickCount() { return rt::Clock::NowMs(); }
 HostCallOutcome K32_GetTickCount(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(g_getTickCountImpl ? g_getTickCountImpl() : TickCount()); }
 HostCallOutcome K32_QueryPerformanceFrequency(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t p = Arg(c, m, 0);
@@ -311,8 +306,7 @@ HostCallOutcome K32_QueryPerformanceFrequency(cpu::CpuState& c, cpu::IGuestMemor
     return Ret(1);
 }
 HostCallOutcome K32_QueryPerformanceCounter(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    using namespace std::chrono;
-    uint64_t t = static_cast<uint64_t>(duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count()) / 100;
+    uint64_t t = rt::Clock::NowUs() * 10; // частота 10 МГц
     uint32_t p = Arg(c, m, 0);
     m.Write32(p, static_cast<uint32_t>(t));
     m.Write32(p + 4, static_cast<uint32_t>(t >> 32));

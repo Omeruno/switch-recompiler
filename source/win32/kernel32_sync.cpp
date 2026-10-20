@@ -8,6 +8,7 @@
 #include <map>
 
 #include "hle_util.h"
+#include "../runtime/clock.h"
 
 namespace win32 {
 
@@ -181,8 +182,8 @@ HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& 
     return Ret(0x102);
 }
 
-HostCallOutcome K32_Sleep(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
-HostCallOutcome K32_SleepEx(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
+HostCallOutcome K32_Sleep(cpu::CpuState& c, cpu::IGuestMemory& m) { rt::Clock::Sleep(Arg(c, m, 0)); return Ret(0); }
+HostCallOutcome K32_SleepEx(cpu::CpuState& c, cpu::IGuestMemory& m) { rt::Clock::Sleep(Arg(c, m, 0)); return Ret(0); }
 HostCallOutcome K32_SwitchToThread(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
 
 const HostFunctionEntry kEntries[] = {

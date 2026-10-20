@@ -25,8 +25,12 @@
 - **KERNEL32 и msvcrt.dll**: несколько сотен функций — куча, файлы
   (`C:\` гостя = каталог EXE), синхронизация, время, `printf`/`scanf` по
   правилам msvcrt, математика.
-- **USER32/GDI32/MFC** — пока прежний HLE-слой v1 (окна, сообщения, GDI,
-  заглушки MFC под Paint).
+- **USER32/GDI32** (новый слой, `source/ui/`, `win32/user32_*.cpp`,
+  `win32/gdi32_module.cpp`): окна и классы, порядок окон и отсечение,
+  рамки в классической теме XP, очередь сообщений, ввод, таймеры,
+  области обновления; GDI — перья, кисти, шрифты TrueType, битмапы и
+  DIB-секции, регионы, палитры, ROP2/ROP3, растяжение, текст и DrawText.
+  Сапёр и Paint пока работают на прежнем слое v1 (с заглушками MFC).
 
 | Программа | Состояние |
 |---|---|
@@ -130,3 +134,10 @@ CI гоняет хост-тесты, сверку ядра и сборку `.nro
 ASCII-глифы в `source/win32/bitmap_font.h` взяты из Adafruit-GFX-Library
 (`glcdfont.c`), Copyright (c) 2012 Adafruit Industries, лицензия BSD.
 Уведомление сохранено в заголовке файла.
+
+`source/third_party/stb_truetype.h` — растеризатор TrueType Шона Барретта
+(stb), общественное достояние / MIT.
+
+`romfs/fonts/Liberation*.ttf` — шрифты Liberation 2.1 (метрически
+совместимы с Arial, Times New Roman, Courier New), Copyright (c) 2012
+Red Hat, Inc., лицензия SIL Open Font License 1.1 (`romfs/fonts/OFL.txt`).

@@ -1,11 +1,12 @@
 // winrun.cpp — запуск Windows-программы на хосте через наш рантайм.
 //
-//   winrun [-v] [-L каталог] [-f кадров] [-c кадр:x:y]... [-d снимок.ppm]
+//   winrun [-v] [-L каталог] [-f кадров] [-c кадр:x:y]... [-d снимок.ppm] [-s кадр снимок.ppm]
 //          программа.exe [аргументы...]
 //
 // Для оконных программ: -f — сколько кадров цикла сообщений прокрутить до
 // выхода, -c — клик левой кнопкой в окно (виртуальный экран 640x360) на
-// заданном кадре, -d — сохранить экранный DC в PPM при выходе.
+// заданном кадре, -d — сохранить экран в PPM при выходе, -s — на кадре.
+// --new-ui/--legacy-ui — выбрать оконную подсистему явно.
 //
 // Загружает EXE и DLL (rt::Process), инициализирует модули и исполняет
 // главный поток интерпретатором; консольный вывод программы идёт в
@@ -14,6 +15,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <string>
 
@@ -23,11 +25,16 @@
 #include "source/win32/host_functions.h"
 #include "source/win32/message_loop.h"
 #include "source/win32/window_manager.h"
+#include "source/win32/user32.h"
+#include "source/runtime/clock.h"
+#include "source/ui/font.h"
 
 namespace {
 
 struct Click { int frame, x, y; };
-int g_frameLimit = -1, g_frame = 0;
+int g_frameLimit = -1, g_frame = 0, g_snapFrame = -1;
+const char* g_snapPath = nullptr;
+void DumpScreen(const char* path);
 std::vector<Click> g_clicks;
 
 win32::HostFrameResult PumpFrame() {
@@ -44,7 +51,43 @@ win32::HostFrameResult PumpFrame() {
     return r;
 }
 
+// Новая оконная подсистема: сценарий ввода по «кадрам» ожидания
+bool g_newUi = false;
+bool UiWait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
+    using win32::user::InputEvent;
+    ++g_frame;
+    if (g_frame == g_snapFrame && g_snapPath) DumpScreen(g_snapPath);
+    for (const Click& c : g_clicks) {
+        if (c.frame != g_frame) continue;
+        InputEvent mv; mv.type = InputEvent::MouseMove; mv.x = c.x; mv.y = c.y;
+        InputEvent dn = mv; dn.type = InputEvent::MouseDown;
+        InputEvent up = mv; up.type = InputEvent::MouseUp;
+        out.push_back(mv); out.push_back(dn); out.push_back(up);
+    }
+    if (g_frameLimit >= 0 && g_frame > g_frameLimit) {
+        InputEvent q; q.type = InputEvent::Quit;
+        out.push_back(q);
+        return true;
+    }
+    rt::Clock::Sleep(timeoutMs < 0 || timeoutMs > 16 ? 16 : static_cast<uint32_t>(timeoutMs));
+    // без сценария и без таймеров ждать нечего
+    return g_frameLimit >= 0 || timeoutMs >= 0;
+}
+
+void DumpSurface(const char* path, const ui::Surface& s) {
+    FILE* f = std::fopen(path, "wb");
+    if (!f) return;
+    std::fprintf(f, "P6\n%d %d\n255\n", s.width, s.height);
+    for (int y = 0; y < s.height; ++y)
+        for (int x = 0; x < s.width; ++x) {
+            uint32_t px = s.Get(x, y);
+            std::fputc((px >> 16) & 0xFF, f); std::fputc((px >> 8) & 0xFF, f); std::fputc(px & 0xFF, f);
+        }
+    std::fclose(f);
+}
+
 void DumpScreen(const char* path) {
+    if (g_newUi) { DumpSurface(path, win32::user::S().screen.s); return; }
     uint32_t dc = gdi::g_gdi.GetScreenDCHandle();
     const gdi::Bitmap* bmp = dc ? gdi::g_gdi.GetBitmapForDC(dc) : nullptr;
     if (!bmp || bmp->width <= 0) { std::fprintf(stderr, "winrun: экранного DC нет\n"); return; }
@@ -61,18 +104,22 @@ int main(int argc, char** argv) {
     bool verbose = false;
     std::vector<std::string> libDirs;
     const char* dumpPath = nullptr;
+    bool forceLegacy = false, forceNew = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
         else if (std::strcmp(argv[i], "-L") == 0 && i + 1 < argc) libDirs.push_back(argv[++i]);
         else if (std::strcmp(argv[i], "-f") == 0 && i + 1 < argc) g_frameLimit = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "-d") == 0 && i + 1 < argc) dumpPath = argv[++i];
+        else if (std::strcmp(argv[i], "-s") == 0 && i + 2 < argc) { g_snapFrame = std::atoi(argv[++i]); g_snapPath = argv[++i]; }
+        else if (std::strcmp(argv[i], "--legacy-ui") == 0) forceLegacy = true;
+        else if (std::strcmp(argv[i], "--new-ui") == 0) forceNew = true;
         else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
             Click c{};
             if (std::sscanf(argv[++i], "%d:%d:%d", &c.frame, &c.x, &c.y) == 3) g_clicks.push_back(c);
         } else break;
     }
-    if (g_frameLimit >= 0) win32::g_pumpHostFrame = &PumpFrame;
+
     if (i >= argc) {
         std::fprintf(stderr, "usage: %s [-v] [-L dir] program.exe [args...]\n", argv[0]);
         return 2;
@@ -80,6 +127,26 @@ int main(int argc, char** argv) {
     std::string exe = argv[i];
     std::string cmd = exe;
     for (int k = i + 1; k < argc; ++k) { cmd += " "; cmd += argv[k]; }
+
+    // Оконная подсистема: Сапёр и Paint пока работают на прежнем HLE окон
+    // (он подогнан под них), остальные программы — на новом USER32/GDI32.
+    {
+        std::string base = exe.substr(exe.find_last_of("/\\") == std::string::npos ? 0 : exe.find_last_of("/\\") + 1);
+        for (char& ch : base) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        bool legacy = base == "winmine.exe" || base == "paint.exe";
+        g_newUi = forceNew || (!legacy && !forceLegacy);
+    }
+    rt::Clock::SetFastForward(true);
+    if (g_newUi) {
+        std::string self = argv[0];
+        size_t slash = self.find_last_of('/');
+        std::string dir = slash == std::string::npos ? "." : self.substr(0, slash);
+        ui::FontCache::SetDirectory(dir + "/../romfs/fonts");
+        win32::user::g_platform.wait = &UiWait;
+        win32::user::EnableUi(800, 600);
+    } else if (g_frameLimit >= 0) {
+        win32::g_pumpHostFrame = &PumpFrame;
+    }
 
     cpu::g_consoleAvailable = verbose;
     cpu::PagedGuestMemory mem;

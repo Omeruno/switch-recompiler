@@ -14,7 +14,7 @@ root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 out="$root/build-host"
 cxx="${CXX:-g++}"
 flags="-std=c++17 -O1 -Wall -I$root"
-src="$root/source/cpu/*.cpp $root/source/runtime/*.cpp $root/source/loader/*.cpp $root/source/decoder/*.cpp $root/source/win32/*.cpp"
+src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $root/source/loader/*.cpp $root/source/decoder/*.cpp $root/source/win32/*.cpp"
 
 mkdir -p "$out"
 failed=0

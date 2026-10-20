@@ -19,6 +19,8 @@ size_t g_imageBufferSize = 0;
 uint32_t g_resourceDirRva = 0;
 uint32_t g_tebAddr = 0;
 HostFrameResult (*g_pumpHostFrame)() = nullptr;
+bool g_guestExitRequested = false;
+int32_t g_guestExitCode = 0;
 void (*g_playAudioImpl)(const std::vector<int16_t>& samples) = nullptr;
 
 // Сигнал "выбрать инструмент" (эта сессия) — main.cpp выставляет ID
@@ -4788,12 +4790,46 @@ std::vector<const HostFunctionEntry*>& ExtraEntries() {
     static std::vector<const HostFunctionEntry*> entries;
     return entries;
 }
+// Слой каждой записи из ExtraEntries (nullptr — всегда включена)
+std::vector<const char*>& ExtraLayers() {
+    static std::vector<const char*> layers;
+    return layers;
+}
+std::vector<std::string>& EnabledLayers() {
+    static std::vector<std::string> layers;
+    return layers;
+}
+bool ExtraEnabled(size_t i) {
+    const char* layer = ExtraLayers()[i];
+    if (!layer) return true;
+    for (const std::string& l : EnabledLayers()) if (l == layer) return true;
+    return false;
+}
 
 } // namespace
 
 bool RegisterHostFunctions(const HostFunctionEntry* entries, size_t count) {
-    for (size_t i = 0; i < count; ++i) ExtraEntries().push_back(&entries[i]);
+    return RegisterHostFunctionsLayer(entries, count, nullptr);
+}
+
+bool RegisterHostFunctionsLayer(const HostFunctionEntry* entries, size_t count, const char* layer) {
+    for (size_t i = 0; i < count; ++i) {
+        ExtraEntries().push_back(&entries[i]);
+        ExtraLayers().push_back(layer);
+    }
     return true;
+}
+
+void EnableHostLayer(const char* layer, bool on) {
+    auto& v = EnabledLayers();
+    for (size_t i = 0; i < v.size(); ++i)
+        if (v[i] == layer) { if (!on) v.erase(v.begin() + static_cast<long>(i)); return; }
+    if (on) v.push_back(layer);
+}
+
+bool IsHostLayerEnabled(const char* layer) {
+    for (const std::string& l : EnabledLayers()) if (l == layer) return true;
+    return false;
 }
 
 size_t HostFunctionCount() { return g_hostFunctionTableSize + ExtraEntries().size(); }
@@ -4809,6 +4845,7 @@ const HostFunctionEntry& GetHostFunction(int index) {
 static int FindHostFunctionExact(const char* dllName, const char* funcName) {
     const auto& extra = ExtraEntries();
     for (size_t i = extra.size(); i-- > 0;) {
+        if (!ExtraEnabled(i)) continue;
         if (extra[i]->funcName[0] && std::strcmp(extra[i]->funcName, funcName) == 0 &&
             DllNameEquals(extra[i]->dllName, dllName)) {
             return static_cast<int>(g_hostFunctionTableSize + i);
@@ -4844,6 +4881,7 @@ int FindHostFunction(const char* dllName, const char* funcName) {
 int FindHostFunctionByOrdinal(const char* dllName, uint16_t ordinal) {
     const auto& extra = ExtraEntries();
     for (size_t i = extra.size(); i-- > 0;) {
+        if (!ExtraEnabled(i)) continue;
         if (extra[i]->funcName[0] == '\0' && extra[i]->ordinal == ordinal && DllNameEquals(extra[i]->dllName, dllName)) {
             return static_cast<int>(g_hostFunctionTableSize + i);
         }
@@ -4963,6 +5001,17 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
     if (idx >= 0) {
         const HostFunctionEntry& entry = GetHostFunction(idx);
         outOutcome = entry.fn(cpu, mem);
+        // Выход из процесса мог случиться во вложенном вызове гостя (например,
+        // ExitProcess внутри оконной процедуры): тогда о нём сообщает и
+        // внешний вызов, чтобы цикл исполнения на любом уровне остановился.
+        if (outOutcome.requestExit && !g_guestExitRequested) {
+            g_guestExitRequested = true;
+            g_guestExitCode = outOutcome.exitCode;
+        }
+        if (g_guestExitRequested) {
+            outOutcome.requestExit = true;
+            outOutcome.exitCode = g_guestExitCode;
+        }
         if (outOutcome.customReturn) return true;
         cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;
 

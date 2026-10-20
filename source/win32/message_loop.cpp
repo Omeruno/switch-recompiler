@@ -148,6 +148,7 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
     int steps = 0;
     uint32_t lastEip = functionAddr;
     while (cpu.eip != SENTINEL) {
+        if (g_guestExitRequested) break; // процесс завершается: разматываемся
         if (steps >= maxSteps) {
             cpu::FatalError(
                 "Вложенный вызов гостевой функции не вернулся (превышен лимит "
