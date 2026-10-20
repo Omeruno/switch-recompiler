@@ -18,7 +18,12 @@ done
 for t in "$here"/gui_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
-    $cc -O1 "$t" -o "$out/$name.exe" -luser32 -lgdi32
+    res=""
+    if [ -e "$here/$name.rc" ]; then
+        ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"
+        res="$out/$name.res.o"
+    fi
+    $cc -O1 "$t" $res -o "$out/$name.exe" -luser32 -lgdi32
 done
 cxx="${MINGW_CXX:-i686-w64-mingw32-g++}"
 for t in "$here"/crt_*.cpp; do

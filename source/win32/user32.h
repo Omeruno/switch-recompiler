@@ -222,7 +222,16 @@ uint32_t RegisterClassInternal(const WndClass& wc);
 uint32_t SysColorBrush(int index);
 void RegisterSystemClasses();
 void DrawScrollBars(Window* w, uint32_t hdc);
+void TrackWindowScrollBar(uint32_t hwnd, bool vertical, int screenX, int screenY);
 void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar);
+// Меню из шаблона в памяти; меню диалога из ресурса
+uint32_t LoadMenuFromMemory(const uint8_t* p, size_t size);
+uint32_t LoadMenuForDialog(uint32_t hInst, const std::u16string& name, uint16_t ord);
+// Диалоги
+uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
+uint32_t DefDlgProcAddress(bool unicode);
+bool DialogMessage(uint32_t dlg, Msg& msg);
+
 // Модальный цикл полосы меню (щелчок по ней, Alt, F10)
 void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard);
 
@@ -263,6 +272,8 @@ struct Platform {
     bool (*wait)(int timeoutMs, std::vector<InputEvent>& out) = nullptr;
     // Экран изменился: показать
     void (*present)(const ui::Surface& screen) = nullptr;
+    // Ввод текста в поле (экранная клавиатура Switch). false — отменено.
+    bool (*textInput)(const std::u16string& initial, bool multiline, bool password, std::u16string& out) = nullptr;
 };
 extern Platform g_platform;
 

@@ -618,6 +618,8 @@ void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar) {
     ui::g_gdi.SelectObject(hdc, oldFont);
 }
 
+uint32_t LoadMenuFromMemory(const uint8_t* p, size_t size) { return p ? LoadMenuTemplate(p, size) : 0; }
+
 // Вызывается из DefWindowProc: щелчок по полосе меню / Alt / F10
 void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard) {
     Window* w = Win(hwnd);

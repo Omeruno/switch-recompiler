@@ -1049,6 +1049,10 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         if ((w->style & WS_CHILD) && Win(w->parent)) return SendMsg(w->parent, msg, wp, lp, unicode);
         return 0;
     case WM_NCLBUTTONDOWN:
+        if (wp == HTVSCROLL || wp == HTHSCROLL) {
+            TrackWindowScrollBar(hwnd, wp == HTVSCROLL, static_cast<int16_t>(lp & 0xFFFF), static_cast<int16_t>(lp >> 16));
+            return 0;
+        }
         if (wp == HTMENU) {
             if (!(w->style & WS_CHILD)) SetActive(hwnd);
             StartMenuBar(hwnd, static_cast<int16_t>(lp & 0xFFFF), static_cast<int16_t>(lp >> 16), false);

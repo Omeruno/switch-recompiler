@@ -1178,10 +1178,6 @@ AW(SystemParametersInfo)
 
 uint32_t g_cursor = 0;
 int g_cursorShow = 0;
-HostCallOutcome LoadCursorImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) { return Ret(0x00010000u | (A(c, m, 1) & 0xFFFF)); }
-AW(LoadCursor)
-HostCallOutcome LoadIconImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) { return Ret(0x00020000u | (A(c, m, 1) & 0xFFFF)); }
-AW(LoadIcon)
 FN(SetCursor) { ENTER; uint32_t old = g_cursor; g_cursor = A(c, m, 0); return Ret(old); }
 FN(GetCursor) { ENTER; return Ret(g_cursor); }
 FN(ShowCursor) { ENTER; g_cursorShow += A(c, m, 0) ? 1 : -1; return Ret(static_cast<uint32_t>(g_cursorShow)); }
@@ -1192,7 +1188,6 @@ FN(GetCursorPos) {
 }
 FN(SetCursorPos) { ENTER; S().cursorX = SA(c, m, 0); S().cursorY = SA(c, m, 1); return Ret(1); }
 FN(ClipCursor) { ENTER; return Ret(1); }
-FN(DestroyCursor) { ENTER; return Ret(1); }
 FN(GetKeyState) { ENTER; uint8_t k = S().keys[A(c, m, 0) & 0xFF]; return Ret(static_cast<uint32_t>(static_cast<int16_t>((k & 0x80 ? 0xFF80 : 0) | (k & 1)))); }
 FN(GetAsyncKeyState) { ENTER; return Ret(S().asyncKeys[A(c, m, 0) & 0xFF] & 0x80 ? 0xFFFF8000u : 0); }
 FN(GetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) m.Write8(A(c, m, 0) + i, S().keys[i]); return Ret(1); }
@@ -1440,8 +1435,8 @@ const HostFunctionEntry kEntries[] = {
     E(LockWindowUpdate, 4), E(FillRect, 12), E(FrameRect, 12), E(InvertRect, 8), EAW(DrawText, 20), EAW(DrawTextEx, 24),
     E(DrawEdge, 16), E(DrawFocusRect, 8), E(DrawFrameControl, 16),
     E(GetSysColor, 4), E(GetSysColorBrush, 4), E(SetSysColors, 12), E(GetSystemMetrics, 4), EAW(SystemParametersInfo, 16),
-    EAW(LoadCursor, 8), EAW(LoadIcon, 8), E(SetCursor, 4), E(GetCursor, 0), E(ShowCursor, 4), E(GetCursorPos, 4),
-    E(SetCursorPos, 8), E(ClipCursor, 4), E(DestroyCursor, 4), {"USER32.dll", "DestroyIcon", 4, CallConv::Stdcall, &DestroyCursor},
+    E(SetCursor, 4), E(GetCursor, 0), E(ShowCursor, 4), E(GetCursorPos, 4),
+    E(SetCursorPos, 8), E(ClipCursor, 4),
     E(GetKeyState, 4), E(GetAsyncKeyState, 4), E(GetKeyboardState, 4), E(SetKeyboardState, 4), E(MapVirtualKeyA, 8),
     {"USER32.dll", "MapVirtualKeyW", 8, CallConv::Stdcall, &MapVirtualKeyA}, E(GetKeyboardLayout, 4), E(GetKeyboardType, 4),
     E(GetDoubleClickTime, 0), E(MessageBeep, 4),

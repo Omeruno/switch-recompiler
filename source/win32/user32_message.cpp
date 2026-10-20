@@ -228,7 +228,7 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
     for (;;) {
         // ввод с платформы — не чаще раза в несколько мс (PeekMessage в цикле игры)
         uint32_t now = NowMs();
-        if (now - g_lastPollMs >= 4 || s.input.empty()) {
+        if (now - g_lastPollMs >= 4) {
             g_lastPollMs = now;
             PollPlatform(0);
         }
