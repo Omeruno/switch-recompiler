@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: mingw-w64 (тестовые программы Windows)
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686 g++-mingw-w64-i686
       - name: Регрессия Сапёра и гостевые программы
         run: sh tools/run_host_tests.sh
 
