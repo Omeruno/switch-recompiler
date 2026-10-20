@@ -727,9 +727,90 @@ FN(MapDialogRect) {
 FN(GetDialogBaseUnits) { ENTER; return Ret(8 | (16 << 16)); }
 FN(WinHelpA) { ENTER; return Ret(1); }
 
+// --- ShellAbout (SHELL32): окно «О программе» в стиле Windows XP ---
+//
+// szApp: «Заголовок#Первая строка» (или просто имя программы), szOtherStuff —
+// дополнительная строка, hIcon — иконка (0 — значок Windows).
+
+uint32_t g_aboutIcon = 0;
+
+uint32_t AboutDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t, bool) {
+    if (msg == WM_INITDIALOG) {
+        for (uint32_t c : Controls(hwnd))
+            if (Window* x = Win(c)) if ((x->id & 0xFFFF) == 100) SendMsg(c, 0x170 /* STM_SETICON */, g_aboutIcon, 0);
+        return 1;
+    }
+    if (msg == WM_COMMAND && ((wp & 0xFFFF) == 1 || (wp & 0xFFFF) == 2)) {
+        if (DialogInfo* di = Dlg(hwnd)) { di->ended = true; di->result = 1; }
+        ShowWindowInternal(hwnd, 0);
+        return 1;
+    }
+    return 0;
+}
+
+HostCallOutcome Host_AboutDlgProc(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    G().c = &c;
+    G().m = &m;
+    return Ret(AboutDlgProc(Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), Arg(c, m, 3), true));
+}
+
+HostCallOutcome ShellAboutImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
+    std::u16string app = ReadText(A(c, m, 1), unicode), other = ReadText(A(c, m, 2), unicode);
+    std::u16string title = app, first = app;
+    size_t hash = app.find(u'#');
+    if (hash != std::u16string::npos) { title = app.substr(0, hash); first = app.substr(hash + 1); }
+    title = u"О программе «" + title + u"»";
+    g_aboutIcon = A(c, m, 3) ? A(c, m, 3) : SystemIconHandle(32512);
+
+    DlgTemplate t;
+    t.style = DS_MODALFRAME | DS_CENTER | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU;
+    t.cx = 260;
+    t.cy = other.empty() ? 112 : 124;
+    t.title = title;
+    t.face = u"MS Shell Dlg";
+    t.pointSize = 8;
+    auto item = [&](uint32_t style, int x, int y, int cx, int cy, uint32_t id, const std::u16string& cls, const std::u16string& text) {
+        DlgItem it;
+        it.style = style | WS_VISIBLE;
+        it.x = x; it.y = y; it.cx = cx; it.cy = cy;
+        it.id = id;
+        it.cls = cls;
+        it.title = text;
+        t.items.push_back(it);
+    };
+    // заголовок «Windows XP» сверху
+    item(0x0, 12, 8, 236, 16, 0xFFFF, u"Static", u"Microsoft® Windows® XP");
+    item(0x10 /* SS_ETCHEDHORZ */, 0, 30, 260, 2, 0xFFFF, u"Static", u"");
+    item(0x3 /* SS_ICON */, 10, 40, 21, 20, 100, u"Static", u"");
+    int y = 40;
+    item(0x80 /* SS_NOPREFIX */, 44, y, 210, 8, 0xFFFF, u"Static", first); y += 12;
+    item(0, 44, y, 210, 8, 0xFFFF, u"Static", u"Версия 5.1 (Сборка 2600.xpsp_sp3)"); y += 10;
+    item(0, 44, y, 210, 8, 0xFFFF, u"Static", u"© Корпорация Майкрософт (Microsoft Corp.), 2007"); y += 14;
+    if (!other.empty()) { item(0x80, 44, y, 210, 8, 0xFFFF, u"Static", other); y += 12; }
+    item(0, 44, y, 210, 8, 0xFFFF, u"Static", u"Работает на Nintendo Switch: switch-recompiler"); y += 12;
+    item(0x10, 44, y + 2, 206, 2, 0xFFFF, u"Static", u"");
+    item(0x1 /* BS_DEFPUSHBUTTON */ | WS_TABSTOP, 196, t.cy - 20, 54, 14, 1, u"Button", u"OK");
+
+    static uint32_t procAddr = 0;
+    if (!procAddr) {
+        int idx = FindHostFunction("USER32.dll", "__AboutDlgProc");
+        procAddr = idx >= 0 ? IndexToHostAddress(idx) : 0;
+        if (procAddr) RegisterHostWndProc(procAddr, &AboutDlgProc, true);
+    }
+    uint32_t owner = OwnerRoot(A(c, m, 0));
+    uint32_t dlg = CreateFromTemplate(t, 0, owner, procAddr, 0, true);
+    if (!dlg) return Ret(0);
+    RunModal(dlg, owner);
+    return Ret(1);
+}
+AW(ShellAbout)
+
 #define E(name, bytes) {"USER32.dll", #name, bytes, CallConv::Stdcall, &name}
 #define EAW(name, bytes) E(name##A, bytes), E(name##W, bytes)
 const HostFunctionEntry kEntries[] = {
+    {"SHELL32.dll", "ShellAboutA", 16, CallConv::Stdcall, &ShellAboutA},
+    {"SHELL32.dll", "ShellAboutW", 16, CallConv::Stdcall, &ShellAboutW},
+    {"USER32.dll", "__AboutDlgProc", 16, CallConv::Stdcall, &Host_AboutDlgProc},
     EAW(DialogBoxParam, 20), EAW(DialogBoxIndirectParam, 20), EAW(CreateDialogParam, 20), EAW(CreateDialogIndirectParam, 20),
     E(EndDialog, 8), EAW(DefDlgProc, 16), EAW(IsDialogMessage, 8), EAW(SetDlgItemText, 12), EAW(GetDlgItemText, 16),
     E(SetDlgItemInt, 16), E(GetDlgItemInt, 16), EAW(SendDlgItemMessage, 20), E(CheckDlgButton, 12), E(IsDlgButtonChecked, 8),

@@ -232,6 +232,9 @@ uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
 uint32_t DefDlgProcAddress(bool unicode);
 bool DialogMessage(uint32_t dlg, Msg& msg);
 
+// Системная иконка (IDI_APPLICATION 32512, IDI_HAND 32513, ...)
+uint32_t SystemIconHandle(uint32_t id);
+
 // Модальный цикл полосы меню (щелчок по ней, Alt, F10)
 void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard);
 
