@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     bool verbose = false;
     std::vector<std::string> libDirs;
     const char* dumpPath = nullptr;
-    bool forceLegacy = false, forceNew = false;
+    bool forceLegacy = false, forceNew = false, listMissing = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
@@ -113,6 +113,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "-d") == 0 && i + 1 < argc) dumpPath = argv[++i];
         else if (std::strcmp(argv[i], "-s") == 0 && i + 2 < argc) { g_snapFrame = std::atoi(argv[++i]); g_snapPath = argv[++i]; }
         else if (std::strcmp(argv[i], "-t") == 0) win32::g_traceHostCalls = true;
+        else if (std::strcmp(argv[i], "-m") == 0) listMissing = true;
         else if (std::strcmp(argv[i], "--legacy-ui") == 0) forceLegacy = true;
         else if (std::strcmp(argv[i], "--new-ui") == 0) forceNew = true;
         else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
@@ -158,6 +159,24 @@ int main(int argc, char** argv) {
 
     std::string err;
     if (!proc.LoadMainExe(exe, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
+    if (listMissing) {
+        // импорты из эмулируемых DLL, для которых нет реализации
+        for (const auto& mp : proc.Modules()) {
+            if (mp->hle || mp->path.empty()) continue;
+            pe::PEParser p;
+            if (p.LoadFromFile(mp->path) != pe::LoadResult::Ok) continue;
+            for (const auto& imp : p.GetImports()) {
+                rt::Module* dep = proc.FindByName(rt::Process::NormalizeName(imp.dllName));
+                if (dep && !dep->hle) continue;
+                for (const auto& f : imp.functions) {
+                    int idx = f.name.empty() ? win32::FindHostFunctionByOrdinal(imp.dllName.c_str(), f.ordinal)
+                                             : win32::FindHostFunction(imp.dllName.c_str(), f.name.c_str());
+                    if (idx < 0) std::printf("%s: %s!%s\n", mp->name.c_str(), imp.dllName.c_str(), f.name.empty() ? std::to_string(f.ordinal).c_str() : f.name.c_str());
+                }
+            }
+        }
+        return 0;
+    }
     cpu::CpuState c;
     if (!proc.PrepareMainThread(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
     // Консольный вывод гостя нужен всегда, даже без -v

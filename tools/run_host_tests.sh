@@ -19,6 +19,14 @@ src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $ro
 mkdir -p "$out"
 failed=0
 
+# Сборка под Switch кладёт объектные файлы в один каталог по имени файла:
+# одинаковые имена .cpp в разных каталогах там ломают линковку.
+dups=$(ls "$root"/source/*.cpp "$root"/source/*/*.cpp | xargs -n1 basename | sort | uniq -d)
+if [ -n "$dups" ]; then
+    echo "== ОДИНАКОВЫЕ ИМЕНА ИСХОДНИКОВ (сломают сборку под Switch): $dups"
+    failed=1
+fi
+
 for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
