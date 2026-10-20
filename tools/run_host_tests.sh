@@ -41,7 +41,8 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$out/guest"
     for exe in "$out"/guest/*.exe; do
-        if "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1; then
+        # программы работают в своём каталоге: C:\ гостя = build-host/guest
+        if (cd "$out/guest" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
             tail -n 1 "$out/$(basename "$exe").log"
         else
             echo "   $(basename "$exe"): НЕ ПРОЙДЕН"

@@ -44,6 +44,9 @@ struct HostCallOutcome {
     uint32_t returnValue = 0;   // кладём в EAX, как будто функция реально это вернула
     bool requestExit = false;   // true — гостевая программа попросила завершиться
     int32_t exitCode = 0;
+    // true — функция сама выставила EIP/ESP/EAX (longjmp и т.п.): диспетчер
+    // не эмулирует возврат и не трогает регистры.
+    bool customReturn = false;
 };
 
 using HostFn = HostCallOutcome (*)(cpu::CpuState& cpu, cpu::IGuestMemory& mem);

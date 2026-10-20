@@ -7,6 +7,7 @@
 #include <cstring>
 #include <sys/stat.h>
 
+#include "files.h"
 #include "../win32/crt_globals.h"
 #include "../win32/host_functions.h"
 #include "../win32/iat_patcher.h"
@@ -80,7 +81,7 @@ uint32_t EntryReturnAddress() {
     return win32::IndexToHostAddress(idx);
 }
 
-Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {}
+Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) { win32::SetImportBindingMemory(&mem_); }
 
 std::string Process::NormalizeName(const std::string& name) {
     std::string base = name;
@@ -156,6 +157,7 @@ Module* Process::CreateHleModule(const std::string& lowerName) {
 
 Module* Process::LoadMainExe(const std::string& path, std::string& error) {
     exeDir_ = DirName(path);
+    FileSystem().SetRoot(exeDir_); // C:\ гостя — каталог EXE
     Module* m = LoadModuleFile(path, NormalizeName(path), error);
     if (!m) return nullptr;
     if (m->isDll) { error = "это DLL, а не EXE"; return nullptr; }

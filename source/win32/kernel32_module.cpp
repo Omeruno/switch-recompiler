@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "hle_util.h"
+#include "../runtime/files.h"
 #include "../runtime/process.h"
 
 namespace win32 {
@@ -172,6 +173,14 @@ bool HleConsoleWrite(uint32_t handle, const char* data, size_t len) {
     return true;
 }
 bool HleIsConsoleHandle(uint32_t handle) { return handle == kStdInput || IsConsoleOut(handle); }
+
+} // namespace win32
+
+namespace rt {
+void ConsoleWrite(bool isStderr, const char* data, size_t len) { win32::HleConsoleWrite(isStderr ? FileTable::kStdErr : FileTable::kStdOut, data, len); }
+} // namespace rt
+
+namespace win32 {
 
 namespace {
 

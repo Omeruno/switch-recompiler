@@ -12,6 +12,7 @@
 #include "../cpu/cpu_state.h"
 #include "../cpu/guest_memory.h"
 #include "host_functions.h"
+#include "message_loop.h"
 
 namespace win32 {
 namespace hle {
@@ -97,6 +98,21 @@ inline void SetLastError(cpu::IGuestMemory& m, uint32_t code) {
 }
 inline uint32_t GetLastError(cpu::IGuestMemory& m) {
     return g_tebAddr ? m.Read32(g_tebAddr + 0x34) : 0;
+}
+
+// Вызов cdecl-функции гостя из host-функции (компаратор qsort, atexit,
+// инициализаторы): аргументы снимает вызывающий, то есть мы.
+inline uint32_t CallCdecl(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t fn, const std::vector<uint32_t>& args) {
+    uint32_t esp = c.ESP();
+    uint32_t r = CallGuestFunctionStdcall(c, m, fn, args, g_tebAddr, g_tebAddr);
+    c.ESP() = esp;
+    return r;
+}
+inline uint32_t CallStdcall(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t fn, const std::vector<uint32_t>& args) {
+    uint32_t esp = c.ESP();
+    uint32_t r = CallGuestFunctionStdcall(c, m, fn, args, g_tebAddr, g_tebAddr);
+    c.ESP() = esp;
+    return r;
 }
 
 constexpr uint32_t ERROR_SUCCESS = 0;

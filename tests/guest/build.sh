@@ -15,3 +15,9 @@ for t in "$here"/crt_*.c; do
     name=$(basename "$t" .c)
     $cc -O1 "$t" -o "$out/$name.exe" -lm
 done
+cxx="${MINGW_CXX:-i686-w64-mingw32-g++}"
+for t in "$here"/crt_*.cpp; do
+    [ -e "$t" ] || continue
+    name=$(basename "$t" .cpp)
+    $cxx -O1 -static-libgcc -static-libstdc++ "$t" -o "$out/$name.exe"
+done

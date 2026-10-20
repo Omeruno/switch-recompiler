@@ -4937,6 +4937,7 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
     if (idx >= 0) {
         const HostFunctionEntry& entry = GetHostFunction(idx);
         outOutcome = entry.fn(cpu, mem);
+        if (outOutcome.customReturn) return true;
         cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;
 
         uint32_t returnAddr = mem.Read32(cpu.ESP());

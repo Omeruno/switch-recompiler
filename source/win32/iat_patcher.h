@@ -23,6 +23,14 @@ struct PatchResult {
 // напр. _adjust_fdiv, _acmdln) — прописывает адрес реальной ячейки внутри
 // CRT-globals области (crtGlobalsBase), а не host-функции — вызывать их
 // нельзя, это переменные, а не код.
+// Импорт-данные (переменная, а не функция: _iob, __mb_cur_max, ...) из
+// эмулируемой DLL. provider возвращает адрес переменной в памяти гостя
+// (вызывается при связывании импорта).
+void RegisterDataImport(const char* dllName, const char* name, uint32_t (*provider)(cpu::IGuestMemory& mem));
+// Память, в которой провайдеры размещают переменные (выставляет загрузчик).
+void SetImportBindingMemory(cpu::IGuestMemory* mem);
+uint32_t FindDataImportAddress(cpu::IGuestMemory& mem, const std::string& dllName, const std::string& name);
+
 // Адрес для одного импорта из эмулируемой (HLE) DLL: host-функция,
 // ячейка данных CRT или диагностическая заглушка. implemented — есть ли
 // настоящая реализация.

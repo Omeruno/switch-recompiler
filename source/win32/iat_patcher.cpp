@@ -2,6 +2,7 @@
 #include "crt_globals.h"
 #include <cstring>
 #include <strings.h>
+#include <vector>
 
 namespace win32 {
 
@@ -40,9 +41,38 @@ const DataImportEntry* FindDataImport(const char* dllName, const char* funcName)
 
 } // namespace
 
+namespace {
+struct DynamicDataImport {
+    const char* dll;
+    const char* name;
+    uint32_t (*provider)(cpu::IGuestMemory&);
+};
+std::vector<DynamicDataImport>& DynamicData() {
+    static std::vector<DynamicDataImport> v;
+    return v;
+}
+cpu::IGuestMemory* g_bindMemory = nullptr;
+} // namespace
+
+void RegisterDataImport(const char* dllName, const char* name, uint32_t (*provider)(cpu::IGuestMemory&)) {
+    DynamicData().push_back({dllName, name, provider});
+}
+
+uint32_t FindDataImportAddress(cpu::IGuestMemory& mem, const std::string& dllName, const std::string& name) {
+    for (const auto& d : DynamicData())
+        if (strcasecmp(d.dll, dllName.c_str()) == 0 && name == d.name) return d.provider(mem);
+    return 0;
+}
+
+void SetImportBindingMemory(cpu::IGuestMemory* mem) { g_bindMemory = mem; }
+
 uint32_t ResolveHostImport(const std::string& dllName, const pe::ImportedFunction& func,
                            uint32_t crtGlobalsBase, bool& implemented) {
     implemented = false;
+    if (!func.name.empty() && g_bindMemory) {
+        uint32_t data = FindDataImportAddress(*g_bindMemory, dllName, func.name);
+        if (data) { implemented = true; return data; }
+    }
     if (func.name.empty()) {
         // Импорт по ординалу (это ВСЯ MFC42u.DLL — 616 из 616 её
         // импортов у paint.exe) — сначала ищем в таблице реализаций.
