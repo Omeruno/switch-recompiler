@@ -1527,37 +1527,58 @@ static void PlayAudioImpl(const std::vector<int16_t>& samples) {
 }
 
 // --- Выбор исполняемого файла при старте ---
-// Простой текстовый список (на консоли, до переключения в графику) — не
-// нужно ничего рисовать через GDI, romfs может содержать несколько .exe,
-// и мы больше не жёстко зашиваем "winmine.exe".
-static std::vector<std::string> ListRomfsExecutables() {
-    std::vector<std::string> result;
-    DIR* dir = opendir("romfs:/");
-    if (!dir) return result;
-    dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
+// Программы ищутся в romfs (вшиты в .nro) и на карте памяти в
+// sdmc:/switch-recompiler/ — там же, где реестр. На карте программу
+// можно положить и в свою подпапку вместе с её DLL и данными
+// (sdmc:/switch-recompiler/Game/game.exe): так готовый .nro из CI
+// запускает свои программы без пересборки.
+static bool HasExeExtension(const std::string& name) {
+    if (name.size() < 5) return false;
+    std::string ext = name.substr(name.size() - 4);
+    for (auto& c : ext) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+    return ext == ".exe";
+}
+
+// Добавляет в result полные пути .exe из dir; depth > 0 — заходить в подпапки
+static void CollectExecutables(const std::string& dir, int depth, std::vector<std::string>& result) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return;
+    std::vector<std::string> subdirs;
+    while (dirent* entry = readdir(d)) {
         std::string name = entry->d_name;
-        if (name.size() < 5) continue;
-        std::string ext = name.substr(name.size() - 4);
-        for (auto& c : ext) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
-        if (ext == ".exe") result.push_back(name);
+        if (name == "." || name == "..") continue;
+        std::string full = dir + name;
+        struct stat st;
+        if (stat(full.c_str(), &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) { if (depth > 0) subdirs.push_back(full + "/"); }
+        else if (HasExeExtension(name)) result.push_back(full);
     }
-    closedir(dir);
-    std::sort(result.begin(), result.end());
-    return result;
+    closedir(d);
+    for (const std::string& sub : subdirs) CollectExecutables(sub, depth - 1, result);
+}
+
+static std::vector<std::string> ListExecutables() {
+    std::vector<std::string> romfs, sd;
+    CollectExecutables("romfs:/", 0, romfs);
+    CollectExecutables(std::string(win32::kRegistryFolderPath) + "/", 1, sd);
+    std::sort(romfs.begin(), romfs.end());
+    std::sort(sd.begin(), sd.end());
+    romfs.insert(romfs.end(), sd.begin(), sd.end());
+    return romfs;
 }
 
 // Текстовый пикер: крестовина/стик вверх-вниз — выбор пункта, A — подтвердить.
 // Если файл всего один — даже не спрашиваем, сразу его и берём.
 static void PickExecutableFile() {
-    std::vector<std::string> files = ListRomfsExecutables();
+    std::vector<std::string> files = ListExecutables();
     if (files.empty()) {
-        printf("[!] No .exe found in romfs - using %s by default\n", g_selectedExePath.c_str());
+        printf("[!] No .exe found in romfs or %s/ - using %s by default\n",
+               win32::kRegistryFolderPath, g_selectedExePath.c_str());
         consoleUpdate(NULL);
         return;
     }
     if (files.size() == 1) {
-        g_selectedExePath = "romfs:/" + files[0];
+        g_selectedExePath = files[0];
         return; // единственный файл — нечего выбирать
     }
 
@@ -1583,7 +1604,7 @@ static void PickExecutableFile() {
             svcSleepThread(16'000'000); // ~16мс — не крутим цикл вхолостую на 100% CPU
         }
         if (chosen) {
-            g_selectedExePath = "romfs:/" + files[selected];
+            g_selectedExePath = files[selected];
             return;
         }
     }

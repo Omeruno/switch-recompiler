@@ -75,7 +75,8 @@ romfs/                сюда кладутся .exe (в репозиторий 
 
 Нужен devkitPro (devkitA64 + libnx).
 
-1. Положить `winmine.exe` и `paint.exe` из своей копии Windows XP в `romfs/`.
+1. Положить `winmine.exe` и `paint.exe` из своей копии Windows XP в `romfs/`
+   (или вообще не пересобирать: см. «Готовая сборка» ниже).
    Сами программы в репозиторий не включены: это файлы Microsoft.
 2. `make`
 3. Скопировать `switch-recompiler.nro` на карту в `/switch/`.
@@ -83,6 +84,20 @@ romfs/                сюда кладутся .exe (в репозиторий 
 CI (`.github/workflows/ci.yml`) собирает `.nro` в образе
 `devkitpro/devkita64` и выкладывает его артефактом (без `.exe` внутри,
 их всё равно нужно положить в `romfs/` и пересобрать).
+
+## Готовая сборка
+
+CI выкладывает `switch-recompiler.nro` артефактом каждого прогона
+(вкладка Actions → прогон → Artifacts). Программы класть на карту:
+
+```
+sdmc:/switch/switch-recompiler.nro
+sdmc:/switch-recompiler/winmine.exe
+sdmc:/switch-recompiler/paint.exe
+sdmc:/switch-recompiler/Game/game.exe     программа с DLL — в своей подпапке
+```
+
+При запуске появится список программ (крестовина и A).
 
 ## Хост-тесты (Linux/WSL, g++)
 
