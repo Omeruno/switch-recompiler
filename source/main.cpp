@@ -22,7 +22,9 @@
 #include "cpu/cpu_state.h"
 #include "cpu/guest_memory.h"
 #include "cpu/interpreter.h"
+#include "runtime/clock.h"
 #include "runtime/process.h"
+#include "win32/user32.h"
 #include "win32/host_functions.h"
 #include "win32/bitmap_font.h"
 #include "win32/iat_patcher.h"
@@ -52,6 +54,14 @@ static bool g_graphicsInitialized = false;
 // в main() (см. ниже) ДО создания игрового потока; объявлена здесь так рано
 // специально, чтобы GameThreadFunc (которая идёт по файлу раньше, чем сам
 // пикер) могла её использовать.
+// Новая оконная подсистема: для всех программ, кроме Paint (ему пока нужны
+// заглушки MFC прежнего слоя). Зажатый при запуске L — прежний слой.
+static bool g_useNewUi = false;
+namespace newui {
+bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
+void Present(const ui::Surface& s);
+bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
+}
 static std::string g_selectedExePath = "romfs:/winmine.exe"; // безопасный дефолт, если пикер не понадобится/не сработает
 
 // НАЙДЕНО ОБРАТНОЙ СВЯЗЬЮ С РЕАЛЬНОГО ЖЕЛЕЗА: тулбар/палитра рисовались
@@ -232,6 +242,13 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
+    if (g_useNewUi) {
+        win32::user::g_platform.wait = &newui::Wait;
+        win32::user::g_platform.present = &newui::Present;
+        win32::user::g_platform.textInput = &newui::TextInput;
+        win32::user::EnableUi(800, 600);
+    }
+
     static cpu::PagedGuestMemory mem;
     static rt::Process proc(mem);
     rt::g_process = &proc;
@@ -1459,6 +1476,192 @@ static win32::HostFrameResult PumpHostFrame()
 // не имеющее отношения к нашей эмулируемой памяти. Вложенный вызов WndProc
 // (CallGuestFunctionStdcall создаёт ещё один Interpreter поверх уже
 // глубокой цепочки) исчерпывал маленький стек главного потока по умолчанию.
+// --- Новая оконная подсистема (USER32/GDI32, слой "ui2"): платформа Switch ---
+//
+// Экран Windows (800x600) масштабируется на 1280x720 с полями по бокам,
+// поверх рисуется курсор. Ввод: тач — мышь (касание = левая кнопка), стик —
+// курсор, A — левая кнопка, ZR — правая, крестовина — стрелки, B — Esc,
+// X — Enter, Y — Tab, L — Alt (меню), R — F2, «+» — закрыть окно. Поля
+// ввода открывают экранную клавиатуру.
+namespace newui {
+
+constexpr int kOutW = 1280, kOutH = 720;
+const ui::Surface* g_screen = nullptr;
+float g_cx = 400.0f, g_cy = 300.0f;
+bool g_touching = false;
+int g_lastTouchX = 0, g_lastTouchY = 0;
+
+void Geometry(const ui::Surface& s, int& outW, int& offX) {
+    outW = s.width * kOutH / s.height;
+    if (outW > kOutW) outW = kOutW;
+    offX = (kOutW - outW) / 2;
+}
+
+void Blit() {
+    if (!g_screen || !g_screen->Valid()) return;
+    const ui::Surface& s = *g_screen;
+    int outW, offX;
+    Geometry(s, outW, offX);
+    u32 stride;
+    u32* fb = static_cast<u32*>(framebufferBegin(&g_fb, &stride));
+    u32 pitch = stride / sizeof(u32);
+    static std::vector<int> colMap;
+    colMap.resize(static_cast<size_t>(outW));
+    for (int x = 0; x < outW; ++x) colMap[static_cast<size_t>(x)] = x * s.width / outW;
+    for (int y = 0; y < kOutH; ++y) {
+        u32* row = fb + static_cast<size_t>(y) * pitch;
+        int sy = y * s.height / kOutH;
+        for (int x = 0; x < offX; ++x) row[x] = 0xFF000000u;
+        for (int x = offX + outW; x < kOutW; ++x) row[x] = 0xFF000000u;
+        if (s.bpp == 32) {
+            const uint32_t* src = reinterpret_cast<const uint32_t*>(s.Row(sy));
+            for (int x = 0; x < outW; ++x) {
+                uint32_t c = src[colMap[static_cast<size_t>(x)]];
+                row[offX + x] = 0xFF000000u | ((c >> 16) & 0xFF) | (c & 0xFF00) | ((c & 0xFF) << 16);
+            }
+        } else {
+            for (int x = 0; x < outW; ++x) {
+                uint32_t c = s.Get(colMap[static_cast<size_t>(x)], sy);
+                row[offX + x] = 0xFF000000u | ((c >> 16) & 0xFF) | (c & 0xFF00) | ((c & 0xFF) << 16);
+            }
+        }
+    }
+    // курсор-стрелка (как в Windows), в координатах экрана Switch
+    static const char* const kArrow[] = {
+        "X", "XX", "X.X", "X..X", "X...X", "X....X", "X.....X", "X......X", "X.......X", "X........X",
+        "X.....XXXXX", "X..X..X", "X.X X..X", "XX  X..X", "X    X..X", "     X..X", "      X..X", "      X..X", "       XX"};
+    int px = offX + static_cast<int>(g_cx) * outW / s.width, py = static_cast<int>(g_cy) * kOutH / s.height;
+    for (int r = 0; r < 19; ++r)
+        for (int c = 0; kArrow[r][c]; ++c) {
+            char ch = kArrow[r][c];
+            if (ch == ' ') continue;
+            int x = px + c, y = py + r;
+            if (x < 0 || y < 0 || x >= kOutW || y >= kOutH) continue;
+            fb[static_cast<size_t>(y) * pitch + x] = ch == 'X' ? 0xFF000000u : 0xFFFFFFFFu;
+        }
+    framebufferEnd(&g_fb);
+}
+
+void Present(const ui::Surface& s) {
+    g_screen = &s;
+    Blit();
+}
+
+void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk) {
+    win32::user::InputEvent e;
+    e.type = down ? win32::user::InputEvent::KeyDown : win32::user::InputEvent::KeyUp;
+    e.vk = vk;
+    out.push_back(e);
+}
+
+void Mouse(std::vector<win32::user::InputEvent>& out, win32::user::InputEvent::Type t, int button) {
+    win32::user::InputEvent e;
+    e.type = t;
+    e.x = static_cast<int>(g_cx);
+    e.y = static_cast<int>(g_cy);
+    e.button = button;
+    out.push_back(e);
+}
+
+bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
+    using IE = win32::user::InputEvent;
+    uint32_t start = rt::Clock::NowMs();
+    for (;;) {
+        if (!appletMainLoop()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
+        padUpdate(&g_pad);
+        u64 down = padGetButtonsDown(&g_pad), up = padGetButtonsUp(&g_pad);
+        int sw = g_screen ? g_screen->width : win32::user::S().screenW;
+        int sh = g_screen ? g_screen->height : win32::user::S().screenH;
+        bool moved = false;
+        // стик
+        HidAnalogStickState stick = padGetStickPos(&g_pad, 0);
+        auto speed = [](int32_t v) -> float {
+            int32_t a = v >= 0 ? v : -v;
+            if (a <= 4000) return 0.0f;
+            float t = static_cast<float>(a - 4000) / static_cast<float>(32767 - 4000);
+            return (v > 0 ? 1.0f : -1.0f) * t * t * 9.0f;
+        };
+        float dx = speed(stick.x), dy = -speed(stick.y);
+        if (dx != 0.0f || dy != 0.0f) {
+            g_cx = std::max(0.0f, std::min(g_cx + dx, static_cast<float>(sw - 1)));
+            g_cy = std::max(0.0f, std::min(g_cy + dy, static_cast<float>(sh - 1)));
+            moved = true;
+        }
+        // тач
+        HidTouchScreenState ts = {0};
+        bool touching = hidGetTouchScreenStates(&ts, 1) && ts.count > 0;
+        if (touching) {
+            int outW, offX;
+            if (g_screen) Geometry(*g_screen, outW, offX); else { outW = sw * kOutH / sh; offX = (kOutW - outW) / 2; }
+            int tx = static_cast<int>(ts.touches[0].x), ty = static_cast<int>(ts.touches[0].y);
+            float vx = static_cast<float>((tx - offX) * sw) / static_cast<float>(outW);
+            float vy = static_cast<float>(ty * sh) / static_cast<float>(kOutH);
+            g_cx = std::max(0.0f, std::min(vx, static_cast<float>(sw - 1)));
+            g_cy = std::max(0.0f, std::min(vy, static_cast<float>(sh - 1)));
+            if (!g_touching || tx != g_lastTouchX || ty != g_lastTouchY) moved = true;
+            g_lastTouchX = tx;
+            g_lastTouchY = ty;
+        }
+        if (moved) Mouse(out, IE::MouseMove, 0);
+        if (touching && !g_touching) Mouse(out, IE::MouseDown, 0);
+        if (!touching && g_touching) Mouse(out, IE::MouseUp, 0);
+        g_touching = touching;
+        // кнопки
+        if (down & HidNpadButton_A) Mouse(out, IE::MouseDown, 0);
+        if (up & HidNpadButton_A) Mouse(out, IE::MouseUp, 0);
+        if (down & HidNpadButton_ZR) Mouse(out, IE::MouseDown, 1);
+        if (up & HidNpadButton_ZR) Mouse(out, IE::MouseUp, 1);
+        struct { u64 button; uint32_t vk; } keys[] = {
+            {HidNpadButton_Left, 0x25}, {HidNpadButton_Up, 0x26}, {HidNpadButton_Right, 0x27}, {HidNpadButton_Down, 0x28},
+            {HidNpadButton_B, 0x1B}, {HidNpadButton_X, 0x0D}, {HidNpadButton_Y, 0x09}, {HidNpadButton_L, 0x12},
+            {HidNpadButton_R, 0x71}};
+        for (auto& k : keys) {
+            if (down & k.button) Key(out, true, k.vk);
+            if (up & k.button) Key(out, false, k.vk);
+        }
+        if (down & HidNpadButton_Plus) { IE q; q.type = IE::Quit; out.push_back(q); }
+        if (moved && out.size() == 1) Blit(); // только курсор: перерисовать его
+        if (!out.empty()) return true;
+        if (timeoutMs >= 0 && static_cast<int>(rt::Clock::NowMs() - start) >= timeoutMs) return true;
+        svcSleepThread(8'000'000);
+    }
+}
+
+std::string ToUtf8(const std::u16string& w) { return win32::hle::WideToUtf8(w); }
+
+std::u16string FromUtf8(const char* s) {
+    std::u16string out;
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(s);
+    while (*p) {
+        uint32_t cp;
+        if (*p < 0x80) cp = *p++;
+        else if ((*p >> 5) == 6 && p[1]) { cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F); p += 2; }
+        else if ((*p >> 4) == 14 && p[1] && p[2]) { cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); p += 3; }
+        else { ++p; continue; }
+        out.push_back(static_cast<char16_t>(cp));
+    }
+    return out;
+}
+
+bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out) {
+    SwkbdConfig kbd;
+    if (R_FAILED(swkbdCreate(&kbd, 0))) return false;
+    swkbdConfigMakePresetDefault(&kbd);
+    if (password) swkbdConfigMakePresetPassword(&kbd);
+    std::string init = ToUtf8(initial);
+    if (!init.empty()) swkbdConfigSetInitialText(&kbd, init.c_str());
+    if (multiline) swkbdConfigSetType(&kbd, SwkbdType_All);
+    char buf[2048] = {0};
+    Result rc = swkbdShow(&kbd, buf, sizeof(buf));
+    swkbdClose(&kbd);
+    if (R_FAILED(rc)) return false;
+    out = FromUtf8(buf);
+    Blit();
+    return true;
+}
+
+} // namespace newui
+
 static void GameThreadFunc(void* arg)
 {
     (void)arg;
@@ -1661,7 +1864,9 @@ int main(int argc, char* argv[])
     // Выбор исполняемого файла — до переключения в графику, пока консоль
     // ещё доступна (проще всего показать текстовый список именно тут)
     PickExecutableFile();
-    printf("Launching: %s\n", g_selectedExePath.c_str());
+    padUpdate(&g_pad);
+    g_useNewUi = !IsRunningPaint() && !(padGetButtons(&g_pad) & HidNpadButton_L);
+    printf("Launching: %s (%s window layer)\n", g_selectedExePath.c_str(), g_useNewUi ? "new" : "legacy");
     consoleUpdate(NULL);
 
     // Переключаемся в графику ЗАРАНЕЕ, ОДИН РАЗ, из простого неглубокого
