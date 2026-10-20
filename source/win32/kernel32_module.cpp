@@ -10,6 +10,7 @@
 #include "hle_util.h"
 #include "../runtime/files.h"
 #include "../runtime/process.h"
+#include "../runtime/resources.h"
 
 namespace win32 {
 
@@ -269,7 +270,58 @@ HostCallOutcome K32_TlsSetValue(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(1);
 }
 
+// --- Ресурсы: HRSRC — адрес записи IMAGE_RESOURCE_DATA_ENTRY в памяти
+// модуля, HGLOBAL — адрес самих данных (ресурсы в Windows не «грузятся»)
+
+rt::ResId ResArg(cpu::IGuestMemory& m, uint32_t p, bool unicode) {
+    if (p < 0x10000) return rt::ResId::Num(static_cast<uint16_t>(p));
+    std::u16string s = unicode ? ReadWide(m, p) : AnsiToWide(ReadAnsi(m, p));
+    if (!s.empty() && s[0] == '#') {
+        uint32_t v = 0;
+        for (size_t i = 1; i < s.size() && s[i] >= '0' && s[i] <= '9'; ++i) v = v * 10 + (s[i] - '0');
+        return rt::ResId::Num(static_cast<uint16_t>(v));
+    }
+    for (char16_t& ch : s) if (ch >= 'a' && ch <= 'z') ch = static_cast<char16_t>(ch - 32);
+    return rt::ResId::Str(s);
+}
+HostCallOutcome FindResourceCommon(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t hmod, uint32_t name, uint32_t type,
+                                   uint16_t lang, bool unicode) {
+    rt::Module* mod = ModuleFromHandle(hmod);
+    rt::ResourceData d;
+    if (!mod || !rt::FindResource(mod, ResArg(m, type, unicode), ResArg(m, name, unicode), d, lang)) {
+        SetLastError(m, 1813); // ERROR_RESOURCE_TYPE_NOT_FOUND
+        return Ret(0);
+    }
+    (void)c;
+    return Ret(mod->base + d.entryRva);
+}
+HostCallOutcome K32_FindResourceA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FindResourceCommon(c, m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), 0, false); }
+HostCallOutcome K32_FindResourceW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FindResourceCommon(c, m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), 0, true); }
+// FindResourceEx: (hModule, lpType, lpName, wLanguage) — тип и имя в другом порядке
+HostCallOutcome K32_FindResourceExA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FindResourceCommon(c, m, Arg(c, m, 0), Arg(c, m, 2), Arg(c, m, 1), static_cast<uint16_t>(Arg(c, m, 3)), false); }
+HostCallOutcome K32_FindResourceExW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FindResourceCommon(c, m, Arg(c, m, 0), Arg(c, m, 2), Arg(c, m, 1), static_cast<uint16_t>(Arg(c, m, 3)), true); }
+HostCallOutcome K32_LoadResource(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t h = Arg(c, m, 1);
+    rt::Module* mod = rt::g_process ? rt::g_process->FindByAddress(h) : nullptr;
+    if (!mod) return Ret(0);
+    return Ret(mod->base + m.Read32(h));
+}
+HostCallOutcome K32_LockResource(cpu::CpuState& c, cpu::IGuestMemory& m) { return Ret(Arg(c, m, 0)); }
+HostCallOutcome K32_SizeofResource(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t h = Arg(c, m, 1);
+    return Ret(h ? m.Read32(h + 4) : 0);
+}
+HostCallOutcome K32_FreeResource(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
+
 const HostFunctionEntry kEntries[] = {
+    {"KERNEL32.dll", "FindResourceA", 12, CallConv::Stdcall, &K32_FindResourceA},
+    {"KERNEL32.dll", "FindResourceW", 12, CallConv::Stdcall, &K32_FindResourceW},
+    {"KERNEL32.dll", "FindResourceExA", 16, CallConv::Stdcall, &K32_FindResourceExA},
+    {"KERNEL32.dll", "FindResourceExW", 16, CallConv::Stdcall, &K32_FindResourceExW},
+    {"KERNEL32.dll", "LoadResource", 8, CallConv::Stdcall, &K32_LoadResource},
+    {"KERNEL32.dll", "LockResource", 4, CallConv::Stdcall, &K32_LockResource},
+    {"KERNEL32.dll", "SizeofResource", 8, CallConv::Stdcall, &K32_SizeofResource},
+    {"KERNEL32.dll", "FreeResource", 4, CallConv::Stdcall, &K32_FreeResource},
     {"KERNEL32.dll", "LoadLibraryA", 4, CallConv::Stdcall, &K32_LoadLibraryA},
     {"KERNEL32.dll", "LoadLibraryW", 4, CallConv::Stdcall, &K32_LoadLibraryW},
     {"KERNEL32.dll", "LoadLibraryExA", 12, CallConv::Stdcall, &K32_LoadLibraryExA},

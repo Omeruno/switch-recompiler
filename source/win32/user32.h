@@ -223,6 +223,8 @@ uint32_t SysColorBrush(int index);
 void RegisterSystemClasses();
 void DrawScrollBars(Window* w, uint32_t hdc);
 void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar);
+// Модальный цикл полосы меню (щелчок по ней, Alt, F10)
+void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard);
 
 // Выборка сообщения из очереди (GetMessage/PeekMessage)
 bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remove, bool wait);

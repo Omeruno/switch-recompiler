@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "-f") == 0 && i + 1 < argc) g_frameLimit = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "-d") == 0 && i + 1 < argc) dumpPath = argv[++i];
         else if (std::strcmp(argv[i], "-s") == 0 && i + 2 < argc) { g_snapFrame = std::atoi(argv[++i]); g_snapPath = argv[++i]; }
+        else if (std::strcmp(argv[i], "-t") == 0) win32::g_traceHostCalls = true;
         else if (std::strcmp(argv[i], "--legacy-ui") == 0) forceLegacy = true;
         else if (std::strcmp(argv[i], "--new-ui") == 0) forceNew = true;
         else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {

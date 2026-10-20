@@ -195,6 +195,8 @@ extern uint32_t g_tebAddr;
 // Гость завершает процесс (ExitProcess/exit), возможно из вложенного
 // вызова: циклы исполнения всех уровней останавливаются.
 extern bool g_guestExitRequested;
+// Печатать каждый вызов host-функции (отладка: winrun -t)
+extern bool g_traceHostCalls;
 extern int32_t g_guestExitCode;
 
 struct HostFrameResult {

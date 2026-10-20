@@ -1049,6 +1049,11 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         if ((w->style & WS_CHILD) && Win(w->parent)) return SendMsg(w->parent, msg, wp, lp, unicode);
         return 0;
     case WM_NCLBUTTONDOWN:
+        if (wp == HTMENU) {
+            if (!(w->style & WS_CHILD)) SetActive(hwnd);
+            StartMenuBar(hwnd, static_cast<int16_t>(lp & 0xFFFF), static_cast<int16_t>(lp >> 16), false);
+            return 0;
+        }
         switch (wp) {
         case HTCLOSE: SendMsg(hwnd, WM_SYSCOMMAND, 0xF060, lp, unicode); break;
         case HTMINBUTTON: SendMsg(hwnd, WM_SYSCOMMAND, 0xF020, lp, unicode); break;
@@ -1067,10 +1072,21 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         case 0xF020: ShowWindowInternal(hwnd, 6); break;
         case 0xF030: ShowWindowInternal(hwnd, 3); break;
         case 0xF120: ShowWindowInternal(hwnd, 9); break;
+        case 0xF100: // SC_KEYMENU: Alt/F10 — полоса меню с клавиатуры
+            if (!(w->style & WS_CHILD) && w->menu) StartMenuBar(hwnd, 0, 0, true);
+            break;
         }
         return 0;
     case WM_SYSKEYDOWN:
         if (wp == 0x73 /* VK_F4 */ && (lp & (1u << 29))) SendMsg(hwnd, WM_SYSCOMMAND, 0xF060, 0, unicode);
+        return 0;
+    case WM_SYSKEYUP:
+        // отпущенный Alt или F10 открывают меню окна верхнего уровня
+        if (wp == 0x12 || wp == 0x79) {
+            uint32_t root = hwnd;
+            for (Window* r = w; r && (r->style & WS_CHILD); r = Win(r->parent)) root = r->parent;
+            SendMsg(root, WM_SYSCOMMAND, 0xF100, 0, unicode);
+        }
         return 0;
     case WM_CTLCOLORMSGBOX: case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN:
     case WM_CTLCOLORDLG: case WM_CTLCOLORSCROLLBAR: case WM_CTLCOLORSTATIC: {

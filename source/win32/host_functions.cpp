@@ -20,6 +20,7 @@ uint32_t g_resourceDirRva = 0;
 uint32_t g_tebAddr = 0;
 HostFrameResult (*g_pumpHostFrame)() = nullptr;
 bool g_guestExitRequested = false;
+bool g_traceHostCalls = false;
 int32_t g_guestExitCode = 0;
 void (*g_playAudioImpl)(const std::vector<int16_t>& samples) = nullptr;
 
@@ -5000,7 +5001,12 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
     int idx = HostAddressToIndex(cpu.eip);
     if (idx >= 0) {
         const HostFunctionEntry& entry = GetHostFunction(idx);
+        if (g_traceHostCalls) {
+            std::printf("[call] %s!%s(%x, %x, %x, %x)\n", entry.dllName, entry.funcName[0] ? entry.funcName : "#",
+                        mem.Read32(cpu.ESP() + 4), mem.Read32(cpu.ESP() + 8), mem.Read32(cpu.ESP() + 12), mem.Read32(cpu.ESP() + 16));
+        }
         outOutcome = entry.fn(cpu, mem);
+        if (g_traceHostCalls) std::printf("       -> %x\n", outOutcome.returnValue);
         // Выход из процесса мог случиться во вложенном вызове гостя (например,
         // ExitProcess внутри оконной процедуры): тогда о нём сообщает и
         // внешний вызов, чтобы цикл исполнения на любом уровне остановился.

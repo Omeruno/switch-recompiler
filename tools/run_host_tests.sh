@@ -64,9 +64,22 @@ if [ -f "$bins/winmine.exe" ]; then
     if (cd "$bins" && "$out/winrun" -f 12 -d "$out/winmine_before.ppm" winmine.exe &&
         "$out/winrun" -f 12 -c 5:20:62 -d "$out/winmine_after.ppm" winmine.exe) > "$out/winmine.log" 2>&1 &&
        [ -s "$out/winmine_before.ppm" ] && ! cmp -s "$out/winmine_before.ppm" "$out/winmine_after.ppm"; then
-        echo "winmine: PASSED"
+        echo "winmine (прежний слой окон): PASSED"
     else
         echo "   winmine: НЕ ПРОЙДЕН (лог: build-host/winmine.log)"
+        failed=1
+    fi
+fi
+if [ -f "$bins/winmine.exe" ]; then
+    printf '== winmine.exe, новый USER32/GDI32\n'
+    # кадр 5: клетка; кадры 8 и 14: меню «Игра» -> третий уровень сложности
+    if (cd "$bins" && "$out/winrun" --new-ui -f 30 -s 6 "$out/wm_new_cell.ppm" -c 5:100:160 winmine.exe &&
+        "$out/winrun" --new-ui -f 30 -s 4 "$out/wm_new_start.ppm" winmine.exe &&
+        "$out/winrun" --new-ui -f 30 -s 20 "$out/wm_new_expert.ppm" -c 8:100:115 -c 14:140:191 winmine.exe) > "$out/winmine_new.log" 2>&1 &&
+       ! cmp -s "$out/wm_new_start.ppm" "$out/wm_new_cell.ppm" && ! cmp -s "$out/wm_new_start.ppm" "$out/wm_new_expert.ppm"; then
+        echo "winmine (новый слой окон): PASSED"
+    else
+        echo "   winmine, новый слой: НЕ ПРОЙДЕН (лог: build-host/winmine_new.log)"
         failed=1
     fi
 fi

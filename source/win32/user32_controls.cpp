@@ -77,8 +77,5 @@ void DrawScrollBars(Window* w, uint32_t hdc) {
         ui::g_gdi.FillRect(hdc, Rect(c.right, c.bottom, c.right + kScrollW, c.bottom + kScrollW), SysColorBrush(15));
 }
 
-// Полоса меню: меню ещё не реализованы, рисуется только фон
-void DrawMenuBarInto(Window*, uint32_t, const Rect&) {}
-
 } // namespace user
 } // namespace win32
