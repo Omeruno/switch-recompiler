@@ -195,7 +195,7 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    cpu::CpuState c;
+    cpu::CpuState& c = proc.MainThread().cpu;
     if (!proc.PrepareMainThread(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
     // Консольный вывод гостя нужен всегда, даже без -v
     cpu::g_consoleAvailable = true;
