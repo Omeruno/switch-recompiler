@@ -116,6 +116,8 @@ public:
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
         thread.suspendCount = 0;
+        // Thread HANDLE becomes signaled when its guest thread exits.
+        Signal(0xE1000000u | (thread.id & 0x00FFFFFFu), true);
     }
 
     size_t Size() const { return threads_.size(); }
