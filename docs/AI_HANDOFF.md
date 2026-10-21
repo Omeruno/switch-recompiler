@@ -189,3 +189,13 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - Guest test `tests/guest/gui_thread_create.c` `e6ffdf2` uses `WaitForSingleObject(worker,INFINITE)` instead of busy polling, then verifies changed shared value and GetExitCodeThread 42.
 - CI `39639875326` for guest test initially in_progress. Must inspect exact HEAD SHA and jobs; no claims of verified real-hardware multiplayer yet.
 - Next: fix failures if any; introduce typed HANDLE table and CloseHandle, then event waits and finite timeouts, process lifecycle, full thread synchronization.
+
+## 2026-10-21 event wait / HANDLE validity batch
+- Previous cooperative thread wait full CI run `39639964020` success; also `39639875326` success.
+- `kernel32_sync.cpp` `e67e80b`: SetEvent wakes scheduler threads waiting on its guest HANDLE (all for manual reset, one for auto-reset). WaitForSingleObject/Ex now blocks guest thread cooperatively for nonsignaled event/mutex/semaphore with INFINITE; does not block renderer/host. Unknown HANDLE now ERROR_INVALID_HANDLE/WAIT_FAILED instead of false WAIT_OBJECT_0 for single waits. **Finite positive timeouts remain incomplete**; mutex and semaphore release wakeup semantics remain incomplete, no real typed NT HANDLE table yet.
+- `tests/guest/gui_thread_event.c` `752ac6d`: independent worker signals auto-reset event, main waits INFINITE, validates wake and consumption, worker exit code and CloseHandle.
+- `kernel32_module.cpp` `ed7ff23` and `6ea84c9`: tracks open synthetic guest thread handles in std::set, exposes HleIsOpenThreadHandle/HleCloseThreadHandle to other HLE modules; closing HANDLE does not terminate guest thread.
+- `kernel32_file.cpp` `ec1d1c5`: CloseHandle checks file/sync/thread handles and reports ERROR_INVALID_HANDLE for unknown/closed descriptors.
+- `kernel32_sync.cpp` `5f4b220`: WAIT on a closed guest thread HANDLE returns WAIT_FAILED rather than treating its thread object as open.
+- `tests/guest/gui_thread_create.c` `d0614ae`: checks thread CloseHandle, double CloseHandle failure and WAIT_FAILED for previously closed HANDLE.
+- Exact latest CI for these new commits in progress as of handoff, e.g. run `39640847744`. Verify before deploying Switch NRO. Existing real-hardware Paint baseline `2c9a1fa` remains rollback.
