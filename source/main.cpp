@@ -238,6 +238,33 @@ static void PrintDisassembly(const char* path, int maxLinesToShow)
 
 // НАСТОЯЩЕЕ исполнение — не просто разбор байт, а реальный запуск через наш
 // Interpreter, с перехватом вызовов Win32/CRT функций через IAT.
+// Сохраняем адрес падения гостя: консоль недоступна после включения графики.
+// Не пишем трассу каждого кадра на SD (это быстро убьёт карту и FPS).
+static void SaveGuestStopReport(const char* reason, const char* exeName,
+                                const cpu::CpuState& state, rt::Process& proc,
+                                const cpu::CpuException* exception)
+{
+    // Главный файл — корень SD: отдельный каталог создавать не требуется.
+    FILE* log = fopen("sdmc:/switch-recompiler-crash.txt", "w");
+    if (!log) return;
+    fprintf(log, "switch-recompiler guest stop report\n");
+    fprintf(log, "EXE: %s\n", exeName ? exeName : "?");
+    fprintf(log, "Reason: %s\n", reason ? reason : "?");
+    fprintf(log, "EIP: 0x%08x\n", state.eip);
+    fprintf(log, "ESP: 0x%08x\n", state.ESP());
+    if (exception) {
+        fprintf(log, "Exception: 0x%08x\n", exception->code);
+        fprintf(log, "Fault address: 0x%08x\n", exception->faultAddress);
+    }
+    uint32_t where = exception ? exception->eip : state.eip;
+    fprintf(log, "Fault EIP: 0x%08x\n", where);
+    if (rt::Module* mod = proc.FindByAddress(where)) {
+        fprintf(log, "Module: %s\n", mod->name.c_str());
+        fprintf(log, "Module offset: 0x%08x\n", where - mod->base);
+    }
+    fclose(log);
+}
+
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
@@ -283,6 +310,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     int shown = 0;
     int steps = 0;
     const char* stopReason = "max steps reached";
+    const cpu::CpuException* stopException = nullptr;
 
     while (steps < maxSteps)
     {
@@ -332,12 +360,16 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         if (result == cpu::StepResult::Exception)
         {
             const cpu::CpuException& e = interp.LastException();
+            stopException = &e;
             SafePrint("[!] Guest exception 0x%08x at EIP=0x%x (address 0x%x)\n", e.code, e.eip, e.faultAddress);
             stopReason = "guest exception";
             break;
         }
         steps++;
     }
+
+    if (strcmp(stopReason, "guest called exit()") != 0 && strcmp(stopReason, "max steps reached") != 0)
+        SaveGuestStopReport(stopReason, path, cpuState, proc, stopException);
 
     if (!g_graphicsInitialized) {
         SafePrint("\n[+] Execution stopped: %s\n", stopReason);
