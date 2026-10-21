@@ -214,7 +214,9 @@ bool IsValidGuestThreadHandleLocal(uint32_t handle) {
     return ThreadFromHandle(handle)!=nullptr;
 }
 bool CloseGuestThreadHandleLocal(uint32_t handle) {
-    return g_openThreadHandles.erase(handle)!=0;
+    if (!g_openThreadHandles.erase(handle)) return false;
+    if (rt::g_process) rt::g_process->Scheduler().Signal(handle, true);
+    return true;
 }
 HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
