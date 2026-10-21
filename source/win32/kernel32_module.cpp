@@ -228,6 +228,15 @@ HostCallOutcome K32_ResumeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
         t->status=rt::GuestThreadStatus::Runnable;
     return Ret(previous);
 }
+HostCallOutcome K32_WorkerReturn(cpu::CpuState& c, cpu::IGuestMemory&) {
+    rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    if (!t || t==&rt::g_process->MainThread())
+        cpu::FatalError("worker return trampoline used outside worker thread");
+    rt::g_process->Scheduler().Exit(*t,c.Get(cpu::Reg32::EAX));
+    HostCallOutcome out;
+    out.customReturn=true;
+    return out;
+}
 HostCallOutcome K32_ExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     if (!t || t==&rt::g_process->MainThread()) {
@@ -435,6 +444,7 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "ExitProcess", 4, CallConv::Stdcall, &K32_ExitProcess},
     {"KERNEL32.dll", "CreateThread", 24, CallConv::Stdcall, &K32_CreateThread},
     {"KERNEL32.dll", "ExitThread", 4, CallConv::Stdcall, &K32_ExitThread},
+    {"KERNEL32.dll", "__SwitchRecompilerWorkerReturn", 0, CallConv::Stdcall, &K32_WorkerReturn},
     {"KERNEL32.dll", "GetExitCodeThread", 8, CallConv::Stdcall, &K32_GetExitCodeThread},
     {"KERNEL32.dll", "SuspendThread", 4, CallConv::Stdcall, &K32_SuspendThread},
     {"KERNEL32.dll", "ResumeThread", 4, CallConv::Stdcall, &K32_ResumeThread},
