@@ -113,6 +113,75 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
     return DispatchResult::Unhandled;
 }
 
+// Controlled target-frame unwind. We prevalidate the full registration
+// chain before invoking any handler, so corrupt FS:[0] cannot partially
+// discard handlers. This first stage excludes exit/collided/nested unwind.
+UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
+                           uint32_t teb, uint32_t targetFrame, uint32_t targetIp,
+                           uint32_t exceptionRecord, uint32_t returnValue) {
+    if (!teb || !mem.IsRangeMapped(teb,4) || !targetFrame || !targetIp ||
+        (targetFrame&3u) || !mem.IsMapped(targetIp))
+        return UnwindResult::InvalidTarget;
+    uint32_t frames[kMaxChainDepth]={};
+    uint32_t handlers[kMaxChainDepth]={};
+    unsigned count=0;
+    uint32_t frame=mem.Read32(teb);
+    while(frame!=kEndOfChain && frame!=targetFrame) {
+        if(count==kMaxChainDepth || (frame&3u) ||
+           !mem.IsRangeMapped(frame,sizeof(RegistrationRecord32)))
+            return UnwindResult::InvalidChain;
+        for(unsigned i=0;i<count;++i) if(frames[i]==frame)return UnwindResult::InvalidChain;
+        uint32_t handler=mem.Read32(frame+4);
+        if(!handler || !mem.IsMapped(handler))return UnwindResult::InvalidChain;
+        frames[count]=frame;
+        handlers[count]=handler;
+        ++count;
+        frame=mem.Read32(frame);
+    }
+    if(frame!=targetFrame || !mem.IsRangeMapped(targetFrame,sizeof(RegistrationRecord32)))
+        return UnwindResult::InvalidTarget;
+
+    const uint32_t esp=state.ESP();
+    if(esp<2048 || !mem.IsRangeMapped(esp-2048,2048))
+        return UnwindResult::InvalidChain;
+    const uint32_t record=(esp-2048+15u)&~15u;
+    const uint32_t context=(record+sizeof(ExceptionRecord32)+15u)&~15u;
+    if(!mem.IsRangeMapped(record,sizeof(ExceptionRecord32)) ||
+       !mem.IsRangeMapped(context,kContextSize))
+        return UnwindResult::InvalidChain;
+    if(exceptionRecord) {
+        if(!mem.IsRangeMapped(exceptionRecord,sizeof(ExceptionRecord32)))
+            return UnwindResult::InvalidChain;
+        for(uint32_t offset=0;offset<sizeof(ExceptionRecord32);offset+=4)
+            mem.Write32(record+offset,mem.Read32(exceptionRecord+offset));
+    } else {
+        for(uint32_t offset=0;offset<sizeof(ExceptionRecord32);offset+=4)
+            mem.Write32(record+offset,0);
+        mem.Write32(record,0xC0000027u); // STATUS_UNWIND
+        mem.Write32(record+12,mem.IsRangeMapped(esp,4)?mem.Read32(esp):state.eip);
+    }
+    mem.Write32(record+4,mem.Read32(record+4)|kExceptionUnwinding);
+    SaveContext(mem,context,state);
+    for(unsigned i=0;i<count;++i) {
+        cpu::CpuState handlerState=state;
+        handlerState.ESP()=record-64;
+        uint32_t disposition=CallGuestFunctionStdcall(handlerState,mem,handlers[i],
+            {record,frames[i],context,0},teb,teb);
+        if(disposition!=static_cast<uint32_t>(Disposition::ContinueSearch))
+            return UnwindResult::UnsupportedDisposition;
+        // Once the frame's termination handler finishes, FS:[0] advances.
+        mem.Write32(teb,i+1<count?frames[i+1]:targetFrame);
+    }
+    // RtlUnwind is non-returning for a valid target. The caller supplies a
+    // continuation in its own active stack frame. This does not implement
+    // longjmp to an unrelated frame (stack restoration remains TODO).
+    state.ESP()=esp+20; // stdcall return address + four arguments
+    state.eip=targetIp;
+    state.Get(cpu::Reg32::EAX)=returnValue;
+    state.lazyOp=cpu::LazyOp::None;
+    return UnwindResult::Completed;
+}
+
 DispatchResult DispatchCpuFault(cpu::CpuState& state, cpu::IGuestMemory& mem,
                                 uint32_t teb, const cpu::CpuException& fault) {
     // NTSTATUS exception records carry two parameters for access violations:
