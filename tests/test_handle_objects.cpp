@@ -62,6 +62,10 @@ int main() {
     std::weak_ptr<rt::KernelObject> weak=rt::Handles().Get(alias);
     assert(call("CloseHandle",{alias}).returnValue==1 && weak.expired());
     assert(call("CloseHandle",{alias}).returnValue==0);
+    const char named[]="PerProcessNamed";
+    memory.LoadBytes(0x13000,reinterpret_cast<const uint8_t*>(named),sizeof(named));
+    const uint32_t namedHandle=call("CreateEventA",{0,1,0,0x13000}).returnValue;
+    assert(namedHandle && process.Handles().FindNamed(u"PerProcessNamed"));
     uint32_t semaphore=call("CreateSemaphoreA",{0,1,2,0}).returnValue;
     alias=copy(semaphore);
     memory.Write32(0x12100,semaphore); memory.Write32(0x12104,alias);
@@ -110,8 +114,12 @@ int main() {
     rt::Process other(otherMemory);
     rt::g_process=&other;
     assert(!rt::Files().Get(fileHandle));
+    assert(!other.Handles().FindNamed(u"PerProcessNamed"));
     rt::g_process=&process;
     assert(rt::Files().Get(fileHandle)==file);
+    assert(process.Handles().FindNamed(u"PerProcessNamed")==process.Handles().Get(namedHandle));
+    assert(rt::CloseGuestHandle(namedHandle));
+    assert(!process.Handles().FindNamed(u"PerProcessNamed"));
     assert(rt::Files().Close(fileHandle));
     rt::g_process=nullptr;
     puts("PASSED: HANDLE ABI, aliases, waits, abandonment, process ownership and exit");

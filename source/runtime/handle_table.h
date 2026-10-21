@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace rt {
@@ -23,17 +24,32 @@ struct SyncObject : KernelObject {
     int32_t count = 0, maxCount = 0;
     uint32_t ownerThread = 0, recursion = 0;
 };
+constexpr uint32_t kSynchronize = 0x00100000u;
+constexpr uint32_t kHandleInherit = 1, kHandleProtectFromClose = 2;
+uint32_t AllObjectAccess(ObjectKind kind);
+uint32_t MapObjectAccess(ObjectKind kind,uint32_t access);
+struct HandleEntry {
+    std::shared_ptr<KernelObject> object;
+    uint32_t access=0,flags=0;
+};
 class HandleTable {
 public:
     HandleTable();
-    uint32_t Add(std::shared_ptr<KernelObject> object);
+    uint32_t Add(std::shared_ptr<KernelObject> object,uint32_t access=0xffffffffu,uint32_t flags=0);
+    const HandleEntry* Entry(uint32_t handle) const;
     std::shared_ptr<KernelObject> Get(uint32_t handle) const;
+    bool HasAccess(uint32_t handle,uint32_t required) const;
+    bool SetFlags(uint32_t handle,uint32_t mask,uint32_t flags);
     bool Close(uint32_t handle);
     uint32_t Duplicate(uint32_t handle);
     std::vector<uint32_t> Aliases(const KernelObject* object) const;
     std::vector<std::shared_ptr<KernelObject>> Objects() const;
+    std::shared_ptr<KernelObject> FindNamed(const std::u16string& name);
+    void BindName(const std::u16string& name,const std::shared_ptr<KernelObject>& object);
 private:
-    std::map<uint32_t, std::shared_ptr<KernelObject>> handles_;
+    std::map<uint32_t, HandleEntry> handles_;
+    // Single emulated process/session only; names never keep objects alive.
+    std::map<std::u16string,std::weak_ptr<KernelObject>> names_;
     uint32_t next_ = 0xD0000100u; // reserved kernel-object range, separate from GUI/find/registry
 };
 // Process table for v2; isolated fallback for v1 / standalone HLE tests.

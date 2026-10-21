@@ -631,3 +631,73 @@ full process/DLL shutdown. v1 message loop remains separate. ROADMAP stage C
 is approximately 70% by functional blocks, not a time estimate or completion
 claim. Keep reporting an approximate current-stage percentage in final work
 reports as requested by the user.
+
+## Current package: named synchronization objects and HANDLE policies
+
+Supersedes the preceding named-object / per-HANDLE access limitations within
+the SINGLE emulated Process. Prior MsgWait/APC commit `4adf937` has green exact
+CI `39694866338` (5 jobs); NRO artifact `12390755066`. New package needs its own
+exact-SHA CI and physical Switch test. Paint hardware baseline stays `2c9a1fa`.
+
+- HandleTable entries now contain object shared_ptr, granted access and flags.
+  Add defaults to supported type access (XP THREAD_ALL_ACCESS, not Vista),
+  standard streams have directional access. Alias iteration / object enumeration
+  preserve identity and wake behavior. FileTable remains the CRT facade.
+- New kernel32_handles.cpp owns Create/Open Event/Mutex/Semaphore A/W exports
+  (old create registrations removed), Get/SetHandleInformation. Named lookup
+  is a weak map owned by Process HandleTable; last reference expires the object,
+  names do not keep objects alive and stale entries are pruned on bind/lookup.
+  Case-sensitive UTF-16 keys, ACP1252 A conversion (including 0x80 Euro), exact
+  W Unicode including surrogate pairs. Local/default aliases and distinct
+  Global prefix; reject invalid backslashes/nested prefixes, overlong or unmapped
+  names. This is NOT IPC or a true global/session Horizon object manager.
+- Repeated Create returns a fresh handle and ERROR_ALREADY_EXISTS without
+  resetting event mode/state, acquiring mutex or changing semaphore count/max.
+  Conflicting type returns 6, missing Open returns 2. Open uses requested
+  mapped access and inherit argument. Unsupported access bits fail 5.
+  MAXIMUM_ALLOWED maps to supported type rights under current no-DACL model.
+- SECURITY_ATTRIBUTES is read as mapped 12-byte x86 layout; bInheritHandle
+  feeds named/unnamed sync objects, thread and file creation. Security descriptor
+  remains ignored (no tokens/ACLs). INHERIT metadata is queryable/changeable;
+  no CreateProcess handle-transfer mechanism is claimed.
+- Get/SetHandleInformation operate on individual entries. Masked updates
+  preserve other flags. CloseHandle of protected reference returns 5, leaves
+  object and waiters intact. Ordinary duplicate takes explicit inherit and
+  clears protection. Runtime rejects DUPLICATE_CLOSE_SOURCE of protected source
+  with 5 and publishes no alias: defensive policy, not full NT/debugger exception
+  fidelity. Existing close-source-on-other-error and close-only behavior remain.
+- Duplicate SAME_ACCESS copies actual source access; explicit desired access
+  uses generic mapping. File aliases cannot exceed source rights. Sync/thread
+  explicit rights can differ within supported masks; DACL enforcement absent.
+  Zero-access handles remain valid for flags/close but cannot wait/mutate.
+- All object wait paths preflight SYNCHRONIZE before consumption, including
+  alertable and MsgWait. Event mutation / ReleaseSemaphore require bit 2.
+  ReleaseMutex checks owner only; MUTEX_MODIFY_STATE is reserved, not required.
+  Thread exit query uses QUERY_INFORMATION, suspend/resume SUSPEND_RESUME,
+  QueueUserAPC SET_CONTEXT; current-thread pseudo handle retains full access.
+- File Read/Write data, SetEndOfFile, WriteConsole and CRT descriptor read/write
+  enforce entry access plus shared OpenFile capabilities. Append-only HANDLE
+  writes at EOF even after shared position is changed. CONIN$/CONOUT$ opens get
+  independent HANDLE metadata. Legacy standard-stream Close convention remains.
+  File metadata/legacy APIs have not all been audited for NT security fidelity.
+- gui_thread_named tests A/W/ACP/Unicode identity, namespaces and type collision,
+  Create initialization preservation, worker Open/wake, lifecycle across aliases,
+  invalid names/masks and permission-denied wait-all preserving object tokens.
+  gui_handle_policy tests independent flags, protected close, duplicate rights,
+  read/write/zero-access aliases, CRT bypass rejection, append-only EOF, console
+  creation attributes, thread query/suspend/APC rights and pre-entry APC delivery.
+  Native test_handle_objects also checks isolation of named maps across Process
+  instances and object expiration after last handle.
+- Final full local suite passed with -fno-rtti/-fno-exceptions after all source
+  changes: native/x86 harnesses, all MinGW guests including both new tests,
+  original APC/MsgWait/lifecycle/SEH/resource regressions and COMDLG Open/List/Save.
+  Local log: /tmp/switch-named-policy-final.log (transient, not an artifact).
+
+Remaining stage C: waitable timers, SignalObjectAndWait, I/O completion APCs,
+more contention/edge tests and physical Switch acceptance. Full IPC, child
+inheritance and token/DACL enforcement require the future process model;
+per-thread USER32 input/focus/hooks and process/DLL shutdown remain separate.
+Stage C estimate is now ~80% by functional blocks, not time. The requested
+overnight automation was created earlier for eight hourly continuation runs;
+do not duplicate or extend it. Read current ROADMAP before choosing next work,
+so a scheduled run does not repeat this named-object/HANDLE package.

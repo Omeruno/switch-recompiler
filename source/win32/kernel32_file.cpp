@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "hle_util.h"
+#include "handle_util.h"
 #include "../runtime/files.h"
 
 namespace win32 {
@@ -64,15 +64,23 @@ bool IsSpecialName(const std::string& n, const char* what) {
 
 // HANDLE CreateFile(name, access, share, sa, disposition, flags, template)
 HostCallOutcome CreateFileCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
+    uint32_t handleFlags=0;
+    if(!InheritAttribute(m,Arg(c,m,3),handleFlags)) return Ret(INVALID_HANDLE);
     std::string name = ReadPath(m, Arg(c, m, 0), wide);
     uint32_t access = Arg(c, m, 1), disp = Arg(c, m, 4), flags = Arg(c, m, 5);
-    if (IsSpecialName(name, "CONOUT$")) return Ret(rt::FileTable::kStdOut);
-    if (IsSpecialName(name, "CONIN$")) return Ret(rt::FileTable::kStdIn);
+    access=rt::MapObjectAccess(rt::ObjectKind::File,access);
+    if(access & ~rt::AllObjectAccess(rt::ObjectKind::File)) { SetLastError(m,5);return Ret(INVALID_HANDLE); }
+    if (IsSpecialName(name, "CONOUT$") || IsSpecialName(name,"CONIN$")) {
+        auto console=std::make_shared<rt::OpenFile>();
+        console->kind=IsSpecialName(name,"CONIN$") ? rt::OpenFile::ConsoleIn : rt::OpenFile::ConsoleOut;
+        console->canRead=(access&1)!=0;console->canWrite=(access&6)!=0;
+        return Ret(rt::Handles().Add(console,access,handleFlags));
+    }
     auto f = std::make_shared<rt::OpenFile>();
     if (IsSpecialName(name, "NUL")) {
         f->kind = rt::OpenFile::Null;
         f->canRead = f->canWrite = true;
-        return Ret(rt::Files().Add(f));
+        return Ret(rt::Handles().Add(f,access,handleFlags));
     }
     std::string host = rt::FileSystem().ToHost(name);
     struct stat st;
@@ -80,10 +88,10 @@ HostCallOutcome CreateFileCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wi
     if (exists && S_ISDIR(st.st_mode)) {
         f->kind = rt::OpenFile::Directory;
         f->hostPath = host;
-        return Ret(rt::Files().Add(f));
+        return Ret(rt::Handles().Add(f,access,handleFlags));
     }
-    bool wantWrite = (access & (GENERIC_WRITE | GENERIC_ALL)) != 0;
-    bool wantRead = (access & (GENERIC_READ | GENERIC_ALL)) != 0 || !wantWrite;
+    bool wantWrite = (access & 6) != 0;
+    bool wantRead = (access & 1) != 0;
     switch (disp) {
         case 1: if (exists) { SetLastError(m, ERROR_FILE_EXISTS); return Ret(INVALID_HANDLE); } break; // CREATE_NEW
         case 3: case 5: if (!exists) { SetLastError(m, ERROR_FILE_NOT_FOUND); return Ret(INVALID_HANDLE); } break;
@@ -98,11 +106,11 @@ HostCallOutcome CreateFileCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wi
     if (!f->f && !wantWrite) f->f = nullptr;
     if (!f->f) { SetLastError(m, ErrnoToWin()); return Ret(INVALID_HANDLE); }
     f->hostPath = host;
-    f->canRead = wantRead || std::strchr(mode, '+');
+    f->canRead = wantRead;
     f->canWrite = wantWrite;
     f->deleteOnClose = (flags & 0x04000000u) != 0; // FILE_FLAG_DELETE_ON_CLOSE
     SetLastError(m, (disp == 4 || disp == 2) && exists ? ERROR_ALREADY_EXISTS : ERROR_SUCCESS);
-    return Ret(rt::Files().Add(f));
+    return Ret(rt::Handles().Add(f,access,handleFlags));
 }
 HostCallOutcome K32_CreateFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return CreateFileCommon(c, m, false); }
 HostCallOutcome K32_CreateFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return CreateFileCommon(c, m, true); }
@@ -113,6 +121,7 @@ HostCallOutcome K32_ReadFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
     auto f = rt::Files().Get(h);
     if (readPtr) m.Write32(readPtr, 0);
     if (!f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
+    if (!HandleAccess(m,h,1) || !f->canRead) { SetLastError(m,5);return Ret(0); }
     std::vector<uint8_t> tmp(n);
     size_t got = 0;
     if (f->kind == rt::OpenFile::Disk && f->f) got = std::fread(tmp.data(), 1, n, f->f);
@@ -133,6 +142,10 @@ HostCallOutcome K32_ReadFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
 
 HostCallOutcome K32_WriteFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0), buf = Arg(c, m, 1), n = Arg(c, m, 2), written = Arg(c, m, 3);
+    if (written) m.Write32(written,0);
+    const auto* entry=rt::Handles().Entry(h);
+    if(!entry || entry->object->type!=rt::ObjectKind::File) { SetLastError(m,6);return Ret(0); }
+    if(!(entry->access&6)) { SetLastError(m,5);return Ret(0); }
     std::string s(n, '\0');
     m.ReadBytes(buf, reinterpret_cast<uint8_t*>(&s[0]), n);
     if (written) m.Write32(written, 0);
@@ -144,7 +157,7 @@ HostCallOutcome K32_WriteFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (!f || !f->canWrite) { SetLastError(m, f ? ERROR_ACCESS_DENIED : ERROR_INVALID_HANDLE); return Ret(0); }
     size_t put = n;
     if (f->kind == rt::OpenFile::Disk && f->f) {
-        if (f->append) std::fseek(f->f, 0, SEEK_END);
+        if (f->append || !(entry->access&2)) std::fseek(f->f, 0, SEEK_END);
         put = std::fwrite(s.data(), 1, n, f->f);
     }
     if (written) m.Write32(written, static_cast<uint32_t>(put));
@@ -199,6 +212,7 @@ HostCallOutcome K32_GetFileSizeEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
 HostCallOutcome K32_SetEndOfFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
     auto f = rt::Files().Get(Arg(c, m, 0));
     if (!f || !f->f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
+    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0);
     std::fflush(f->f);
     return Ret(ftruncate(fileno(f->f), ftello(f->f)) == 0 ? 1 : 0);
 }
@@ -217,12 +231,14 @@ HostCallOutcome K32_GetFileType(cpu::CpuState& c, cpu::IGuestMemory& m) {
     }
 }
 HostCallOutcome K32_CloseHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const auto* entry=rt::Handles().Entry(Arg(c,m,0));
+    if(entry && (entry->flags&rt::kHandleProtectFromClose)) { SetLastError(m,5);return Ret(0); }
     if (rt::CloseGuestHandle(Arg(c,m,0))) return Ret(1);
     SetLastError(m,ERROR_INVALID_HANDLE);
     return Ret(0);
 }
 // Current-process duplication; the object survives until its last reference.
-// Access masks/security descriptors and cross-process handles remain unsupported.
+// Token/DACL checks and cross-process handles remain unsupported.
 HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t sourceProcess=Arg(c,m,0), src=Arg(c,m,1);
     const uint32_t targetProcess=Arg(c,m,2), dst=Arg(c,m,3);
@@ -231,6 +247,8 @@ HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
         SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
     }
     auto object=rt::Handles().Get(src);
+    const auto* sourceEntry=rt::Handles().Entry(src);
+    const uint32_t sourceAccess=sourceEntry ? sourceEntry->access : rt::AllObjectAccess(rt::ObjectKind::Thread);
     if (src==0xfffffffeu) {
         if (auto* thread=HleThreadFromHandle(src)) {
             // All handles to one thread share its canonical object identity.
@@ -242,7 +260,11 @@ HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
         }
     }
     // Pin the object before DUPLICATE_CLOSE_SOURCE, even on error paths.
-    if ((options & 1u) && src!=0xfffffffeu) rt::CloseGuestHandle(src);
+    if ((options & 1u) && src!=0xfffffffeu) {
+        // A protected source remains open. No duplicate is published on error.
+        if(sourceEntry && (sourceEntry->flags&rt::kHandleProtectFromClose)) { SetLastError(m,5);return Ret(0); }
+        rt::CloseGuestHandle(src);
+    }
     if (!object) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0); }
     if ((options & ~3u) || (dst && targetProcess && !m.IsRangeMapped(dst,4))) {
         SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0);
@@ -251,7 +273,12 @@ HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (targetProcess!=0xffffffffu) {
         SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
     }
-    const uint32_t duplicated=rt::Handles().Add(object);
+    const uint32_t access=(options&2) ? sourceAccess : rt::MapObjectAccess(object->type,Arg(c,m,4));
+    if((access & ~rt::AllObjectAccess(object->type)) ||
+       (object->type==rt::ObjectKind::File && (access & ~sourceAccess))) {
+        SetLastError(m,5);return Ret(0);
+    }
+    const uint32_t duplicated=rt::Handles().Add(object,access,Arg(c,m,5) ? rt::kHandleInherit : 0);
     if (!duplicated) { SetLastError(m,ERROR_NOT_ENOUGH_MEMORY); return Ret(0); }
     if (dst) m.Write32(dst,duplicated); // NULL output is legacy Win32 behavior.
     return Ret(1);

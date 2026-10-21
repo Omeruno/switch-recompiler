@@ -115,9 +115,32 @@ GuestExecution разворачивает его оставшиеся натив
   При завершении последнего потока циклы выходят с его кодом; `ExitProcess`
   и возврат из точки входа EXE по-прежнему завершают процесс целиком.
 
-Ограничения: нет межпроцессного DuplicateHandle, enforcement access masks,
-наследования/security descriptors, именованного пространства NT-объектов,
-I/O completion APCs и waitable timers. Нет DLL unload/refcounts, rollback отображений неудачной
+HANDLE table хранит отдельные access mask и INHERIT/PROTECT_FROM_CLOSE flags
+для каждой ссылки. Create/Open sync A/W, CreateThread/CreateFile и DuplicateHandle
+задают эти свойства; Get/SetHandleInformation меняют флаги. Защищённый CloseHandle
+возвращает ERROR_ACCESS_DENIED и сохраняет объект/ожидания. DuplicateHandle
+с SAME_ACCESS сохраняет права, но задаёт наследуемость из аргумента и не копирует
+защиту. Runtime также отвергает CLOSE_SOURCE для защищённого источника без
+публикации дубликата (защитная политика, не полная эмуляция NT/debugger исключений).
+SYNCHRONIZE требуется всем объектным waits, MODIFY_STATE — событиям/семафорам;
+ReleaseMutex определяется владением потока, MUTEX_MODIFY_STATE не нужен.
+Query/suspend/APC проверяют права thread HANDLE. Read/WriteFile, WriteConsole,
+SetEndOfFile и CRT data I/O проверяют права ссылки, не только общий OpenFile.
+Файловый DuplicateHandle не повышает права исходной ссылки.
+
+Process-owned weak namespace разделяется event/mutex/semaphore: имя чувствительно
+к регистру, A декодирует ACP1252, W сохраняет UTF-16. Local/default совпадают,
+Global отдельно; это разделение имён внутри единственного emulated process,
+не настоящий межпроцессный namespace Horizon. Повторный Create того же типа
+возвращает новый HANDLE и ERROR_ALREADY_EXISTS, не меняя состояние/владельца/
+лимит объекта; другой тип даёт ERROR_INVALID_HANDLE. Последний Close удаляет
+объект, weak name не удерживает его живым. Open не создаёт отсутствующий объект.
+
+Ограничения: нет межпроцессного DuplicateHandle/named namespace, передачи
+INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
+полного аудита прав всех metadata/legacy Win32 API, I/O completion APCs и waitable
+timers. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
+сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
 загрузки, полноценного PROCESS_DETACH/ExitProcess shutdown и TerminateThread.
 Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
 блокирующие ожидания между гостевыми потоками из startup DllMain.
@@ -220,6 +243,6 @@ AttachThreadInput и полные правила marshalling сообщений 
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, HANDLE policies/named objects и input ownership,
+полный process/DLL shutdown, waitable timers/SignalObjectAndWait и input ownership,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

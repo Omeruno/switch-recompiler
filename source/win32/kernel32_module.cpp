@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "hle_util.h"
+#include "handle_util.h"
 #include "seh_dispatch.h"
 #include "../runtime/files.h"
 #include "../runtime/process.h"
@@ -200,6 +200,8 @@ rt::GuestThread* ThreadFromHandle(uint32_t handle) {
     return rt::g_process->FindThread(static_cast<rt::ThreadObject&>(*object).threadId);
 }
 HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t handleFlags=0;
+    if(!InheritAttribute(m,Arg(c,m,0),handleFlags)) return Ret(0);
     const uint32_t stack=Arg(c,m,1), start=Arg(c,m,2);
     const uint32_t parameter=Arg(c,m,3), flags=Arg(c,m,4), idPtr=Arg(c,m,5);
     if (!rt::g_process || (flags & ~0x00000004u)) {
@@ -214,13 +216,14 @@ HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
         return Ret(0);
     }
     if (idPtr && m.IsRangeMapped(idPtr,4)) m.Write32(idPtr,worker->id);
-    uint32_t handle=rt::Handles().Add(std::make_shared<rt::ThreadObject>(worker->id));
+    uint32_t handle=rt::Handles().Add(std::make_shared<rt::ThreadObject>(worker->id),rt::AllObjectAccess(rt::ObjectKind::Thread),handleFlags);
     return Ret(handle);
 }
 HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
     uint32_t output=Arg(c,m,1);
     if (!t) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0); }
+    if (!HandleAccess(m,Arg(c,m,0),0x40)) return Ret(0);
     if (!output || !m.IsRangeMapped(output,4)) {
         SetLastError(m,ERROR_INVALID_PARAMETER);return Ret(0);
     }
@@ -231,6 +234,7 @@ HostCallOutcome K32_SuspendThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if(!t || t->status==rt::GuestThreadStatus::Exited) {
         SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0xffffffffu);
     }
+    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0xffffffffu);
     return Ret(rt::g_process->Scheduler().Suspend(*t));
 }
 HostCallOutcome K32_ResumeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -238,6 +242,7 @@ HostCallOutcome K32_ResumeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if(!t || t->status==rt::GuestThreadStatus::Exited) {
         SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0xffffffffu);
     }
+    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0xffffffffu);
     uint32_t previous=rt::g_process->Scheduler().Resume(*t);
     if(t->status==rt::GuestThreadStatus::Suspended && !t->suspendCount)
         t->status=rt::GuestThreadStatus::Runnable;
@@ -279,6 +284,7 @@ rt::GuestThread* HleThreadFromHandle(uint32_t h) { return ThreadFromHandle(h); }
 
 // Используется файловым вводом-выводом (kernel32_file.cpp) для консольных хендлов.
 bool HleConsoleWrite(uint32_t handle, const char* data, size_t len) {
+    if(!rt::Handles().HasAccess(handle,2)) return false;
     auto file=rt::Files().Get(handle);
     if (!file || (file->kind!=rt::OpenFile::ConsoleOut &&
                   file->kind!=rt::OpenFile::ConsoleErr)) return false;
@@ -304,6 +310,7 @@ namespace {
 // BOOL WriteConsoleA(HANDLE, const void*, DWORD n, LPDWORD written, LPVOID)
 HostCallOutcome K32_WriteConsoleA(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0), buf = Arg(c, m, 1), n = Arg(c, m, 2), written = Arg(c, m, 3);
+    if(!HandleAccess(m,h,2)) return Ret(0);
     std::string s;
     s.resize(n);
     for (uint32_t i = 0; i < n; ++i) s[i] = static_cast<char>(m.Read8(buf + i));
@@ -313,6 +320,7 @@ HostCallOutcome K32_WriteConsoleA(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_WriteConsoleW(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0), buf = Arg(c, m, 1), n = Arg(c, m, 2), written = Arg(c, m, 3);
+    if(!HandleAccess(m,h,2)) return Ret(0);
     std::u16string w;
     for (uint32_t i = 0; i < n; ++i) w.push_back(static_cast<char16_t>(m.Read16(buf + i * 2)));
     std::string s = WideToUtf8(w);

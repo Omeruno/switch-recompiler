@@ -5,7 +5,7 @@
 
 #include <map>
 
-#include "hle_util.h"
+#include "handle_util.h"
 #include "kernel_wait.h"
 #include "user_apc.h"
 #include "../runtime/guest_execution.h"
@@ -141,19 +141,12 @@ std::shared_ptr<WaitObject> GetSync(uint32_t handle) {
                     object->type != Kind::Semaphore)) return nullptr;
     return std::static_pointer_cast<WaitObject>(object);
 }
-uint32_t NewObject(const WaitObject& object) {
-    return rt::Handles().Add(std::make_shared<WaitObject>(object));
-}
-HostCallOutcome K32_CreateEventA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    WaitObject o(Kind::Event);
-    o.manualReset=Arg(c,m,1)!=0; o.signaled=Arg(c,m,2)!=0;
-    return Ret(NewObject(o));
-}
 HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     auto object = GetSync(Arg(c,m,0));
     if (!object || object->type != Kind::Event) {
         SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
     }
+    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0);
     object->signaled = true;
     rt::SignalObject(object.get());
     return Ret(1);
@@ -163,19 +156,9 @@ HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (!object || object->type != Kind::Event) {
         SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
     }
+    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0);
     object->signaled = false;
     return Ret(1);
-}
-HostCallOutcome K32_CreateMutexA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const bool initiallyOwned=Arg(c,m,1)!=0;
-    WaitObject o(Kind::Mutex);
-    o.signaled=!initiallyOwned;
-    if (initiallyOwned) {
-        o.ownerThread=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
-        o.recursion=1;
-    }
-    SetLastError(m, ERROR_SUCCESS);
-    return Ret(NewObject(o));
 }
 HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t handle=Arg(c,m,0);
@@ -197,17 +180,6 @@ HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
     }
     return Ret(1);
 }
-HostCallOutcome K32_CreateSemaphoreA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const int32_t initial=static_cast<int32_t>(Arg(c,m,1));
-    const int32_t maximum=static_cast<int32_t>(Arg(c,m,2));
-    if(initial<0 || maximum<=0 || initial>maximum) {
-        SetLastError(m,ERROR_INVALID_PARAMETER);
-        return Ret(0);
-    }
-    WaitObject o(Kind::Semaphore);
-    o.count=initial; o.maxCount=maximum;
-    return Ret(NewObject(o));
-}
 HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t handle=Arg(c,m,0);
     auto object=GetSync(handle);
@@ -215,6 +187,7 @@ HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
         SetLastError(m,ERROR_INVALID_HANDLE);
         return Ret(0);
     }
+    if (!HandleAccess(m,handle,2)) return Ret(0);
     WaitObject& o=*object;
     const int32_t amount=static_cast<int32_t>(Arg(c,m,1));
     if(amount<=0 || amount>o.maxCount-o.count) {
@@ -288,10 +261,7 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
         }
         return Ret(result);
     };
-    if (!ValidWaitHandle(handle)) {
-        SetLastError(m,ERROR_INVALID_HANDLE);
-        return finish(kWaitFailed);
-    }
+    if (!ValidateWaitObjects(m,{handle},false)) return finish(kWaitFailed);
     if (current && (current->timedOutHandle==handle ||
         (current->retryWaitToken==handle && current->retryWaitDeadlineUs &&
          rt::Clock::NowUs()>=current->retryWaitDeadlineUs))) {
@@ -401,16 +371,10 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "InterlockedExchange", 8, CallConv::Stdcall, &K32_InterlockedExchange},
     {"KERNEL32.dll", "InterlockedExchangeAdd", 8, CallConv::Stdcall, &K32_InterlockedExchangeAdd},
     {"KERNEL32.dll", "InterlockedCompareExchange", 12, CallConv::Stdcall, &K32_InterlockedCompareExchange},
-    {"KERNEL32.dll", "CreateEventA", 16, CallConv::Stdcall, &K32_CreateEventA},
-    {"KERNEL32.dll", "CreateEventW", 16, CallConv::Stdcall, &K32_CreateEventA},
     {"KERNEL32.dll", "SetEvent", 4, CallConv::Stdcall, &K32_SetEvent},
     {"KERNEL32.dll", "ResetEvent", 4, CallConv::Stdcall, &K32_ResetEvent},
     {"KERNEL32.dll", "PulseEvent", 4, CallConv::Stdcall, &K32_ResetEvent},
-    {"KERNEL32.dll", "CreateMutexA", 12, CallConv::Stdcall, &K32_CreateMutexA},
-    {"KERNEL32.dll", "CreateMutexW", 12, CallConv::Stdcall, &K32_CreateMutexA},
     {"KERNEL32.dll", "ReleaseMutex", 4, CallConv::Stdcall, &K32_ReleaseMutex},
-    {"KERNEL32.dll", "CreateSemaphoreA", 16, CallConv::Stdcall, &K32_CreateSemaphoreA},
-    {"KERNEL32.dll", "CreateSemaphoreW", 16, CallConv::Stdcall, &K32_CreateSemaphoreA},
     {"KERNEL32.dll", "ReleaseSemaphore", 12, CallConv::Stdcall, &K32_ReleaseSemaphore},
     {"KERNEL32.dll", "WaitForSingleObject", 8, CallConv::Stdcall, &K32_WaitForSingleObject},
     {"KERNEL32.dll", "WaitForSingleObjectEx", 12, CallConv::Stdcall, &K32_WaitForSingleObjectEx},
@@ -428,6 +392,7 @@ bool ValidateWaitObjects(cpu::IGuestMemory& m,const std::vector<uint32_t>& handl
     for (size_t i=0;i<handles.size();++i) {
         const uint32_t h=handles[i];
         if (!ValidWaitHandle(h)) { hle::SetLastError(m,6); return false; }
+        if (!hle::HandleAccess(m,h,rt::kSynchronize)) return false;
         for (size_t j=0;j<i;++j) {
             const uint32_t previous=handles[j];
             auto object=rt::Handles().Get(h),old=rt::Handles().Get(previous);

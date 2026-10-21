@@ -1,5 +1,5 @@
 #include "user_apc.h"
-#include "hle_util.h"
+#include "handle_util.h"
 #include "../runtime/guest_execution.h"
 namespace win32 {
 rt::GuestThread* HleThreadFromHandle(uint32_t handle);
@@ -28,6 +28,7 @@ namespace {
 HostCallOutcome QueueUserAPC(cpu::CpuState& state,cpu::IGuestMemory& memory) {
     auto* target=HleThreadFromHandle(hle::Arg(state,memory,1));
     if (!target) { hle::SetLastError(memory,6); return hle::Ret(0); }
+    if (!hle::HandleAccess(memory,hle::Arg(state,memory,1),0x10)) return hle::Ret(0);
     if (target->status==rt::GuestThreadStatus::Exited || target->exitRequested) {
         hle::SetLastError(memory,31); return hle::Ret(0);
     }

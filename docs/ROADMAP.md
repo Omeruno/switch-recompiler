@@ -1,5 +1,5 @@
 # Switch Recompiler — полная дорожная карта
-Дата обновления: 2026-10-21
+Дата обновления: 2026-10-22
 Статус: инженерный план, НЕ заявление о полной Windows-совместимости.
 
 ## Цель и границы
@@ -36,7 +36,8 @@ B4. Отделить HWND/очередь сообщений/таймеры от 
 - CriticalSection рекурсивность/владелец, Interlocked, таймеры и очередь сообщений.
 - MsgWaitForMultipleObjects/Ex объединяют HANDLE и очередь USER32 v2; wait-all не расходует объекты до готовности всего набора и input. Поддержаны новые/уже просмотренные сообщения, QS masks, MWMO_INPUTAVAILABLE.
 - QueueUserAPC и alertable SleepEx/WaitForSingleObjectEx/WaitForMultipleObjectsEx/MsgWaitEx выполняют callbacks на CPU/TEB/TLS получателя, включая очередь до старта и вложенные alertable waits.
-- Оценка готовности этапа: **~70%** по закрытым функциональным блокам, не по времени. До закрытия: named objects, access/inherit/protect HANDLE policies, дальнейшие пограничные проверки и приёмка на физической Switch. I/O completion APCs и waitable timers ещё отсутствуют.
+- Именованные event/mutex/semaphore: Create/Open A/W, общий типизированный namespace внутри Process, lifetime до последнего HANDLE, Local/default и отдельные Global имена. HANDLE содержит собственные access/INHERIT/PROTECT_FROM_CLOSE; права проверяются в waits, sync mutation, thread/APC и file/CRT data I/O.
+- Оценка готовности этапа: **~80%** по закрытым функциональным блокам, не по времени. До закрытия: waitable timers/SignalObjectAndWait, дальнейшие пограничные проверки и приёмка на физической Switch. Нет cross-process named namespace, настоящего наследования дочерними процессами, token/DACL модели и I/O completion APCs.
 Критерий: producer/consumer guest, контеншн и тайм-ауты, отсутствие deadlock.
 
 ## Этап D — loader и системные Win32 API
@@ -80,7 +81,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 1. Проверить текущий HANDLE/lifecycle пакет: хостовые ABI-тесты, MinGW-гости, CPU oracle и Switch build; отдельно проверить Paint на железе.
 2. Saved native continuations для вложенных callbacks реализованы: взаимные ожидания WndProc/SEH, GetMessage от worker, busy-spin и ExitThread внутри callback покрыты тестами. Проверить ARM64 ABI под QEMU и реальный Switch; это не завершает все блокирующие host HLE пути.
 3. Реализованы освобождение stack/TEB/TLS, DLL_THREAD_ATTACH/DETACH и EXE/DLL TLS callbacks, recursive cooperative loader lock, отложенный старт CREATE_SUSPENDED и static TLS для существующих потоков при LoadLibrary. HANDLE сигналится после detach; метаданные сохраняются. Остались process/DLL shutdown, unload/refcounts/rollback, startup blocking waits и аппаратная регрессия.
-4. USER32 v2: очереди/таймеры/keyboard snapshot разделены, HWND принадлежит guest thread, cross-thread sends/teardown и MsgWait HANDLE+queue реализованы. User APC/alertable waits добавлены; следующие задачи — named objects и access/inherit/protect HANDLE policies, затем input/focus/hooks ownership. Аппаратная регрессия остаётся отдельным gate.
+4. USER32 v2: очереди/таймеры/keyboard snapshot разделены, HWND принадлежит guest thread, cross-thread sends/teardown и MsgWait HANDLE+queue реализованы. User APC/alertable waits, named sync objects и базовые access/inherit/protect HANDLE policies добавлены. Далее — waitable timers/SignalObjectAndWait и input/focus/hooks ownership; полный cross-process/security контракт остаётся вне текущей модели. Аппаратная регрессия — отдельный gate.
 5. Ввести renderer-backend interface без переписывания эталонного CPU GDI. Desktop-shell и JIT — после соответствующих acceptance gates.
 
 Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.

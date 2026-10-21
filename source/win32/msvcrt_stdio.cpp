@@ -100,6 +100,8 @@ int64_t FdWrite(int fd, const char* data, size_t len) {
     std::string buf;
     auto f = rt::Files().Get(d->handle);
     if (!f) return -1;
+    const auto* entry=rt::Handles().Entry(d->handle);
+    if(!entry || !(entry->access&6) || !f->canWrite) return -1;
     bool console = f->kind == rt::OpenFile::ConsoleOut || f->kind == rt::OpenFile::ConsoleErr;
     if (d->text && !console) {
         buf.reserve(len + len / 8);
@@ -110,13 +112,14 @@ int64_t FdWrite(int fd, const char* data, size_t len) {
     if (console) { HleConsoleWrite(d->handle, data, len); return static_cast<int64_t>(len); }
     if (f->kind == rt::OpenFile::Null) return static_cast<int64_t>(len);
     if (!f->f || !f->canWrite) return -1;
-    if (d->append) std::fseek(f->f, 0, SEEK_END);
+    if (d->append || !(entry->access&2)) std::fseek(f->f, 0, SEEK_END);
     return static_cast<int64_t>(std::fwrite(data, 1, len, f->f));
 }
 // Один байт (без текстового преобразования); -1 — конец
 int RawGetc(Fd* d) {
     auto f = rt::Files().Get(d->handle);
     if (!f) return -1;
+    if(!rt::Handles().HasAccess(d->handle,1) || !f->canRead) return -1;
     if (f->kind == rt::OpenFile::ConsoleIn) return cpu::g_consoleAvailable ? std::fgetc(stdin) : -1;
     if (!f->f) return -1;
     return std::fgetc(f->f);
@@ -142,6 +145,8 @@ int FdGetc(int fd) {
 int64_t FdRead(int fd, uint8_t* out, size_t n) {
     Fd* d = GetFd(fd);
     if (!d) return -1;
+    auto source=rt::Files().Get(d->handle);
+    if(!source || !source->canRead || !rt::Handles().HasAccess(d->handle,1)) return -1;
     if (!d->text) {
         auto f = rt::Files().Get(d->handle);
         if (!f) return -1;
