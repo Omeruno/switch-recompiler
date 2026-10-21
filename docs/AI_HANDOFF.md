@@ -206,3 +206,11 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - New `tests/guest/gui_thread_sync.c` `a105b3f` verifies owner mutex → worker handoff, release semaphore wake, count consumption, worker exit and CloseHandle.
 - Finite positive timeouts, WaitForMultipleObjects, typed HANDLE object lifecycle, critical sections, abandoned mutex and cleanup on thread termination remain future work.
 - Latest `a105b3f` CI run `39641366326` queued/in progress when written; check before declaring green. Paint hardware verified baseline `2c9a1fa`.
+
+## 2026-10-21 early architecture hardening
+- Confirmed `2e9119c` full CI green (run `39641498932`), and `a50c708` full CI green (run `39642076520`) for roadmap.
+- Added guest regression `tests/guest/gui_thread_spin.c` (`b7f75b2`): Windows CreateThread, one guest main thread busy-spins on volatile flag without Sleep / yielding HLE; other worker publishes flag; verifies scheduler instruction-quantum preemption and worker completion. Need confirm host CI green for exact SHA or newer.
+- Added isolated libnx `tools/jit_probe/main.cpp` (`bb33f1e`, input API fix `904347f`) that calls `jitCreate`, transition writable, writes ARM64 `movz w0,#42; ret`, transition executable, executes, prints result, frees buffer. Uses modern Pad API (older hidScanInput removed). Standalone Makefile (`854ad64`), README (`1be6eec`).
+- CI change `3d7081e` builds and publishes experimental `jit_probe.nro` in a separate `jit-probe-build` job, leaving primary Switch artifact build independent. **Compilation success is not physical permission validation**, user must run experimental NRO on real Switch; collect Result codes and launch context. No JIT integrated into x86 engine.
+- Prior CI attempts `ee18a07` / `1be6eec` included probe build inside main Switch job; new independent job avoids losing primary NRO on JIT build failure. Check latest CI run after `3d7081e` for compilation errors.
+- Next: investigate HLE nested guest callbacks blocking scheduler / message pump, add latency and watchdog instrumentation. Avoid claiming a busy-wait guest test establishes fairness for all HLE paths. Preserve hardware Paint fallback.
