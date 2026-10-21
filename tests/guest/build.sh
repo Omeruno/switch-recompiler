@@ -23,7 +23,9 @@ for t in "$here"/gui_*.c; do
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"
         res="$out/$name.res.o"
     fi
-    $cc -O1 "$t" $res -o "$out/$name.exe" -luser32 -lgdi32 -lcomdlg32 -lshell32
+    extra=""
+    [ "$name" = "gui_seh_context" ] && extra="-msse2"
+    $cc -O1 $extra "$t" $res -o "$out/$name.exe" -luser32 -lgdi32 -lcomdlg32 -lshell32
 done
 cxx="${MINGW_CXX:-i686-w64-mingw32-g++}"
 for t in "$here"/crt_*.cpp; do
