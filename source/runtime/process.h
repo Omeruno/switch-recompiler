@@ -23,6 +23,7 @@
 #include "../cpu/cpu_state.h"
 #include "../cpu/guest_memory.h"
 #include "guest_thread.h"
+#include "guest_scheduler.h"
 #include "../loader/pe_parser.h"
 
 namespace rt {
@@ -110,6 +111,8 @@ public:
     uint32_t CurrentThreadId() const { return mainThread_.id; }
     const GuestThread& MainThread() const { return mainThread_; }
     GuestThread& MainThread() { return mainThread_; }
+    GuestScheduler& Scheduler() { return scheduler_; }
+    const GuestScheduler& Scheduler() const { return scheduler_; }
     uint32_t PebAddress() const { return kPebAddress; }
     uint32_t TlsArrayAddress() const { return tlsArray_; }
 
@@ -143,6 +146,7 @@ private:
     uint32_t crtGlobals_ = 0;
     bool threadReady_ = false;
     GuestThread mainThread_{};
+    GuestScheduler scheduler_{};
 };
 
 // Текущий процесс — для HLE-функций (LoadLibrary, GetProcAddress, ...).
