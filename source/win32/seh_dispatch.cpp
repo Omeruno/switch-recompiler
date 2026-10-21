@@ -112,5 +112,20 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
     }
     return DispatchResult::Unhandled;
 }
+
+DispatchResult DispatchCpuFault(cpu::CpuState& state, cpu::IGuestMemory& mem,
+                                uint32_t teb, const cpu::CpuException& fault) {
+    // NTSTATUS exception records carry two parameters for access violations:
+    // [0] is operation (0 read, 1 write), [1] is the inaccessible address.
+    uint32_t params[2] = {};
+    uint32_t count = 0;
+    if (fault.code == cpu::EXC_ACCESS_VIOLATION) {
+        params[0] = fault.write ? 1u : 0u;
+        params[1] = fault.faultAddress;
+        count = 2;
+    }
+    return Dispatch(state,mem,teb,fault.code,0,fault.eip,params,count);
+}
+
 } // namespace seh
 } // namespace win32
