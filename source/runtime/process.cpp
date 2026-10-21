@@ -459,6 +459,13 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     cpu.ESP() -= 4;
     mem_.Write32(cpu.ESP(), EntryReturnAddress());
     cpu.eip = main_->base + main_->entryRva;
+    mainThread_.id = 0x1004u;
+    mainThread_.teb = kTebAddress;
+    mainThread_.stackBase = stackTop;
+    mainThread_.stackLimit = stackBase;
+    mainThread_.tlsArray = tlsArray_;
+    mainThread_.status = GuestThreadStatus::Runnable;
+    mainThread_.cpu = cpu;
     return true;
 }
 
