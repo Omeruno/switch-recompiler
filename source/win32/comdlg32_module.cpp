@@ -3,6 +3,8 @@
 // No Paint-specific offsets or UI assumptions.
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <cstdarg>
 #include <cstring>
 #include <dirent.h>
 #include <map>
@@ -27,6 +29,23 @@ constexpr uint32_t OFN_NOCHANGEDIR = 0x0008;
 constexpr uint32_t WS_CHILD_VISIBLE = WS_CHILD | WS_VISIBLE;
 constexpr uint32_t BTN_ID_OK = 1001, BTN_ID_CANCEL = 1002, LIST_ID = 1003, EDIT_ID = 1004;
 uint32_t g_extendedError = 0;
+
+// Host-only opt-in trace for scripted regression tests; never touch
+// Nintendo Switch's closed text console during graphics rendering.
+void Trace(const char* fmt, ...) {
+#ifndef __SWITCH__
+    if (!std::getenv("SR_COMDLG_TRACE")) return;
+    va_list ap;
+    va_start(ap, fmt);
+    std::fprintf(stderr, "[COMDLG] ");
+    std::vfprintf(stderr, fmt, ap);
+    std::fprintf(stderr, "\n");
+    va_end(ap);
+#else
+    (void)fmt;
+#endif
+}
+
 
 struct Request {
     cpu::IGuestMemory* memory = nullptr;
@@ -139,6 +158,7 @@ void UpdateList(Request& r) {
             r.listNames.push_back(f.first);
         }
     }
+    Trace("list: directory=%s entries=%zu selected_filter=%s", r.directory.c_str(), r.listNames.size(), r.patterns.empty() ? "(all)" : r.patterns.front().c_str());
     if (Window* top = Win(r.hwnd)) top->text = (r.save ? u"Save As — " : u"Open — ") + Text(r.directory);
     // Recalculate ListBox scroll range after populating its host-owned items.
     SendMsg(r.list, user::WM_SIZE, 0, 0);
@@ -173,6 +193,7 @@ bool PutResult(Request& r, std::string full) {
 void Accept(Request& r) {
     Window* edit = Win(r.edit);
     std::string chosen = edit ? Narrow(edit->text) : "";
+    Trace("accept: name=%s directory=%s", chosen.c_str(), r.directory.c_str());
     if (chosen.empty()) return;
     std::string full = Join(r.directory, chosen);
     if (Exists(full, true)) {
@@ -201,6 +222,7 @@ uint32_t DialogProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t, bool) {
     if (msg == user::WM_CLOSE) { r.done = true; return 0; }
     if (msg == user::WM_COMMAND) {
         const uint32_t id = wp & 0xFFFF, code = wp >> 16;
+        Trace("command id=%u code=%u listSel=%d", id, code, Win(r.list) ? C(Win(r.list))->cur : -1);
         if (id == BTN_ID_CANCEL) { r.done = true; return 0; }
         if (id == BTN_ID_OK) { Accept(r); return 0; }
         if (id == LIST_ID && (code == 1 || code == 2)) {
