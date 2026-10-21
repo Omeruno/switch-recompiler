@@ -210,10 +210,10 @@ HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 // Expose thread-handle validation and closure to KERNEL32 synchronization
 // and file-HANDLE dispatch. Closing a HANDLE does not destroy the thread.
-bool IsValidGuestThreadHandle(uint32_t handle) {
+bool IsValidGuestThreadHandleLocal(uint32_t handle) {
     return ThreadFromHandle(handle)!=nullptr;
 }
-bool CloseGuestThreadHandle(uint32_t handle) {
+bool CloseGuestThreadHandleLocal(uint32_t handle) {
     return g_openThreadHandles.erase(handle)!=0;
 }
 HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -278,6 +278,10 @@ HostCallOutcome K32_GetStdHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
 bool IsConsoleOut(uint32_t h) { return h == kStdOutput || h == kStdError; }
 
 }  // namespace
+
+// Win32 HANDLE utilities implemented by the KERNEL32 thread layer.
+bool HleIsOpenThreadHandle(uint32_t h) { return IsValidGuestThreadHandleLocal(h); }
+bool HleCloseThreadHandle(uint32_t h) { return CloseGuestThreadHandleLocal(h); }
 
 // Используется файловым вводом-выводом (kernel32_file.cpp) для консольных хендлов.
 bool HleConsoleWrite(uint32_t handle, const char* data, size_t len) {
