@@ -191,6 +191,9 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
         }
         if (result == cpu::StepResult::Exception) {
             const cpu::CpuException& e = nestedInterp.LastException();
+            cpu::g_lastKnownEip = e.eip;
+            cpu::g_fatalGuestCode = e.code;
+            cpu::g_fatalGuestAddress = e.faultAddress;
             if (cpu::g_consoleAvailable) {
                 std::printf("[EXC] Исключение 0x%08x на 0x%x (адрес 0x%x) внутри вложенного вызова\n",
                             e.code, e.eip, e.faultAddress);
