@@ -169,6 +169,27 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
             cpu::g_fatalStackPointer = cpu.ESP();
             cpu::g_fatalModule[0] = 0;
             cpu::g_fatalModuleOffset = 0;
+            cpu::g_fatalInstructionBytes[0] = 0;
+            cpu::g_fatalStackCount = 0;
+            for (unsigned i = 0; i < 8; ++i)
+                cpu::g_fatalRegisters[i] = cpu.regs[i];
+            // Read only validated guest pages. FatalMemoryError must not
+            // recursively trigger another fatal error during diagnosis.
+            if (mem.IsRangeMapped(lastEip, 12)) {
+                size_t at = 0;
+                for (unsigned i = 0; i < 12; ++i) {
+                    int count = std::snprintf(cpu::g_fatalInstructionBytes + at,
+                        sizeof(cpu::g_fatalInstructionBytes) - at,
+                        "%02X%s", mem.Read8(lastEip + i), i == 11 ? "" : " ");
+                    if (count < 0 || static_cast<size_t>(count) >= sizeof(cpu::g_fatalInstructionBytes) - at) break;
+                    at += static_cast<size_t>(count);
+                }
+            }
+            for (unsigned i = 0; i < 8; ++i) {
+                uint64_t addr = static_cast<uint64_t>(cpu.ESP()) + 4u * i;
+                if (addr > 0xFFFFFFFFull || !mem.IsRangeMapped(static_cast<uint32_t>(addr), 4)) break;
+                cpu::g_fatalStackWords[cpu::g_fatalStackCount++] = mem.Read32(static_cast<uint32_t>(addr));
+            }
             if (rt::g_process) {
                 if (rt::Module* mod = rt::g_process->FindByAddress(lastEip)) {
                     std::snprintf(cpu::g_fatalModule, sizeof(cpu::g_fatalModule),
