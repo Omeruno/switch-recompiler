@@ -33,7 +33,32 @@ inline bool g_consoleAvailable = true;
 // произошёл сбой, только что именно (адрес памяти/сообщение).
 inline uint32_t g_lastKnownEip = 0;
 
+
+// Last nested-interpreter failure. The nested WndProc loop can terminate via
+// FatalError without returning to main's regular guest-exception handler.
+inline uint32_t g_fatalGuestCode = 0;
+inline uint32_t g_fatalGuestAddress = 0;
+
+// Logging must never attempt printing into libnx's already-closed console.
+// This is intentionally only called on fatal exit, not during frame rendering.
+inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t addr) {
+#ifdef __SWITCH__
+    std::FILE* f = std::fopen("sdmc:/switch-recompiler-crash.txt", "w");
+    if (!f) return;
+    std::fprintf(f, "switch-recompiler fatal guest error\n");
+    std::fprintf(f, "Type: %s\n", type ? type : "unknown");
+    std::fprintf(f, "Message: %s\n", msg ? msg : "unknown");
+    std::fprintf(f, "EIP: 0x%08x\n", g_lastKnownEip);
+    std::fprintf(f, "Guest exception code: 0x%08x\n", g_fatalGuestCode);
+    std::fprintf(f, "Guest fault address: 0x%08x\n", addr ? addr : g_fatalGuestAddress);
+    std::fclose(f);
+#else
+    (void)type; (void)msg; (void)addr;
+#endif
+}
+
 [[noreturn]] inline void FatalError(const char* msg) {
+    WriteFatalGuestReport("FatalError", msg, 0);
     if (g_consoleAvailable) {
         std::printf("[FATAL] %s (EIP=0x%08x)\n", msg, g_lastKnownEip);
         std::fflush(stdout);
@@ -45,6 +70,7 @@ inline uint32_t g_lastKnownEip = 0;
 }
 
 [[noreturn]] inline void FatalMemoryError(const char* msg, uint32_t addr) {
+    WriteFatalGuestReport("FatalMemoryError", msg, addr);
     if (g_consoleAvailable) {
         std::printf("[FATAL] Guest memory error: %s (addr=0x%08x, EIP=0x%08x)\n", msg, addr, g_lastKnownEip);
         std::fflush(stdout);
