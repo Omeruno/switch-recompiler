@@ -98,6 +98,8 @@ struct WaitObject {
     bool manualReset = false;
     bool signaled = false;
     int32_t count = 0, maxCount = 0;
+    uint32_t ownerThread = 0;
+    uint32_t recursion = 0;
 };
 std::map<uint32_t, WaitObject>& Objects() {
     static std::map<uint32_t, WaitObject> objs;
@@ -130,27 +132,68 @@ HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(1);
 }
 HostCallOutcome K32_CreateMutexA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    WaitObject o{WaitObject::Mutex, false, Arg(c, m, 1) == 0, 0, 0};
+    const bool initiallyOwned=Arg(c,m,1)!=0;
+    WaitObject o{WaitObject::Mutex, false, !initiallyOwned, 0, 0};
+    if (initiallyOwned) {
+        o.ownerThread=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
+        o.recursion=1;
+    }
     SetLastError(m, ERROR_SUCCESS);
     return Ret(NewObject(o));
 }
 HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto it = Objects().find(Arg(c, m, 0));
-    if (it == Objects().end()) return Ret(0);
-    it->second.signaled = true;
+    const uint32_t handle=Arg(c,m,0);
+    auto it=Objects().find(handle);
+    if (it==Objects().end() || it->second.kind!=WaitObject::Mutex) {
+        SetLastError(m,ERROR_INVALID_HANDLE);
+        return Ret(0);
+    }
+    WaitObject& o=it->second;
+    uint32_t current=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
+    if (o.ownerThread!=current || !o.recursion) {
+        SetLastError(m,288u); // ERROR_NOT_OWNER
+        return Ret(0);
+    }
+    if (--o.recursion==0) {
+        o.ownerThread=0;
+        o.signaled=true;
+        if(rt::g_process)rt::g_process->Scheduler().Signal(handle,false);
+    }
     return Ret(1);
 }
 HostCallOutcome K32_CreateSemaphoreA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    WaitObject o{WaitObject::Semaphore, false, false, static_cast<int32_t>(Arg(c, m, 1)), static_cast<int32_t>(Arg(c, m, 2))};
+    const int32_t initial=static_cast<int32_t>(Arg(c,m,1));
+    const int32_t maximum=static_cast<int32_t>(Arg(c,m,2));
+    if(initial<0 || maximum<=0 || initial>maximum) {
+        SetLastError(m,ERROR_INVALID_PARAMETER);
+        return Ret(0);
+    }
+    WaitObject o{WaitObject::Semaphore,false,false,initial,maximum};
     return Ret(NewObject(o));
 }
 HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto it = Objects().find(Arg(c, m, 0));
-    if (it == Objects().end()) return Ret(0);
-    uint32_t prev = Arg(c, m, 2);
-    if (prev) m.Write32(prev, static_cast<uint32_t>(it->second.count));
-    it->second.count += static_cast<int32_t>(Arg(c, m, 1));
-    if (it->second.count > it->second.maxCount) it->second.count = it->second.maxCount;
+    const uint32_t handle=Arg(c,m,0);
+    auto it=Objects().find(handle);
+    if(it==Objects().end() || it->second.kind!=WaitObject::Semaphore) {
+        SetLastError(m,ERROR_INVALID_HANDLE);
+        return Ret(0);
+    }
+    WaitObject& o=it->second;
+    const int32_t amount=static_cast<int32_t>(Arg(c,m,1));
+    if(amount<=0 || amount>o.maxCount-o.count) {
+        SetLastError(m,ERROR_INVALID_PARAMETER);
+        return Ret(0);
+    }
+    uint32_t prev=Arg(c,m,2);
+    if(prev) {
+        if(!m.IsRangeMapped(prev,4)) { SetLastError(m,ERROR_INVALID_PARAMETER);return Ret(0); }
+        m.Write32(prev,static_cast<uint32_t>(o.count));
+    }
+    o.count+=amount;
+    if(rt::g_process) {
+        for(int32_t i=0;i<amount;++i)
+            if(rt::g_process->Scheduler().Signal(handle,false)==0) break;
+    }
     return Ret(1);
 }
 
@@ -165,8 +208,14 @@ uint32_t TryAcquire(uint32_t h) {
             if (!o.manualReset) o.signaled = false;
             return 0;
         case WaitObject::Mutex:
-            o.signaled = false; // рекурсивный захват своим же потоком разрешён
-            return 0;
+            {
+                const uint32_t id=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
+                if(o.ownerThread && o.ownerThread!=id) return 0x102;
+                o.ownerThread=id;
+                ++o.recursion;
+                o.signaled=false;
+                return 0;
+            }
         case WaitObject::Semaphore:
             if (o.count <= 0) return 0x102;
             o.count--;
