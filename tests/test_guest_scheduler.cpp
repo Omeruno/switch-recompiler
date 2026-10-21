@@ -129,5 +129,23 @@ int main() {
     assert(multiple.IsRunnable() && multiple.timedOutHandle==0x5555);
     assert(multiple.waitHandles.empty());
     rt::Clock::SetFastForward(false);
+    // Retry after a partial signal keeps the original absolute deadline.
+    rt::Clock::SetFastForward(true);
+    rt::GuestScheduler deadlines;
+    rt::GuestThread waiting;
+    waiting.id=401;waiting.status=rt::GuestThreadStatus::Runnable;
+    assert(deadlines.Add(waiting));
+    assert(deadlines.WaitForMultiple(waiting,{0x1111,0x2222},true,100));
+    const uint64_t originalDeadline=waiting.waitDeadlineUs;
+    rt::Clock::Sleep(40);
+    assert(deadlines.Signal(0x1111,false)==1);
+    assert(waiting.IsRunnable());
+    assert(waiting.retryWaitDeadlineUs==originalDeadline);
+    assert(deadlines.WaitForMultiple(waiting,{0x1111,0x2222},true,100));
+    assert(waiting.waitDeadlineUs==originalDeadline);
+    rt::Clock::Sleep(61);
+    deadlines.Next();
+    assert(waiting.IsRunnable() && waiting.timedOutHandle==0x1111);
+    rt::Clock::SetFastForward(false);
     puts("PASSED: round-robin, suspend, wait, wake and exit");
 }
