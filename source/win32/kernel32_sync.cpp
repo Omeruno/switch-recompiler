@@ -9,6 +9,7 @@
 
 #include "hle_util.h"
 #include "../runtime/clock.h"
+#include "../runtime/process.h"
 
 namespace win32 {
 
@@ -169,8 +170,35 @@ uint32_t TryAcquire(uint32_t h) {
     }
     return 0;
 }
-HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) { return Ret(TryAcquire(Arg(c, m, 0))); }
-HostCallOutcome K32_WaitForSingleObjectEx(cpu::CpuState& c, cpu::IGuestMemory& m) { return Ret(TryAcquire(Arg(c, m, 0))); }
+HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t handle, uint32_t milliseconds) {
+    constexpr uint32_t kWaitFailed=0xffffffffu;
+    constexpr uint32_t kWaitTimeout=0x102u;
+    // Thread handles belong to the guest scheduler. Never report an
+    // unfinished worker as signaled, and never block the host render loop.
+    if ((handle & 0xff000000u)==0xE1000000u && rt::g_process) {
+        rt::GuestThread* target=rt::g_process->FindThread(handle & 0x00ffffffu);
+        if (!target) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(kWaitFailed); }
+        if (target->status==rt::GuestThreadStatus::Exited) return Ret(0);
+        if (milliseconds==0) return Ret(kWaitTimeout);
+        rt::GuestThread* current=rt::g_process->Scheduler().Current();
+        if (!current) return Ret(kWaitTimeout); // no active dispatch context
+        if (milliseconds!=0xffffffffu) return Ret(kWaitTimeout); // timed waits pending
+        if (!rt::g_process->Scheduler().Wait(*current,handle))
+            return Ret(kWaitFailed);
+        // Do not advance EIP/ESP. After target exits, scheduler wakes this
+        // thread, and HLE retries the same WAIT call and returns WAIT_OBJECT_0.
+        HostCallOutcome pending;
+        pending.customReturn=true;
+        return pending;
+    }
+    return Ret(TryAcquire(handle));
+}
+HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
+}
+HostCallOutcome K32_WaitForSingleObjectEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
+}
 // DWORD WaitForMultipleObjects(DWORD n, const HANDLE*, BOOL waitAll, DWORD ms)
 HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t n = Arg(c, m, 0), arr = Arg(c, m, 1), all = Arg(c, m, 2);
