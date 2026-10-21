@@ -223,46 +223,49 @@ uint32_t TryAcquire(uint32_t h) {
     }
     return 0;
 }
-HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t handle, uint32_t milliseconds) {
+// An unfinished finite wait is parked in the scheduler, then the guest
+// retries the same HLE import upon signal or timeout. This avoids blocking
+// the host/render thread and keeps the x86 stack unchanged until completion.
+HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
+                           uint32_t handle, uint32_t milliseconds) {
     constexpr uint32_t kWaitFailed=0xffffffffu;
     constexpr uint32_t kWaitTimeout=0x102u;
-    // Thread handles belong to the guest scheduler. Never report an
-    // unfinished worker as signaled, and never block the host render loop.
-    if ((handle & 0xff000000u)==0xE1000000u && rt::g_process) {
-        rt::GuestThread* target=rt::g_process->FindThread(handle & 0x00ffffffu);
-        if (!target || !HleIsOpenThreadHandle(handle)) {
-            SetLastError(m,ERROR_INVALID_HANDLE); return Ret(kWaitFailed);
-        }
-        if (target->status==rt::GuestThreadStatus::Exited) return Ret(0);
-        if (milliseconds==0) return Ret(kWaitTimeout);
-        rt::GuestThread* current=rt::g_process->Scheduler().Current();
-        if (!current) return Ret(kWaitTimeout); // no active dispatch context
-        if (milliseconds!=0xffffffffu) return Ret(kWaitTimeout); // timed waits pending
-        if (!rt::g_process->Scheduler().Wait(*current,handle))
+    rt::GuestThread* current=rt::g_process ?
+        rt::g_process->Scheduler().Current() : nullptr;
+    auto tryPark=[&]() -> HostCallOutcome {
+        if (!current || !rt::g_process) return Ret(kWaitTimeout);
+        if (!rt::g_process->Scheduler().WaitFor(*current,handle,milliseconds))
             return Ret(kWaitFailed);
-        // Do not advance EIP/ESP. After target exits, scheduler wakes this
-        // thread, and HLE retries the same WAIT call and returns WAIT_OBJECT_0.
         HostCallOutcome pending;
         pending.customReturn=true;
         return pending;
+    };
+    if ((handle & 0xff000000u)==0xE1000000u && rt::g_process) {
+        rt::GuestThread* target=rt::g_process->FindThread(handle & 0x00ffffffu);
+        if (!target || !HleIsOpenThreadHandle(handle)) {
+            SetLastError(m,ERROR_INVALID_HANDLE);
+            return Ret(kWaitFailed);
+        }
+        if(current && current->timedOutHandle==handle) {
+            current->timedOutHandle=0;
+            return Ret(kWaitTimeout);
+        }
+        if (target->status==rt::GuestThreadStatus::Exited) return Ret(0);
+        if (milliseconds==0) return Ret(kWaitTimeout);
+        return tryPark();
     }
-    // Other currently implemented kernel objects: event, mutex, semaphore.
     auto it=Objects().find(handle);
     if(it==Objects().end()) {
         SetLastError(m,ERROR_INVALID_HANDLE);
         return Ret(kWaitFailed);
     }
+    if(current && current->timedOutHandle==handle) {
+        current->timedOutHandle=0;
+        return Ret(kWaitTimeout);
+    }
     uint32_t acquired=TryAcquire(handle);
     if(acquired!=kWaitTimeout || milliseconds==0) return Ret(acquired);
-    // Positive finite durations require an independent deadline; do not
-    // incorrectly pretend they waited. Support infinite waits first.
-    if(milliseconds!=0xffffffffu || !rt::g_process) return Ret(kWaitTimeout);
-    rt::GuestThread* current=rt::g_process->Scheduler().Current();
-    if(!current) return Ret(kWaitTimeout);
-    if(!rt::g_process->Scheduler().Wait(*current,handle)) return Ret(kWaitFailed);
-    HostCallOutcome pending;
-    pending.customReturn=true;
-    return pending;
+    return tryPark();
 }
 HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
