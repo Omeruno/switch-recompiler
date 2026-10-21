@@ -153,8 +153,8 @@ uint32_t DialogProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t, bool) {
     auto it = Dialogs().find(hwnd);
     if (it == Dialogs().end()) return DefWindowProc(hwnd, msg, wp, 0, true);
     Request& r = *it->second;
-    if (msg == WM_CLOSE) { r.done = true; return 0; }
-    if (msg == WM_COMMAND) {
+    if (msg == user::WM_CLOSE) { r.done = true; return 0; }
+    if (msg == user::WM_COMMAND) {
         const uint32_t id = wp & 0xFFFF, code = wp >> 16;
         if (id == BTN_ID_CANCEL) { r.done = true; return 0; }
         if (id == BTN_ID_OK) { Accept(r); return 0; }
@@ -185,7 +185,8 @@ uint32_t AddChild(Request& r, const char16_t* cls, const char16_t* title, uint32
                                 x, y, w, h, r.hwnd, id, 0, 0, true, 0, 0);
 }
 bool ShowDialog(Request& r) {
-    uint32_t addr = HostAddress("__FileDialogWndProc");
+    int procIndex = FindHostFunction("COMDLG32.dll", "__FileDialogWndProc");
+    uint32_t addr = procIndex >= 0 ? IndexToHostAddress(procIndex) : 0;
     if (!addr) return false;
     RegisterHostWndProc(addr, &DialogProc, true);
     WndClass wc;
@@ -206,8 +207,8 @@ bool ShowDialog(Request& r) {
     r.list = AddChild(r, u"ListBox", u"", LIST_ID, 12, 36, 490, 240, WS_VSCROLL | WS_BORDER | 0x0001);
     AddChild(r, u"Static", u"File name:", 1011, 12, 292, 90, 22);
     r.edit = AddChild(r, u"Edit", u"", EDIT_ID, 102, 289, 276, 26, WS_BORDER | 0x80);
-    AddChild(r, u"Button", r.save ? u"Save" : u"Open", BTN_ID_OK, 385, 289, 116, 27, WS_TABSTOP | 1);
-    AddChild(r, u"Button", u"Cancel", BTN_ID_CANCEL, 385, 322, 116, 27, WS_TABSTOP);
+    AddChild(r, u"Button", r.save ? u"Save" : u"Open", BTN_ID_OK, 385, 289, 116, 27, 0x00010000u | 1);
+    AddChild(r, u"Button", u"Cancel", BTN_ID_CANCEL, 385, 322, 116, 27, 0x00010000u);
     UpdateList(r);
     ShowWindowInternal(r.hwnd, 5);
     uint32_t owner = r.owner;
@@ -217,10 +218,10 @@ bool ShowDialog(Request& r) {
     while (!r.done && !g_guestExitRequested) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) break;
-        if (msg.message == WM_QUIT) { S().quit = true; S().quitCode = msg.wParam; break; }
+        if (msg.message == user::WM_QUIT) { S().quit = true; S().quitCode = msg.wParam; break; }
         if (msg.message == WM_KEYDOWN && msg.wParam == 27) { r.done = true; break; }
-        if (msg.message == WM_TIMER && msg.lParam) {
-            CallStdcall(*G().c, *G().m, msg.lParam, {msg.hwnd, WM_TIMER, msg.wParam, NowMs()});
+        if (msg.message == user::WM_TIMER && msg.lParam) {
+            CallStdcall(*G().c, *G().m, msg.lParam, {msg.hwnd, user::WM_TIMER, msg.wParam, NowMs()});
             continue;
         }
         TranslateKey(msg);
