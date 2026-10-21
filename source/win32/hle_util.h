@@ -13,6 +13,7 @@
 #include "../cpu/guest_memory.h"
 #include "host_functions.h"
 #include "message_loop.h"
+#include "../runtime/process.h"
 
 namespace win32 {
 namespace hle {
@@ -93,11 +94,16 @@ inline uint32_t WriteWide(cpu::IGuestMemory& m, uint32_t addr, const std::u16str
 }
 
 // Последняя ошибка потока: TEB+0x34 (LastErrorValue), как в Windows.
+inline uint32_t CurrentHleTeb() {
+    return rt::g_process ? rt::g_process->CurrentTebAddress() : g_tebAddr;
+}
 inline void SetLastError(cpu::IGuestMemory& m, uint32_t code) {
-    if (g_tebAddr) m.Write32(g_tebAddr + 0x34, code);
+    uint32_t teb = CurrentHleTeb();
+    if (teb) m.Write32(teb + 0x34, code);
 }
 inline uint32_t GetLastError(cpu::IGuestMemory& m) {
-    return g_tebAddr ? m.Read32(g_tebAddr + 0x34) : 0;
+    uint32_t teb = CurrentHleTeb();
+    return teb ? m.Read32(teb + 0x34) : 0;
 }
 
 // Вызов cdecl-функции гостя из host-функции (компаратор qsort, atexit,
