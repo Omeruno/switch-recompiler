@@ -13,6 +13,7 @@
 // stdout. Код возврата — код выхода программы (или 0xC0000005 и т.п.
 // при необработанном исключении). Для хостовых тестов и отладки.
 
+#include "source/win32/seh_dispatch.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
@@ -223,6 +224,7 @@ int main(int argc, char** argv) {
         cpu::StepResult r = interp.Step(c);
         if (r == cpu::StepResult::Continue) continue;
         if (r == cpu::StepResult::Halted) continue;
+        if (win32::seh::DispatchCpuFault(c, mem, proc.TebAddress(), interp.LastException()) == win32::seh::DispatchResult::Handled) continue;
         if (dumpPath) DumpScreen(dumpPath);
         const cpu::CpuException& e = interp.LastException();
         std::fprintf(stderr, "winrun: необработанное исключение 0x%08x на 0x%08x (адрес 0x%08x)\n", e.code, e.eip, e.faultAddress);
