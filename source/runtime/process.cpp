@@ -526,9 +526,18 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     worker->cpu.ESP()-=4u;
     mem_.Write32(worker->cpu.ESP(),parameter);
     worker->cpu.ESP()-=4u;
-    // The scheduler will eventually replace this temporary return thunk
-    // with its own ExitThread trampoline.
-    mem_.Write32(worker->cpu.ESP(),EntryReturnAddress());
+    // A returning LPTHREAD_START_ROUTINE must terminate *only its thread*.
+    // The dedicated HLE trampoline reads its DWORD result from EAX.
+    const int returnIndex=win32::FindHostFunction(
+        "KERNEL32.dll","__SwitchRecompilerWorkerReturn");
+    if (returnIndex<0) {
+        mem_.Unmap(tls,kTlsSlots*4u);
+        mem_.Unmap(stack,stackReserve);
+        mem_.Unmap(teb,0x1000u);
+        error="worker return trampoline not registered";
+        return nullptr;
+    }
+    mem_.Write32(worker->cpu.ESP(),win32::IndexToHostAddress(returnIndex));
     mem_.Write32(teb+0x00,win32::seh::kEndOfChain);
     mem_.Write32(teb+0x04,worker->stackBase);
     mem_.Write32(teb+0x08,worker->stackLimit);
