@@ -345,26 +345,48 @@ int main(int argc, char** argv) {
     }
     if (!proc.InitializeModules(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
 
-    cpu::Interpreter interp(mem, proc.TebAddress(), proc.TebAddress());
-    interp.lenientDivide = false;
-    for (uint64_t steps = 0;; ++steps) {
+    // Every running x86 CPU context is owned by its GuestThread. Keep the
+    // original one-thread behavior, but rotate after a bounded instruction
+    // quantum as soon as a guest CreateThread registers a worker.
+    rt::GuestThread* running=nullptr;
+    unsigned quantumLeft=0;
+    for (uint64_t steps=0;;++steps) {
+        if (!running || !running->IsRunnable() || quantumLeft==0) {
+            running=proc.Scheduler().Next();
+            if(!running) {
+                std::fprintf(stderr,"winrun: no runnable guest threads (all waiting/exited)\n");
+                return 3;
+            }
+            quantumLeft=256;
+        }
+        --quantumLeft;
+        cpu::CpuState& state=running->cpu;
+        cpu::Interpreter threadInterpreter(mem,running->teb,running->teb);
+        threadInterpreter.lenientDivide=false;
         win32::HostCallOutcome out;
-        if (win32::TryHandleHostCall(c, mem, out)) {
-            if (out.requestExit) {
-                if (dumpPath) DumpScreen(dumpPath);
+        if (win32::TryHandleHostCall(state,mem,out)) {
+            if(out.requestExit) {
+                if(dumpPath) DumpScreen(dumpPath);
                 return out.exitCode;
             }
             continue;
         }
-        cpu::StepResult r = interp.Step(c);
-        if (r == cpu::StepResult::Continue) continue;
-        if (r == cpu::StepResult::Halted) continue;
-        if (win32::seh::DispatchCpuFault(c, mem, proc.TebAddress(), interp.LastException()) == win32::seh::DispatchResult::Handled) continue;
-        if (dumpPath) DumpScreen(dumpPath);
-        const cpu::CpuException& e = interp.LastException();
-        std::fprintf(stderr, "winrun: необработанное исключение 0x%08x на 0x%08x (адрес 0x%08x)\n", e.code, e.eip, e.faultAddress);
-        rt::Module* m = proc.FindByAddress(e.eip);
-        if (m) std::fprintf(stderr, "        в модуле %s +0x%x\n", m->name.c_str(), e.eip - m->base);
+        cpu::StepResult r=threadInterpreter.Step(state);
+        if(r==cpu::StepResult::Continue) continue;
+        if(r==cpu::StepResult::Halted) {
+            // HLT remains a no-op for compatibility with existing tests;
+            // workers must use ExitThread or return through their trampoline.
+            continue;
+        }
+        if(win32::seh::DispatchCpuFault(state,mem,running->teb,
+                                        threadInterpreter.LastException()) ==
+           win32::seh::DispatchResult::Handled) continue;
+        if(dumpPath) DumpScreen(dumpPath);
+        const cpu::CpuException& e=threadInterpreter.LastException();
+        std::fprintf(stderr,"winrun: thread 0x%x unhandled exception 0x%08x at 0x%08x (address 0x%08x)\n",
+                     running->id,e.code,e.eip,e.faultAddress);
+        rt::Module* module=proc.FindByAddress(e.eip);
+        if(module) std::fprintf(stderr,"        in %s +0x%x\n",module->name.c_str(),e.eip-module->base);
         return static_cast<int>(e.code);
     }
 }
