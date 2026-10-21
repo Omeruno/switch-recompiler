@@ -61,6 +61,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$out/guest"
+    # Verify two separately allocated guest TEB/TLS/stacks before execution.
+    if (cd "$out/guest" && "$out/winrun" --probe-threads "$out/guest/gui_seh.exe" > "$out/thread_probe.log" 2>&1); then
+        tail -n 1 "$out/thread_probe.log"
+    else
+        echo "   guest worker isolation: FAILED"
+        tail -n 20 "$out/thread_probe.log"
+        failed=1
+    fi
     for exe in "$out"/guest/*.exe; do
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
