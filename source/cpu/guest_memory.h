@@ -38,6 +38,10 @@ inline uint32_t g_lastKnownEip = 0;
 // FatalError without returning to main's regular guest-exception handler.
 inline uint32_t g_fatalGuestCode = 0;
 inline uint32_t g_fatalGuestAddress = 0;
+inline uint32_t g_fatalPreviousEip = 0;
+inline uint32_t g_fatalStackPointer = 0;
+inline char g_fatalModule[96] = {};
+inline uint32_t g_fatalModuleOffset = 0;
 
 // Logging must never attempt printing into libnx's already-closed console.
 // This is intentionally only called on fatal exit, not during frame rendering.
@@ -49,6 +53,10 @@ inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t ad
     std::fprintf(f, "Type: %s\n", type ? type : "unknown");
     std::fprintf(f, "Message: %s\n", msg ? msg : "unknown");
     std::fprintf(f, "EIP: 0x%08x\n", g_lastKnownEip);
+    std::fprintf(f, "Previous instruction EIP: 0x%08x\n", g_fatalPreviousEip);
+    std::fprintf(f, "ESP: 0x%08x\n", g_fatalStackPointer);
+    std::fprintf(f, "Previous module: %s\n", g_fatalModule[0] ? g_fatalModule : "(unknown)");
+    std::fprintf(f, "Previous module offset: 0x%08x\n", g_fatalModuleOffset);
     std::fprintf(f, "Guest exception code: 0x%08x\n", g_fatalGuestCode);
     std::fprintf(f, "Guest fault address: 0x%08x\n", addr ? addr : g_fatalGuestAddress);
     std::fclose(f);
