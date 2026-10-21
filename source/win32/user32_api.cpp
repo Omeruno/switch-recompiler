@@ -3,6 +3,8 @@
 // user32_message.cpp).
 
 #include <algorithm>
+#include <map>
+#include <vector>
 #include <cstdio>
 #include <cstring>
 
@@ -182,6 +184,35 @@ FN(ShowWindow) { ENTER; return Ret(ShowWindowInternal(A(c, m, 0), SA(c, m, 1)) ?
 FN(SetWindowPos) {
     ENTER;
     return Ret(SetWindowPosInternal(A(c, m, 0), A(c, m, 1), SA(c, m, 2), SA(c, m, 3), SA(c, m, 4), SA(c, m, 5), A(c, m, 6)) ? 1 : 0);
+}
+// DeferWindowPos: позиции копятся и применяются разом в EndDeferWindowPos
+struct DeferredPos { uint32_t hwnd, after; int x, y, cx, cy; uint32_t flags; };
+std::map<uint32_t, std::vector<DeferredPos>>& Deferred() {
+    static std::map<uint32_t, std::vector<DeferredPos>> d;
+    return d;
+}
+FN(BeginDeferWindowPos) {
+    (void)c; (void)m;
+    static uint32_t next = 0x00D00000;
+    next += 4;
+    Deferred()[next];
+    return Ret(next);
+}
+FN(DeferWindowPos) {
+    ENTER;
+    auto it = Deferred().find(A(c, m, 0));
+    if (it == Deferred().end() || !Win(A(c, m, 1))) return Ret(0);
+    it->second.push_back(DeferredPos{A(c, m, 1), A(c, m, 2), SA(c, m, 3), SA(c, m, 4), SA(c, m, 5), SA(c, m, 6), A(c, m, 7)});
+    return Ret(A(c, m, 0));
+}
+FN(EndDeferWindowPos) {
+    ENTER;
+    auto it = Deferred().find(A(c, m, 0));
+    if (it == Deferred().end()) return Ret(0);
+    std::vector<DeferredPos> list = std::move(it->second);
+    Deferred().erase(it);
+    for (const DeferredPos& d : list) SetWindowPosInternal(d.hwnd, d.after, d.x, d.y, d.cx, d.cy, d.flags);
+    return Ret(1);
 }
 FN(MoveWindow) {
     ENTER;
@@ -1411,6 +1442,7 @@ const HostFunctionEntry kEntries[] = {
     {"USER32.dll", "GetClassLongA", 8, CallConv::Stdcall, &GetClassLongA}, {"USER32.dll", "GetClassLongW", 8, CallConv::Stdcall, &GetClassLongA},
     {"USER32.dll", "SetClassLongA", 12, CallConv::Stdcall, &SetClassLongA}, {"USER32.dll", "SetClassLongW", 12, CallConv::Stdcall, &SetClassLongA},
     EAW(CreateWindowEx, 48), E(DestroyWindow, 4), E(ShowWindow, 8), E(SetWindowPos, 28), E(MoveWindow, 24),
+    E(BeginDeferWindowPos, 4), E(DeferWindowPos, 32), E(EndDeferWindowPos, 4),
     E(BringWindowToTop, 4), E(GetWindowRect, 8), E(GetClientRect, 8), E(AdjustWindowRect, 12), E(AdjustWindowRectEx, 16),
     E(ClientToScreen, 8), E(ScreenToClient, 8), E(MapWindowPoints, 16),
     EAW(GetWindowLong, 8), EAW(SetWindowLong, 12), E(GetWindowWord, 8), E(SetWindowWord, 12),

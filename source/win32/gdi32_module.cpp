@@ -1289,6 +1289,29 @@ FN(SetDIBColorTable) {
 }
 FN(GetBitmapDimensionEx) { ENTER; WritePoint(m, A(c, m, 1), 0, 0); return Ret(1); }
 
+// BOOL TranslateCharsetInfo(DWORD* src, CHARSETINFO* cs, flags): кодировка <-> кодовая страница
+FN(TranslateCharsetInfo) {
+    ENTER;
+    static const struct { uint32_t charset, cp, csbBit; } kTable[] = {
+        {0, 1252, 0}, {238, 1250, 1}, {204, 1251, 2}, {161, 1253, 3}, {162, 1254, 4}, {177, 1255, 5}, {178, 1256, 6},
+        {186, 1257, 7}, {163, 1258, 8}, {222, 874, 16}, {128, 932, 17}, {134, 936, 18}, {129, 949, 19}, {136, 950, 20},
+    };
+    uint32_t src = A(c, m, 0), out = A(c, m, 1), flags = A(c, m, 2);
+    for (const auto& e : kTable) {
+        bool hit = flags == 1 ? src == e.charset                                  // TCI_SRCCHARSET: значение в самом указателе
+                 : flags == 2 ? src == e.cp                                       // TCI_SRCCODEPAGE
+                 : flags == 3 ? (src && (m.Read32(src + 16) & (1u << e.csbBit))) // TCI_SRCFONTSIG: fsCsb[0]
+                 : false;
+        if (!hit) continue;
+        m.Write32(out, e.charset);
+        m.Write32(out + 4, e.cp);
+        for (uint32_t i = 0; i < 24; i += 4) m.Write32(out + 8 + i, 0);
+        m.Write32(out + 24, 1u << e.csbBit);
+        return Ret(1);
+    }
+    return Ret(0);
+}
+
 // Печать не поддерживается
 FN(StartDocA) { ENTER; return Ret(0); }
 FN(GdiFailZero) { ENTER; return Ret(0); }
@@ -1342,6 +1365,7 @@ const HostFunctionEntry kEntries[] = {
     E(GetDIBits, 28), E(SetDIBits, 28), E(CreateDIBitmap, 24), E(GetBitmapBits, 12), E(SetBitmapBits, 12),
     E(SetDIBitsToDevice, 48), E(StretchDIBits, 52), E(GetDIBColorTable, 16), E(SetDIBColorTable, 16),
     E(GetBitmapDimensionEx, 8),
+    E(TranslateCharsetInfo, 12),
     E(StartDocA, 8), {"GDI32.dll", "StartDocW", 8, CallConv::Stdcall, &StartDocA},
     {"GDI32.dll", "StartPage", 4, CallConv::Stdcall, &GdiFailZero}, {"GDI32.dll", "EndPage", 4, CallConv::Stdcall, &GdiFailZero},
     {"GDI32.dll", "EndDoc", 4, CallConv::Stdcall, &GdiFailZero}, {"GDI32.dll", "AbortDoc", 4, CallConv::Stdcall, &GdiFailZero},
