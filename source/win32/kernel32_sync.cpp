@@ -161,7 +161,7 @@ HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (it == Objects().end()) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
     it->second.signaled = true;
     if (rt::g_process)
-        rt::g_process->Scheduler().Signal(Arg(c,m,0),it->second.manualReset);
+        rt::g_process->Scheduler().Signal(Arg(c,m,0),true); // all contenders re-evaluate; only one consumes auto-reset
     return Ret(1);
 }
 HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -196,7 +196,7 @@ HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (--o.recursion==0) {
         o.ownerThread=0;
         o.signaled=true;
-        if(rt::g_process)rt::g_process->Scheduler().Signal(handle,false);
+        if(rt::g_process)rt::g_process->Scheduler().Signal(handle,true);
     }
     return Ret(1);
 }
@@ -230,8 +230,9 @@ HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
     }
     o.count+=amount;
     if(rt::g_process) {
-        for(int32_t i=0;i<amount;++i)
-            if(rt::g_process->Scheduler().Signal(handle,false)==0) break;
+        // Wake all candidates, including partial wait-all contenders.
+        // Actual semaphore tokens are acquired in guest scheduling order.
+        rt::g_process->Scheduler().Signal(handle,true);
     }
     return Ret(1);
 }
