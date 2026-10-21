@@ -264,6 +264,10 @@ int main(int argc, char** argv) {
         bool guestFailure=false;
         for (unsigned quantum=0;quantum<20 && (first->IsRunnable() || second->IsRunnable());++quantum) {
             auto result=proc.Scheduler().RunQuantum([&](rt::GuestThread& t) -> bool {
+                if (proc.CurrentThreadId()!=t.id || proc.CurrentTebAddress()!=t.teb) {
+                    guestFailure=true;
+                    return false;
+                }
                 cpu::Interpreter interpreter(mem,t.teb,t.teb);
                 cpu::StepResult step=interpreter.Step(t.cpu);
                 if (&t==first) ++stepsFirst;
