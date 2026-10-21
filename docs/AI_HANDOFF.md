@@ -95,3 +95,10 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `de3fffb` extends x86 `gui_seh.c` with `INT3`, `ExceptionContinueSearch`, `ExceptionContinueExecution`, and `CONTEXT.Eip += 1` continuation.
 - **CI WARNING:** GitHub REST Actions runs API still displayed latest run for `2c9a1fa` despite newer commits being visible in branch history. No successful CI evidence for `de3fffb` yet; do NOT recommend downloading its NRO as verified until CI executes.
 - Remaining work: investigate why Actions is not triggering after newer GitHub Contents API commits, compile/test `de3fffb` when available; implement x86 unwind, nested/collided exception semantics, unified per-thread exception state, then thread scheduler.
+
+## 2026-10-21 targeted x86 SEH unwind implementation
+- Hardware-confirmed baseline Paint Open/Save: `2c9a1fa` (green CI `39622736600`). Preserve that NRO.
+- New branch commits `c65d19e`, `5e546d3`, `4d81c42`, `10096b5` add **target-frame subset of RtlUnwind**, with KERNEL32 export, termination handler calls receiving EXCEPTION_UNWINDING, validated SEH chain walk, FS:[0] removal, TargetIp continuation and EAX return value. `tests/guest/gui_unwind.c` checks it through dynamically resolved API.
+- **LIMITATIONS:** No exit unwind (TargetFrame=null), collided/nested unwind, stack transfer into unrelated frame, general unwind CPU context, full Windows exception semantics. On unsupported paths fail visibly rather than silently return. No claims of full SEH yet.
+- Automated GitHub Actions continued to show runs on older commit `de3fffb` when this change was made; no new run for `10096b5` yet. Do not claim new code passed CI before seeing a run with matching SHA. GitHub Contents API commits may not automatically trigger Actions under token-authenticated pushes.
+- Next: run host `gui_unwind` and `gui_seh` on exact branch commit, fix any real CI failures, then extend to exit/nested/collided unwind and thread-local SEH.
