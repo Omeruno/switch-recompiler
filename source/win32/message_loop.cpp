@@ -1,6 +1,7 @@
 #include "message_loop.h"
 #include "host_functions.h" // TryHandleHostCall, HostCallOutcome
 #include "../cpu/interpreter.h"
+#include "../runtime/process.h"
 #include "../decoder/x86_decoder.h"
 #include <cstdio>
 
@@ -160,12 +161,27 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
         // без этой проверки Step() попытается читать память по адресу 0 и
         // упадёт с гораздо менее информативным сообщением об ошибке.
         if (cpu.eip == 0) {
+            // Preserve the *last executed instruction*, not the zero target.
+            // This is essential to distinguish a missing import from an
+            // invalid function pointer or a broken x86 indirect call.
+            cpu::g_lastKnownEip = lastEip;
+            cpu::g_fatalPreviousEip = lastEip;
+            cpu::g_fatalStackPointer = cpu.ESP();
+            cpu::g_fatalModule[0] = 0;
+            cpu::g_fatalModuleOffset = 0;
+            if (rt::g_process) {
+                if (rt::Module* mod = rt::g_process->FindByAddress(lastEip)) {
+                    std::snprintf(cpu::g_fatalModule, sizeof(cpu::g_fatalModule),
+                                  "%s", mod->name.c_str());
+                    cpu::g_fatalModuleOffset = lastEip - mod->base;
+                }
+            }
             if (cpu::g_consoleAvailable) {
                 std::printf("[DEBUG] Вложенный вызов: последняя исполненная инструкция была на 0x%x\n", lastEip);
             }
             cpu::FatalError(
-                "Внутри вложенного вызова (WndProc и т.п.) гостевой код "
-                "попытался вызвать ещё не реализованный импорт (адрес 0)");
+                "Внутри вложенного вызова гостевой код перешёл на адрес 0 "
+                "(причина пока неизвестна: импорт, указатель или состояние CPU)");
         }
 
         HostCallOutcome outcome;
