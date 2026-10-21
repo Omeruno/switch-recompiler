@@ -3,11 +3,14 @@
 #include "seh_dispatch.h"
 #include "seh_abi.h"
 #include "message_loop.h"
+#include <cstring>
+#include <cmath>
+#include <limits>
 
 namespace win32 {
 namespace seh {
 namespace {
-constexpr uint32_t kContextFlags = 0x10007u; // CONTEXT_i386 | CONTROL | INTEGER | SEGMENTS
+constexpr uint32_t kContextFlags = 0x1002Fu; // x86 CONTROL | INTEGER | SEGMENTS | FLOATING_POINT | EXTENDED_REGISTERS
 constexpr uint32_t kContextSize = 716;
 constexpr uint32_t kMaxChainDepth = 64;
 
@@ -38,6 +41,96 @@ constexpr uint32_t kGs=140,kFs=144,kEs=148,kDs=152;
 constexpr uint32_t kEdi=156,kEsi=160,kEbx=164,kEdx=168,kEcx=172,kEax=176;
 constexpr uint32_t kEbp=180,kEip=184,kCs=188,kEflags=192,kEsp=196,kSs=200;
 
+
+// CONTEXT32: FLOATING_SAVE_AREA at +28, ExtendedRegisters (FXSAVE-like)
+// at +204, 512 bytes. Our interpreter stores x87 numbers as double, so
+// its 80-bit image is converted at the ABI boundary (53-bit precision).
+constexpr uint32_t kFloat=28, kExtended=204;
+constexpr uint32_t kFxSt=32, kFxXmm=160;
+uint64_t ReadU64(cpu::IGuestMemory& m,uint32_t at) {
+    return uint64_t(m.Read32(at)) | (uint64_t(m.Read32(at+4))<<32);
+}
+void WriteU64(cpu::IGuestMemory& m,uint32_t at,uint64_t value) {
+    m.Write32(at,static_cast<uint32_t>(value));
+    m.Write32(at+4,static_cast<uint32_t>(value>>32));
+}
+void EncodeExt80(cpu::IGuestMemory& m,uint32_t at,double value) {
+    uint64_t raw=0;
+    std::memcpy(&raw,&value,8);
+    const uint64_t sign=raw>>63, frac=raw&((1ull<<52)-1);
+    const unsigned exp=static_cast<unsigned>((raw>>52)&0x7ff);
+    uint64_t mant=0; uint16_t exponent=0;
+    if(exp==0x7ff) {
+        exponent=0x7fff; mant=(1ull<<63)|(frac<<11);
+    } else if(exp) {
+        exponent=static_cast<uint16_t>(int(exp)-1023+16383);
+        mant=((1ull<<52)|frac)<<11;
+    } else if(frac) {
+        mant=frac<<11;
+        int e=16383-1022;
+        while(!(mant&(1ull<<63))) { mant<<=1; --e; }
+        exponent=static_cast<uint16_t>(e);
+    }
+    WriteU64(m,at,mant);
+    m.Write16(at+8,static_cast<uint16_t>(exponent|(sign<<15)));
+}
+double DecodeExt80(cpu::IGuestMemory& m,uint32_t at) {
+    uint64_t mant=ReadU64(m,at);
+    uint16_t extExp=m.Read16(at+8);
+    bool negative=(extExp&0x8000)!=0;
+    int exp=extExp&0x7fff;
+    double result=0;
+    if(exp==0x7fff)
+        result=(mant&0x7fffffffffffffffull)?std::nan(""):std::numeric_limits<double>::infinity();
+    else if(mant)
+        result=std::ldexp(static_cast<double>(mant), (exp?exp:1)-16383-63);
+    return negative?-result:result;
+}
+void SaveFloating(cpu::IGuestMemory& m,uint32_t dst,const cpu::CpuState& c) {
+    const uint32_t fa=dst+kFloat, fx=dst+kExtended;
+    m.Write32(fa+0,c.fpuControl);
+    m.Write32(fa+4,c.GetFpuStatusWord());
+    m.Write32(fa+8,c.fpuTag);
+    m.Write32(fa+12,c.fpuLastIp);
+    m.Write32(fa+20,c.fpuLastDp);
+    m.Write32(fx+0,uint32_t(c.fpuControl)|(uint32_t(c.GetFpuStatusWord())<<16));
+    uint8_t ftw=0;
+    for(unsigned i=0;i<8;++i) if(((c.fpuTag>>(2*i))&3)!=3)ftw|=uint8_t(1u<<i);
+    m.Write32(fx+4,uint32_t(ftw)|(uint32_t(c.fpuLastOpcode)<<16));
+    m.Write32(fx+8,c.fpuLastIp);
+    m.Write32(fx+16,c.fpuLastDp);
+    m.Write32(fx+24,c.mxcsr);
+    m.Write32(fx+28,0x0000ffffu); // MXCSR_MASK
+    for(unsigned i=0;i<8;++i) {
+        unsigned physical=(c.fpuTop+i)&7u;
+        EncodeExt80(m,fa+28+i*10,c.st[physical]);
+        EncodeExt80(m,fx+kFxSt+i*16,c.st[physical]);
+        for(unsigned j=0;j<16;++j)
+            m.Write8(fx+kFxXmm+i*16+j,c.xmm[i].b[j]);
+    }
+}
+void RestoreFloating(cpu::IGuestMemory& m,uint32_t src,cpu::CpuState& c) {
+    uint32_t flags=m.Read32(src);
+    if(flags&0x8u) {
+        const uint32_t fa=src+kFloat;
+        c.fpuControl=static_cast<uint16_t>(m.Read32(fa));
+        c.fpuStatus=static_cast<uint16_t>(m.Read32(fa+4));
+        c.fpuTop=static_cast<uint8_t>((c.fpuStatus>>11)&7);
+        c.fpuTag=static_cast<uint16_t>(m.Read32(fa+8));
+        c.fpuLastIp=m.Read32(fa+12);
+        c.fpuLastDp=m.Read32(fa+20);
+        for(unsigned i=0;i<8;++i)
+            c.st[(c.fpuTop+i)&7u]=DecodeExt80(m,fa+28+i*10);
+    }
+    if(flags&0x20u) {
+        const uint32_t fx=src+kExtended;
+        c.mxcsr=m.Read32(fx+24)&0x0000ffffu;
+        for(unsigned i=0;i<8;++i)
+            for(unsigned j=0;j<16;++j)
+                c.xmm[i].b[j]=m.Read8(fx+kFxXmm+i*16+j);
+    }
+}
+
 void SaveContext(cpu::IGuestMemory& m, uint32_t dst, const cpu::CpuState& c) {
     for(uint32_t i=0;i<kContextSize;i+=4)m.Write32(dst+i,0);
     m.Write32(dst,kContextFlags);
@@ -55,8 +148,9 @@ void SaveContext(cpu::IGuestMemory& m, uint32_t dst, const cpu::CpuState& c) {
     m.Write32(dst+kEax,c.Get(cpu::Reg32::EAX));
     m.Write32(dst+kEbp,c.Get(cpu::Reg32::EBP));
     m.Write32(dst+kEip,c.eip);
-    m.Write32(dst+kEflags,c.eflags);
+    m.Write32(dst+kEflags,c.GetEflags());
     m.Write32(dst+kEsp,c.Get(cpu::Reg32::ESP));
+    SaveFloating(m,dst,c);
 }
 
 void RestoreContext(cpu::IGuestMemory& m, uint32_t src, cpu::CpuState& c) {
@@ -74,9 +168,10 @@ void RestoreContext(cpu::IGuestMemory& m, uint32_t src, cpu::CpuState& c) {
     c.Get(cpu::Reg32::EAX)=m.Read32(src+kEax);
     c.Get(cpu::Reg32::EBP)=m.Read32(src+kEbp);
     c.eip=m.Read32(src+kEip);
-    c.eflags=m.Read32(src+kEflags);
+    c.SetEflags(m.Read32(src+kEflags));
     c.Get(cpu::Reg32::ESP)=m.Read32(src+kEsp);
     c.lazyOp=cpu::LazyOp::None;
+    RestoreFloating(m,src,c);
 }
 } // namespace
 
