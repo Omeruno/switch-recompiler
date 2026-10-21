@@ -65,6 +65,21 @@ int main(void) {
     if (!SetEvent(original) || WaitForSingleObject(original,0)!=WAIT_OBJECT_0)
         return 19;
     if (!CloseHandle(original)) return 20;
+    /* Supported file HANDLE copies have independent ownership. */
+    HANDLE file=CreateFileA("dup_handle_test.tmp",GENERIC_READ|GENERIC_WRITE,
+                            0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (file==INVALID_HANDLE_VALUE) return 21;
+    HANDLE fileCopy=NULL;
+    if (!DuplicateHandle(GetCurrentProcess(),file,GetCurrentProcess(),
+                         &fileCopy,0,FALSE,DUPLICATE_SAME_ACCESS) || !fileCopy)
+        return 22;
+    if (!CloseHandle(file)) return 23;
+    DWORD wrote=0;
+    if (!WriteFile(fileCopy,"OK",2,&wrote,NULL) || wrote!=2) {
+        puts("FILE_DUPLICATE_DID_NOT_SURVIVE_SOURCE_CLOSE");
+        return 24;
+    }
+    if (!CloseHandle(fileCopy) || !DeleteFileA("dup_handle_test.tmp")) return 25;
     puts("PASSED: wait-all deadline, auto-reset atomicity and close wake");
     return 0;
 }
