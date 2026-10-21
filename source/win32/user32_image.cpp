@@ -57,6 +57,7 @@ struct Dib {
     int pitch = 0;
     uint32_t masks[3] = {0, 0, 0};
     bool valid = false;
+    std::vector<uint8_t> unpacked; // пиксели, распакованные из RLE
 
     uint32_t Pixel(int x, int y) const { // 0x00RRGGBB, y сверху
         int row = topDown ? y : h - 1 - y;
@@ -82,6 +83,43 @@ struct Dib {
     }
 };
 
+// Распаковка BI_RLE8 (bpp 8) и BI_RLE4 (bpp 4) в обычные строки снизу вверх.
+// Пропущенные (смещением) пиксели остаются с индексом 0.
+void UnpackRle(const uint8_t* src, size_t n, int w, int h, int bpp, int pitch, std::vector<uint8_t>& out) {
+    out.assign(static_cast<size_t>(pitch) * h, 0);
+    int x = 0, y = 0;
+    auto put = [&](int idx) {
+        if (x < w && y < h) {
+            uint8_t* row = out.data() + static_cast<size_t>(y) * pitch;
+            if (bpp == 8) row[x] = static_cast<uint8_t>(idx);
+            else row[x >> 1] |= static_cast<uint8_t>((idx & 15) << ((x & 1) ? 0 : 4));
+        }
+        ++x;
+    };
+    size_t i = 0;
+    while (i + 1 < n && y < h) {
+        uint8_t count = src[i], value = src[i + 1];
+        i += 2;
+        if (count) {
+            for (int k = 0; k < count; ++k) put(bpp == 8 ? value : ((k & 1) ? value & 15 : value >> 4));
+            continue;
+        }
+        if (value == 0) { x = 0; ++y; }          // конец строки
+        else if (value == 1) break;              // конец картинки
+        else if (value == 2) {                   // смещение
+            if (i + 1 >= n) break;
+            x += src[i];
+            y += src[i + 1];
+            i += 2;
+        } else {                                 // value пикселей как есть
+            size_t bytes = bpp == 8 ? value : (value + 1u) / 2;
+            for (int k = 0; k < value && i + (bpp == 8 ? k : k / 2) < n; ++k)
+                put(bpp == 8 ? src[i + k] : ((k & 1) ? src[i + k / 2] & 15 : src[i + k / 2] >> 4));
+            i += (bytes + 1) & ~static_cast<size_t>(1); // выравнивание на слово
+        }
+    }
+}
+
 bool ParseDib(const uint8_t* p, size_t size, Dib& d, int heightOverride = 0) {
     if (size < 12) return false;
     uint32_t hs = R32(p);
@@ -99,7 +137,9 @@ bool ParseDib(const uint8_t* p, size_t size, Dib& d, int heightOverride = 0) {
     }
     if (d.h < 0) { d.topDown = true; d.h = -d.h; }
     if (heightOverride) d.h = heightOverride;
-    if (d.compression != 0 && d.compression != 3) return false;
+    bool rle = (d.compression == 1 && d.bpp == 8) || (d.compression == 2 && d.bpp == 4);
+    if (d.compression != 0 && d.compression != 3 && !rle) return false;
+    if (rle && d.topDown) return false; // RLE бывает только снизу вверх
     size_t off = hs;
     if (d.compression == 3) {
         if (off + 12 > size) return false;
@@ -114,6 +154,14 @@ bool ParseDib(const uint8_t* p, size_t size, Dib& d, int heightOverride = 0) {
             d.palette.push_back(p[off] | (p[off + 1] << 8) | (p[off + 2] << 16));
     }
     d.pitch = ui::Surface::DibPitch(d.w, d.bpp);
+    if (rle) {
+        if (d.w <= 0 || d.h <= 0 || off >= size) return false;
+        UnpackRle(p + off, size - off, d.w, d.h, d.bpp, d.pitch, d.unpacked);
+        d.compression = 0;
+        d.bits = d.unpacked.data();
+        d.valid = true;
+        return true;
+    }
     if (off + static_cast<size_t>(d.pitch) * d.h > size) return false;
     d.bits = p + off;
     d.valid = d.w > 0 && d.h > 0;
