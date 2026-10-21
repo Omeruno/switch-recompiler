@@ -4,11 +4,16 @@
 #include <cstdint>
 #include "../cpu/cpu_state.h"
 #include "../cpu/guest_memory.h"
+#include "../cpu/interpreter.h"
 
 namespace win32 {
 namespace seh {
 
 enum class DispatchResult { Handled, Unhandled, InvalidChain, Noncontinuable };
+
+// Shared entry point for faults raised by the interpreter (not just KERNEL32).
+DispatchResult DispatchCpuFault(cpu::CpuState& state, cpu::IGuestMemory& mem,
+                                uint32_t teb, const cpu::CpuException& fault);
 
 DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
                         uint32_t teb, uint32_t code, uint32_t flags,
