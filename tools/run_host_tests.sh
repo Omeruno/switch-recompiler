@@ -61,6 +61,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$out/guest"
+    # Execute IA-32 instructions in alternating worker quanta; FS must
+    # resolve the currently selected worker TEB, not the main TEB.
+    if (cd "$out/guest" && "$out/winrun" --probe-x86-threads "$out/guest/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then
+        tail -n 1 "$out/x86_threads.log"
+    else
+        echo "   x86 worker execution: FAILED"
+        tail -n 20 "$out/x86_threads.log"
+        failed=1
+    fi
     # Verify two separately allocated guest TEB/TLS/stacks before execution.
     if (cd "$out/guest" && "$out/winrun" --probe-threads "$out/guest/gui_seh.exe" > "$out/thread_probe.log" 2>&1); then
         tail -n 1 "$out/thread_probe.log"
