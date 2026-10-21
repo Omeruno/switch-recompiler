@@ -241,6 +241,28 @@ int main(void) {
     CHECK(timerTicks == 3 && pinged == 2 && destroyed == 1);
     CHECK(!IsWindow(mainWnd) && !IsWindow(childWnd));
 
+    /* Цветное -> монохромное: белыми становятся пиксели цвета фона источника */
+    {
+        HDC colorDc = CreateCompatibleDC(NULL), monoDc = CreateCompatibleDC(NULL);
+        HDC screen = GetDC(NULL);
+        HBITMAP color = CreateCompatibleBitmap(screen, 4, 1), mono = CreateBitmap(4, 1, 1, 1, NULL);
+        ReleaseDC(NULL, screen);
+        SelectObject(colorDc, color);
+        SelectObject(monoDc, mono);
+        SetPixel(colorDc, 0, 0, RGB(255, 0, 0));
+        SetPixel(colorDc, 1, 0, RGB(255, 255, 255));
+        SetPixel(colorDc, 2, 0, RGB(255, 0, 0));
+        SetPixel(colorDc, 3, 0, RGB(0, 0, 0));
+        SetBkColor(colorDc, RGB(255, 0, 0));
+        BitBlt(monoDc, 0, 0, 4, 1, colorDc, 0, 0, SRCCOPY);
+        CHECK(GetPixel(monoDc, 0, 0) == RGB(255, 255, 255) && GetPixel(monoDc, 2, 0) == RGB(255, 255, 255));
+        CHECK(GetPixel(monoDc, 1, 0) == RGB(0, 0, 0) && GetPixel(monoDc, 3, 0) == RGB(0, 0, 0));
+        DeleteDC(colorDc);
+        DeleteDC(monoDc);
+        DeleteObject(color);
+        DeleteObject(mono);
+    }
+
     printf(failures ? "gui_basic: FAILED (%d)\n" : "gui_basic: PASSED\n", failures);
     return failures ? 1 : 0;
 }

@@ -810,7 +810,9 @@ bool Gdi::PatBlt(uint32_t hdc, int x, int y, int w, int h, uint32_t rop) {
 }
 
 bool Gdi::BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src, bool srcMono, int sx, int sy, int sw, int sh,
-                   uint32_t rop, bool useKey, uint32_t key) {
+                   uint32_t rop, bool useKey, uint32_t key, uint32_t srcBkRgb) {
+    // srcBkRgb — цвет фона контекста-источника: при копировании цветного в
+    // монохромное пиксели этого цвета становятся белыми, остальные чёрными
     Ctx c;
     if (!MakeCtx(dst, c)) return Dc(dst) != nullptr;
     uint32_t code = (rop >> 16) & 0xFF;
@@ -865,6 +867,7 @@ bool Gdi::BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src,
                     if (srcMono && !dstMono) s = src->GetRaw(su, sv) ? bkRgb : textRgb;
                     else s = src->Get(su, sv);
                     if (useKey && s == key) continue;
+                    if (dstMono && !srcMono && srcBkRgb != 0xFFFFFFFFu) s = s == srcBkRgb ? 0xFFFFFF : 0;
                 }
                 uint32_t p = patIsSolid ? solidPat : BrushColorAt(c, brush, xx, yy);
                 uint32_t out;
@@ -892,7 +895,8 @@ bool Gdi::StretchBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int
     Region sclip;
     if (!Target(src, ss, ox, oy, sclip)) return false;
     Point a = ToDevice(*sd, sx, sy), b = ToDevice(*sd, sx + sw, sy + sh);
-    return BlitCore(dst, x, y, w, h, ss, ss->bpp == 1, a.x + ox, a.y + oy, b.x - a.x, b.y - a.y, rop, false, 0);
+    return BlitCore(dst, x, y, w, h, ss, ss->bpp == 1, a.x + ox, a.y + oy, b.x - a.x, b.y - a.y, rop, false, 0,
+                    ColorrefToRgb(sd->st.bkColor & 0xFFFFFF));
 }
 
 bool Gdi::TransparentBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int sx, int sy, int sw, int sh, uint32_t key) {

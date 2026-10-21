@@ -228,7 +228,7 @@ private:
     void EllipsePoints(int l, int t, int r, int b, std::vector<Point>& out);
     uint32_t BrushColorAt(const Ctx& c, const BrushObj* b, int x, int y) const;
     bool BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src, bool srcMono, int sx, int sy, int sw, int sh,
-                  uint32_t rop, bool useKey, uint32_t key);
+                  uint32_t rop, bool useKey, uint32_t key, uint32_t srcBkRgb = 0xFFFFFFFFu);
 
     std::vector<Slot> slots_;
     std::vector<uint32_t> free_;
