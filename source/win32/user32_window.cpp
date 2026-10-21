@@ -366,6 +366,7 @@ void InvalidateClient(Window* w, const Region& rgn, bool erase, bool forceChildr
     Region r = rgn;
     r.IntersectRect(Rect(0, 0, w->client.Width(), w->client.Height()));
     if (r.Empty()) return;
+    if (!NeedsPaint(w)) w->paintAnnounced=false;
     w->update.Union(r);
     if (erase) w->erase = true;
     if (!forceChildren && (w->style & WS_CLIPCHILDREN)) return;
@@ -1021,7 +1022,7 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
             SendMsg(hwnd, WM_ERASEBKGND, hdc, 0);
             ui::g_gdi.DeleteDc(hdc);
         }
-        if ((w = Win(hwnd))) { w->update.Clear(); w->erase = false; w->internalPaint = false; }
+        if ((w = Win(hwnd))) { w->update.Clear(); w->paintAnnounced=false; w->erase = false; w->internalPaint = false; }
         return 0;
     }
     case WM_CLOSE:

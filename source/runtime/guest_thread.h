@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <utility>
+#include <deque>
 #include "../cpu/cpu_state.h"
 
 namespace rt {
@@ -24,6 +25,9 @@ struct GuestThread {
     uint32_t requestedExitCode = 0;
     bool detaching = false;
     bool detachAborted = false;
+    struct UserApc { uint32_t routine=0, data=0; };
+    std::deque<UserApc> pendingApcs;
+    bool alertableWait = false;
     uint32_t exitCode = 259; // STILL_ACTIVE
     uint32_t suspendCount = 0;
     uint32_t waitObject = 0;

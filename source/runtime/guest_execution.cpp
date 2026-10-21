@@ -1,6 +1,7 @@
 #include "guest_execution.h"
 #include "../win32/host_functions.h"
 #include "../win32/user32.h"
+#include "../win32/user_apc.h"
 #include <cerrno>
 #include <new>
 
@@ -57,6 +58,8 @@ void GuestExecution::Run(void* arg) {
         thread.needsThreadAttach=false;
         start=executor.process_.NotifyThread(thread,2);
     }
+    // APCs queued before a suspended thread starts precede its user entry.
+    if (start) win32::DispatchUserApcs(thread.cpu,executor.process_.Memory());
     if (start) while (executor.CheckCurrent())
         if (!executor.step_(thread)) { executor.stopped_=true; break; }
     // ExitThread first unwinds native WndProc/SEH frames. Run detach on a

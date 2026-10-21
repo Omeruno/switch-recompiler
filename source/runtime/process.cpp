@@ -133,6 +133,8 @@ void Process::ReleaseLoaderLock() {
     }
 }
 void Process::RequestThreadExit(GuestThread& thread, uint32_t code) {
+    thread.pendingApcs.clear();
+    thread.alertableWait=false;
     if (!GuestExecution::Active()) { scheduler_.Exit(thread,code); return; }
     thread.exitRequested=true;
     thread.requestedExitCode=code;

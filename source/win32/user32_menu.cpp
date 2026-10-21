@@ -483,7 +483,7 @@ uint32_t MenuLoop() {
     while (!g_menuDone && !g_guestExitRequested) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) continue;
-        if (msg.message == WM_QUIT) { Q().quit = true; Q().quitCode = msg.wParam; break; }
+        if (msg.message == WM_QUIT) { PostQuit(msg.wParam); break; }
         bool mouse = (msg.message >= WM_MOUSEMOVE && msg.message <= WM_MBUTTONDBLCLK) ||
                      (msg.message >= WM_NCMOUSEMOVE && msg.message <= 0x00A9);
         if (mouse) {

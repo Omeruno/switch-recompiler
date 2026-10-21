@@ -59,7 +59,8 @@
   Завершённый нативный стек освобождается после возврата на стек scheduler.
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
-  Полной изоляции input/focus/hooks и реализации MsgWait/APC пока нет.
+  MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.
+  Полной изоляции input/focus/hooks пока нет.
 
 ## Процесс, потоки и HANDLE
 
@@ -116,7 +117,7 @@ GuestExecution разворачивает его оставшиеся натив
 
 Ограничения: нет межпроцессного DuplicateHandle, enforcement access masks,
 наследования/security descriptors, именованного пространства NT-объектов,
-APC и MsgWait*. Нет DLL unload/refcounts, rollback отображений неудачной
+I/O completion APCs и waitable timers. Нет DLL unload/refcounts, rollback отображений неудачной
 загрузки, полноценного PROCESS_DETACH/ExitProcess shutdown и TerminateThread.
 Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
 блокирующие ожидания между гостевыми потоками из startup DllMain.
@@ -178,10 +179,27 @@ ABORTIFHUNG пока использует обычный deadline без отд�
 защита Window* при reentrancy, не универсальное решение lifetime всех GDI/hook
 объектов. Очереди завершённых потоков остаются как закрытые записи.
 
+MsgWaitForMultipleObjects/Ex и WaitMessage проверяют очередь вместе с объектами
+через общий preflight/consume слой KERNEL32. Wait-all проверяет весь набор и
+input до получения mutex/auto-event/semaphore; wait-any предпочитает младший
+готовый HANDLE. MsgWait не извлекает сообщения и не вызывает WndProc.
+Обычный режим ждёт нового input; MWMO_INPUTAVAILABLE видит и уже просмотренный.
+GetQueueStatus возвращает high-word available/low-word changed и сбрасывает
+запрошенные change bits. Поддержаны posted/quit, sent, key/mouse, timer/paint;
+это не полная история Windows raw/system input. Во время MsgWait frontend
+опрашивается с отдачей guest fiber через 1 ms, без блокировки других CPU.
+
+QueueUserAPC хранит FIFO в GuestThread и адресно прерывает alertable wait,
+не сигналя сам объект. SleepEx, WaitForSingleObjectEx/MultipleObjectsEx и
+MsgWaitEx возвращают WAIT_IO_COMPLETION после доставки. Callback получает
+локальный CpuState с TEB/TLS получателя; обычные waits внутри APC не становятся
+alertable автоматически. Явный вложенный alertable wait допускает рекурсивную
+доставку. APC до старта выполняются после DLL_THREAD_ATTACH до user entry;
+при завершении pending очередь удаляется. I/O completion APCs, waitable timers
+и SignalObjectAndWait пока не реализованы.
+
 Focus/active/capture, async input, меню и hooks ещё имеют общие состояния;
-AttachThreadInput не реализован. GetQueueStatus пока не воспроизводит точную
-историю change bits. MsgWait* остаются частичными заглушками без настоящего
-объединённого ожидания HANDLE+queue; полных правил marshalling сообщений нет.
+AttachThreadInput и полные правила marshalling сообщений не реализованы.
 Старый v1 message loop остаётся отдельным compatibility path.
 На Switch новый путь Paint выбирается удержанием L; DLL должна лежать
 рядом с EXE. Проверка пользователя подтвердила Open/Save на базовой сборке
@@ -202,6 +220,6 @@ AttachThreadInput не реализован. GetQueueStatus пока не вос
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, MsgWait/APC и input ownership,
+полный process/DLL shutdown, HANDLE policies/named objects и input ownership,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

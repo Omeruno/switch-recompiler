@@ -113,6 +113,7 @@ struct Window {
     bool erase = false;         // нужен WM_ERASEBKGND
     bool ncDirty = false;       // нужна перерисовка рамки (WM_NCPAINT)
     bool internalPaint = false;
+    bool paintAnnounced = false;
     bool destroying = false;
     bool active = false;        // заголовок в активном виде
     bool redraw = true;         // WM_SETREDRAW
@@ -131,6 +132,7 @@ struct Msg {
 struct Timer {
     uint32_t hwnd = 0, id = 0, interval = 0, proc = 0;
     uint64_t due = 0; // мс по rt::Clock
+    bool announced = false;
 };
 
 struct SentMessage {
@@ -146,6 +148,7 @@ struct ThreadQueue {
     Msg lastMsg;
     bool quit=false, closed=false;
     uint32_t quitCode=0, nextTimerId=0x7FFE;
+    uint32_t changed=0;
     uint8_t keys[256]={};
 };
 
@@ -176,6 +179,11 @@ State& S();
 uint32_t CurrentGuiThread();
 ThreadQueue& Q();
 ThreadQueue& QueueFor(uint32_t threadId);
+uint32_t QueueStatusBits();
+void PostQuit(uint32_t code);
+void PollQueueEvents();
+uint32_t WaitForMessages(cpu::CpuState& state,cpu::IGuestMemory& memory,
+    uint32_t count,uint32_t array,uint32_t milliseconds,uint32_t mask,uint32_t flags);
 // Logical destruction is immediate; native frames may still retain Window*.
 class WindowCallScope {
 public:

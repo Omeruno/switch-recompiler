@@ -34,6 +34,9 @@ B4. Отделить HWND/очередь сообщений/таймеры от 
 - Единая таблица типизированных 32-битных HANDLE с refcounts: thread, file, event, mutex, semaphore.
 - WaitForSingleObject/MultipleObjects, finite/infinite timeout, auto/manual reset, WAIT_ABANDONED; guest wait освобождает квант, не блокирует render.
 - CriticalSection рекурсивность/владелец, Interlocked, таймеры и очередь сообщений.
+- MsgWaitForMultipleObjects/Ex объединяют HANDLE и очередь USER32 v2; wait-all не расходует объекты до готовности всего набора и input. Поддержаны новые/уже просмотренные сообщения, QS masks, MWMO_INPUTAVAILABLE.
+- QueueUserAPC и alertable SleepEx/WaitForSingleObjectEx/WaitForMultipleObjectsEx/MsgWaitEx выполняют callbacks на CPU/TEB/TLS получателя, включая очередь до старта и вложенные alertable waits.
+- Оценка готовности этапа: **~70%** по закрытым функциональным блокам, не по времени. До закрытия: named objects, access/inherit/protect HANDLE policies, дальнейшие пограничные проверки и приёмка на физической Switch. I/O completion APCs и waitable timers ещё отсутствуют.
 Критерий: producer/consumer guest, контеншн и тайм-ауты, отсутствие deadlock.
 
 ## Этап D — loader и системные Win32 API
@@ -77,7 +80,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 1. Проверить текущий HANDLE/lifecycle пакет: хостовые ABI-тесты, MinGW-гости, CPU oracle и Switch build; отдельно проверить Paint на железе.
 2. Saved native continuations для вложенных callbacks реализованы: взаимные ожидания WndProc/SEH, GetMessage от worker, busy-spin и ExitThread внутри callback покрыты тестами. Проверить ARM64 ABI под QEMU и реальный Switch; это не завершает все блокирующие host HLE пути.
 3. Реализованы освобождение stack/TEB/TLS, DLL_THREAD_ATTACH/DETACH и EXE/DLL TLS callbacks, recursive cooperative loader lock, отложенный старт CREATE_SUSPENDED и static TLS для существующих потоков при LoadLibrary. HANDLE сигналится после detach; метаданные сохраняются. Остались process/DLL shutdown, unload/refcounts/rollback, startup blocking waits и аппаратная регрессия.
-4. USER32 v2: очереди/таймеры/keyboard snapshot разделены, HWND принадлежит guest thread, cross-thread SendMessage/ReplyMessage/notify/timeout и teardown покрыты тестами. Далее — настоящее MsgWait HANDLE+queue, APC/alertable waits, input/focus/hooks ownership. Отдельно — named objects и access/inherit/protect HANDLE policies.
+4. USER32 v2: очереди/таймеры/keyboard snapshot разделены, HWND принадлежит guest thread, cross-thread sends/teardown и MsgWait HANDLE+queue реализованы. User APC/alertable waits добавлены; следующие задачи — named objects и access/inherit/protect HANDLE policies, затем input/focus/hooks ownership. Аппаратная регрессия остаётся отдельным gate.
 5. Ввести renderer-backend interface без переписывания эталонного CPU GDI. Desktop-shell и JIT — после соответствующих acceptance gates.
 
 Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.

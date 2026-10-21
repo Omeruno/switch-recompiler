@@ -693,7 +693,7 @@ HostCallOutcome PostThreadMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bo
     return Ret(1);
 }
 AW(PostThreadMessage)
-FN(PostQuitMessage) { ENTER; Q().quit = true; Q().quitCode = A(c, m, 0); return Ret(0); }
+FN(PostQuitMessage) { ENTER; PostQuit(A(c,m,0)); return Ret(0); }
 
 void WriteMsg(cpu::IGuestMemory& m, uint32_t p, const Msg& msg) {
     m.Write32(p, msg.hwnd);
@@ -746,44 +746,15 @@ HostCallOutcome PeekMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
 AW(PeekMessage)
 FN(WaitMessage) {
     ENTER;
-    Msg msg;
-    FetchMessage(msg, 0, 0, 0, false, true);
-    return Ret(1);
+    return Ret(WaitForMessages(c,m,0,0,0xffffffffu,0x4ff,0)!=0xffffffffu ? 1 : 0);
 }
 FN(MsgWaitForMultipleObjects) {
     ENTER;
-    // объектов ядра, которые сработали бы сами, у нас нет: ждём сообщения или таймаут
-    uint32_t timeout = A(c, m, 3);
-    Msg msg;
-    if (FetchMessage(msg, 0, 0, 0, false, false)) return Ret(A(c, m, 0));
-    if (timeout == 0) return Ret(0x102); // WAIT_TIMEOUT
-    if (timeout != 0xFFFFFFFFu) {
-        uint32_t end = NowMs() + timeout;
-        while (NowMs() < end) {
-            if (FetchMessage(msg, 0, 0, 0, false, false)) return Ret(A(c, m, 0));
-            rt::Clock::Sleep(std::min<uint32_t>(10, end - NowMs()));
-        }
-        return Ret(0x102);
-    }
-    FetchMessage(msg, 0, 0, 0, false, true);
-    return Ret(A(c, m, 0));
+    return Ret(WaitForMessages(c,m,A(c,m,0),A(c,m,1),A(c,m,3),A(c,m,4),A(c,m,2) ? 1u : 0u));
 }
 FN(MsgWaitForMultipleObjectsEx) {
     ENTER;
-    uint32_t timeout = A(c, m, 2);
-    Msg msg;
-    if (FetchMessage(msg, 0, 0, 0, false, false)) return Ret(A(c, m, 0));
-    if (timeout == 0) return Ret(0x102);
-    if (timeout != 0xFFFFFFFFu) {
-        uint32_t end = NowMs() + timeout;
-        while (NowMs() < end) {
-            if (FetchMessage(msg, 0, 0, 0, false, false)) return Ret(A(c, m, 0));
-            rt::Clock::Sleep(std::min<uint32_t>(10, end - NowMs()));
-        }
-        return Ret(0x102);
-    }
-    FetchMessage(msg, 0, 0, 0, false, true);
-    return Ret(A(c, m, 0));
+    return Ret(WaitForMessages(c,m,A(c,m,0),A(c,m,1),A(c,m,2),A(c,m,3),A(c,m,4)));
 }
 FN(TranslateMessage) { ENTER; return Ret(TranslateKey(ReadMsg(m, A(c, m, 0))) ? 1 : 0); }
 HostCallOutcome DispatchMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
@@ -800,13 +771,11 @@ FN(GetMessagePos) { ENTER; return Ret((static_cast<uint32_t>(Q().lastMsg.x) & 0x
 FN(GetMessageTime) { ENTER; return Ret(Q().lastMsg.time); }
 FN(GetQueueStatus) {
     ENTER;
-    uint32_t flags = 0;
-    if (!Q().sent.empty()) flags |= 0x40;
-    if (!Q().posted.empty()) flags |= 0x8;
-    for (const Msg& x : Q().input) flags |= (x.message >= WM_KEYDOWN && x.message <= WM_SYSCHAR) ? 1 : (x.message == WM_MOUSEMOVE ? 2 : 4);
-    for (const Timer& t : Q().timers) if (t.due <= NowMs()) flags |= 0x10;
-    uint32_t mask = A(c, m, 0);
-    return Ret(((flags & mask) << 16) | (flags & mask));
+    const uint32_t mask=A(c,m,0);
+    const uint32_t available=QueueStatusBits() & mask;
+    const uint32_t changed=Q().changed & mask;
+    Q().changed&=~mask;
+    return Ret((available<<16) | changed);
 }
 FN(GetInputState) { ENTER; return Ret(Q().input.empty() ? 0 : 1); }
 FN(InSendMessage) { ENTER; return Ret(SendMessageState() ? 1 : 0); }
@@ -834,7 +803,7 @@ FN(SetTimer) {
     if (!hwnd) id = queue.nextTimerId--;
     if (elapse < 10) elapse = 10;
     for (Timer& t : queue.timers)
-        if (t.hwnd == hwnd && t.id == id) { t.interval = elapse; t.proc = proc; t.due = NowMs() + elapse; return Ret(hwnd ? 1 : id); }
+        if (t.hwnd == hwnd && t.id == id) { t.interval = elapse; t.proc = proc; t.due = NowMs() + elapse; t.announced=false; return Ret(hwnd ? 1 : id); }
     Timer t;
     t.hwnd = hwnd;
     t.id = id;
@@ -867,7 +836,7 @@ FN(BeginPaint) {
     if (w->ncDirty) { SendMsg(hwnd, WM_NCPAINT, 1, 0); if (!(w = Win(hwnd))) return Ret(0); w->ncDirty = false; }
     Region upd = w->update;
     bool erase = w->erase;
-    w->update.Clear();
+    w->update.Clear(); w->paintAnnounced=false;
     w->erase = false;
     w->internalPaint = false;
     uint32_t hdc = ui::g_gdi.CreateDc(ui::DcKind::Window, hwnd, false);
@@ -942,7 +911,7 @@ FN(ValidateRect) {
     Window* w = Win(A(c, m, 0));
     if (!w) return Ret(0);
     if (A(c, m, 1)) w->update.SubtractRect(ReadRect(m, A(c, m, 1)));
-    else { w->update.Clear(); w->erase = false; }
+    else { w->update.Clear(); w->paintAnnounced=false; w->erase = false; }
     return Ret(1);
 }
 FN(ValidateRgn) {
@@ -950,7 +919,7 @@ FN(ValidateRgn) {
     Window* w = Win(A(c, m, 0));
     if (!w) return Ret(0);
     if (ui::RegionObj* r = ui::g_gdi.Rgn(A(c, m, 1))) w->update.Subtract(r->rgn);
-    else { w->update.Clear(); w->erase = false; }
+    else { w->update.Clear(); w->paintAnnounced=false; w->erase = false; }
     return Ret(1);
 }
 void UpdateNow(uint32_t hwnd, bool children) {
@@ -980,7 +949,7 @@ FN(RedrawWindow) {
         InvalidateClient(w, r, (flags & 0x4) != 0, (flags & 0x80) != 0);
         if (flags & 0x400) w->ncDirty = true; // RDW_FRAME
     }
-    if (flags & 0x2) w->internalPaint = true; // RDW_INTERNALPAINT
+    if (flags & 0x2) { w->internalPaint = true; w->paintAnnounced=false; } // RDW_INTERNALPAINT
     if (flags & 0x8) { w->update.Subtract(r); if (flags & 0x10) w->erase = false; } // RDW_VALIDATE
     if (flags & 0x100) UpdateNow(hwnd, (flags & 0x80) != 0); // RDW_UPDATENOW
     else if (flags & 0x200) { // RDW_ERASENOW

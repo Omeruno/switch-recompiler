@@ -67,6 +67,8 @@ void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
     if (!window || !window->threadId) return;
     auto& queue=QueueFor(window->threadId);
     if (queue.closed) return;
+    queue.changed |= (msg>=WM_KEYDOWN && msg<=WM_SYSCHAR) ? 1u :
+        ((msg==WM_MOUSEMOVE || msg==WM_NCMOUSEMOVE) ? 2u : 4u);
     // движения мыши сливаем: важна последняя позиция
     if ((msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE) && !queue.input.empty()) {
         Msg& last = queue.input.back();
@@ -187,7 +189,7 @@ bool PollPlatform(int timeoutMs) {
             break;
         case InputEvent::Quit:
             if (S().active) PostMsg(S().active, WM_CLOSE, 0, 0);
-            else { Q().quit = true; Q().quitCode = 0; }
+            else PostQuit(0);
             break;
         }
     }
@@ -214,6 +216,36 @@ void UpdateKeyState(const Msg& m) {
 uint32_t g_lastPollMs = 0;
 
 } // namespace
+
+void PostQuit(uint32_t code) {
+    auto& queue=Q();queue.quit=true;queue.quitCode=code;queue.changed|=0x108;
+}
+void PollQueueEvents() {
+    PollPlatform(0);
+    PresentIfNeeded(false);
+}
+uint32_t QueueStatusBits() {
+    auto& queue=Q();
+    uint32_t status=queue.posted.empty() && !queue.quit ? 0 : 0x108;
+    for (const auto& sent:queue.sent) if (!sent->completed) { status|=0x40;break; }
+    for (const Msg& input:queue.input)
+        status|=(input.message>=WM_KEYDOWN && input.message<=WM_SYSCHAR) ? 1u :
+            ((input.message==WM_MOUSEMOVE || input.message==WM_NCMOUSEMOVE) ? 2u : 4u);
+    const uint32_t now=NowMs();
+    for (auto& timer:queue.timers) if (timer.due<=now) {
+        status|=0x10;
+        if (!timer.announced) { queue.changed|=0x10;timer.announced=true; }
+    }
+    for (auto& item:S().windows) {
+        auto& window=*item.second;
+        if (window.threadId!=CurrentGuiThread()) continue;
+        const bool paint=IsVisibleChain(&window) && NeedsPaint(&window);
+        if (!paint) { window.paintAnnounced=false;continue; }
+        status|=0x20;
+        if (!window.paintAnnounced) { queue.changed|=0x20;window.paintAnnounced=true; }
+    }
+    return status;
+}
 
 void PresentIfNeeded(bool force) {
     State& s = S();
@@ -242,6 +274,8 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             g_lastPollMs = now;
             PollPlatform(0);
         }
+        QueueStatusBits(); // observe timer/paint transitions before marking input old
+        queue.changed=0;
         for (auto it = queue.posted.begin(); it != queue.posted.end(); ++it) {
             if (it->message!=WM_QUIT && !MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
             out = *it;
@@ -288,7 +322,7 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
                 out.wParam = t.id;
                 out.lParam = t.proc;
                 out.time = now;
-                if (remove) t.due = now + std::max<uint32_t>(t.interval, 10);
+                if (remove) { t.due = now + std::max<uint32_t>(t.interval, 10); t.announced=false; }
                 return true;
             }
         }
@@ -315,6 +349,7 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             if (cpu::g_consoleAvailable) std::printf("[USER32] ожидание без источников событий: WM_QUIT\n");
             queue.quit = true;
             queue.quitCode = 0;
+            queue.changed|=0x108;
         }
     }
 }
@@ -361,6 +396,7 @@ bool TranslateKey(const Msg& m) {
     c.message = m.message == WM_SYSKEYDOWN ? WM_SYSCHAR : WM_CHAR;
     c.wParam = ch;
     Q().posted.push_front(c);
+    Q().changed|=0x108;
     return true;
 }
 

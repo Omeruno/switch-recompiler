@@ -197,6 +197,19 @@ public:
         return true;
     }
 
+    // Interrupt just this thread's alertable wait; never signal its object.
+    void InterruptWait(GuestThread& thread) {
+        if (thread.status!=GuestThreadStatus::Waiting) return;
+        thread.status=GuestThreadStatus::Runnable;
+        thread.waitObject=0;
+        thread.waitHandles.clear();
+        thread.waitAll=false;
+        thread.waitDeadlineUs=thread.retryWaitDeadlineUs=0;
+        thread.retryWaitToken=thread.timedOutHandle=0;
+        thread.sleeping=false;
+        thread.sleepDeadlineUs=0;
+    }
+
     size_t Signal(uint32_t objectHandle, bool wakeAll) {
         size_t count = 0;
         for (GuestThread* thread : threads_) {
@@ -235,6 +248,8 @@ public:
         thread.sleepDeadlineUs = 0;
         thread.yieldRequested = false;
         thread.suspendCount = 0;
+        thread.pendingApcs.clear();
+        thread.alertableWait=false;
         if (onExit_) onExit_(thread);
     }
 

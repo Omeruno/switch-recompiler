@@ -187,7 +187,7 @@ void TrackBar(uint32_t hwnd, int which, int x, int y) {
     for (;;) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true) || g_guestExitRequested) break;
-        if (msg.message == WM_QUIT) { Q().quit = true; Q().quitCode = msg.wParam; break; }
+        if (msg.message == WM_QUIT) { PostQuit(msg.wParam); break; }
         bool isMouse = (msg.message >= WM_MOUSEMOVE && msg.message <= WM_MBUTTONDBLCLK) || (msg.message >= WM_NCMOUSEMOVE && msg.message <= 0xA9);
         if (!isMouse) { if (msg.hwnd) SendMsg(msg.hwnd, msg.message, msg.wParam, msg.lParam); continue; }
         if (!Win(hwnd)) return;

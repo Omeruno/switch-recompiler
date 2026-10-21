@@ -36,6 +36,7 @@ bool PostToThread(uint32_t id,uint32_t hwnd,uint32_t msg,uint32_t wp,uint32_t lp
     Msg message;message.hwnd=hwnd;message.message=msg;message.wParam=wp;message.lParam=lp;
     message.time=NowMs();message.x=S().cursorX;message.y=S().cursorY;
     it->second.posted.push_back(message);
+    it->second.changed|=0x108;
     return true;
 }
 uint32_t SendMessageState() {
@@ -100,6 +101,7 @@ bool SendMsgTimeout(uint32_t hwnd,uint32_t msg,uint32_t wp,uint32_t lp,bool unic
     request->sender=sender;request->receiver=target;request->unicode=unicode;request->notify=notify;
     request->msg.hwnd=hwnd;request->msg.message=msg;request->msg.wParam=wp;request->msg.lParam=lp;
     destination.sent.push_back(request);
+    destination.changed|=0x40;
     rt::g_process->Scheduler().Signal(sendWaitToken,true);
     if (notify) return true;
     const bool finite=timeout!=0xffffffffu;

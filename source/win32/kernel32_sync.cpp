@@ -6,6 +6,9 @@
 #include <map>
 
 #include "hle_util.h"
+#include "kernel_wait.h"
+#include "user_apc.h"
+#include "../runtime/guest_execution.h"
 #include "../runtime/clock.h"
 #include "../runtime/process.h"
 
@@ -307,6 +310,7 @@ HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) 
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
 }
 HostCallOutcome K32_WaitForSingleObjectEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    if (Arg(c,m,2)) return Ret(AlertableObjectWait(c,m,{Arg(c,m,0)},false,Arg(c,m,1)));
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
 }
 // Preflight all objects before any auto-reset/token/ownership mutation.
@@ -316,31 +320,8 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t n = Arg(c,m,0), arr = Arg(c,m,1);
     const bool all = Arg(c,m,2) != 0;
     const uint32_t ms = Arg(c,m,3);
-    if (n == 0 || n > 64 || !arr || !m.IsRangeMapped(arr,n*4)) {
-        SetLastError(m, ERROR_INVALID_PARAMETER);
-        return Ret(kWaitFailed);
-    }
     std::vector<uint32_t> handles;
-    handles.reserve(n);
-    for (uint32_t i=0;i<n;++i) {
-        const uint32_t h=m.Read32(arr+i*4);
-        if (!ValidWaitHandle(h)) {
-            SetLastError(m, ERROR_INVALID_HANDLE);
-            return Ret(kWaitFailed);
-        }
-        for (uint32_t previous : handles) {
-            auto object=rt::Handles().Get(h);
-            auto old=rt::Handles().Get(previous);
-            const auto* thread=HleThreadFromHandle(h);
-            const auto* oldThread=HleThreadFromHandle(previous);
-            if (h==previous || (all && ((object && object==old) ||
-                (thread && thread==oldThread)))) {
-                SetLastError(m,ERROR_INVALID_PARAMETER);
-                return Ret(kWaitFailed);
-            }
-        }
-        handles.push_back(h);
-    }
+    if (!ReadWaitObjects(m,n,arr,all,64,false,handles)) return Ret(kWaitFailed);
     rt::GuestThread* current=rt::g_process ?
         rt::g_process->Scheduler().Current() : nullptr;
     const uint32_t token=handles.front();
@@ -366,22 +347,8 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
         }
         return Ret(result);
     };
-    if (all) {
-        bool ready=true;
-        for (uint32_t h:handles) if (!WaitHandleReady(h)) { ready=false; break; }
-        if (ready) {
-            uint32_t result=0;
-            for (uint32_t i=0;i<n;++i)
-                if (AcquireWaitHandle(handles[i])==kWaitAbandoned && !result)
-                    result=kWaitAbandoned+i;
-            return finish(result);
-        }
-    } else {
-        for (uint32_t i=0;i<n;++i)
-            if (WaitHandleReady(handles[i])) {
-                return finish(AcquireWaitHandle(handles[i])+i);
-            }
-    }
+    const uint32_t result=PollWaitObjects(handles,all);
+    if (result!=kWaitTimeout) return finish(result);
     if (ms==0 || !current || !rt::g_process) return finish(kWaitTimeout);
     if (!rt::g_process->Scheduler().WaitForMultiple(*current,handles,all,ms))
         return Ret(kWaitFailed);
@@ -392,6 +359,13 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
 HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitMultiple(c,m);
 }
+HostCallOutcome K32_WaitForMultipleObjectsEx(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    if (!Arg(c,m,4)) return WaitMultiple(c,m);
+    std::vector<uint32_t> handles;
+    const bool all=Arg(c,m,2)!=0;
+    if (!ReadWaitObjects(m,Arg(c,m,0),Arg(c,m,1),all,64,false,handles)) return Ret(0xffffffffu);
+    return Ret(AlertableObjectWait(c,m,handles,all,Arg(c,m,3)));
+}
 
 HostCallOutcome CooperativeSleep(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t duration=Arg(c,m,0);
@@ -401,7 +375,10 @@ HostCallOutcome CooperativeSleep(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(0); // stdcall completes before the sleeping thread yields
 }
 HostCallOutcome K32_Sleep(cpu::CpuState& c, cpu::IGuestMemory& m) { return CooperativeSleep(c,m); }
-HostCallOutcome K32_SleepEx(cpu::CpuState& c, cpu::IGuestMemory& m) { return CooperativeSleep(c,m); }
+HostCallOutcome K32_SleepEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    if (!Arg(c,m,1)) return CooperativeSleep(c,m);
+    return Ret(AlertableObjectWait(c,m,{},false,Arg(c,m,0),true));
+}
 HostCallOutcome K32_SwitchToThread(cpu::CpuState&, cpu::IGuestMemory&) {
     if(!rt::g_process) return Ret(0);
     rt::GuestThread* current=rt::g_process->Scheduler().Current();
@@ -438,6 +415,7 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "WaitForSingleObject", 8, CallConv::Stdcall, &K32_WaitForSingleObject},
     {"KERNEL32.dll", "WaitForSingleObjectEx", 12, CallConv::Stdcall, &K32_WaitForSingleObjectEx},
     {"KERNEL32.dll", "WaitForMultipleObjects", 16, CallConv::Stdcall, &K32_WaitForMultipleObjects},
+    {"KERNEL32.dll", "WaitForMultipleObjectsEx", 20, CallConv::Stdcall, &K32_WaitForMultipleObjectsEx},
     {"KERNEL32.dll", "Sleep", 4, CallConv::Stdcall, &K32_Sleep},
     {"KERNEL32.dll", "SleepEx", 8, CallConv::Stdcall, &K32_SleepEx},
     {"KERNEL32.dll", "SwitchToThread", 0, CallConv::Stdcall, &K32_SwitchToThread},
@@ -445,5 +423,80 @@ const HostFunctionEntry kEntries[] = {
 const bool kRegistered = RegisterHostFunctions(kEntries, sizeof(kEntries) / sizeof(kEntries[0]));
 
 } // namespace
+
+bool ValidateWaitObjects(cpu::IGuestMemory& m,const std::vector<uint32_t>& handles,bool all) {
+    for (size_t i=0;i<handles.size();++i) {
+        const uint32_t h=handles[i];
+        if (!ValidWaitHandle(h)) { hle::SetLastError(m,6); return false; }
+        for (size_t j=0;j<i;++j) {
+            const uint32_t previous=handles[j];
+            auto object=rt::Handles().Get(h),old=rt::Handles().Get(previous);
+            auto* thread=HleThreadFromHandle(h);
+            if (h==previous || (all && ((object && object==old) ||
+                (thread && thread==HleThreadFromHandle(previous))))) {
+                hle::SetLastError(m,87);return false;
+            }
+        }
+    }
+    return true;
+}
+bool ReadWaitObjects(cpu::IGuestMemory& m,uint32_t count,uint32_t array,
+                     bool all,uint32_t maximum,bool allowEmpty,std::vector<uint32_t>& handles) {
+    handles.clear();
+    if (count>maximum || (!count && !allowEmpty) ||
+        (count && (!array || !m.IsRangeMapped(array,count*4)))) {
+        hle::SetLastError(m,87);return false;
+    }
+    for (uint32_t i=0;i<count;++i) handles.push_back(m.Read32(array+i*4));
+    return ValidateWaitObjects(m,handles,all);
+}
+uint32_t PollWaitObjects(const std::vector<uint32_t>& handles,bool all) {
+    if (all) {
+        for (uint32_t h:handles) if (!WaitHandleReady(h)) return 0x102;
+        uint32_t result=0;
+        for (size_t i=0;i<handles.size();++i)
+            if (AcquireWaitHandle(handles[i])==0x80 && !result) result=0x80+static_cast<uint32_t>(i);
+        return result;
+    }
+    for (size_t i=0;i<handles.size();++i)
+        if (WaitHandleReady(handles[i])) return AcquireWaitHandle(handles[i])+static_cast<uint32_t>(i);
+    return 0x102;
+}
+uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
+    const std::vector<uint32_t>& handles,bool all,uint32_t milliseconds,bool sleepOnly) {
+    AlertableScope alertable(true);
+    auto* current=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    struct ClearRetry {
+        rt::GuestThread* thread;
+        ~ClearRetry() { if (thread) {
+            thread->retryWaitToken=thread->timedOutHandle=0;
+            thread->retryWaitDeadlineUs=0;
+        } }
+    } cleanup{current};
+    const bool finite=milliseconds!=0xffffffffu;
+    const uint64_t deadline=finite ? rt::Clock::NowUs()+uint64_t(milliseconds)*1000 : 0;
+    for (;;) {
+        if (!rt::GuestExecution::Checkpoint()) return 0xffffffffu;
+        if (!ValidateWaitObjects(memory,handles,all)) return 0xffffffffu;
+        if (DispatchUserApcs(state,memory)) return 0xc0;
+        if (!sleepOnly) {
+            uint32_t result=PollWaitObjects(handles,all);
+            if (result!=0x102) return result;
+        }
+        const uint64_t now=rt::Clock::NowUs();
+        if (finite && now>=deadline) {
+            if (sleepOnly && !milliseconds && current) current->yieldRequested=true;
+            return sleepOnly ? 0 : 0x102;
+        }
+        if (!rt::GuestExecution::Active() || !current) return sleepOnly ? 0 : 0x102;
+        const uint32_t remaining=finite ? static_cast<uint32_t>((deadline-now+999)/1000) : 0xffffffffu;
+        current->retryWaitToken=current->timedOutHandle=0;
+        current->retryWaitDeadlineUs=0;
+        auto& scheduler=rt::g_process->Scheduler();
+        if (sleepOnly) scheduler.WaitFor(*current,0xfffffff3u,remaining);
+        else scheduler.WaitForMultiple(*current,handles,all,remaining);
+        rt::GuestExecution::Yield();
+    }
+}
 
 } // namespace win32

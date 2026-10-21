@@ -574,3 +574,60 @@ DLL shutdown and unload. Timeout accepts NORMAL/BLOCK/ABORTIFHUNG only, with
 ABORTIFHUNG using the same deadline (no separate hung detector). Existing
 MsgWait* exports still have partial legacy behavior and native sleeps; do not
 claim their kernel-object semantics implemented. v1 loop remains separate.
+
+## Current package: MsgWait and user APC / alertable waits
+
+This section supersedes the preceding MsgWait/APC limitations, not the
+remaining input ownership, loader/shutdown or HANDLE policy limitations.
+
+- Shared kernel_wait helpers validate HANDLE lists and atomically preflight /
+  consume thread/event/mutex/semaphore waits. Existing nonalertable multiple
+  waits retain their retry/deadline behavior. WaitForMultipleObjectsEx is now
+  registered; alertable single/multiple waits and SleepEx preserve a native
+  continuation with an absolute guest-clock deadline. Timeout/spurious wake
+  cannot restart the original duration. SleepEx(INFINITE,TRUE) has no deadline.
+- UserApc FIFO belongs to GuestThread. QueueUserAPC resolves thread aliases /
+  pseudo handles, rejects invalid types (6) and exiting/exited targets (31).
+  Only an alertable target is interrupted; InterruptWait wakes that thread
+  without signaling or consuming its waited object and respects suspendCount.
+  Before-start APCs run after worker DLL/TLS attach and before user entry.
+  Callback uses local CpuState and receiver TEB/TLS; normal waits inside an
+  APC are nonalertable, explicit nested alertable waits support recursion.
+  Delivery drains FIFO and returns WAIT_IO_COMPLETION (192). ExitThread /
+  scheduler exit discard pending APCs before detach/reclamation.
+- MsgWaitForMultipleObjects/Ex support 0..63 HANDLEs, masks, WAITALL (1),
+  ALERTABLE (2), INPUTAVAILABLE (4), lowest ready handle and abandoned indexes.
+  WAITALL requires selected queue input AND all handles before consuming any
+  object. Queue-only success is nCount. Messages remain queued; this API does
+  not dispatch sent requests. Peek/Get pump them later on the owner's CPU.
+  WaitMessage uses the same queue-only wait and ignores previously checked
+  unread input until something new arrives.
+- ThreadQueue tracks selected-category change bits separately from available
+  input. Post/quit/sent and key/mouse arrival mark changes; timer/paint readiness
+  transitions announce once until retrieved/validated. GetQueueStatus returns
+  high-word availability / low-word changes, clears requested changes; Peek/Get
+  mark observed input old. INPUTAVAILABLE can wake for old unread input.
+  Modal quit reposts and TranslateMessage also maintain change bits.
+- MsgWait polls frontend nonblocking and yields through scheduler.Sleep(1),
+  allowing platform input even when all guest CPUs wait. This is cooperative
+  periodic polling, not a fully event-driven host integration. Standalone HLE
+  fallback may sleep the host; real GuestExecution does not.
+- New gui_thread_msgwait guest covers HANDLE/input indices, validation,
+  GetQueueStatus/old input, atomic WAITALL, abandoned mutex, delayed signals /
+  posts, timer categories, sent wake without dispatch, and WaitMessage.
+  gui_thread_apc covers suspended-start FIFO, owner TLS, blocking APC body,
+  pending APC during ordinary wait, infinite SleepEx interruption, object /
+  wait-all / MsgWait interruption without consuming tokens, nested APC, exit
+  before entry, dropped callbacks and wrong/closed/exited HANDLE errors.
+  Additional finite alertable timeout / nonalertable Ex checks are included.
+- Full local suite passed with -fno-rtti/-fno-exceptions, native/x86 harnesses,
+  all MinGW guests, lifecycle/SEH/resource tests and COMDLG Open/List/Save.
+  Check exact new commit CI separately; no physical Switch validation yet.
+
+Remaining: named objects and access/inherit/protect HANDLE policies; I/O
+completion APCs, waitable timers and SignalObjectAndWait; full Windows
+queue-change history/raw input/system activation; input/focus/hooks ownership;
+full process/DLL shutdown. v1 message loop remains separate. ROADMAP stage C
+is approximately 70% by functional blocks, not a time estimate or completion
+claim. Keep reporting an approximate current-stage percentage in final work
+reports as requested by the user.

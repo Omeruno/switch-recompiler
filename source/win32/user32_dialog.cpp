@@ -527,7 +527,7 @@ uint32_t RunModal(uint32_t dlg, uint32_t owner) {
         if (di->ended || g_guestExitRequested) break;
         Msg msg;
         FetchMessage(msg, 0, 0, 0, true, true);
-        if (msg.message == WM_QUIT) { Q().quit = true; Q().quitCode = msg.wParam; break; }
+        if (msg.message == WM_QUIT) { PostQuit(msg.wParam); break; }
         if (DialogMessage(dlg, msg)) continue;
         if (msg.message == WM_TIMER && msg.lParam) { CallStdcall(*G().c, *G().m, msg.lParam, {msg.hwnd, WM_TIMER, msg.wParam, NowMs()}); continue; }
         TranslateKey(msg);
