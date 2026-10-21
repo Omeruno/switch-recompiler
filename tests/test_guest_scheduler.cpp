@@ -111,5 +111,23 @@ int main() {
     assert(signaledThread.waitDeadlineUs==0 && signaledThread.timedOutHandle==0);
     assert(timed.Next()==&signaledThread);
     rt::Clock::SetFastForward(false);
+    // A signal for a non-first handle must wake a wait-any thread, and
+    // finite multiple waits must expire using the first-handle token.
+    rt::Clock::SetFastForward(true);
+    rt::GuestScheduler multi;
+    rt::GuestThread multiple, other;
+    multiple.id=301;other.id=302;
+    multiple.status=other.status=rt::GuestThreadStatus::Runnable;
+    assert(multi.Add(multiple) && multi.Add(other));
+    assert(multi.WaitForMultiple(multiple,{0x5555,0x6666},false,20));
+    assert(multiple.waitHandles.size()==2 && !multiple.IsRunnable());
+    assert(multi.Signal(0x6666,false)==1 && multiple.IsRunnable());
+    assert(multiple.waitHandles.empty() && multiple.timedOutHandle==0);
+    assert(multi.WaitForMultiple(multiple,{0x5555,0x6666},true,20));
+    rt::Clock::Sleep(21);
+    multi.Next();
+    assert(multiple.IsRunnable() && multiple.timedOutHandle==0x5555);
+    assert(multiple.waitHandles.empty());
+    rt::Clock::SetFastForward(false);
     puts("PASSED: round-robin, suspend, wait, wake and exit");
 }
