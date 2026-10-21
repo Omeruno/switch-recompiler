@@ -26,6 +26,7 @@
 #include "runtime/process.h"
 #include "win32/user32.h"
 #include "win32/host_functions.h"
+#include "win32/seh_dispatch.h"
 #include "win32/bitmap_font.h"
 #include "win32/iat_patcher.h"
 #include "win32/crt_globals.h"
@@ -356,6 +357,11 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         }
 
         if (result == cpu::StepResult::Halted) { stopReason = "HLT"; break; }
+        if ((result == cpu::StepResult::UnknownOpcode || result == cpu::StepResult::Exception) &&
+            win32::seh::DispatchCpuFault(cpuState, mem, proc.TebAddress(), interp.LastException()) == win32::seh::DispatchResult::Handled) {
+            ++steps;
+            continue;
+        }
         if (result == cpu::StepResult::UnknownOpcode) { stopReason = "unknown opcode"; break; }
         if (result == cpu::StepResult::Exception)
         {
