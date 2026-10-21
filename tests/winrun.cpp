@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
     bool verbose = false;
     std::vector<std::string> libDirs;
     const char* dumpPath = nullptr;
-    bool forceLegacy = false, forceNew = false, listMissing = false, probeThreads = false;
+    bool forceLegacy = false, forceNew = false, listMissing = false, probeThreads = false, probeX86Threads = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
@@ -133,6 +133,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "-t") == 0) win32::g_traceHostCalls = true;
         else if (std::strcmp(argv[i], "-m") == 0) listMissing = true;
         else if (std::strcmp(argv[i], "--probe-threads") == 0) probeThreads = true;
+        else if (std::strcmp(argv[i], "--probe-x86-threads") == 0) probeX86Threads = true;
         else if (std::strcmp(argv[i], "--legacy-ui") == 0) forceLegacy = true;
         else if (std::strcmp(argv[i], "--new-ui") == 0) forceNew = true;
         else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
@@ -232,6 +233,71 @@ int main(int argc, char** argv) {
             return 4;
         }
         std::puts("PASSED: independent worker TEB TLS stack and CPU context");
+        return 0;
+    }
+    if (probeX86Threads) {
+        // Real guest IA-32 instructions: MOV EAX, FS:[24h]; INC EAX;
+        // INC EAX; HLT. Each independently scheduled worker must read its
+        // own TEB, not the main thread's interpreter FS base.
+        constexpr uint32_t code=0x32000000u;
+        if (!mem.Map(code,0x1000u,cpu::kProtRWX)) {
+            std::fprintf(stderr,"guest x86 thread test code mapping failed\n");
+            return 4;
+        }
+        const uint8_t machine[] = {
+            0x64,0xA1,0x24,0,0,0, // mov eax, fs:[0x24]
+            0x40,                 // inc eax
+            0x40,                 // inc eax
+            0xF4                  // hlt
+        };
+        for (unsigned n=0;n<sizeof(machine);++n)
+            mem.Write8(code+n,machine[n]);
+        rt::GuestThread* first=proc.CreateGuestThread(code,0,0x10000u,false,err);
+        if (!first) { std::fprintf(stderr,"first x86 worker: %s\n",err.c_str()); return 4; }
+        rt::GuestThread* second=proc.CreateGuestThread(code,0,0x10000u,false,err);
+        if (!second) { std::fprintf(stderr,"second x86 worker: %s\n",err.c_str()); return 4; }
+        // Main EXE has not started. Put main thread to sleep so only our
+        // two x86 workers participate in the scheduler run.
+        proc.MainThread().status=rt::GuestThreadStatus::Waiting;
+        proc.MainThread().waitObject=0x5555u;
+        uint32_t stepsFirst=0,stepsSecond=0;
+        bool guestFailure=false;
+        for (unsigned quantum=0;quantum<20 && (first->IsRunnable() || second->IsRunnable());++quantum) {
+            auto result=proc.Scheduler().RunQuantum([&](rt::GuestThread& t) -> bool {
+                cpu::Interpreter interpreter(mem,t.teb,t.teb);
+                cpu::StepResult step=interpreter.Step(t.cpu);
+                if (&t==first) ++stepsFirst;
+                if (&t==second) ++stepsSecond;
+                if (step==cpu::StepResult::Halted) {
+                    proc.Scheduler().Exit(t,t.cpu.Get(cpu::Reg32::EAX));
+                    return false;
+                }
+                if (step!=cpu::StepResult::Continue) {
+                    std::fprintf(stderr,"guest x86 thread %u failed at 0x%x\n",t.id,t.cpu.eip);
+                    guestFailure=true;
+                    proc.Scheduler().Exit(t,1);
+                    return false;
+                }
+                return true;
+            },2u);
+            if (!result.threadId || guestFailure) break;
+        }
+        bool ok=!guestFailure &&
+            first->status==rt::GuestThreadStatus::Exited &&
+            second->status==rt::GuestThreadStatus::Exited &&
+            first->exitCode==first->id+2 &&
+            second->exitCode==second->id+2 &&
+            stepsFirst==4 && stepsSecond==4 &&
+            mem.Read32(first->teb+0x24)==first->id &&
+            mem.Read32(second->teb+0x24)==second->id;
+        if(!ok) {
+            std::fprintf(stderr,
+                "x86 workers FAILED steps=%u,%u status=%u,%u eax=%u,%u\n",
+                stepsFirst,stepsSecond,unsigned(first->status),unsigned(second->status),
+                first->exitCode,second->exitCode);
+            return 4;
+        }
+        std::puts("PASSED: two real x86 guest threads, FS TEB and instruction quanta");
         return 0;
     }
     // Консольный вывод гостя нужен всегда, даже без -v
