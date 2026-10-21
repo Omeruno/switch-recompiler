@@ -11,6 +11,28 @@ constexpr uint32_t kContextFlags = 0x10007u; // CONTEXT_i386 | CONTROL | INTEGER
 constexpr uint32_t kContextSize = 716;
 constexpr uint32_t kMaxChainDepth = 64;
 
+// Reentrant guest calls can themselves RaiseException. Track the active
+// registration frame so a nested exception does not recursively invoke the
+// handler which is already executing. This is single-guest-thread state;
+// the guest scheduler must move it into GuestThread before multithreading.
+struct ActiveHandler { uint32_t teb; uint32_t frame; };
+ActiveHandler g_activeHandlers[16] = {};
+unsigned g_activeDepth = 0;
+struct ActiveHandlerScope {
+    bool entered;
+    ActiveHandlerScope(uint32_t teb,uint32_t frame) : entered(g_activeDepth<16) {
+        if (entered) g_activeHandlers[g_activeDepth++] = {teb,frame};
+    }
+    ~ActiveHandlerScope() { if (entered) --g_activeDepth; }
+};
+bool IsActiveHandler(uint32_t teb,uint32_t frame) {
+    for(unsigned i=0;i<g_activeDepth;++i)
+        if(g_activeHandlers[i].teb==teb && g_activeHandlers[i].frame==frame)
+            return true;
+    return false;
+}
+
+
 // Windows x86 CONTEXT offsets; validated against winnt.h.
 constexpr uint32_t kGs=140,kFs=144,kEs=148,kDs=152;
 constexpr uint32_t kEdi=156,kEsi=160,kEbx=164,kEdx=168,kEcx=172,kEax=176;
@@ -96,9 +118,18 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
         seen[seenCount++]=frame;
         uint32_t next=mem.Read32(frame), handler=mem.Read32(frame+4);
         if(!handler || !mem.IsMapped(handler))return DispatchResult::InvalidChain;
+        // The currently executing handler is already processing another
+        // exception; nested dispatch searches any inner registrations and
+        // then continues with older outer frames.
+        if (IsActiveHandler(teb,frame)) {
+            mem.Write32(exceptionPtr+4,mem.Read32(exceptionPtr+4)|kExceptionNestedCall);
+            frame=next;
+            continue;
+        }
+        if (g_activeDepth>=16) return DispatchResult::InvalidChain;
         cpu::CpuState handlerCpu=state;
         handlerCpu.ESP()=exceptionPtr-64; // leave scratch data intact
-        // A standard x86 __except_handler3/4 receives these four arguments.
+        ActiveHandlerScope scope(teb,frame);
         uint32_t disposition=CallGuestFunctionStdcall(handlerCpu,mem,handler,
             {exceptionPtr,frame,contextPtr,0},teb,teb);
         if(disposition==static_cast<uint32_t>(Disposition::ContinueExecution)){
