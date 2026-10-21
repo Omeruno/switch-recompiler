@@ -222,7 +222,8 @@ int main(int argc, char** argv) {
             mem.Read32(b->teb+0x24)==b->id &&
             mem.Read32(a->teb+0x2c)==a->tlsArray &&
             mem.Read32(b->teb+0x2c)==b->tlsArray &&
-            mem.Read32(a->cpu.ESP())==rt::EntryReturnAddress() &&
+            win32::HostAddressToIndex(mem.Read32(a->cpu.ESP()))==
+                win32::FindHostFunction("KERNEL32.dll","__SwitchRecompilerWorkerReturn") &&
             mem.Read32(a->cpu.ESP()+4)==0x12345678u &&
             mem.Read32(b->cpu.ESP()+4)==0xABCDEF90u &&
             a->cpu.eip==start && b->cpu.eip==start &&
