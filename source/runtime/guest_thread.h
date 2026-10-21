@@ -26,6 +26,10 @@ struct GuestThread {
     uint32_t timedOutHandle = 0;
     std::vector<uint32_t> waitHandles; // multiple-object wait membership
     bool waitAll = false;
+    // Preserve the original absolute deadline when a wait is signaled but
+    // the resumed HLE call must retry (e.g. incomplete wait-all).
+    uint64_t retryWaitDeadlineUs = 0;
+    uint32_t retryWaitToken = 0;
     GuestThreadStatus status = GuestThreadStatus::Created;
     cpu::CpuState cpu{};
 
