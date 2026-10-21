@@ -128,9 +128,15 @@ HostCallOutcome K32_GetProcAddress(cpu::CpuState& c, cpu::IGuestMemory& m) {
         return Ret(0);
     }
     rt::Module* mod = ModuleFromHandle(h);
-    if (!mod) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
+    if (!mod) {
+        cpu::RecordDynamicImport("(invalid HMODULE)", p < 0x10000 ? "(ordinal)" : ReadAnsi(m, p).c_str(), 0);
+        SetLastError(m, ERROR_INVALID_HANDLE);
+        return Ret(0);
+    }
+    std::string procName = p < 0x10000 ? "#" + std::to_string(static_cast<uint16_t>(p)) : ReadAnsi(m, p);
     uint32_t addr = p < 0x10000 ? rt::g_process->GetProcAddress(mod, "", static_cast<uint16_t>(p))
-                                : rt::g_process->GetProcAddress(mod, ReadAnsi(m, p));
+                                : rt::g_process->GetProcAddress(mod, procName);
+    cpu::RecordDynamicImport(mod->name.c_str(), procName.c_str(), addr);
     if (!addr) {
         if (cpu::g_consoleAvailable && p >= 0x10000)
             std::printf("[GetProcAddress] %s!%s не найдена\n", mod->name.c_str(), ReadAnsi(m, p).c_str());
