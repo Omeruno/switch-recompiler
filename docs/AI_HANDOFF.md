@@ -102,3 +102,9 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - **LIMITATIONS:** No exit unwind (TargetFrame=null), collided/nested unwind, stack transfer into unrelated frame, general unwind CPU context, full Windows exception semantics. On unsupported paths fail visibly rather than silently return. No claims of full SEH yet.
 - Automated GitHub Actions continued to show runs on older commit `de3fffb` when this change was made; no new run for `10096b5` yet. Do not claim new code passed CI before seeing a run with matching SHA. GitHub Contents API commits may not automatically trigger Actions under token-authenticated pushes.
 - Next: run host `gui_unwind` and `gui_seh` on exact branch commit, fix any real CI failures, then extend to exit/nested/collided unwind and thread-local SEH.
+
+## 2026-10-21 x86 SEH exit-unwind implementation
+- CI `39626685021` for targeted `RtlUnwind` baseline `10096b5`: **success** on host tests, CPU oracle, Switch build.
+- Current commits `d692d27`, `e03114e`, `17df8d5`: `UnwindToFrame` now supports `targetFrame=0` exit-unwind, walks to `FS:[0]` sentinel `0xffffffff`, sets both `EXCEPTION_UNWINDING` and `EXCEPTION_EXIT_UNWIND`, calls each guest termination handler, clears chain, resumes at TargetIp; `gui_unwind.c` exercises flags and chain removal.
+- **Not yet CI-confirmed for latest commit** (GitHub Actions jobs backlogged and sometimes triggered out of order). Confirm exact SHA and host test output before advising Switch deploy.
+- Still unsupported: collided/nested dispositions, unwind into unrelated stack frame, NT unwind/context and guest threads.
