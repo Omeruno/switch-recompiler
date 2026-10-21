@@ -70,7 +70,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     if (cd "$out/guest" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe open > "$out/comdlg_open.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_open.log" &&
-        SR_COMDLG_TRACE=1 "$out/winrun" --new-ui -f 60 -c 8:175:173 -c 16:575:420 gui_comdlg_interactive.exe list > "$out/comdlg_list.log" 2>&1 &&
+        SR_COMDLG_TRACE=1 "$out/winrun" --new-ui -f 60 -c 8:-1003:0 -c 16:575:420 gui_comdlg_interactive.exe list > "$out/comdlg_list.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_list.log" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe save > "$out/comdlg_save.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_save.log" &&
