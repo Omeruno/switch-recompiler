@@ -281,9 +281,22 @@ HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& 
     return Ret(0x102);
 }
 
-HostCallOutcome K32_Sleep(cpu::CpuState& c, cpu::IGuestMemory& m) { rt::Clock::Sleep(Arg(c, m, 0)); return Ret(0); }
-HostCallOutcome K32_SleepEx(cpu::CpuState& c, cpu::IGuestMemory& m) { rt::Clock::Sleep(Arg(c, m, 0)); return Ret(0); }
-HostCallOutcome K32_SwitchToThread(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
+HostCallOutcome CooperativeSleep(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t duration=Arg(c,m,0);
+    rt::GuestThread* current=rt::g_process ? rt::g_process->Scheduler().Current():nullptr;
+    if(current) rt::g_process->Scheduler().Sleep(*current,duration);
+    else rt::Clock::Sleep(duration); // legacy standalone HLE calls
+    return Ret(0); // stdcall completes before the sleeping thread yields
+}
+HostCallOutcome K32_Sleep(cpu::CpuState& c, cpu::IGuestMemory& m) { return CooperativeSleep(c,m); }
+HostCallOutcome K32_SleepEx(cpu::CpuState& c, cpu::IGuestMemory& m) { return CooperativeSleep(c,m); }
+HostCallOutcome K32_SwitchToThread(cpu::CpuState&, cpu::IGuestMemory&) {
+    if(!rt::g_process) return Ret(0);
+    rt::GuestThread* current=rt::g_process->Scheduler().Current();
+    if(!current) return Ret(0);
+    current->yieldRequested=true;
+    return Ret(rt::g_process->Scheduler().Size()>1 ? 1u:0u);
+}
 
 const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "InitializeCriticalSection", 4, CallConv::Stdcall, &K32_InitializeCriticalSection},
