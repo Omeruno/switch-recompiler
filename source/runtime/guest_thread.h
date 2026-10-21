@@ -3,6 +3,7 @@
 // Process currently executes one guest CPU state externally. This model
 // establishes per-thread ownership without introducing a scheduler yet.
 #include <cstdint>
+#include <vector>
 #include "../cpu/cpu_state.h"
 
 namespace rt {
@@ -23,6 +24,8 @@ struct GuestThread {
     bool yieldRequested = false;
     uint64_t waitDeadlineUs = 0;
     uint32_t timedOutHandle = 0;
+    std::vector<uint32_t> waitHandles; // multiple-object wait membership
+    bool waitAll = false;
     GuestThreadStatus status = GuestThreadStatus::Created;
     cpu::CpuState cpu{};
 
