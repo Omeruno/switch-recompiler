@@ -140,3 +140,11 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `Process` now owns `GuestScheduler` (`13aba06`), registers the main guest thread in `PrepareMainThread` (`ddeec51`). MainThread CPU and SEH active stack ownership from previous commits remain.
 - Actions run `39632823805` corresponds to `f381e2c`, was still in progress at handoff; check exact SHA before treating branch as tested.
 - Next implement actual worker-thread creation: separate stack + TEB + TLS, safe storage/lifetime for GuestThread, thread-local HLE last error and SEH, context switch into scheduler. Ensure verified old Paint NRO `2c9a1fa` remains intact.
+
+## 2026-10-21 worker GuestThread allocation milestone
+- Verified cooperative scheduler run `39632823805` SUCCESS (host tests, Switch build, CPU oracle) for `f381e2c5`.
+- New `Process::CreateGuestThread(startAddress, parameter, stackReserve, suspended, error)` implemented (`2062ecb`, `b8d0be0`, `28af8b6`): maps separate worker TEB, stack and TLS vector, initializes x86 CPU entry and stdcall argument stack, TEB FS:[0] sentinel, NT_TIB stack pointers, ClientId.UniqueThread, Self, TLS pointer and shared PEB; allocates private initialized static-TLS blocks per DLL and rolls back allocations on failure. Stores workers in stable unique_ptr allocation and registers with GuestScheduler. Exposes `Process::FindThread(id)`.
+- `tests/winrun.cpp` `--probe-threads` creates two workers (one suspended) and validates stack/TEB/TLS/SEH chain/CPU/argument independence (`0533f39`, `cf44d77`); `tools/run_host_tests.sh` invokes this probe on `gui_seh.exe` (`5dd1b5`).
+- **Not yet actual concurrent execution:** scheduler round-robin is only bookkeeping; no HLE CreateThread and ExitThread, no context switch in interpreter loop, no thread-private Win32 HLE globals, no THREAD_ATTACH notifications. Worker return stack currently uses process EntryReturnAddress TEMPORARILY, and must be replaced with ExitThread trampoline before executing workers. Do not imply multi-threading functional.
+- Latest commit `cf44d77`, its CI run `39633616818` initially queued. Check exact SHA CI and logs before declaring tests pass.
+- User wants XP-like desktop/Start menu after viable multithreading; prioritize functional runtime, not GUI mockups yet. Paint Open/Save on real Switch verified with previous baseline.
