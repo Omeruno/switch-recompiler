@@ -62,6 +62,8 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
 uint32_t ListBoxProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
 uint32_t ComboBoxProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
 uint32_t ScrollBarProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
+// COMCTL32 (comctl32_*.cpp)
+uint32_t StatusBarProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
 
 // Иконки и картинки (user32_image.cpp)
 uint32_t LoadImageForStatic(uint32_t hInst, uint16_t id, const std::u16string& name, bool bitmap);

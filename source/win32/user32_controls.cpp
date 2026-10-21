@@ -1003,6 +1003,7 @@ HOSTPROC(Host_ListBoxProc, ListBoxProc)
 HOSTPROC(Host_ComboBoxProc, ComboBoxProc)
 HOSTPROC(Host_ScrollBarProc, ScrollBarProc)
 HOSTPROC(Host_MdiClientProc, DefProcA)
+HOSTPROC(Host_StatusBarProc, StatusBarProc)
 
 const HostFunctionEntry kEntries[] = {
     {"USER32.dll", "__ButtonWndProc", 16, CallConv::Stdcall, &Host_ButtonProc},
@@ -1012,6 +1013,7 @@ const HostFunctionEntry kEntries[] = {
     {"USER32.dll", "__ComboBoxWndProc", 16, CallConv::Stdcall, &Host_ComboBoxProc},
     {"USER32.dll", "__ScrollBarWndProc", 16, CallConv::Stdcall, &Host_ScrollBarProc},
     {"USER32.dll", "__MDIClientWndProc", 16, CallConv::Stdcall, &Host_MdiClientProc},
+    {"USER32.dll", "__StatusBarWndProc", 16, CallConv::Stdcall, &Host_StatusBarProc},
 };
 const bool kRegistered = RegisterHostFunctionsLayer(kEntries, sizeof(kEntries) / sizeof(kEntries[0]), kUiLayer);
 
@@ -1039,6 +1041,8 @@ void RegisterSystemClasses() {
     AddSystemClass(u"ComboLBox", CS_DBLCLKS | CS_SAVEBITS | CS_GLOBALCLASS, lb, 8, 0);
     AddSystemClass(u"ScrollBar", CS_DBLCLKS | CS_PARENTDC | CS_GLOBALCLASS, ProcAddr("__ScrollBarWndProc", &ScrollBarProc), 8, 0);
     AddSystemClass(u"MDIClient", CS_GLOBALCLASS, ProcAddr("__MDIClientWndProc", &DefProcA), 8, 13);
+    // классы COMCTL32 (в Windows их регистрирует загрузка comctl32.dll)
+    AddSystemClass(u"msctls_statusbar32", CS_DBLCLKS | CS_GLOBALCLASS, ProcAddr("__StatusBarWndProc", &StatusBarProc), 0, 0);
     AddSystemClass(u"#32770", CS_SAVEBITS | CS_DBLCLKS | CS_GLOBALCLASS, DefDlgProcAddress(true), 30, 0);
 }
 
