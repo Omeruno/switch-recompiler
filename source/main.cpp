@@ -318,12 +318,18 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 
     while (steps < maxSteps)
     {
-        if (!runningThread || !runningThread->IsRunnable() || quantumLeft == 0) {
+        if (!runningThread || !runningThread->IsRunnable() || runningThread->yieldRequested || quantumLeft == 0) {
             runningThread = proc.Scheduler().Next();
             if (!runningThread) {
+                if(proc.Scheduler().HasSleepingThreads()) {
+                    rt::Clock::Sleep(1);
+                    ++steps;
+                    continue;
+                }
                 stopReason = "no runnable guest threads";
                 break;
             }
+            runningThread->yieldRequested=false;
             runningInterpreter.reset(new cpu::Interpreter(mem, runningThread->teb, runningThread->teb));
             quantumLeft = 256;
         }
