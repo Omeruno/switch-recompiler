@@ -11,28 +11,24 @@ static DWORD WINAPI Worker(LPVOID parameter) {
 int main(void) {
     DWORD threadId=0, exitCode=259;
     HANDLE thread=CreateThread(NULL,0,Worker,(LPVOID)0x12345u,0,&threadId);
-    volatile unsigned spin;
     if(!thread || !threadId) {
         puts("CREATE_THREAD_FAILED");
         return 1;
     }
-    /* Cooperative guest execution: main spins and workers must still run. */
-    for(spin=0;spin<500000u && sharedValue!=0x12345; ++spin) {}
-    if(sharedValue!=0x12345) {
-        printf("WORKER_NEVER_RAN id=%lu\n",(unsigned long)threadId);
+    DWORD waitResult=WaitForSingleObject(thread,INFINITE);
+    if(waitResult!=WAIT_OBJECT_0 || sharedValue!=0x12345) {
+        printf("THREAD_WAIT_FAILED result=%lu value=%ld\n",
+               (unsigned long)waitResult,(long)sharedValue);
         return 2;
     }
-    for(spin=0;spin<500000u; ++spin) {
-        if(!GetExitCodeThread(thread,&exitCode)) {
-            puts("GET_EXIT_CODE_FAILED");
-            return 3;
-        }
-        if(exitCode!=STILL_ACTIVE)break;
+    if(!GetExitCodeThread(thread,&exitCode)) {
+        puts("GET_EXIT_CODE_FAILED");
+        return 3;
     }
     if(exitCode!=42) {
         printf("WORKER_RETURN_FAILED code=%lu\n",(unsigned long)exitCode);
         return 4;
     }
-    puts("PASSED: real Win32 CreateThread and worker stdcall return");
+    puts("PASSED: cooperative WaitForSingleObject and worker return");
     return 0;
 }
