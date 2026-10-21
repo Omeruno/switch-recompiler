@@ -466,6 +466,7 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     mainThread_.tlsArray = tlsArray_;
     mainThread_.status = GuestThreadStatus::Runnable;
     mainThread_.cpu = cpu;
+    if (!scheduler_.Add(mainThread_)) { error = "не удалось зарегистрировать главный поток"; return false; }
     return true;
 }
 
