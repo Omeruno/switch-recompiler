@@ -43,6 +43,12 @@ inline uint32_t g_fatalStackPointer = 0;
 inline char g_fatalModule[96] = {};
 inline uint32_t g_fatalModuleOffset = 0;
 
+inline char g_fatalInstructionBytes[96] = {};
+inline uint32_t g_fatalRegisters[8] = {};
+inline uint32_t g_fatalStackWords[8] = {};
+inline uint32_t g_fatalStackCount = 0;
+
+
 // Logging must never attempt printing into libnx's already-closed console.
 // This is intentionally only called on fatal exit, not during frame rendering.
 inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t addr) {
@@ -57,6 +63,12 @@ inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t ad
     std::fprintf(f, "ESP: 0x%08x\n", g_fatalStackPointer);
     std::fprintf(f, "Previous module: %s\n", g_fatalModule[0] ? g_fatalModule : "(unknown)");
     std::fprintf(f, "Previous module offset: 0x%08x\n", g_fatalModuleOffset);
+    std::fprintf(f, "Previous instruction bytes: %s\n", g_fatalInstructionBytes[0] ? g_fatalInstructionBytes : "(unavailable)");
+    std::fprintf(f, "Registers: EAX=%08x ECX=%08x EDX=%08x EBX=%08x ESP=%08x EBP=%08x ESI=%08x EDI=%08x\n",
+                 g_fatalRegisters[0], g_fatalRegisters[1], g_fatalRegisters[2], g_fatalRegisters[3],
+                 g_fatalRegisters[4], g_fatalRegisters[5], g_fatalRegisters[6], g_fatalRegisters[7]);
+    for (uint32_t i = 0; i < g_fatalStackCount; ++i)
+        std::fprintf(f, "Stack[ESP+%u]: 0x%08x\n", i * 4, g_fatalStackWords[i]);
     std::fprintf(f, "Guest exception code: 0x%08x\n", g_fatalGuestCode);
     std::fprintf(f, "Guest fault address: 0x%08x\n", addr ? addr : g_fatalGuestAddress);
     std::fclose(f);
