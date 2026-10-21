@@ -365,23 +365,39 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
     // rather than resetting the deadline indefinitely.
     if (current && current->timedOutHandle == token) {
         current->timedOutHandle=0;
+        current->retryWaitDeadlineUs=0;
+        current->retryWaitToken=0;
         return Ret(kWaitTimeout);
     }
+    if (current && current->retryWaitToken == token &&
+        current->retryWaitDeadlineUs &&
+        rt::Clock::NowUs() >= current->retryWaitDeadlineUs) {
+        current->retryWaitToken=0;
+        current->retryWaitDeadlineUs=0;
+        return Ret(kWaitTimeout);
+    }
+    auto finish=[&](uint32_t result) -> HostCallOutcome {
+        if (current) {
+            current->retryWaitToken=0;
+            current->retryWaitDeadlineUs=0;
+        }
+        return Ret(result);
+    };
     if (all) {
         bool ready=true;
         for (uint32_t h:handles) if (!WaitHandleReady(h)) { ready=false; break; }
         if (ready) {
             for (uint32_t h:handles) AcquireWaitHandle(h);
-            return Ret(0);
+            return finish(0);
         }
     } else {
         for (uint32_t i=0;i<n;++i)
             if (WaitHandleReady(handles[i])) {
                 AcquireWaitHandle(handles[i]);
-                return Ret(i);
+                return finish(i);
             }
     }
-    if (ms==0 || !current || !rt::g_process) return Ret(kWaitTimeout);
+    if (ms==0 || !current || !rt::g_process) return finish(kWaitTimeout);
     if (!rt::g_process->Scheduler().WaitForMultiple(*current,handles,all,ms))
         return Ret(kWaitFailed);
     HostCallOutcome pending;
@@ -445,6 +461,12 @@ const bool kRegistered = RegisterHostFunctions(kEntries, sizeof(kEntries) / size
 
 } // namespace
 
-bool HleCloseSyncHandle(uint32_t handle) { return Objects().erase(handle) != 0; }
+bool HleCloseSyncHandle(uint32_t handle) {
+    if (!Objects().erase(handle)) return false;
+    // Wake parked x86 guests so their pending Win32 call can observe the
+    // invalid handle instead of remaining asleep forever.
+    if (rt::g_process) rt::g_process->Scheduler().Signal(handle, true);
+    return true;
+}
 
 } // namespace win32
