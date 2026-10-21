@@ -223,3 +223,12 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `tests/winrun.cpp` `3cec271` and `source/main.cpp` `6d8f0df` rotate upon yieldRequested or quantum exhaustion, when all guest threads sleeping tick rt::Clock::Sleep(1) instead of treating as fatal no-runnable.
 - `tests/guest/gui_thread_sleep.c` `020da68`: end-to-end worker Sleep(100) and main observes successful completion; `tests/test_guest_scheduler.cpp` `9164b3f`: deterministic fast-forward wake order when all guests sleeping, Sleep(0) yield.
 - **Caveats**: SleepEx alertable/APC semantics not implemented; timed object waits not completed, nested guest callbacks may still hold host thread; renderer/graphics event loop and fairness on real Switch need actual test. Full CI for exact HEAD not yet confirmed at handoff; follow runs e.g. `39643603791`.
+
+## 2026-10-21 finite WaitForSingleObject deadlines
+- Verified full CI green for previous Sleep checkpoint `865897bd4`, run `39643720166`.
+- `source/runtime/guest_thread.h` `aa102888`: guest stores waitDeadlineUs and timedOutHandle.
+- `source/runtime/guest_scheduler.h` `ba609a5`: WaitFor(thread,handle,milliseconds) parks guest with monotonic deadline, WakeExpiredWaits wakes expired guest, Signal cancels waiting deadline, Next checks both sleep and wait timers, HasPendingTimers supports all-waiting case.
+- `source/win32/kernel32_sync.cpp` `bed4da2`: WaitForSingleObject and Ex on a valid thread/event/mutex/semaphore HANDLE now support positive finite deadlines and INFINITE without blocking Horizon host thread; on wake the HLE call retries with intact EIP/ESP; if deadline expired returns WAIT_TIMEOUT once.
+- `tests/winrun.cpp` `bcb8fc7` and `source/main.cpp` `7c6d610`: all-nonrunnable handling checks HasPendingTimers (instead of only sleeping).
+- Guest test `tests/guest/gui_thread_timed_wait.c` `ae1a224` exercises WAIT_TIMEOUT 0 and 2ms, early SetEvent signal before 100ms, and finite worker completion. Scheduler host unit `tests/test_guest_scheduler.cpp` `4e95b7e` tests expiration and cancellation.
+- CI for exact latest code `39645136359` in progress at time written; verify all jobs. Not yet tested on physical Switch. `WaitForMultipleObjects`, APC, MsgWait*, abandoned mutexes, references of HANDLE and per-thread message pumping remain unfinished. Do not claim complete NT synchronization.
