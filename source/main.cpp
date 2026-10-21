@@ -251,7 +251,7 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
     fprintf(log, "EXE: %s\n", exeName ? exeName : "?");
     fprintf(log, "Reason: %s\n", reason ? reason : "?");
     fprintf(log, "EIP: 0x%08x\n", state.eip);
-    fprintf(log, "ESP: 0x%08x\n", state.ESP());
+    fprintf(log, "ESP: 0x%08x\n", state.Get(cpu::Reg32::ESP));
     if (exception) {
         fprintf(log, "Exception: 0x%08x\n", exception->code);
         fprintf(log, "Fault address: 0x%08x\n", exception->faultAddress);
