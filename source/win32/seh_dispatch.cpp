@@ -115,18 +115,21 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
 
 // Controlled target-frame unwind. We prevalidate the full registration
 // chain before invoking any handler, so corrupt FS:[0] cannot partially
-// discard handlers. This first stage excludes exit/collided/nested unwind.
+// discard handlers. Supports target-frame and exit-unwind; collided and
+// nested unwind still require separate dispatch.
 UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
                            uint32_t teb, uint32_t targetFrame, uint32_t targetIp,
                            uint32_t exceptionRecord, uint32_t returnValue) {
-    if (!teb || !mem.IsRangeMapped(teb,4) || !targetFrame || !targetIp ||
-        (targetFrame&3u) || !mem.IsMapped(targetIp))
+    const bool exitUnwind = targetFrame == 0;
+    const uint32_t stopFrame = exitUnwind ? kEndOfChain : targetFrame;
+    if (!teb || !mem.IsRangeMapped(teb,4) || !targetIp ||
+        (!exitUnwind && (targetFrame&3u)) || !mem.IsMapped(targetIp))
         return UnwindResult::InvalidTarget;
     uint32_t frames[kMaxChainDepth]={};
     uint32_t handlers[kMaxChainDepth]={};
     unsigned count=0;
     uint32_t frame=mem.Read32(teb);
-    while(frame!=kEndOfChain && frame!=targetFrame) {
+    while(frame!=kEndOfChain && frame!=stopFrame) {
         if(count==kMaxChainDepth || (frame&3u) ||
            !mem.IsRangeMapped(frame,sizeof(RegistrationRecord32)))
             return UnwindResult::InvalidChain;
@@ -138,7 +141,8 @@ UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
         ++count;
         frame=mem.Read32(frame);
     }
-    if(frame!=targetFrame || !mem.IsRangeMapped(targetFrame,sizeof(RegistrationRecord32)))
+    if(frame!=stopFrame ||
+       (!exitUnwind && !mem.IsRangeMapped(targetFrame,sizeof(RegistrationRecord32))))
         return UnwindResult::InvalidTarget;
 
     const uint32_t esp=state.ESP();
@@ -160,7 +164,8 @@ UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
         mem.Write32(record,0xC0000027u); // STATUS_UNWIND
         mem.Write32(record+12,mem.IsRangeMapped(esp,4)?mem.Read32(esp):state.eip);
     }
-    mem.Write32(record+4,mem.Read32(record+4)|kExceptionUnwinding);
+    mem.Write32(record+4,mem.Read32(record+4)|kExceptionUnwinding|
+                (exitUnwind?kExceptionExitUnwind:0u));
     SaveContext(mem,context,state);
     for(unsigned i=0;i<count;++i) {
         cpu::CpuState handlerState=state;
@@ -170,7 +175,7 @@ UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
         if(disposition!=static_cast<uint32_t>(Disposition::ContinueSearch))
             return UnwindResult::UnsupportedDisposition;
         // Once the frame's termination handler finishes, FS:[0] advances.
-        mem.Write32(teb,i+1<count?frames[i+1]:targetFrame);
+        mem.Write32(teb,i+1<count?frames[i+1]:stopFrame);
     }
     // RtlUnwind is non-returning for a valid target. The caller supplies a
     // continuation in its own active stack frame. This does not implement
