@@ -122,3 +122,12 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - Commit `7610813`: guest `gui_seh_context.c` verifies XMM0 visible in CONTEXT, then modified and restored alongside MXCSR after `RaiseException`.
 - Exact SHA CI for these commits **not yet confirmed successful** when written; check GitHub Actions run `39630744462`. Do not claim fully correct Windows x87 ABI until broader FPU and SSE tests pass.
 - Next: verify CI and fix compilation/test failures, then address per-thread SEH active-handler state and guest scheduler.
+
+## 2026-10-21 GuestThread foundation and CI recovery
+- Found real host CI failure for `7610813`: i686 MinGW's default target rejects x86 `xmm0` clobber in `gui_seh_context.c` without SSE. Commit `4d47022` builds that specific guest test with `-msse2` (not a global compiler flag).
+- Found **undefined behavior** from an older bug: `source/cpu/guest_memory.h` allocated `g_sehExceptionArguments[4]` while `host_functions.cpp` already looped over 15; commit `8987b27` expands array to 15. This is a genuine runtime memory corruption fix.
+- Introduced `source/runtime/guest_thread.h` (`b72c65a`) with owner of CPU, TEB, stack bounds, TLS array, ID, lifecycle/status, suspend/wait fields, and thread-owned active SEH handler frames (`c07cb8b`). `Process::MainThread()` and `CurrentThreadId()` exposed by `e7ad66a`. Main thread initialized from prepared TEB/CPU (`046ec8d`).
+- `KERNEL32!GetCurrentThreadId` now obtains the current primary guest thread ID from Process (`c7fd25b`). `gui_thread_identity.c` checks it against `FS:[0x24]` and TEB self field (`12d23be`).
+- `seh_dispatch.cpp` uses active SEH frame state stored in `Process::MainThread()`, not global dispatcher variables (`c3e2fbe`). `source/main.cpp` and `tests/winrun.cpp` now execute the actual `GuestThread::cpu` via a reference, rather than a disconnected local CPU copy (`3322213`, `12b2e9d`).
+- **NO new runnable guest scheduler yet.** Only one main guest thread; thread-related fields are groundwork, NOT evidence CreateThread/Wait* work.
+- Preserve known good Paint NRO from `2c9a1fa`. Latest CI not yet confirmed green on `12b2e9d` when written.
