@@ -131,3 +131,12 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `seh_dispatch.cpp` uses active SEH frame state stored in `Process::MainThread()`, not global dispatcher variables (`c3e2fbe`). `source/main.cpp` and `tests/winrun.cpp` now execute the actual `GuestThread::cpu` via a reference, rather than a disconnected local CPU copy (`3322213`, `12b2e9d`).
 - **NO new runnable guest scheduler yet.** Only one main guest thread; thread-related fields are groundwork, NOT evidence CreateThread/Wait* work.
 - Preserve known good Paint NRO from `2c9a1fa`. Latest CI not yet confirmed green on `12b2e9d` when written.
+
+## 2026-10-21 cooperative GuestScheduler first implementation
+- User agreed to postpone Windows XP-like taskbar/Start shell until a functioning multithreaded Win32 runtime; continuing core development.
+- Previous full CI for `12b2e9d` succeeded (run `39631972627`); later other CI jobs still running, don't confuse revisions.
+- `source/runtime/guest_scheduler.h` introduced in `a17edb5`: header-only cooperative scheduler tracking guest-thread pointers, round-robin Next(), suspend/resume counts, waiting on object-handle IDs, wake one/all, exit code/lifecycle. This is **cooperative bookkeeping only**; NO true CreateThread, concurrent interpreter execution, working guest WaitForSingleObject or sync HANDLE integration yet.
+- `tests/test_guest_scheduler.cpp` `0b0e747` checks identity validation, deterministic round-robin, suspension, wait, signal one/all and termination. Hooked into `tools/run_host_tests.sh` with `f381e2c`.
+- `Process` now owns `GuestScheduler` (`13aba06`), registers the main guest thread in `PrepareMainThread` (`ddeec51`). MainThread CPU and SEH active stack ownership from previous commits remain.
+- Actions run `39632823805` corresponds to `f381e2c`, was still in progress at handoff; check exact SHA before treating branch as tested.
+- Next implement actual worker-thread creation: separate stack + TEB + TLS, safe storage/lifetime for GuestThread, thread-local HLE last error and SEH, context switch into scheduler. Ensure verified old Paint NRO `2c9a1fa` remains intact.
