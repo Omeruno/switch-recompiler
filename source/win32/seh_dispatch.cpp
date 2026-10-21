@@ -179,8 +179,23 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
                         uint32_t exceptionAddress, const uint32_t* params,
                         uint32_t paramCount) {
     if (!teb || !mem.IsRangeMapped(teb,4)) return DispatchResult::InvalidChain;
-    rt::GuestThread* thread = rt::g_process && rt::g_process->MainThread().teb == teb
-        ? &rt::g_process->MainThread() : nullptr;
+    // Nested SEH active-handler state follows the actual FS/TEB owner.
+    rt::GuestThread* thread = nullptr;
+    if (rt::g_process) {
+        auto& process=*rt::g_process;
+        rt::GuestThread* current=process.Scheduler().Current();
+        if (current && current->teb==teb) thread=current;
+        else if (process.MainThread().teb==teb) thread=&process.MainThread();
+        // A callback may execute on a temporarily selected worker even
+        // when another thread is the last scheduler dispatch.
+        else {
+            // Resolve the worker from ClientId.UniqueThread at TEB+0x24.
+            if (mem.IsRangeMapped(teb+0x24,4)) {
+                rt::GuestThread* candidate=process.FindThread(mem.Read32(teb+0x24));
+                if (candidate && candidate->teb==teb) thread=candidate;
+            }
+        }
+    }
     uint32_t frame=mem.Read32(teb); // NT_TIB.ExceptionList == FS:[0]
     if(frame==kEndOfChain) return DispatchResult::Unhandled;
     const uint32_t entryEsp=state.Get(cpu::Reg32::ESP);
