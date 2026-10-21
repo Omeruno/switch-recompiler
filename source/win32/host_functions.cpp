@@ -1783,7 +1783,7 @@ HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMe
     uint32_t count = ReadArg(c, mem, 2);
     uint32_t args = ReadArg(c, mem, 3);
     cpu::g_sehExceptionArgumentCount = count;
-    for (unsigned i = 0; i < 4; ++i)
+    for (unsigned i = 0; i < 15; ++i)
         cpu::g_sehExceptionArguments[i] =
             i < count && args && mem.IsRangeMapped(args + i * 4, 4) ?
             mem.Read32(args + i * 4) : 0;
@@ -1794,7 +1794,7 @@ HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMe
     cpu::CpuState resume = c;
     resume.eip = callerEip;
     resume.ESP() = c.ESP() + 20;
-    const uint32_t paramCount = count < 4 ? count : 4;
+    const uint32_t paramCount = count < 15 ? count : 15;
     win32::seh::DispatchResult result = win32::seh::Dispatch(
         resume, mem, g_tebAddr, cpu::g_sehExceptionCode,
         cpu::g_sehExceptionFlags, callerEip,
