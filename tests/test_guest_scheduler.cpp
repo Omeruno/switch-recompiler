@@ -73,5 +73,26 @@ int main() {
     execution.Exit(first,0);
     execution.Exit(second,0);
     assert(execution.RunQuantum(step,12).executed==0);
+    // Guest Sleep blocks only one virtual CPU and wakes at its guest-clock
+    // deadline. Fast-forward mode keeps this deterministic and nonblocking.
+    rt::Clock::SetFastForward(true);
+    rt::GuestScheduler sleeps;
+    rt::GuestThread sleeper,peer;
+    sleeper.id=101;peer.id=102;
+    sleeper.status=peer.status=rt::GuestThreadStatus::Runnable;
+    assert(sleeps.Add(sleeper) && sleeps.Add(peer));
+    sleeps.Sleep(sleeper,25);
+    assert(!sleeper.IsRunnable() && sleeps.Next()==&peer);
+    sleeps.Sleep(peer,50);
+    assert(sleeps.Next()==nullptr && sleeps.HasSleepingThreads());
+    rt::Clock::Sleep(26);
+    assert(sleeps.Next()==&sleeper && !peer.IsRunnable());
+    rt::Clock::Sleep(25);
+    assert(sleeps.Next()==&peer);
+    sleeps.Sleep(peer,0);
+    assert(peer.yieldRequested);
+    peer.yieldRequested=false;
+    assert(!peer.yieldRequested);
+    rt::Clock::SetFastForward(false);
     puts("PASSED: round-robin, suspend, wait, wake and exit");
 }
