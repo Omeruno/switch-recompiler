@@ -355,7 +355,7 @@ int main(int argc, char** argv) {
         if (!running || !running->IsRunnable() || running->yieldRequested || quantumLeft==0) {
             running=proc.Scheduler().Next();
             if(!running) {
-                if(proc.Scheduler().HasSleepingThreads()) {
+                if(proc.Scheduler().HasPendingTimers()) {
                     rt::Clock::Sleep(1);
                     continue;
                 }
