@@ -52,6 +52,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$out/guest"
     for exe in "$out"/guest/*.exe; do
+        [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         # программы работают в своём каталоге: C:\ гостя = build-host/guest
         if (cd "$out/guest" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
             tail -n 1 "$out/$(basename "$exe").log"
@@ -61,6 +62,24 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             failed=1
         fi
     done
+    # End-to-end dialog test: open an existing file, then save a new file.
+    # The virtual 800x600 desktop centers a 530x390 dialog. Script a click
+    # on the dialog Open/Save button at approximately (575,420).
+    printf 'BMtest' > "$out/guest/sample.bmp"
+    rm -f "$out/guest/output.bmp"
+    if (cd "$out/guest" &&
+        "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe open > "$out/comdlg_open.log" 2>&1 &&
+        grep -q "PASSED" "$out/comdlg_open.log" &&
+        "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe save > "$out/comdlg_save.log" 2>&1 &&
+        grep -q "PASSED" "$out/comdlg_save.log" &&
+        [ -f "$out/guest/output.bmp" ]); then
+        echo "comdlg32 end-to-end open/save: PASSED"
+    else
+        echo "   comdlg32 end-to-end: FAILED"
+        tail -n 30 "$out/comdlg_open.log" 2>/dev/null || true
+        tail -n 30 "$out/comdlg_save.log" 2>/dev/null || true
+        failed=1
+    fi
 else
     echo "(mingw-w64 не найден: гостевые программы пропущены)"
 fi
