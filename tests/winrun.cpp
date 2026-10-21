@@ -204,12 +204,13 @@ int main(int argc, char** argv) {
         if (!a) { std::fprintf(stderr,"thread probe: %s\n",err.c_str()); return 4; }
         rt::GuestThread* b=proc.CreateGuestThread(start,0xABCDEF90u,0x40000u,true,err);
         if (!b) { std::fprintf(stderr,"thread probe: %s\n",err.c_str()); return 4; }
-        const bool ok =
+        const bool distinct =
             proc.Scheduler().Size()==3 && a!=b &&
             a->teb!=b->teb && a->teb!=proc.MainThread().teb &&
-            a->tlsArray!=b->tlsArray && a->tlsArray!=proc.MainThread().tlsArray &&
-            (a->stackBase<=b->stackLimit || b->stackBase<=a->stackLimit);
-        const bool distinct =
+            b->teb!=proc.MainThread().teb &&
+            a->tlsArray!=b->tlsArray &&
+            a->tlsArray!=proc.MainThread().tlsArray &&
+            b->tlsArray!=proc.MainThread().tlsArray &&
             (a->stackBase<=b->stackLimit || b->stackBase<=a->stackLimit) &&
             a->id!=b->id && a->id!=proc.MainThread().id &&
             mem.Read32(a->teb+0x00)==0xffffffffu &&
@@ -226,7 +227,7 @@ int main(int argc, char** argv) {
             a->cpu.eip==start && b->cpu.eip==start &&
             a->IsRunnable() && !b->IsRunnable() &&
             b->suspendCount==1;
-        if (!ok || !distinct) {
+        if (!distinct) {
             std::fprintf(stderr,"thread probe: wrong TEB/TLS/CPU stack isolation\n");
             return 4;
         }
