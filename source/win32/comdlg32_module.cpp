@@ -35,6 +35,8 @@ struct Request {
     bool wide = false, save = false, done = false, accepted = false;
     uint32_t hwnd = 0, list = 0, edit = 0;
     std::string directory;
+    std::string initialFile;
+    std::vector<std::string> patterns;
     std::u16string selected;
     std::vector<std::string> listNames;
 };
@@ -60,6 +62,45 @@ std::string Join(const std::string& dir, const std::string& item) {
     if (!item.empty() && (item[0] == '\\' || item[0] == '/')) return rt::FileSystem().FullGuestPath(item);
     return rt::FileSystem().FullGuestPath(dir + "\\" + item);
 }
+// OPENFILENAME filter uses pairs "label\0pattern\0... \0\0".
+std::vector<std::string> ReadFilters(cpu::IGuestMemory& m, uint32_t ptr, bool wide) {
+    std::vector<std::string> result;
+    if (!ptr) return result;
+    uint32_t offset = 0;
+    auto readPart = [&]() {
+        std::u16string part;
+        for (uint32_t n = 0; n < 4096 && offset < 16384; ++n, ++offset) {
+            uint16_t ch = wide ? m.Read16(ptr + offset * 2) : m.Read8(ptr + offset);
+            if (!ch) { ++offset; break; }
+            part.push_back(static_cast<char16_t>(ch));
+        }
+        return WideToUtf8(part);
+    };
+    for (unsigned int i = 0; i < 64 && offset < 16384; ++i) {
+        std::string label = readPart();
+        if (label.empty()) break;
+        std::string pattern = readPart();
+        if (pattern.empty()) break;
+        result.push_back(pattern);
+    }
+    return result;
+}
+bool MatchExtension(const std::string& name, const std::string& pattern) {
+    size_t start = 0;
+    while (start < pattern.size()) {
+        size_t end = pattern.find(';', start);
+        if (end == std::string::npos) end = pattern.size();
+        std::string glob = Lower(pattern.substr(start, end - start));
+        std::string file = Lower(name);
+        if (glob == "*" || glob == "*.*") return true;
+        if (glob.size() > 2 && glob[0] == '*' && glob[1] == '.' &&
+            file.size() >= glob.size() - 1 &&
+            file.compare(file.size() - glob.size() + 1, glob.size() - 1, glob.substr(1)) == 0) return true;
+        if (glob == file) return true;
+        start = end + 1;
+    }
+    return false;
+}
 std::u16string Text(const std::string& a) { return AnsiToWide(a); }
 std::string Narrow(const std::u16string& s) { return WideToUtf8(s); }
 
@@ -84,6 +125,8 @@ void UpdateList(Request& r) {
             struct stat st;
             if (stat((host + "/" + name).c_str(), &st) != 0) continue;
             if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)) continue;
+            if (S_ISREG(st.st_mode) && !r.patterns.empty() &&
+                !MatchExtension(name, r.patterns.front())) continue;
             files.push_back({name, S_ISDIR(st.st_mode)});
         }
         closedir(d);
@@ -210,6 +253,12 @@ bool ShowDialog(Request& r) {
     AddChild(r, u"Button", r.save ? u"Save" : u"Open", BTN_ID_OK, 385, 289, 116, 27, 0x00010000u | 1);
     AddChild(r, u"Button", u"Cancel", BTN_ID_CANCEL, 385, 322, 116, 27, 0x00010000u);
     UpdateList(r);
+    if (!r.initialFile.empty()) {
+        if (Window* initialEdit = Win(r.edit)) {
+            initialEdit->text = Text(r.initialFile);
+            Redraw(r.edit);
+        }
+    }
     ShowWindowInternal(r.hwnd, 5);
     uint32_t owner = r.owner;
     bool wasEnabled = Win(owner) && !(Win(owner)->style & WS_DISABLED);
@@ -248,6 +297,10 @@ HostCallOutcome FileDialog(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bo
     r.maxFileTitle = m.Read32(p + 40);
     r.defExtPtr = m.Read32(p + 60);
     r.flags = m.Read32(p + 52);
+    r.patterns = ReadFilters(m, m.Read32(p + 12), wide);
+    uint32_t filterIndex = m.Read32(p + 24);
+    if (filterIndex >= 1 && filterIndex <= r.patterns.size())
+        std::rotate(r.patterns.begin(), r.patterns.begin() + filterIndex - 1, r.patterns.end());
     if (!r.filePtr || !r.maxFile) { g_extendedError = CDERR_INITIALIZATION; return Ret(0); }
     std::string initial = wide ? Narrow(ReadWide(m, m.Read32(p + 44))) : ReadAnsi(m, m.Read32(p + 44));
     r.directory = initial.empty() ? rt::FileSystem().CurrentDirectory() : rt::FileSystem().FullGuestPath(initial);
@@ -261,6 +314,7 @@ HostCallOutcome FileDialog(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bo
             file = file.substr(slash + 1);
         }
     }
+    r.initialFile = file;
     G().c = &c; G().m = &m;
     if (!ShowDialog(r)) { g_extendedError = CDERR_INITIALIZATION; return Ret(0); }
     return Ret(r.accepted ? 1 : 0);
