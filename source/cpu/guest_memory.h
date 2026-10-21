@@ -90,7 +90,7 @@ inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t ad
     if (g_sehRaised) {
         std::fprintf(f, "Win32 RaiseException: code=0x%08x flags=0x%08x arguments=%u\n",
                      g_sehExceptionCode, g_sehExceptionFlags, g_sehExceptionArgumentCount);
-        for (unsigned i = 0; i < 4 && i < g_sehExceptionArgumentCount; ++i)
+        for (unsigned i = 0; i < 15 && i < g_sehExceptionArgumentCount; ++i)
             std::fprintf(f, "  RaiseException arg[%u]=0x%08x\n", i, g_sehExceptionArguments[i]);
     }
     std::fprintf(f, "Recent GetProcAddress calls (oldest to newest):\n");
