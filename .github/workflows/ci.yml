@@ -33,6 +33,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: make
         run: make -j"$(nproc)"
+      - name: Build isolated JIT permissions probe
+        run: make -C tools/jit_probe -j"$(nproc)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jit-permission-probe-nro
+          path: tools/jit_probe/jit_probe.nro
       - uses: actions/upload-artifact@v4
         with:
           name: switch-recompiler-nro
