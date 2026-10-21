@@ -179,7 +179,9 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t hand
     // unfinished worker as signaled, and never block the host render loop.
     if ((handle & 0xff000000u)==0xE1000000u && rt::g_process) {
         rt::GuestThread* target=rt::g_process->FindThread(handle & 0x00ffffffu);
-        if (!target) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(kWaitFailed); }
+        if (!target || !HleIsOpenThreadHandle(handle)) {
+            SetLastError(m,ERROR_INVALID_HANDLE); return Ret(kWaitFailed);
+        }
         if (target->status==rt::GuestThreadStatus::Exited) return Ret(0);
         if (milliseconds==0) return Ret(kWaitTimeout);
         rt::GuestThread* current=rt::g_process->Scheduler().Current();
