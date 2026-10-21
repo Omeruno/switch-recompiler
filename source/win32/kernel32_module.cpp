@@ -175,6 +175,73 @@ HostCallOutcome K32_ExitProcess(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return r;
 }
 
+// Worker-thread API. Handles use a reserved synthetic range until the
+// shared NT object handle table is available.
+constexpr uint32_t kThreadHandleBase = 0xE1000000u;
+uint32_t ThreadHandle(uint32_t id) { return kThreadHandleBase | (id & 0x00FFFFFFu); }
+rt::GuestThread* ThreadFromHandle(uint32_t handle) {
+    if (!rt::g_process) return nullptr;
+    if (handle == 0xFFFFFFFEu) return rt::g_process->Scheduler().Current()
+        ? rt::g_process->Scheduler().Current() : &rt::g_process->MainThread();
+    if ((handle & 0xFF000000u) != kThreadHandleBase) return nullptr;
+    return rt::g_process->FindThread(handle & 0x00FFFFFFu);
+}
+HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t stack=Arg(c,m,1), start=Arg(c,m,2);
+    const uint32_t parameter=Arg(c,m,3), flags=Arg(c,m,4), idPtr=Arg(c,m,5);
+    if (!rt::g_process || (flags & ~0x00000004u)) {
+        SetLastError(m,ERROR_INVALID_PARAMETER);
+        return Ret(0);
+    }
+    std::string error;
+    rt::GuestThread* worker=rt::g_process->CreateGuestThread(
+        start,parameter,stack,(flags & 0x4u)!=0,error);
+    if (!worker) {
+        SetLastError(m,ERROR_NOT_ENOUGH_MEMORY);
+        return Ret(0);
+    }
+    if (idPtr && m.IsRangeMapped(idPtr,4)) m.Write32(idPtr,worker->id);
+    return Ret(ThreadHandle(worker->id));
+}
+HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
+    uint32_t output=Arg(c,m,1);
+    if (!t || !output || !m.IsRangeMapped(output,4)) {
+        SetLastError(m,ERROR_INVALID_PARAMETER);return Ret(0);
+    }
+    m.Write32(output,t->exitCode);return Ret(1);
+}
+HostCallOutcome K32_SuspendThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
+    if(!t || t->status==rt::GuestThreadStatus::Exited) {
+        SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0xffffffffu);
+    }
+    return Ret(rt::g_process->Scheduler().Suspend(*t));
+}
+HostCallOutcome K32_ResumeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
+    if(!t || t->status==rt::GuestThreadStatus::Exited) {
+        SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0xffffffffu);
+    }
+    uint32_t previous=rt::g_process->Scheduler().Resume(*t);
+    if(t->status==rt::GuestThreadStatus::Suspended && !t->suspendCount)
+        t->status=rt::GuestThreadStatus::Runnable;
+    return Ret(previous);
+}
+HostCallOutcome K32_ExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    if (!t || t==&rt::g_process->MainThread()) {
+        // ExitThread on the initial thread terminates the process only
+        // when there are no other runnable threads. For now fail visibly
+        // rather than silently killing all guest workers.
+        cpu::FatalError("ExitThread on main thread needs process lifetime management");
+    }
+    rt::g_process->Scheduler().Exit(*t,Arg(c,m,0));
+    HostCallOutcome out;
+    out.customReturn=true; // nonreturning; outer loop sees Exited state
+    return out;
+}
+
 // --- Консоль ---
 
 HostCallOutcome K32_GetStdHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -366,6 +433,11 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "GetModuleFileNameW", 12, CallConv::Stdcall, &K32_GetModuleFileNameW},
     {"KERNEL32.dll", "DisableThreadLibraryCalls", 4, CallConv::Stdcall, &K32_DisableThreadLibraryCalls},
     {"KERNEL32.dll", "ExitProcess", 4, CallConv::Stdcall, &K32_ExitProcess},
+    {"KERNEL32.dll", "CreateThread", 24, CallConv::Stdcall, &K32_CreateThread},
+    {"KERNEL32.dll", "ExitThread", 4, CallConv::Stdcall, &K32_ExitThread},
+    {"KERNEL32.dll", "GetExitCodeThread", 8, CallConv::Stdcall, &K32_GetExitCodeThread},
+    {"KERNEL32.dll", "SuspendThread", 4, CallConv::Stdcall, &K32_SuspendThread},
+    {"KERNEL32.dll", "ResumeThread", 4, CallConv::Stdcall, &K32_ResumeThread},
     {"KERNEL32.dll", "GetStdHandle", 4, CallConv::Stdcall, &K32_GetStdHandle},
     {"KERNEL32.dll", "WriteConsoleA", 20, CallConv::Stdcall, &K32_WriteConsoleA},
     {"KERNEL32.dll", "WriteConsoleW", 20, CallConv::Stdcall, &K32_WriteConsoleW},
