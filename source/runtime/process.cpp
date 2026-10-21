@@ -470,6 +470,107 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     return true;
 }
 
+GuestThread* Process::FindThread(uint32_t id) {
+    if (mainThread_.id == id && id) return &mainThread_;
+    for (auto& worker : workerThreads_)
+        if (worker->id == id) return worker.get();
+    return nullptr;
+}
+
+GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t parameter,
+                                        uint32_t stackReserve, bool suspended,
+                                        std::string& error) {
+    if (!threadReady_ || !main_) {
+        error = "guest process main thread is not ready";
+        return nullptr;
+    }
+    if (!startAddress || !mem_.IsMapped(startAddress)) {
+        error = "worker thread start address is not mapped";
+        return nullptr;
+    }
+    if (nextThreadId_ >= 0xfffffff0u) {
+        error = "guest thread ID exhausted";
+        return nullptr;
+    }
+    if (!stackReserve) stackReserve = 0x100000u;
+    if (stackReserve < 0x10000u) stackReserve = 0x10000u;
+    if (stackReserve > 0x1000000u) {
+        error = "guest worker stack reserve exceeds 16 MiB";
+        return nullptr;
+    }
+    stackReserve = (stackReserve + 0xffffu) & ~0xffffu;
+    // Keep TEB/PEB reservation for the first thread untouched.
+    const uint32_t teb=mem_.Allocate(0x1000u,cpu::kProtRW);
+    if (!teb) { error = "cannot allocate worker TEB"; return nullptr; }
+    const uint32_t stack=mem_.Allocate(stackReserve,cpu::kProtRW,0x10000u,0x7f000000u);
+    if (!stack) { mem_.Unmap(teb,0x1000u); error = "cannot allocate worker stack"; return nullptr; }
+    const uint32_t tls=mem_.Allocate(kTlsSlots*4u,cpu::kProtRW);
+    if (!tls) {
+        mem_.Unmap(stack,stackReserve);
+        mem_.Unmap(teb,0x1000u);
+        error="cannot allocate worker TLS vector";
+        return nullptr;
+    }
+    const uint32_t id=nextThreadId_;
+    auto worker=std::unique_ptr<GuestThread>(new GuestThread());
+    worker->id=id;
+    worker->teb=teb;
+    worker->stackLimit=stack;
+    worker->stackBase=stack+stackReserve;
+    worker->tlsArray=tls;
+    worker->status=suspended?GuestThreadStatus::Suspended:GuestThreadStatus::Runnable;
+    worker->suspendCount=suspended?1u:0u;
+    worker->cpu=cpu::CpuState{};
+    worker->cpu.eip=startAddress;
+    worker->cpu.ESP()=worker->stackBase-16u;
+    worker->cpu.ESP()-=4u;
+    mem_.Write32(worker->cpu.ESP(),parameter);
+    worker->cpu.ESP()-=4u;
+    // The scheduler will eventually replace this temporary return thunk
+    // with its own ExitThread trampoline.
+    mem_.Write32(worker->cpu.ESP(),EntryReturnAddress());
+    mem_.Write32(teb+0x00,win32::seh::kEndOfChain);
+    mem_.Write32(teb+0x04,worker->stackBase);
+    mem_.Write32(teb+0x08,worker->stackLimit);
+    mem_.Write32(teb+0x18,teb);
+    mem_.Write32(teb+0x20,0x1000u);
+    mem_.Write32(teb+0x24,id);
+    mem_.Write32(teb+0x2c,tls);
+    mem_.Write32(teb+0x30,kPebAddress);
+    // Each DLL with static TLS needs an independent initialized TLS block.
+    for (const auto& mod : modules_) {
+        if (mod->tlsIndex==0xffffffffu || mod->tlsIndex>=kTlsSlots) continue;
+        const uint32_t templateSize=mod->tlsTemplateEnd>mod->tlsTemplateStart
+            ? mod->tlsTemplateEnd-mod->tlsTemplateStart:0u;
+        if (templateSize > 0x1000000u ||
+            mod->tlsZeroFill > 0x1000000u-templateSize) {
+            error="worker TLS template too large";
+            mem_.Unmap(tls,kTlsSlots*4u);mem_.Unmap(stack,stackReserve);mem_.Unmap(teb,0x1000u);
+            return nullptr;
+        }
+        const uint32_t block=mem_.Allocate(templateSize+mod->tlsZeroFill?
+                                           templateSize+mod->tlsZeroFill:4u,cpu::kProtRW);
+        if(!block) {
+            error="cannot allocate worker TLS block";
+            // Blocks already allocated remain owned by guest memory; memory
+            // rollback for partial TLS allocation must be added separately.
+            mem_.Unmap(tls,kTlsSlots*4u);mem_.Unmap(stack,stackReserve);mem_.Unmap(teb,0x1000u);
+            return nullptr;
+        }
+        for(uint32_t i=0;i<templateSize;++i)
+            mem_.Write8(block+i,mem_.Read8(mod->tlsTemplateStart+i));
+        mem_.Write32(tls+mod->tlsIndex*4u,block);
+    }
+    GuestThread* result=worker.get();
+    if(!scheduler_.Add(*result)) {
+        error="cannot register worker with guest scheduler";
+        return nullptr;
+    }
+    workerThreads_.push_back(std::move(worker));
+    nextThreadId_+=4u;
+    return result;
+}
+
 bool Process::InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error) {
     if (m->initialized) return true;
     m->initialized = true; // до вызова: защита от циклов зависимостей
