@@ -108,7 +108,14 @@ public:
     const std::string& CommandLine() const { return commandLine_; }
 
     uint32_t TebAddress() const { return mainThread_.teb ? mainThread_.teb : kTebAddress; }
-    uint32_t CurrentThreadId() const { return mainThread_.id; }
+    uint32_t CurrentThreadId() const {
+        const GuestThread* current = scheduler_.Current();
+        return current ? current->id : mainThread_.id;
+    }
+    uint32_t CurrentTebAddress() const {
+        const GuestThread* current = scheduler_.Current();
+        return current ? current->teb : TebAddress();
+    }
     const GuestThread& MainThread() const { return mainThread_; }
     GuestThread& MainThread() { return mainThread_; }
     // Allocate a separate x86 worker stack, TEB and TLS; does not schedule it.
