@@ -148,3 +148,11 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - **Not yet actual concurrent execution:** scheduler round-robin is only bookkeeping; no HLE CreateThread and ExitThread, no context switch in interpreter loop, no thread-private Win32 HLE globals, no THREAD_ATTACH notifications. Worker return stack currently uses process EntryReturnAddress TEMPORARILY, and must be replaced with ExitThread trampoline before executing workers. Do not imply multi-threading functional.
 - Latest commit `cf44d77`, its CI run `39633616818` initially queued. Check exact SHA CI and logs before declaring tests pass.
 - User wants XP-like desktop/Start menu after viable multithreading; prioritize functional runtime, not GUI mockups yet. Paint Open/Save on real Switch verified with previous baseline.
+
+## 2026-10-21 complete architecture roadmap and execution quantum
+- User wants native Horizon graphics pipeline (rather than copying Wine/Winlator), XP-like Start shell after functional multithreading. New detailed Russian `docs/ROADMAP.md` commit `f9d11f7` maps stages A-I, CPU oracle, thread lifecycle, typed handles, Win32 ABI, GDI software reference + native GPU backend, XP host shell, optional dynarec, DirectDraw/D3D, release/tests, x64 explicitly separate.
+- Confirmed `39633725215` SUCCESS for worker thread creation/TLS probe checkpoint `a9e62cff`.
+- `source/runtime/guest_scheduler.h` `06e746f`: `RunQuantum(step,budget)` selects one runnable guest, calls a one-instruction callback at most `budget` times, stops early on callback yield or guest lifecycle changes (Waiting/Suspended/Exited); returns chosen thread id, executed count, callback stop flag. No host blocking.
+- `tests/test_guest_scheduler.cpp` `d0da2da`: deterministic 2-guest CPU register increments under quantized round robin, suspension/wait interrupt, wake, callback yield and finished state. Standalone test already wired in host CI.
+- **Crucial**: callback tests increment a register; they DO NOT run actual x86 Interpreter::Step for two threads yet. Wire main and host winrun interpreters next with per-thread FS base, TryHandleHostCall routing and proper ExitThread trampoline; do not claim runnable CreateThread yet.
+- CI for latest quantum tests pending when written: `39634978264` / `39634968660`, must verify exact SHA.
