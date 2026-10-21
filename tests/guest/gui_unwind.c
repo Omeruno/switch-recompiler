@@ -47,7 +47,7 @@ exitResumed:
     __asm__ __volatile__("movl %%fs:0, %0" : "=r"(head));
     __asm__ __volatile__("movl %0, %%fs:0" : : "r"(old) : "memory");
     if(head != old || callbacks!=2 || wrongFlags || wrongExitFlags || returnedUnexpectedly) {
-        printf("Exit-unwind FAILED head=%p expected=%p cb=%d flags=%d exitflags=%d returned=%d\\n",
+        printf("Exit-unwind FAILED head=%p expected=%p cb=%d flags=%d exitflags=%d returned=%d\n",
                head,old,callbacks,wrongFlags,wrongExitFlags,returnedUnexpectedly);
         return 1;
     }
