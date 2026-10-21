@@ -160,7 +160,9 @@ HostCallOutcome K32_IsDebuggerPresent(cpu::CpuState&, cpu::IGuestMemory&) { retu
 HostCallOutcome K32_GetCurrentProcess(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0xFFFFFFFFu); }
 HostCallOutcome K32_GetCurrentThread(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0xFFFFFFFEu); }
 HostCallOutcome K32_GetCurrentProcessId(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0x1000); }
-HostCallOutcome K32_GetCurrentThreadId(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0x1004); }
+HostCallOutcome K32_GetCurrentThreadId(cpu::CpuState&, cpu::IGuestMemory&) {
+    return Ret(rt::g_process ? rt::g_process->CurrentThreadId() : 0x1004u);
+}
 
 // --- Обработчик необработанных исключений ---
 uint32_t g_unhandledFilter = 0;
