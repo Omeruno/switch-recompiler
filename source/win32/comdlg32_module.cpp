@@ -270,7 +270,17 @@ bool ShowDialog(Request& r) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) break;
         if (msg.message == user::WM_QUIT) { S().quit = true; S().quitCode = msg.wParam; break; }
-        if (msg.message == WM_KEYDOWN && msg.wParam == 27) { r.done = true; break; }
+        if (msg.message == user::WM_KEYDOWN) {
+            if (msg.wParam == 27) { r.done = true; break; } // Esc
+            if (msg.wParam == 13) { Accept(r); continue; } // Enter
+            if (msg.wParam == 9) { // Tab: cycle through interactive controls
+                uint32_t id = r.list;
+                if (S().focus == r.list) id = r.edit;
+                else if (S().focus == r.edit) id = r.list;
+                if (id) SetFocusInternal(id);
+                continue;
+            }
+        }
         if (msg.message == user::WM_TIMER && msg.lParam) {
             CallStdcall(*G().c, *G().m, msg.lParam, {msg.hwnd, user::WM_TIMER, msg.wParam, NowMs()});
             continue;
