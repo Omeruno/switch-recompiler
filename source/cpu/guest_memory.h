@@ -51,6 +51,13 @@ inline uint32_t g_fatalStackCount = 0;
 // In-memory ring buffer: no SD writes during guest execution.
 inline char g_recentDynamicImports[8][176] = {};
 inline uint32_t g_recentDynamicImportSerial = 0;
+// Raised Win32 SEH exception context; remains zero when none was raised.
+inline bool g_sehRaised = false;
+inline uint32_t g_sehExceptionCode = 0;
+inline uint32_t g_sehExceptionFlags = 0;
+inline uint32_t g_sehExceptionArgumentCount = 0;
+inline uint32_t g_sehExceptionArguments[4] = {};
+
 inline void RecordDynamicImport(const char* dll, const char* func, uint32_t result) {
     uint32_t slot = g_recentDynamicImportSerial++ % 8;
     std::snprintf(g_recentDynamicImports[slot], sizeof(g_recentDynamicImports[slot]),
@@ -80,6 +87,12 @@ inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t ad
                  g_fatalRegisters[4], g_fatalRegisters[5], g_fatalRegisters[6], g_fatalRegisters[7]);
     for (uint32_t i = 0; i < g_fatalStackCount; ++i)
         std::fprintf(f, "Stack[ESP+%u]: 0x%08x\n", i * 4, g_fatalStackWords[i]);
+    if (g_sehRaised) {
+        std::fprintf(f, "Win32 RaiseException: code=0x%08x flags=0x%08x arguments=%u\n",
+                     g_sehExceptionCode, g_sehExceptionFlags, g_sehExceptionArgumentCount);
+        for (unsigned i = 0; i < 4 && i < g_sehExceptionArgumentCount; ++i)
+            std::fprintf(f, "  RaiseException arg[%u]=0x%08x\n", i, g_sehExceptionArguments[i]);
+    }
     std::fprintf(f, "Recent GetProcAddress calls (oldest to newest):\n");
     uint32_t count = g_recentDynamicImportSerial < 8 ? g_recentDynamicImportSerial : 8;
     for (uint32_t i = 0; i < count; ++i) {
