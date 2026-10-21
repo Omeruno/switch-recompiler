@@ -1,4 +1,5 @@
 #include "message_loop.h"
+#include "seh_dispatch.h"
 #include "host_functions.h" // TryHandleHostCall, HostCallOutcome
 #include "../cpu/interpreter.h"
 #include "../runtime/process.h"
@@ -217,6 +218,13 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
         auto result = nestedInterp.Step(cpu, &instr);
         cpu::g_lastKnownEip = cpu.eip; // после шага: при сбое внутри следующего Step() здесь адрес сбойной инструкции
 
+        if (result == cpu::StepResult::UnknownOpcode || result == cpu::StepResult::Exception) {
+            const cpu::CpuException& fault = nestedInterp.LastException();
+            if (seh::DispatchCpuFault(cpu, mem, fsBase, fault) == seh::DispatchResult::Handled) {
+                ++steps;
+                continue;
+            }
+        }
         if (result == cpu::StepResult::UnknownOpcode) {
             if (cpu::g_consoleAvailable) {
                 std::printf("[DEBUG] Неизвестный опкод 0x%02x на адресе 0x%x (внутри вложенного вызова)\n",
