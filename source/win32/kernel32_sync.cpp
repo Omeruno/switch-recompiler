@@ -312,15 +312,84 @@ HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) 
 HostCallOutcome K32_WaitForSingleObjectEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
 }
-// DWORD WaitForMultipleObjects(DWORD n, const HANDLE*, BOOL waitAll, DWORD ms)
-HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t n = Arg(c, m, 0), arr = Arg(c, m, 1), all = Arg(c, m, 2);
-    if (all) {
-        for (uint32_t i = 0; i < n; ++i) if (TryAcquire(m.Read32(arr + i * 4)) == 0x102) return Ret(0x102);
-        return Ret(0);
+// Multiple waits are evaluated atomically within a cooperative guest quantum.
+// For wait-all, preflight every object's readiness before consuming any state.
+bool WaitHandleReady(uint32_t h) {
+    if ((h & 0xff000000u) == 0xE1000000u && rt::g_process) {
+        if (!HleIsOpenThreadHandle(h)) return false;
+        rt::GuestThread* t = rt::g_process->FindThread(h & 0x00ffffffu);
+        return t && t->status == rt::GuestThreadStatus::Exited;
     }
-    for (uint32_t i = 0; i < n; ++i) if (TryAcquire(m.Read32(arr + i * 4)) == 0) return Ret(i);
-    return Ret(0x102);
+    auto it = Objects().find(h);
+    if (it == Objects().end()) return false;
+    const WaitObject& o = it->second;
+    if (o.kind == WaitObject::Event) return o.signaled;
+    if (o.kind == WaitObject::Semaphore) return o.count > 0;
+    return !o.ownerThread || o.ownerThread == GuestTid();
+}
+bool ValidWaitHandle(uint32_t h) {
+    if ((h & 0xff000000u) == 0xE1000000u && rt::g_process)
+        return HleIsOpenThreadHandle(h) &&
+               rt::g_process->FindThread(h & 0x00ffffffu) != nullptr;
+    return Objects().find(h) != Objects().end();
+}
+uint32_t AcquireWaitHandle(uint32_t h) {
+    if ((h & 0xff000000u) == 0xE1000000u) return 0;
+    return TryAcquire(h);
+}
+HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    constexpr uint32_t kWaitFailed = 0xffffffffu;
+    constexpr uint32_t kWaitTimeout = 0x102u;
+    const uint32_t n = Arg(c,m,0), arr = Arg(c,m,1);
+    const bool all = Arg(c,m,2) != 0;
+    const uint32_t ms = Arg(c,m,3);
+    if (n == 0 || n > 64 || !arr || !m.IsRangeMapped(arr,n*4)) {
+        SetLastError(m, ERROR_INVALID_PARAMETER);
+        return Ret(kWaitFailed);
+    }
+    std::vector<uint32_t> handles;
+    handles.reserve(n);
+    for (uint32_t i=0;i<n;++i) {
+        const uint32_t h=m.Read32(arr+i*4);
+        if (!ValidWaitHandle(h) ||
+            std::find(handles.begin(),handles.end(),h) != handles.end()) {
+            SetLastError(m, ERROR_INVALID_HANDLE);
+            return Ret(kWaitFailed);
+        }
+        handles.push_back(h);
+    }
+    rt::GuestThread* current=rt::g_process ?
+        rt::g_process->Scheduler().Current() : nullptr;
+    const uint32_t token=handles.front();
+    // After a finite timeout, retry this HLE once to deliver WAIT_TIMEOUT,
+    // rather than resetting the deadline indefinitely.
+    if (current && current->timedOutHandle == token) {
+        current->timedOutHandle=0;
+        return Ret(kWaitTimeout);
+    }
+    if (all) {
+        bool ready=true;
+        for (uint32_t h:handles) if (!WaitHandleReady(h)) { ready=false; break; }
+        if (ready) {
+            for (uint32_t h:handles) AcquireWaitHandle(h);
+            return Ret(0);
+        }
+    } else {
+        for (uint32_t i=0;i<n;++i)
+            if (WaitHandleReady(handles[i])) {
+                AcquireWaitHandle(handles[i]);
+                return Ret(i);
+            }
+    }
+    if (ms==0 || !current || !rt::g_process) return Ret(kWaitTimeout);
+    if (!rt::g_process->Scheduler().WaitForMultiple(*current,handles,all,ms))
+        return Ret(kWaitFailed);
+    HostCallOutcome pending;
+    pending.customReturn=true;
+    return pending;
+}
+HostCallOutcome K32_WaitForMultipleObjects(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return WaitMultiple(c,m);
 }
 
 HostCallOutcome CooperativeSleep(cpu::CpuState& c, cpu::IGuestMemory& m) {
