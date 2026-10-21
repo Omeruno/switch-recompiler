@@ -77,7 +77,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 1. Проверить текущий HANDLE/lifecycle пакет: хостовые ABI-тесты, MinGW-гости, CPU oracle и Switch build; отдельно проверить Paint на железе.
 2. Saved native continuations для вложенных callbacks реализованы: взаимные ожидания WndProc/SEH, GetMessage от worker, busy-spin и ExitThread внутри callback покрыты тестами. Проверить ARM64 ABI под QEMU и реальный Switch; это не завершает все блокирующие host HLE пути.
 3. Реализованы освобождение stack/TEB/TLS, DLL_THREAD_ATTACH/DETACH и EXE/DLL TLS callbacks, recursive cooperative loader lock, отложенный старт CREATE_SUSPENDED и static TLS для существующих потоков при LoadLibrary. HANDLE сигналится после detach; метаданные сохраняются. Остались process/DLL shutdown, unload/refcounts/rollback, startup blocking waits и аппаратная регрессия.
-4. Per-thread USER32 queues и MsgWait*, затем APC/alertable waits. Отдельно — named objects и access/inherit/protect HANDLE policies.
+4. USER32 v2: очереди/таймеры/keyboard snapshot разделены, HWND принадлежит guest thread, cross-thread SendMessage/ReplyMessage/notify/timeout и teardown покрыты тестами. Далее — настоящее MsgWait HANDLE+queue, APC/alertable waits, input/focus/hooks ownership. Отдельно — named objects и access/inherit/protect HANDLE policies.
 5. Ввести renderer-backend interface без переписывания эталонного CPU GDI. Desktop-shell и JIT — после соответствующих acceptance gates.
 
 Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.

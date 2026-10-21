@@ -1,7 +1,7 @@
 // user32_message.cpp — очередь сообщений, ввод, таймеры, WM_PAINT и вывод
 // кадра (см. user32.h).
 //
-// Порядок выборки как в Windows: отправленные в очередь (PostMessage),
+// Сначала обрабатываются межпоточные sent messages, затем очередь PostMessage,
 // затем ввод, затем WM_QUIT, затем WM_PAINT, затем WM_TIMER. Ожидание —
 // через платформу фронтенда (g_platform.wait); без неё — «головной» режим:
 // время до ближайшего таймера проматывается, а если ждать нечего,
@@ -35,7 +35,7 @@ bool MatchesFilter(uint32_t msgHwnd, uint32_t message, uint32_t filterHwnd, uint
 
 Window* FindPaintWindow(Window* w, uint32_t filter) {
     if (!w || !(w->style & WS_VISIBLE)) return nullptr;
-    if (w->hwnd != S().desktop && NeedsPaint(w) && MatchesFilter(w->hwnd, WM_PAINT, filter, 0, 0)) return w;
+    if (w->hwnd != S().desktop && w->threadId==CurrentGuiThread() && NeedsPaint(w) && MatchesFilter(w->hwnd, WM_PAINT, filter, 0, 0)) return w;
     for (uint32_t c : w->children)
         if (Window* f = FindPaintWindow(Win(c), filter)) return f;
     return nullptr;
@@ -63,12 +63,16 @@ void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
     m.time = NowMs();
     m.x = S().cursorX;
     m.y = S().cursorY;
+    const auto* window=Win(hwnd);
+    if (!window || !window->threadId) return;
+    auto& queue=QueueFor(window->threadId);
+    if (queue.closed) return;
     // движения мыши сливаем: важна последняя позиция
-    if ((msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE) && !S().input.empty()) {
-        Msg& last = S().input.back();
+    if ((msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE) && !queue.input.empty()) {
+        Msg& last = queue.input.back();
         if (last.message == msg && last.hwnd == hwnd) { last = m; return; }
     }
-    S().input.push_back(m);
+    queue.input.push_back(m);
 }
 
 void MouseEvent(const InputEvent& e) {
@@ -183,7 +187,7 @@ bool PollPlatform(int timeoutMs) {
             break;
         case InputEvent::Quit:
             if (S().active) PostMsg(S().active, WM_CLOSE, 0, 0);
-            else { S().quit = true; S().quitCode = 0; }
+            else { Q().quit = true; Q().quitCode = 0; }
             break;
         }
     }
@@ -191,7 +195,7 @@ bool PollPlatform(int timeoutMs) {
 }
 
 void UpdateKeyState(const Msg& m) {
-    uint8_t* k = S().keys;
+    uint8_t* k = Q().keys;
     switch (m.message) {
     case WM_KEYDOWN: case WM_SYSKEYDOWN:
         if (!(k[m.wParam & 0xFF] & 0x80)) k[m.wParam & 0xFF] ^= 1; // бит переключения
@@ -225,8 +229,9 @@ void PresentIfNeeded(bool force) {
 
 // Выборка сообщения. wait — ждать (GetMessage), иначе только проверить.
 bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remove, bool wait) {
-    State& s = S();
+    ThreadQueue& queue=Q();
     for (;;) {
+        if (!PumpSentMessages()) { out=Msg(); out.message=WM_QUIT; return true; }
         if (!rt::GuestExecution::Checkpoint()) {
             out=Msg(); out.message=WM_QUIT;
             return true;
@@ -237,24 +242,24 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             g_lastPollMs = now;
             PollPlatform(0);
         }
-        for (auto it = s.posted.begin(); it != s.posted.end(); ++it) {
-            if (!MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
+        for (auto it = queue.posted.begin(); it != queue.posted.end(); ++it) {
+            if (it->message!=WM_QUIT && !MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
             out = *it;
-            if (remove) s.posted.erase(it);
+            if (remove) queue.posted.erase(it);
             return true;
         }
-        for (auto it = s.input.begin(); it != s.input.end(); ++it) {
-            if (!MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
+        for (auto it = queue.input.begin(); it != queue.input.end(); ++it) {
+            if (it->message!=WM_QUIT && !MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
             out = *it;
-            if (remove) { s.input.erase(it); UpdateKeyState(out); }
+            if (remove) { queue.input.erase(it); UpdateKeyState(out); }
             return true;
         }
-        if (s.quit && (!(min || max) || (WM_QUIT >= min && WM_QUIT <= max))) {
+        if (queue.quit) {
             out = Msg();
             out.message = WM_QUIT;
-            out.wParam = s.quitCode;
+            out.wParam = queue.quitCode;
             out.time = NowMs();
-            if (remove) s.quit = false;
+            if (remove) queue.quit = false;
             return true;
         }
         if (MatchesFilter(0, WM_PAINT, 0, min, max)) {
@@ -275,7 +280,7 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
         }
         now = NowMs();
         if (MatchesFilter(0, WM_TIMER, 0, min, max)) {
-            for (Timer& t : s.timers) {
+            for (Timer& t : queue.timers) {
                 if (t.due > now || !MatchesFilter(t.hwnd, WM_TIMER, hwnd, 0, 0)) continue;
                 out = Msg();
                 out.hwnd = t.hwnd;
@@ -301,15 +306,15 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             continue;
         }
         int timeout = -1;
-        for (const Timer& t : s.timers) {
+        for (const Timer& t : queue.timers) {
             int d = t.due > now ? static_cast<int>(t.due - now) : 0;
             if (timeout < 0 || d < timeout) timeout = d;
         }
-        if (!PollPlatform(timeout) && s.posted.empty() && s.input.empty() && s.timers.empty() && !s.quit) {
+        if (!PollPlatform(timeout) && queue.posted.empty() && queue.input.empty() && queue.timers.empty() && !queue.quit) {
             // ждать больше нечего: завершаем цикл сообщений, а не виснем
             if (cpu::g_consoleAvailable) std::printf("[USER32] ожидание без источников событий: WM_QUIT\n");
-            s.quit = true;
-            s.quitCode = 0;
+            queue.quit = true;
+            queue.quitCode = 0;
         }
     }
 }
@@ -347,7 +352,7 @@ uint32_t VkToChar(uint32_t vk, bool shift, bool caps) {
 
 bool TranslateKey(const Msg& m) {
     if (m.message != WM_KEYDOWN && m.message != WM_SYSKEYDOWN) return false;
-    const uint8_t* k = S().keys;
+    const uint8_t* k = Q().keys;
     bool ctrl = (k[VK_CONTROL] & 0x80) != 0;
     uint32_t ch = VkToChar(m.wParam, (k[VK_SHIFT] & 0x80) != 0, (k[VK_CAPITAL] & 1) != 0);
     if (ctrl && m.wParam >= 'A' && m.wParam <= 'Z') ch = m.wParam - 'A' + 1;
@@ -355,7 +360,7 @@ bool TranslateKey(const Msg& m) {
     Msg c = m;
     c.message = m.message == WM_SYSKEYDOWN ? WM_SYSCHAR : WM_CHAR;
     c.wParam = ch;
-    S().posted.push_front(c);
+    Q().posted.push_front(c);
     return true;
 }
 

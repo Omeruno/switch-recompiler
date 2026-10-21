@@ -483,7 +483,7 @@ uint32_t MenuLoop() {
     while (!g_menuDone && !g_guestExitRequested) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) continue;
-        if (msg.message == WM_QUIT) { s.quit = true; s.quitCode = msg.wParam; break; }
+        if (msg.message == WM_QUIT) { Q().quit = true; Q().quitCode = msg.wParam; break; }
         bool mouse = (msg.message >= WM_MOUSEMOVE && msg.message <= WM_MBUTTONDBLCLK) ||
                      (msg.message >= WM_NCMOUSEMOVE && msg.message <= 0x00A9);
         if (mouse) {
@@ -1035,7 +1035,7 @@ HostCallOutcome TranslateAcceleratorImpl(cpu::CpuState& c, cpu::IGuestMemory& m,
     bool keyMsg = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
     bool charMsg = message == WM_CHAR || message == WM_SYSCHAR;
     if (!keyMsg && !charMsg) return Ret(0);
-    const uint8_t* k = S().keys;
+    const uint8_t* k = Q().keys;
     bool shift = (k[0x10] & 0x80) != 0, ctrl = (k[0x11] & 0x80) != 0, alt = (k[0x12] & 0x80) != 0;
     for (const AccelEntry& e : it->second) {
         bool virt = (e.fVirt & 0x01) != 0;

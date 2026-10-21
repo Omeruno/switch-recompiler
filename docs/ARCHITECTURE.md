@@ -57,8 +57,9 @@
   выполняются TLS/DLL detach callbacks. При остановке всей сессии pending
   continuations дренируются с флагом выхода, чтобы выполнились деструкторы.
   Завершённый нативный стек освобождается после возврата на стек scheduler.
-- USER32 GetMessage при живых peers периодически отдаёт исполнение; полных
-  per-thread queues, cross-thread SendMessage routing и изоляции GUI пока нет.
+- USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
+  владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
+  Полной изоляции input/focus/hooks и реализации MsgWait/APC пока нет.
 
 ## Процесс, потоки и HANDLE
 
@@ -146,7 +147,42 @@ SHELL32, OLE32/OLEAUT32, COMCTL32, GDI+ и UXTHEME имеют частичные
 Новый USER32 строит классы/окна, управление фокусом, меню, диалоги,
 таймеры и controls. `ui::Gdi` растеризует DC, битмапы, шрифты TrueType,
 области и ROP в CPU-поверхности. GPU backend и готовой desktop-shell нет.
-Очереди сообщений ещё не доведены до полной изоляции по гостевым потокам.
+`Window::threadId` фиксирует создателя HWND. `State::queues` содержит отдельные
+posted/input/sent queues, WM_QUIT, таймеры, keyboard snapshot и last MSG для
+каждого guest thread. Очередь создаётся лениво при USER32 API/создании окна;
+PostThreadMessage отвергает поток без очереди и завершённый поток. PostMessage
+доставляется владельцу окна; NULL HWND относится к текущему потоку. WM_QUIT
+извлекается независимо от фильтра, PM_NOREMOVE сохраняет сообщение.
+
+`user32_thread.cpp` хранит shared sent-message requests. В том же потоке WndProc
+вызывается непосредственно; между потоками отправитель ждёт, а получатель
+обрабатывает запрос в Get/PeekMessage/WaitMessage или при собственном ожидании
+SendMessage. Отправитель по умолчанию принимает встречные sent messages, не
+извлекая posted messages; обычный kernel wait и Sleep их не обрабатывают.
+WndProc исполняется с локальной копией CPU получателя и его TEB/TLS; исходные
+аргументы/EIP/ESP внешнего HLE сохраняются. ReplyMessage может освободить
+отправителя раньше возврата из WndProc; InSendMessage/Ex отражают вложенный
+приём. SendNotifyMessage между потоками ставит неблокирующий sent request.
+SendMessageTimeout поддерживает finite deadline и SMTO_BLOCK; ожидающий гость
+не блокирует host thread. Не начатый просроченный запрос пропускается; уже
+работающий обработчик продолжает выполнение. Hung detection и дополнительные
+SMTO flags не реализованы (за пределами NORMAL/BLOCK/ABORTIFHUNG флаги отвергаются;
+ABORTIFHUNG пока использует обычный deadline без отдельной диагностики hung).
+
+Штатный ExitThread сначала разворачивает исходные native callbacks, затем
+уничтожает собственные окна в контексте владельца, выполняет DLL/TLS detach
+и закрывает очередь. Pending sends к уничтоженному HWND/завершённому потоку
+завершаются ошибкой. DestroyWindow из чужого guest thread отклоняется.
+Логическое удаление HWND немедленно; Window/control state и удалённые WndClass
+сохраняются до выхода всех активных native HLE/window frames. Это консервативная
+защита Window* при reentrancy, не универсальное решение lifetime всех GDI/hook
+объектов. Очереди завершённых потоков остаются как закрытые записи.
+
+Focus/active/capture, async input, меню и hooks ещё имеют общие состояния;
+AttachThreadInput не реализован. GetQueueStatus пока не воспроизводит точную
+историю change bits. MsgWait* остаются частичными заглушками без настоящего
+объединённого ожидания HANDLE+queue; полных правил marshalling сообщений нет.
+Старый v1 message loop остаётся отдельным compatibility path.
 На Switch новый путь Paint выбирается удержанием L; DLL должна лежать
 рядом с EXE. Проверка пользователя подтвердила Open/Save на базовой сборке
 `2c9a1fa`; последующие изменения требуют собственной проверки на железе.
@@ -166,6 +202,6 @@ SHELL32, OLE32/OLEAUT32, COMCTL32, GDI+ и UXTHEME имеют частичные
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, per-thread USER32,
+полный process/DLL shutdown, MsgWait/APC и input ownership,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

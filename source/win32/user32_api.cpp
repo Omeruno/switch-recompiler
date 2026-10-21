@@ -22,7 +22,7 @@ using namespace hle;
 namespace {
 
 #define FN(name) HostCallOutcome name(cpu::CpuState& c, cpu::IGuestMemory& m)
-#define ENTER (G().c = &c, G().m = &m)
+#define ENTER (G().c = &c, G().m = &m, (void)Q())
 #define AW(name)                                       \
     FN(name##A) { ENTER; return name##Impl(c, m, false); } \
     FN(name##W) { ENTER; return name##Impl(c, m, true); }
@@ -91,7 +91,9 @@ HostCallOutcome UnregisterClassImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool
     if (!cls || cls->system) return Ret(0);
     for (auto& kv : S().windows) if (kv.second->cls == cls) return Ret(0); // ERROR_CLASS_HAS_WINDOWS
     auto& v = S().classes;
-    v.erase(std::remove_if(v.begin(), v.end(), [&](const std::unique_ptr<WndClass>& p) { return p.get() == cls; }), v.end());
+    for (auto it=v.begin();it!=v.end();++it) if (it->get()==cls) {
+        S().retiredClasses.push_back(std::move(*it));v.erase(it);break;
+    }
     return Ret(1);
 }
 AW(UnregisterClass)
@@ -179,7 +181,12 @@ HostCallOutcome CreateWindowExImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool 
 }
 AW(CreateWindowEx)
 
-FN(DestroyWindow) { ENTER; return Ret(DestroyWindowInternal(A(c, m, 0)) ? 1 : 0); }
+FN(DestroyWindow) {
+    ENTER;
+    const auto* window=Win(A(c,m,0));
+    if (!window || window->threadId!=CurrentGuiThread()) { SetLastError(m,5); return Ret(0); }
+    return Ret(DestroyWindowInternal(window->hwnd) ? 1 : 0);
+}
 FN(ShowWindow) { ENTER; return Ret(ShowWindowInternal(A(c, m, 0), SA(c, m, 1)) ? 1 : 0); }
 FN(SetWindowPos) {
     ENTER;
@@ -557,7 +564,8 @@ FN(EnumChildWindows) {
 FN(GetWindowThreadProcessId) {
     ENTER;
     if (A(c, m, 1)) m.Write32(A(c, m, 1), 0x1000);
-    return Ret(Win(A(c, m, 0)) ? 0x1004 : 0);
+    const auto* window=Win(A(c,m,0));
+    return Ret(window ? window->threadId : 0);
 }
 
 std::u16string PropName(cpu::IGuestMemory& m, uint32_t p, bool unicode) {
@@ -653,14 +661,17 @@ HostCallOutcome SendMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool uni
 }
 AW(SendMessage)
 HostCallOutcome SendMessageTimeoutImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    uint32_t r = SendMsg(A(c, m, 0), A(c, m, 1), A(c, m, 2), A(c, m, 3), unicode);
-    if (A(c, m, 6)) m.Write32(A(c, m, 6), r);
-    return Ret(1);
+    uint32_t result=0;
+    const uint32_t flags=A(c,m,4), output=A(c,m,6);
+    if ((flags & ~3u) || (output && !m.IsRangeMapped(output,4))) { SetLastError(m,87); return Ret(0); }
+    bool success=SendMsgTimeout(A(c,m,0),A(c,m,1),A(c,m,2),A(c,m,3),unicode,A(c,m,5),flags,result);
+    if (output) m.Write32(output,result);
+    return Ret(success ? 1 : 0);
 }
 AW(SendMessageTimeout)
 HostCallOutcome SendNotifyMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    SendMsg(A(c, m, 0), A(c, m, 1), A(c, m, 2), A(c, m, 3), unicode);
-    return Ret(1);
+    uint32_t result=0;
+    return Ret(SendMsgTimeout(A(c,m,0),A(c,m,1),A(c,m,2),A(c,m,3),unicode,0xffffffffu,0,result,true) ? 1 : 0);
 }
 AW(SendNotifyMessage)
 
@@ -676,11 +687,13 @@ HostCallOutcome PostMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
 }
 AW(PostMessage)
 HostCallOutcome PostThreadMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
-    PostMsg(0, A(c, m, 1), A(c, m, 2), A(c, m, 3));
+    if (!PostToThread(A(c,m,0),0,A(c,m,1),A(c,m,2),A(c,m,3))) {
+        SetLastError(m,1444); return Ret(0);
+    }
     return Ret(1);
 }
 AW(PostThreadMessage)
-FN(PostQuitMessage) { ENTER; S().quit = true; S().quitCode = A(c, m, 0); return Ret(0); }
+FN(PostQuitMessage) { ENTER; Q().quit = true; Q().quitCode = A(c, m, 0); return Ret(0); }
 
 void WriteMsg(cpu::IGuestMemory& m, uint32_t p, const Msg& msg) {
     m.Write32(p, msg.hwnd);
@@ -703,23 +716,31 @@ Msg ReadMsg(cpu::IGuestMemory& m, uint32_t p) {
     return msg;
 }
 
-Msg g_lastMsg;
+
 
 HostCallOutcome GetMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
+    const uint32_t filter=A(c,m,1);
+    if (filter && filter!=0xffffffffu && (!Win(filter) || Win(filter)->threadId!=CurrentGuiThread())) {
+        SetLastError(m,1400); return Ret(0xffffffffu);
+    }
     Msg msg;
     FetchMessage(msg, A(c, m, 1), A(c, m, 2), A(c, m, 3), true, true);
     if (g_guestExitRequested) return Ret(0);
     WriteMsg(m, A(c, m, 0), msg);
-    g_lastMsg = msg;
+    Q().lastMsg = msg;
     return Ret(msg.message == WM_QUIT ? 0 : 1);
 }
 AW(GetMessage)
 HostCallOutcome PeekMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
+    const uint32_t filter=A(c,m,1);
+    if (filter && filter!=0xffffffffu && (!Win(filter) || Win(filter)->threadId!=CurrentGuiThread())) {
+        SetLastError(m,1400); return Ret(0);
+    }
     Msg msg;
     bool remove = (A(c, m, 4) & 1) != 0;
     if (!FetchMessage(msg, A(c, m, 1), A(c, m, 2), A(c, m, 3), remove, false)) return Ret(0);
     WriteMsg(m, A(c, m, 0), msg);
-    if (remove) g_lastMsg = msg;
+    if (remove) Q().lastMsg = msg;
     return Ret(1);
 }
 AW(PeekMessage)
@@ -775,20 +796,22 @@ HostCallOutcome DispatchMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool
     return Ret(r);
 }
 AW(DispatchMessage)
-FN(GetMessagePos) { ENTER; return Ret((static_cast<uint32_t>(g_lastMsg.x) & 0xFFFF) | (static_cast<uint32_t>(g_lastMsg.y) << 16)); }
-FN(GetMessageTime) { ENTER; return Ret(g_lastMsg.time); }
+FN(GetMessagePos) { ENTER; return Ret((static_cast<uint32_t>(Q().lastMsg.x) & 0xFFFF) | (static_cast<uint32_t>(Q().lastMsg.y) << 16)); }
+FN(GetMessageTime) { ENTER; return Ret(Q().lastMsg.time); }
 FN(GetQueueStatus) {
     ENTER;
     uint32_t flags = 0;
-    if (!S().posted.empty()) flags |= 0x8;
-    for (const Msg& x : S().input) flags |= (x.message >= WM_KEYDOWN && x.message <= WM_SYSCHAR) ? 1 : (x.message == WM_MOUSEMOVE ? 2 : 4);
-    for (const Timer& t : S().timers) if (t.due <= NowMs()) flags |= 0x10;
+    if (!Q().sent.empty()) flags |= 0x40;
+    if (!Q().posted.empty()) flags |= 0x8;
+    for (const Msg& x : Q().input) flags |= (x.message >= WM_KEYDOWN && x.message <= WM_SYSCHAR) ? 1 : (x.message == WM_MOUSEMOVE ? 2 : 4);
+    for (const Timer& t : Q().timers) if (t.due <= NowMs()) flags |= 0x10;
     uint32_t mask = A(c, m, 0);
     return Ret(((flags & mask) << 16) | (flags & mask));
 }
-FN(GetInputState) { ENTER; return Ret(S().input.empty() ? 0 : 1); }
-FN(InSendMessage) { ENTER; return Ret(0); }
-FN(ReplyMessage) { ENTER; return Ret(0); }
+FN(GetInputState) { ENTER; return Ret(Q().input.empty() ? 0 : 1); }
+FN(InSendMessage) { ENTER; return Ret(SendMessageState() ? 1 : 0); }
+FN(InSendMessageEx) { ENTER; return Ret(SendMessageState()); }
+FN(ReplyMessage) { ENTER; return Ret(ReplyToSender(A(c,m,0)) ? 1 : 0); }
 HostCallOutcome RegisterWindowMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
     static std::map<std::u16string, uint32_t> msgs;
     std::u16string name = ReadText(A(c, m, 0), unicode);
@@ -807,9 +830,10 @@ FN(SetTimer) {
     ENTER;
     uint32_t hwnd = A(c, m, 0), id = A(c, m, 1), elapse = A(c, m, 2), proc = A(c, m, 3);
     if (hwnd && !Win(hwnd)) return Ret(0);
-    if (!hwnd) id = S().nextTimerId--;
+    auto& queue=hwnd ? QueueFor(Win(hwnd)->threadId) : Q();
+    if (!hwnd) id = queue.nextTimerId--;
     if (elapse < 10) elapse = 10;
-    for (Timer& t : S().timers)
+    for (Timer& t : queue.timers)
         if (t.hwnd == hwnd && t.id == id) { t.interval = elapse; t.proc = proc; t.due = NowMs() + elapse; return Ret(hwnd ? 1 : id); }
     Timer t;
     t.hwnd = hwnd;
@@ -817,17 +841,19 @@ FN(SetTimer) {
     t.interval = elapse;
     t.proc = proc;
     t.due = NowMs() + elapse;
-    S().timers.push_back(t);
+    queue.timers.push_back(t);
     return Ret(hwnd ? (id ? id : 1) : id);
 }
 FN(KillTimer) {
     ENTER;
     uint32_t hwnd = A(c, m, 0), id = A(c, m, 1);
-    auto& v = S().timers;
+    if (hwnd && !Win(hwnd)) return Ret(0);
+    auto& queue=hwnd ? QueueFor(Win(hwnd)->threadId) : Q();
+    auto& v = queue.timers;
     size_t before = v.size();
     v.erase(std::remove_if(v.begin(), v.end(), [&](const Timer& t) { return t.hwnd == hwnd && t.id == id; }), v.end());
-    for (auto it = S().posted.begin(); it != S().posted.end();)
-        if (it->message == WM_TIMER && it->hwnd == hwnd && it->wParam == id) it = S().posted.erase(it); else ++it;
+    for (auto it = queue.posted.begin(); it != queue.posted.end();)
+        if (it->message == WM_TIMER && it->hwnd == hwnd && it->wParam == id) it = queue.posted.erase(it); else ++it;
     return Ret(v.size() != before ? 1 : 0);
 }
 
@@ -1229,10 +1255,10 @@ FN(GetCursorPos) {
 }
 FN(SetCursorPos) { ENTER; S().cursorX = SA(c, m, 0); S().cursorY = SA(c, m, 1); return Ret(1); }
 FN(ClipCursor) { ENTER; return Ret(1); }
-FN(GetKeyState) { ENTER; uint8_t k = S().keys[A(c, m, 0) & 0xFF]; return Ret(static_cast<uint32_t>(static_cast<int16_t>((k & 0x80 ? 0xFF80 : 0) | (k & 1)))); }
+FN(GetKeyState) { ENTER; uint8_t k = Q().keys[A(c, m, 0) & 0xFF]; return Ret(static_cast<uint32_t>(static_cast<int16_t>((k & 0x80 ? 0xFF80 : 0) | (k & 1)))); }
 FN(GetAsyncKeyState) { ENTER; return Ret(S().asyncKeys[A(c, m, 0) & 0xFF] & 0x80 ? 0xFFFF8000u : 0); }
-FN(GetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) m.Write8(A(c, m, 0) + i, S().keys[i]); return Ret(1); }
-FN(SetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) S().keys[i] = m.Read8(A(c, m, 0) + i); return Ret(1); }
+FN(GetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) m.Write8(A(c, m, 0) + i, Q().keys[i]); return Ret(1); }
+FN(SetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) Q().keys[i] = m.Read8(A(c, m, 0) + i); return Ret(1); }
 FN(MapVirtualKeyA) {
     ENTER;
     uint32_t code = A(c, m, 0), type = A(c, m, 1);
@@ -1469,7 +1495,7 @@ const HostFunctionEntry kEntries[] = {
     EAW(SendNotifyMessage, 16), EAW(PostMessage, 16), EAW(PostThreadMessage, 16), E(PostQuitMessage, 4),
     EAW(GetMessage, 16), EAW(PeekMessage, 20), E(WaitMessage, 0), E(MsgWaitForMultipleObjects, 20),
     E(MsgWaitForMultipleObjectsEx, 20), E(TranslateMessage, 4), EAW(DispatchMessage, 4), E(GetMessagePos, 0),
-    E(GetMessageTime, 0), E(GetQueueStatus, 4), E(GetInputState, 0), E(InSendMessage, 0), E(ReplyMessage, 4),
+    E(GetMessageTime, 0), E(GetQueueStatus, 4), E(GetInputState, 0), E(InSendMessage, 0), E(InSendMessageEx, 4), E(ReplyMessage, 4),
     EAW(RegisterWindowMessage, 4), E(SetTimer, 16), E(KillTimer, 8),
     E(BeginPaint, 8), E(EndPaint, 8), E(GetDC, 4), E(GetDCEx, 12), E(GetWindowDC, 4), E(ReleaseDC, 8),
     E(InvalidateRect, 12), E(InvalidateRgn, 12), E(ValidateRect, 8), E(ValidateRgn, 8), E(UpdateWindow, 4),

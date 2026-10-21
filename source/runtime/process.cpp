@@ -14,6 +14,7 @@
 #include "../win32/iat_patcher.h"
 #include "../win32/message_loop.h"
 #include "../win32/seh_abi.h"
+#include "../win32/user32.h"
 
 namespace rt {
 
@@ -86,6 +87,7 @@ uint32_t EntryReturnAddress() {
 Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {
     win32::SetImportBindingMemory(&mem_);
     scheduler_.SetExitCallback([this](GuestThread& thread) {
+        win32::user::OnGuiThreadExit(thread.id);
         for (const auto& object : handles_.Objects()) {
             bool signal = false;
             if (object->type == ObjectKind::Thread)

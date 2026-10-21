@@ -5063,6 +5063,7 @@ HostCallOutcome Impl_MfcOrdinalStub(cpu::CpuState& cpu, cpu::IGuestMemory& mem, 
 bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutcome& outOutcome) {
     int idx=HostAddressToIndex(cpu.eip);
     if (idx<0 && cpu.eip<MFC_STUB_BASE) return false;
+    user::WindowCallScope windowScope;
     // Context is a stack-scoped binding: nested SEH uses a local CpuState,
     // and another guest fiber may run while this host call is suspended.
     struct ContextScope {

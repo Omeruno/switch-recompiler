@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "../runtime/clock.h"
+#include "../runtime/guest_execution.h"
 #include "user32.h"
 
 namespace win32 {
@@ -521,6 +522,8 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
 
     std::unique_ptr<Window> win(new Window);
     Window* w = win.get();
+    Q();
+    w->threadId=CurrentGuiThread();
     w->hwnd = AllocHandle();
     w->cls = cls;
     w->style = style & ~WS_VISIBLE;
@@ -661,12 +664,14 @@ bool DestroyWindowInternal(uint32_t hwnd) {
     for (auto it = order.rbegin(); it != order.rend(); ++it) SendMsg(*it, WM_NCDESTROY, 0, 0);
     bool wasActive = false;
     for (uint32_t h : order) {
-        auto& tm = S().timers;
-        tm.erase(std::remove_if(tm.begin(), tm.end(), [&](const Timer& t) { return t.hwnd == h; }), tm.end());
+        for (auto& queue:S().queues) {
+            auto& tm=queue.second.timers;
+            tm.erase(std::remove_if(tm.begin(),tm.end(),[&](const Timer& t) { return t.hwnd==h; }),tm.end());
+        }
         if (S().focus == h) S().focus = 0;
         if (S().active == h) { S().active = 0; wasActive = true; }
         if (Window* x = Win(h)) RemoveFromParent(x);
-        S().windows.erase(h);
+        RetireWindow(h);
     }
     ui::g_gdi.InvalidateLayout();
     if (wasActive) ActivateNextTopLevel(0);
@@ -854,15 +859,20 @@ uint32_t SetFocusInternal(uint32_t hwnd) {
 // --- Сообщения ---
 
 uint32_t SendMsg(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool fromUnicode) {
-    Window* w = Win(hwnd);
-    if (!w) return 0;
-    return CallProc(w->wndProc, w->unicode, hwnd, msg, wp, lp, fromUnicode);
+    uint32_t result=0;
+    SendMsgTimeout(hwnd,msg,wp,lp,fromUnicode,0xffffffffu,0,result);
+    return result;
 }
 
 uint32_t CallProc(uint32_t proc, bool procUnicode, uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool fromUnicode) {
+    WindowCallScope windowScope;
     if (!proc) return 0;
     bool hostUnicode;
     if (HostWndProc fn = FindHostWndProc(proc, hostUnicode)) return fn(hwnd, msg, wp, lp, fromUnicode);
+    cpu::CpuState local=*G().c;
+    const GuestCtx saved=G();
+    struct Restore { GuestCtx saved; ~Restore() { G()=saved; } } restore{saved};
+    G()={&local,saved.m};
     cpu::IGuestMemory& m = *G().m;
     // Перекодировка текста, если кодировки вызывающего и процедуры разные
     if (fromUnicode != procUnicode) {
@@ -883,15 +893,9 @@ uint32_t CallProc(uint32_t proc, bool procUnicode, uint32_t hwnd, uint32_t msg, 
 }
 
 void PostMsg(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
-    Msg mm;
-    mm.hwnd = hwnd;
-    mm.message = msg;
-    mm.wParam = wp;
-    mm.lParam = lp;
-    mm.time = NowMs();
-    mm.x = S().cursorX;
-    mm.y = S().cursorY;
-    S().posted.push_back(mm);
+    if (!hwnd) Q();
+    const Window* window=Win(hwnd);
+    PostToThread(window && window->threadId ? window->threadId : CurrentGuiThread(),hwnd,msg,wp,lp);
 }
 
 // --- Строки и стек ---

@@ -691,7 +691,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
     }
     bool multi = (w->style & ES_MULTILINE) != 0;
     bool readonly = (w->style & ES_READONLY) != 0;
-    bool shift = (S().keys[0x10] & 0x80) != 0, ctrl = (S().keys[0x11] & 0x80) != 0;
+    bool shift = (Q().keys[0x10] & 0x80) != 0, ctrl = (Q().keys[0x11] & 0x80) != 0;
     cpu::IGuestMemory& m = *G().m;
     switch (msg) {
     case WM_NCCREATE:

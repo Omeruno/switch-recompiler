@@ -64,6 +64,7 @@ void GuestExecution::Run(void* arg) {
     if (thread.exitRequested && thread.status!=GuestThreadStatus::Exited &&
         !executor.stopped_ && !win32::g_guestExitRequested) {
         thread.detaching=true;
+        win32::user::CleanupThreadWindows(thread.id);
         executor.process_.NotifyThread(thread,3);
         thread.detaching=false;
         if (!executor.stopped_ && !win32::g_guestExitRequested)

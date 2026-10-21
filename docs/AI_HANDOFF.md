@@ -511,3 +511,66 @@ PROCESS_DETACH/process shutdown; TerminateThread. Startup module initialization
 before GuestExecution is synchronous (no blocking inter-thread waits in startup
 DllMain). Failed module mappings/TLS allocations remain owned until thread/
 Process teardown; this is not a full Windows loader/unloader implementation.
+
+## USER32 v2 thread queues and sent-message ownership
+
+Incoming baseline: 7fd25a3, CI 39664716820 green (DLL/TLS thread lifecycle).
+
+- New user32_thread.cpp; Window.threadId identifies its creator. State.queues
+  maps IDs to stable ThreadQueue records: posted/input/sent, receiving stack,
+  timers, keyboard snapshot, quit flag/code, last MSG and timer allocator.
+  USER32 API ENTER and window creation create queues lazily. PostThreadMessage
+  fails ERROR_INVALID_THREAD_ID for absent/closed queues; HWND posts route to
+  their owner, NULL HWND to caller. GetWindowThreadProcessId returns real owner.
+- FetchMessage pumps incoming sent requests before matching posted/input;
+  WM_PAINT and timers are restricted to caller's windows/queue. WM_QUIT bypasses
+  filters; PM_NOREMOVE preserves it. Menu/list/dialog/COMDLG modal loops and
+  TranslateMessage use caller-local quit/key/post state. Platform input routes
+  to HWND owner's input queue; async keys/focus/active/capture remain global.
+- Cross-thread SendMessage enqueues a shared SentMessage and parks sender's
+  native continuation. Internal scheduler token 0xfffffff2 wakes send waiters
+  on new sent messages or completion (wake-all, each rechecks its own request).
+  Receiver runs WndProc only at message retrieval or its own send-wait pump,
+  never because arbitrary kernel waits/Sleep execute guest window code.
+  Blocking sends process incoming sent requests by default, allowing reciprocal
+  calls. Posted messages remain untouched. CallProc uses a local CpuState for
+  guest WndProc so reentrant delivery cannot corrupt the caller HLE's args/PC/SP.
+- Receiving context is per queue and LIFO. InSendMessage/Ex and ReplyMessage
+  support early synchronous reply; final handler return cannot overwrite it.
+  Cross-thread SendNotifyMessage queues an asynchronous request. Finite
+  SendMessageTimeout parks with guest-clock timers and supports SMTO_BLOCK;
+  unstarted timed-out requests are skipped, running ones continue. Same-thread
+  calls remain direct; HWND_BROADCAST uses a stable HWND snapshot.
+- ExitThread's clean detach phase now destroys own windows before DLL/TLS
+  detach. Scheduler exit closes its GUI queue and fails pending/active sends.
+  RetireWindow cancels queued sends and removes posted/input for stale HWNDs.
+  Foreign DestroyWindow fails. Forceful Scheduler.Exit cannot execute guest
+  callbacks, but removes remaining owned HWNDs and wakes blocked senders.
+- WindowCallScope spans every native HLE call and CallProc/cleanup. Logically
+  removed Window and WndClass objects are retained until all native HLE/window
+  frames return, protecting raw Window*/Ctl* across reciprocal callbacks and
+  peer destruction. UnregisterClass removes class lookup immediately but defers
+  physical destruction. This is conservative retention, not full GDI/hook
+  lifetime protection; a long-lived modal HLE can retain retired objects.
+- gui_thread_messages: absent/closed queue errors, own posted messages survive
+  peer retrieval, thread WM_QUIT and filters/PM_NOREMOVE, independent timers and
+  keyboard state, real HWND owner, foreign destroy rejected, owner exit removes
+  HWND. gui_thread_send: reciprocal Send with correct owner TID/TLS, sender's
+  posted queue preserved, InSendMessageEx/ReplyMessage, async notify, timeout
+  cancellation while target kernel-waits, SMTO_BLOCK and delayed reentrant pump,
+  nested BUTTON -> foreign parent -> destroy BUTTON while native frames live,
+  ExitThread from target WndProc and stale HWND failure. gui_thread_send_exit:
+  owner kernel wait does not dispatch posted/sent requests; owner return destroys
+  its window on owner CPU and releases another sender's infinite wait.
+- Full local suite passed with -fno-rtti/-fno-exceptions, all three new guests,
+  DLL lifecycle, original x86/native harnesses, CRT/C++, SEH/thread/resource
+  reclamation and scripted COMDLG Open/List/Save. Exact commit CI and physical
+  Horizon/Paint validation must be checked separately.
+
+Remaining: real MsgWait HANDLE+queue and APC/alertable waits; per-thread input
+focus/capture/hooks/menu ownership and AttachThreadInput; accurate queue change
+bits, extended SMTO hung rules, full system-message marshalling; full process/
+DLL shutdown and unload. Timeout accepts NORMAL/BLOCK/ABORTIFHUNG only, with
+ABORTIFHUNG using the same deadline (no separate hung detector). Existing
+MsgWait* exports still have partial legacy behavior and native sleeps; do not
+claim their kernel-object semantics implemented. v1 loop remains separate.

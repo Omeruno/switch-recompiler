@@ -95,6 +95,7 @@ struct WndClass {
 
 struct Window {
     uint32_t hwnd = 0;
+    uint32_t threadId = 0;
     WndClass* cls = nullptr;
     uint32_t style = 0, exStyle = 0;
     uint32_t parent = 0;        // 0 у окон верхнего уровня (внутренне — потомки рабочего стола)
@@ -132,23 +133,37 @@ struct Timer {
     uint64_t due = 0; // мс по rt::Clock
 };
 
+struct SentMessage {
+    Msg msg;
+    uint32_t sender=0, receiver=0, result=0, error=0;
+    bool unicode=true, notify=false, started=false, completed=false;
+};
+struct ThreadQueue {
+    std::deque<Msg> posted, input;
+    std::deque<std::shared_ptr<SentMessage>> sent;
+    std::vector<std::shared_ptr<SentMessage>> receiving;
+    std::vector<Timer> timers;
+    Msg lastMsg;
+    bool quit=false, closed=false;
+    uint32_t quitCode=0, nextTimerId=0x7FFE;
+    uint8_t keys[256]={};
+};
+
 struct State {
     bool initialized = false;
     int screenW = 800, screenH = 600;
     ui::OwnedSurface screen;
     std::map<uint32_t, std::unique_ptr<Window>> windows;
+    std::vector<std::unique_ptr<Window>> retiredWindows;
+    uint32_t nativeCalls=0;
+    std::map<uint32_t,ThreadQueue> queues;
     std::vector<std::unique_ptr<WndClass>> classes;
+    std::vector<std::unique_ptr<WndClass>> retiredClasses;
     uint32_t desktop = 0;
     uint32_t nextHandle = 0x00010020;
     uint16_t nextAtom = 0xC000;
     uint32_t active = 0, focus = 0, capture = 0;
-    std::deque<Msg> posted, input;
-    bool quit = false;
-    uint32_t quitCode = 0;
-    std::vector<Timer> timers;
-    uint32_t nextTimerId = 0x7FFE;
     int cursorX = 0, cursorY = 0;
-    uint8_t keys[256] = {};       // состояние клавиш на момент последнего сообщения (GetKeyState)
     uint8_t asyncKeys[256] = {};  // текущее состояние (GetAsyncKeyState)
     uint32_t lastClickTime = 0, lastClickHwnd = 0, lastClickMsg = 0;
     int lastClickX = 0, lastClickY = 0;
@@ -158,6 +173,26 @@ struct State {
 };
 
 State& S();
+uint32_t CurrentGuiThread();
+ThreadQueue& Q();
+ThreadQueue& QueueFor(uint32_t threadId);
+// Logical destruction is immediate; native frames may still retain Window*.
+class WindowCallScope {
+public:
+    WindowCallScope();
+    ~WindowCallScope();
+    WindowCallScope(const WindowCallScope&)=delete;
+    WindowCallScope& operator=(const WindowCallScope&)=delete;
+};
+void RetireWindow(uint32_t hwnd);
+void CleanupThreadWindows(uint32_t threadId);
+void OnGuiThreadExit(uint32_t threadId);
+bool PumpSentMessages();
+bool ReplyToSender(uint32_t result);
+uint32_t SendMessageState();
+bool SendMsgTimeout(uint32_t hwnd,uint32_t msg,uint32_t wp,uint32_t lp,bool unicode,
+                    uint32_t timeout,uint32_t flags,uint32_t& result,bool notify=false);
+bool PostToThread(uint32_t threadId,uint32_t hwnd,uint32_t msg,uint32_t wp,uint32_t lp);
 
 // Текущий вызов из гостя: нужен для вызова оконных процедур гостя
 struct GuestCtx {

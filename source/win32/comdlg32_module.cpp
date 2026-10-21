@@ -291,7 +291,7 @@ bool ShowDialog(Request& r) {
     while (!r.done && !g_guestExitRequested) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) break;
-        if (msg.message == user::WM_QUIT) { S().quit = true; S().quitCode = msg.wParam; break; }
+        if (msg.message == user::WM_QUIT) { Q().quit = true; Q().quitCode = msg.wParam; break; }
         if (msg.message == user::WM_KEYDOWN) {
             if (msg.wParam == 27) { r.done = true; break; } // Esc
             if (msg.wParam == 13) { Accept(r); continue; } // Enter
