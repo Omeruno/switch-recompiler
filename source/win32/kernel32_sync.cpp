@@ -13,6 +13,8 @@
 
 namespace win32 {
 
+bool HleIsOpenThreadHandle(uint32_t handle); // kernel32_module.cpp
+
 namespace {
 
 using namespace hle;
