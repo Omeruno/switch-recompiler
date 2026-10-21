@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include "guest_thread.h"
+#include "clock.h"
 
 namespace rt {
 class GuestScheduler {
@@ -28,6 +29,7 @@ public:
     // Round-robin over runnable threads, starting immediately after the
     // last selected thread. Waiting, suspended and exited threads are skipped.
     GuestThread* Next() {
+        WakeExpiredSleepers();
         if (threads_.empty()) return nullptr;
         for (size_t searched = 0; searched < threads_.size(); ++searched) {
             size_t index = (cursor_ + searched) % threads_.size();
@@ -75,6 +77,39 @@ public:
         return result;
     }
 
+    // Sleep is time-based, not object-based. The guest may continue after
+    // the deadline without blocking the host or the other virtual CPUs.
+    void Sleep(GuestThread& thread, uint32_t milliseconds) {
+        if (milliseconds == 0) {
+            thread.yieldRequested = true;
+            return;
+        }
+        thread.sleeping = true;
+        thread.sleepDeadlineUs = Clock::NowUs() + uint64_t(milliseconds) * 1000u;
+        thread.waitObject = 0;
+        thread.status = GuestThreadStatus::Waiting;
+    }
+
+    size_t WakeExpiredSleepers() {
+        const uint64_t now=Clock::NowUs();
+        size_t woke=0;
+        for (GuestThread* t : threads_) {
+            if (!t->sleeping || t->status!=GuestThreadStatus::Waiting ||
+                now<t->sleepDeadlineUs) continue;
+            t->sleeping=false;
+            t->sleepDeadlineUs=0;
+            t->status=GuestThreadStatus::Runnable;
+            ++woke;
+        }
+        return woke;
+    }
+
+    bool HasSleepingThreads() const {
+        for(const GuestThread* t: threads_)
+            if(t->sleeping && t->status==GuestThreadStatus::Waiting) return true;
+        return false;
+    }
+
     uint32_t Suspend(GuestThread& thread) {
         uint32_t previous = thread.suspendCount;
         if (previous != UINT32_MAX && thread.status != GuestThreadStatus::Exited)
@@ -93,6 +128,8 @@ public:
 
     bool Wait(GuestThread& thread, uint32_t objectHandle) {
         if (!objectHandle || thread.status == GuestThreadStatus::Exited) return false;
+        thread.sleeping=false;
+        thread.sleepDeadlineUs=0;
         thread.waitObject = objectHandle;
         thread.status = GuestThreadStatus::Waiting;
         return true;
@@ -115,6 +152,9 @@ public:
         thread.exitCode = code;
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
+        thread.sleeping = false;
+        thread.sleepDeadlineUs = 0;
+        thread.yieldRequested = false;
         thread.suspendCount = 0;
         // Thread HANDLE becomes signaled when its guest thread exits.
         Signal(0xE1000000u | (thread.id & 0x00FFFFFFu), true);
