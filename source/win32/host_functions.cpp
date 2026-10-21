@@ -2,6 +2,7 @@
 #include "mfc42u_abi_table.h"
 #include "win32_api_abi_table.h"
 #include "host_functions.h"
+#include "../runtime/process.h"
 #include "seh_dispatch.h"
 #include "menu_parser.h"
 #include <algorithm>
@@ -331,10 +332,11 @@ HostCallOutcome Impl_GetCurrentProcessId(cpu::CpuState&, cpu::IGuestMemory&) {
     return result;
 }
 
-// DWORD GetCurrentThreadId(void) — аналогично, стабильный правдоподобный ID
+// GetCurrentThreadId must agree with TEB.ClientId.UniqueThread even for
+// older imports resolved through the original HLE table.
 HostCallOutcome Impl_GetCurrentThreadId(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = 5678;
+    result.returnValue = rt::g_process ? rt::g_process->CurrentThreadId() : 0x1004u;
     return result;
 }
 
