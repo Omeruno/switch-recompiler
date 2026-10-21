@@ -130,6 +130,11 @@ public:
             return false;
         thread.waitHandles = handles;
         thread.waitAll = all;
+        // Re-parking after a partial wait-all wake must not extend the timeout.
+        if (thread.retryWaitToken == handles.front() && thread.retryWaitDeadlineUs)
+            thread.waitDeadlineUs = thread.retryWaitDeadlineUs;
+        thread.retryWaitToken = 0;
+        thread.retryWaitDeadlineUs = 0;
         return true;
     }
 
@@ -141,6 +146,8 @@ public:
                !t->waitObject || !t->waitDeadlineUs ||
                now<t->waitDeadlineUs) continue;
             t->timedOutHandle=t->waitObject;
+            t->retryWaitToken=0;
+            t->retryWaitDeadlineUs=0;
             t->waitHandles.clear();
             t->waitAll=false;
             t->waitObject=0;
@@ -193,6 +200,10 @@ public:
             if (thread->status != GuestThreadStatus::Waiting ||
                 (thread->waitObject != objectHandle &&
                  std::find(thread->waitHandles.begin(), thread->waitHandles.end(), objectHandle) == thread->waitHandles.end())) continue;
+            // A signaled object may not complete wait-all yet. Preserve its
+            // absolute deadline for the same HLE call to retry.
+            thread->retryWaitToken = thread->waitObject;
+            thread->retryWaitDeadlineUs = thread->waitDeadlineUs;
             thread->waitObject = 0;
             thread->waitHandles.clear();
             thread->waitAll=false;
@@ -209,6 +220,8 @@ public:
         thread.exitCode = code;
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
+        thread.retryWaitToken = 0;
+        thread.retryWaitDeadlineUs = 0;
         thread.waitHandles.clear();
         thread.waitAll=false;
         thread.waitDeadlineUs=0;
