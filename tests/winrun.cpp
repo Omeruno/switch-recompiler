@@ -302,6 +302,33 @@ int main(int argc, char** argv) {
                 first->exitCode,second->exitCode);
             return 4;
         }
+        // A normal stdcall thread function can RET instead of calling
+        // ExitThread explicitly. The HLE worker trampoline must consume
+        // EAX as its exit code without triggering whole-process shutdown.
+        const uint32_t returnCode=code+64u;
+        const uint8_t returns[] = {0xB8,0x2A,0,0,0,0xC2,0x04,0}; // mov eax,42; ret 4
+        for(unsigned n=0;n<sizeof(returns);++n)
+            mem.Write8(returnCode+n,returns[n]);
+        rt::GuestThread* returning=proc.CreateGuestThread(returnCode,0,0x10000u,false,err);
+        if(!returning) { std::fprintf(stderr,"worker RET test: %s\n",err.c_str()); return 4; }
+        bool trampolineCalled=false;
+        for(unsigned n=0;n<12 && returning->IsRunnable();++n) {
+            cpu::Interpreter workerInterpreter(mem,returning->teb,returning->teb);
+            if (win32::HostAddressToIndex(returning->cpu.eip)>=0) {
+                proc.Scheduler().SetCurrent(returning);
+                win32::HostCallOutcome outcome{};
+                if(!win32::TryHandleHostCall(returning->cpu,mem,outcome)) break;
+                trampolineCalled=true;
+                break;
+            }
+            if(workerInterpreter.Step(returning->cpu)!=cpu::StepResult::Continue)
+                break;
+        }
+        if(!trampolineCalled || returning->status!=rt::GuestThreadStatus::Exited ||
+           returning->exitCode!=42 || proc.MainThread().status==rt::GuestThreadStatus::Exited) {
+            std::fprintf(stderr,"worker RET incorrectly exited process or lost code\n");
+            return 4;
+        }
         std::puts("PASSED: two real x86 guest threads, FS TEB and instruction quanta");
         return 0;
     }
