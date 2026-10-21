@@ -117,6 +117,8 @@ HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     auto it = Objects().find(Arg(c, m, 0));
     if (it == Objects().end()) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
     it->second.signaled = true;
+    if (rt::g_process)
+        rt::g_process->Scheduler().Signal(Arg(c,m,0),it->second.manualReset);
     return Ret(1);
 }
 HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -191,7 +193,23 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t hand
         pending.customReturn=true;
         return pending;
     }
-    return Ret(TryAcquire(handle));
+    // Other currently implemented kernel objects: event, mutex, semaphore.
+    auto it=Objects().find(handle);
+    if(it==Objects().end()) {
+        SetLastError(m,ERROR_INVALID_HANDLE);
+        return Ret(kWaitFailed);
+    }
+    uint32_t acquired=TryAcquire(handle);
+    if(acquired!=kWaitTimeout || milliseconds==0) return Ret(acquired);
+    // Positive finite durations require an independent deadline; do not
+    // incorrectly pretend they waited. Support infinite waits first.
+    if(milliseconds!=0xffffffffu || !rt::g_process) return Ret(kWaitTimeout);
+    rt::GuestThread* current=rt::g_process->Scheduler().Current();
+    if(!current) return Ret(kWaitTimeout);
+    if(!rt::g_process->Scheduler().Wait(*current,handle)) return Ret(kWaitFailed);
+    HostCallOutcome pending;
+    pending.customReturn=true;
+    return pending;
 }
 HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
