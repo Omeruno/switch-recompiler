@@ -29,6 +29,16 @@ int main(void) {
         printf("WORKER_RETURN_FAILED code=%lu\n",(unsigned long)exitCode);
         return 4;
     }
-    puts("PASSED: cooperative WaitForSingleObject and worker return");
+    if(!CloseHandle(thread)) {
+        puts("THREAD_CLOSE_FAILED");return 5;
+    }
+    if(CloseHandle(thread) || GetLastError()!=ERROR_INVALID_HANDLE) {
+        puts("THREAD_DOUBLE_CLOSE_NOT_REJECTED");return 6;
+    }
+    if(WaitForSingleObject(thread,0)!=WAIT_FAILED ||
+       GetLastError()!=ERROR_INVALID_HANDLE) {
+        puts("THREAD_CLOSED_HANDLE_WAIT_NOT_REJECTED");return 7;
+    }
+    puts("PASSED: guest thread wait, exit code and HANDLE close");
     return 0;
 }
