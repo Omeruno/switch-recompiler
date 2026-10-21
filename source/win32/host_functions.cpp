@@ -5094,7 +5094,7 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
         }
         // ExitThread inside a nested WndProc must unwind native frames,
         // never emulate another RET using its nonreturning syscall stack.
-        if (current && current->status==rt::GuestThreadStatus::Exited)
+        if (current && current->ShouldUnwind())
             outOutcome.customReturn=true;
         if (outOutcome.customReturn) return true;
         cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;

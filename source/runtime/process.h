@@ -38,6 +38,9 @@ struct Module {
     bool isDll = false;
     bool hle = false;       // эмулируемая DLL: функции — host-адреса
     bool initialized = false;
+    bool initializing = false;
+    bool initializationFailed = false;
+    bool threadCallsDisabled = false;
 
     // Разложенный образ (копия того, что в памяти гостя на момент загрузки) —
     // для ресурсов и разбора каталогов.
@@ -103,6 +106,20 @@ public:
     // кроме EAX/ECX/EDX (как обычный вызов функции).
     bool InitializeNewModules(cpu::CpuState& cpu, std::string& error);
 
+    // Recursive per-guest loader lock; waiters park their native continuation.
+    class LoaderLock {
+    public:
+        explicit LoaderLock(Process& process);
+        ~LoaderLock();
+        explicit operator bool() const { return acquired_; }
+        LoaderLock(const LoaderLock&) = delete;
+        LoaderLock& operator=(const LoaderLock&) = delete;
+    private:
+        Process& process_;
+        bool acquired_;
+    };
+    void RequestThreadExit(GuestThread& thread, uint32_t code);
+
     // Командная строка процесса (GetCommandLine, __getmainargs). По
     // умолчанию — путь к EXE.
     void SetCommandLine(const std::string& cmd) { commandLine_ = cmd; }
@@ -140,6 +157,10 @@ private:
     friend class GuestExecution;
     // Only after all native frames of this thread have returned to scheduler.
     void ReleaseThreadMemory(GuestThread& thread);
+    bool NotifyThread(GuestThread& thread, uint32_t reason);
+    bool AcquireLoaderLock();
+    void ReleaseLoaderLock();
+    bool CallTls(cpu::CpuState& state, Module& module, uint32_t reason);
     Module* LoadModuleFile(const std::string& path, const std::string& lowerName, std::string& error);
     Module* CreateHleModule(const std::string& lowerName);
     std::string FindFile(const std::string& lowerName) const;
@@ -148,11 +169,14 @@ private:
     void ParseExports(Module* m);
     void ApplyRelocations(Module* m, const pe::PEParser& parser, uint32_t delta);
     void ParseTls(Module* m, const pe::PEParser& parser);
-    bool InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error);
-    void SetupStaticTls(Module* m);
+    bool InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error, uint32_t reserved=0);
+    bool SetupStaticTls(Module* m, std::string& error);
 
     cpu::PagedGuestMemory& mem_;
     std::vector<std::unique_ptr<Module>> modules_;
+    std::vector<Module*> initializationOrder_;
+    uint32_t loaderOwner_ = 0;
+    uint32_t loaderDepth_ = 0;
     Module* main_ = nullptr;
     std::vector<std::string> searchPaths_;
     std::vector<std::string> forcedHle_;

@@ -53,6 +53,8 @@ constexpr uint32_t kLegacyModuleHandle = 0x69000000u;
 HostCallOutcome LoadLibraryCommon(cpu::CpuState& c, cpu::IGuestMemory& m, const std::string& name) {
     if (!rt::g_process) return Ret(name.empty() ? 0 : kLegacyModuleHandle);
     if (name.empty()) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
+    rt::Process::LoaderLock lock(*rt::g_process);
+    if (!lock) return Ret(0);
     std::string err;
     rt::Module* mod = rt::g_process->LoadLibrary(name, err);
     if (!mod) {
@@ -77,8 +79,11 @@ HostCallOutcome K32_FreeLibrary(cpu::CpuState&, cpu::IGuestMemory&) { return Ret
 
 HostCallOutcome GetModuleHandleCommon(cpu::IGuestMemory& m, uint32_t namePtr, const std::string& name) {
     if (!rt::g_process) return Ret(g_imageBase);
+    rt::Process::LoaderLock lock(*rt::g_process);
+    if (!lock) return Ret(0);
     if (!namePtr) return Ret(rt::g_process->MainModule() ? rt::g_process->MainModule()->base : g_imageBase);
     rt::Module* mod = rt::g_process->FindByName(name);
+    if (mod && mod->initializationFailed) mod=nullptr;
     if (!mod) {
         // Системные DLL «загружены всегда»
         std::string n = rt::Process::NormalizeName(name);
@@ -166,7 +171,17 @@ HostCallOutcome K32_GetModuleFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(n);
 }
 
-HostCallOutcome K32_DisableThreadLibraryCalls(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(1); }
+HostCallOutcome K32_DisableThreadLibraryCalls(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    if (!rt::g_process) { SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0); }
+    rt::Process::LoaderLock lock(*rt::g_process);
+    if (!lock) return Ret(0);
+    auto* module=rt::g_process ? rt::g_process->FindByHandle(Arg(c,m,0)) : nullptr;
+    if (!module || !module->isDll || module->tlsIndex!=0xffffffffu) {
+        SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0);
+    }
+    module->threadCallsDisabled=true;
+    return Ret(1);
+}
 
 HostCallOutcome K32_ExitProcess(cpu::CpuState& c, cpu::IGuestMemory& m) {
     HostCallOutcome r;
@@ -232,7 +247,7 @@ HostCallOutcome K32_WorkerReturn(cpu::CpuState& c, cpu::IGuestMemory&) {
     rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     if (!t || t==&rt::g_process->MainThread())
         cpu::FatalError("worker return trampoline used outside worker thread");
-    rt::g_process->Scheduler().Exit(*t,c.Get(cpu::Reg32::EAX));
+    rt::g_process->RequestThreadExit(*t,c.Get(cpu::Reg32::EAX));
     HostCallOutcome out;
     out.customReturn=true;
     return out;
@@ -240,7 +255,7 @@ HostCallOutcome K32_WorkerReturn(cpu::CpuState& c, cpu::IGuestMemory&) {
 HostCallOutcome K32_ExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     if (!t) cpu::FatalError("ExitThread outside a scheduled guest thread");
-    rt::g_process->Scheduler().Exit(*t,Arg(c,m,0));
+    rt::g_process->RequestThreadExit(*t,Arg(c,m,0));
     HostCallOutcome out;
     out.customReturn=true; // nonreturning; outer loop sees Exited state
     return out;

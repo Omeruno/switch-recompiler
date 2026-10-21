@@ -40,19 +40,35 @@ void GuestExecution::SuspendCurrent() {
 }
 bool GuestExecution::CheckCurrent() {
     GuestThread& thread=*running_->thread;
-    if (stopped_ || win32::g_guestExitRequested || thread.status==GuestThreadStatus::Exited)
+    if (stopped_ || win32::g_guestExitRequested || thread.ShouldUnwind())
         return false;
     if (!thread.IsRunnable() || thread.yieldRequested || ++operations_>=256) {
         thread.yieldRequested=false;
         SuspendCurrent();
     }
-    return !stopped_ && !win32::g_guestExitRequested && thread.status!=GuestThreadStatus::Exited;
+    return !stopped_ && !win32::g_guestExitRequested && !thread.ShouldUnwind();
 }
 void GuestExecution::Run(void* arg) {
     auto& continuation=*static_cast<Continuation*>(arg);
     auto& executor=*continuation.owner;
-    while (executor.CheckCurrent())
-        if (!executor.step_(*continuation.thread)) { executor.stopped_=true; break; }
+    auto& thread=*continuation.thread;
+    bool start=true;
+    if (thread.needsThreadAttach) {
+        thread.needsThreadAttach=false;
+        start=executor.process_.NotifyThread(thread,2);
+    }
+    if (start) while (executor.CheckCurrent())
+        if (!executor.step_(thread)) { executor.stopped_=true; break; }
+    // ExitThread first unwinds native WndProc/SEH frames. Run detach on a
+    // clean native frame while guest stack/TEB/TLS and HANDLE are still live.
+    if (thread.exitRequested && thread.status!=GuestThreadStatus::Exited &&
+        !executor.stopped_ && !win32::g_guestExitRequested) {
+        thread.detaching=true;
+        executor.process_.NotifyThread(thread,3);
+        thread.detaching=false;
+        if (!executor.stopped_ && !win32::g_guestExitRequested)
+            executor.process_.Scheduler().Exit(thread,thread.requestedExitCode);
+    }
 }
 void GuestExecution::Resume(Continuation& continuation) {
     auto* savedThread=process_.Scheduler().Current();
@@ -74,7 +90,8 @@ void GuestExecution::Resume(Continuation& continuation) {
 void GuestExecution::ReapExited() {
     for (auto it=continuations_.begin();it!=continuations_.end();) {
         auto& continuation=it->second;
-        if (!continuation || continuation->thread->status!=GuestThreadStatus::Exited) {
+        if (!continuation) { it=continuations_.erase(it); continue; }
+        if (continuation->thread->status!=GuestThreadStatus::Exited) {
             ++it;
             continue;
         }

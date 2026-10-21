@@ -76,7 +76,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 ## Ближайшая очередь работ
 1. Проверить текущий HANDLE/lifecycle пакет: хостовые ABI-тесты, MinGW-гости, CPU oracle и Switch build; отдельно проверить Paint на железе.
 2. Saved native continuations для вложенных callbacks реализованы: взаимные ожидания WndProc/SEH, GetMessage от worker, busy-spin и ExitThread внутри callback покрыты тестами. Проверить ARM64 ABI под QEMU и реальный Switch; это не завершает все блокирующие host HLE пути.
-3. Освобождение stack/TEB/TLS после возврата нативных кадров реализовано, включая initial-thread TEB без освобождения PEB и никогда не запущенные workers. Метаданные HANDLE сохраняются. Следующий шаг: DLL_THREAD_ATTACH/DETACH, TLS callbacks, loader lock и static TLS при LoadLibrary из worker.
+3. Реализованы освобождение stack/TEB/TLS, DLL_THREAD_ATTACH/DETACH и EXE/DLL TLS callbacks, recursive cooperative loader lock, отложенный старт CREATE_SUSPENDED и static TLS для существующих потоков при LoadLibrary. HANDLE сигналится после detach; метаданные сохраняются. Остались process/DLL shutdown, unload/refcounts/rollback, startup blocking waits и аппаратная регрессия.
 4. Per-thread USER32 queues и MsgWait*, затем APC/alertable waits. Отдельно — named objects и access/inherit/protect HANDLE policies.
 5. Ввести renderer-backend interface без переписывания эталонного CPU GDI. Desktop-shell и JIT — после соответствующих acceptance gates.
 

@@ -1,6 +1,7 @@
 // process.cpp — загрузка модулей и подготовка главного потока (см. process.h)
 
 #include "process.h"
+#include "guest_execution.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -104,6 +105,38 @@ Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {
     });
 }
 
+Process::LoaderLock::LoaderLock(Process& process)
+    : process_(process), acquired_(process.AcquireLoaderLock()) {}
+Process::LoaderLock::~LoaderLock() { if (acquired_) process_.ReleaseLoaderLock(); }
+
+bool Process::AcquireLoaderLock() {
+    constexpr uint32_t waitToken=0xfffffff1u; // internal scheduler token, never a HANDLE
+    auto* current=scheduler_.Current();
+    const uint32_t id=current ? current->id : 0x1004u;
+    if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+    while (loaderOwner_ && loaderOwner_!=id) {
+        if (!current || !GuestExecution::Active()) return false;
+        scheduler_.Wait(*current,waitToken);
+        GuestExecution::Yield();
+        if (!GuestExecution::Checkpoint()) return false;
+    }
+    loaderOwner_=id;
+    ++loaderDepth_;
+    return true;
+}
+void Process::ReleaseLoaderLock() {
+    if (--loaderDepth_==0) {
+        loaderOwner_=0;
+        scheduler_.Signal(0xfffffff1u,true);
+    }
+}
+void Process::RequestThreadExit(GuestThread& thread, uint32_t code) {
+    if (!GuestExecution::Active()) { scheduler_.Exit(thread,code); return; }
+    thread.exitRequested=true;
+    thread.requestedExitCode=code;
+    if (thread.detaching) thread.detachAborted=true;
+}
+
 std::string Process::NormalizeName(const std::string& name) {
     std::string base = name;
     size_t slash = base.find_last_of("/\\");
@@ -191,8 +224,13 @@ Module* Process::LoadMainExe(const std::string& path, std::string& error) {
 }
 
 Module* Process::LoadLibrary(const std::string& name, std::string& error) {
+    LoaderLock lock(*this);
+    if (!lock) { error="loader operation interrupted"; return nullptr; }
     std::string n = NormalizeName(name);
-    if (Module* m = FindByName(n)) return m;
+    if (Module* m = FindByName(n)) {
+        if (m->initializationFailed) { error=n+": previous load/initialization failed"; return nullptr; }
+        return m;
+    }
     if (!IsAlwaysHle(n)) {
         std::string path = FindFile(n);
         if (!path.empty()) return LoadModuleFile(path, n, error);
@@ -239,7 +277,7 @@ Module* Process::LoadModuleFile(const std::string& path, const std::string& lowe
     ParseExports(m);
     ParseTls(m, parser);
 
-    if (!BindImports(m, parser, error)) return nullptr;
+    if (!BindImports(m, parser, error)) { m->initializationFailed=true; return nullptr; }
 
     mem_.LoadBytes(base, m->image.data(), m->image.size());
     if (cpu::g_consoleAvailable) {
@@ -247,7 +285,7 @@ Module* Process::LoadModuleFile(const std::string& path, const std::string& lowe
                     base != preferred ? " с релокацией" : "");
     }
     // Если поток уже работает (LoadLibrary во время исполнения) — TLS сразу
-    if (threadReady_) SetupStaticTls(m);
+    if (threadReady_ && !SetupStaticTls(m,error)) { m->initializationFailed=true; return nullptr; }
     return m;
 }
 
@@ -349,6 +387,8 @@ uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ord
 }
 
 uint32_t Process::GetProcAddress(Module* m, const std::string& name, uint16_t ordinal) {
+    LoaderLock lock(*this);
+    if (!lock || !m || m->initializationFailed) return 0;
     return ResolveExport(m, name, ordinal, 0);
 }
 
@@ -395,16 +435,26 @@ bool Process::BindImports(Module* m, const pe::PEParser& parser, std::string& er
     return true;
 }
 
-void Process::SetupStaticTls(Module* m) {
-    if (m->tlsIndex == 0xFFFFFFFFu || !tlsArray_ || m->tlsIndex >= kTlsSlots ||
-        mainThread_.memoryReleased) return;
+bool Process::SetupStaticTls(Module* m, std::string& error) {
+    if (m->tlsIndex==0xffffffffu) return true;
+    if (m->tlsIndex>=kTlsSlots) { error="static TLS index limit exceeded"; return false; }
     uint32_t tmplSize = m->tlsTemplateEnd > m->tlsTemplateStart ? m->tlsTemplateEnd - m->tlsTemplateStart : 0;
-    uint32_t total = tmplSize + m->tlsZeroFill;
-    uint32_t block = mem_.Allocate(total ? total : 4, cpu::kProtRW);
-    if (!block) cpu::FatalError("cannot allocate static TLS block");
-    mainThread_.memoryRegions.emplace_back(block,total ? total : 4);
-    for (uint32_t i = 0; i < tmplSize; ++i) mem_.Write8(block + i, mem_.Read8(m->tlsTemplateStart + i));
-    mem_.Write32(tlsArray_ + m->tlsIndex * 4, block);
+    if (tmplSize>0x1000000u || m->tlsZeroFill>0x1000000u-tmplSize) {
+        error="static TLS template too large"; return false;
+    }
+    const uint32_t total=tmplSize+m->tlsZeroFill ? tmplSize+m->tlsZeroFill : 4u;
+    const auto setup=[&](GuestThread& thread) {
+        if (!thread.tlsArray || thread.memoryReleased || thread.status==GuestThreadStatus::Exited) return true;
+        uint32_t block=mem_.Allocate(total,cpu::kProtRW);
+        if (!block) { error="cannot allocate static TLS block"; return false; }
+        thread.memoryRegions.emplace_back(block,total);
+        for (uint32_t i=0;i<tmplSize;++i) mem_.Write8(block+i,mem_.Read8(m->tlsTemplateStart+i));
+        mem_.Write32(thread.tlsArray+m->tlsIndex*4,block);
+        return true;
+    };
+    if (!setup(mainThread_)) return false;
+    for (auto& thread:workerThreads_) if (!setup(*thread)) return false;
+    return true;
 }
 
 bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
@@ -478,7 +528,8 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     mem_.Write16(p + 0xAC, 2600);         // OSBuildNumber
     mem_.Write32(p + 0xB0, 2);            // OSPlatformId (VER_PLATFORM_WIN32_NT)
 
-    for (auto& m : modules_) SetupStaticTls(m.get());
+    mainThread_.tlsArray=tlsArray_;
+    for (auto& m : modules_) if (!SetupStaticTls(m.get(),error)) return false;
     threadReady_ = true;
 
     cpu = cpu::CpuState{};
@@ -545,6 +596,7 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     worker->stackLimit=stack;
     worker->stackBase=stack+stackReserve;
     worker->tlsArray=tls;
+    worker->needsThreadAttach=true;
     worker->status=suspended?GuestThreadStatus::Suspended:GuestThreadStatus::Runnable;
     worker->suspendCount=suspended?1u:0u;
     worker->cpu=cpu::CpuState{};
@@ -625,52 +677,86 @@ void Process::ReleaseThreadMemory(GuestThread& thread) {
     thread.memoryReleased=true;
 }
 
-bool Process::InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error) {
-    if (m->initialized) return true;
-    m->initialized = true; // до вызова: защита от циклов зависимостей
-    for (Module* d : m->dependencies) if (!InitializeModule(cpu, d, error)) return false;
+bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason) {
+    if (!module.tlsCallbacks) return true;
+    const uint32_t teb=CurrentTebAddress();
+    for (uint32_t i=0;i<64;++i) {
+        const uint32_t callback=mem_.Read32(module.tlsCallbacks+i*4);
+        if (!callback) break;
+        cpu::CpuState local=state;
+        win32::CallGuestFunctionStdcall(local,mem_,callback,{module.base,reason,0},teb,teb);
+        if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+    }
+    return true;
+}
 
-    // TLS-колбэки (и для EXE тоже), затем DllMain
-    if (m->tlsCallbacks) {
-        for (uint32_t i = 0; i < 64; ++i) {
-            uint32_t cb = mem_.Read32(m->tlsCallbacks + i * 4);
-            if (!cb) break;
-            win32::CallGuestFunctionStdcall(cpu, mem_, cb, {m->base, 1, 0}, kTebAddress, kTebAddress);
+bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string& error, uint32_t reserved) {
+    if (module->initializationFailed) { error=module->name+": initialization failed"; return false; }
+    if (module->initialized || module->initializing) return true;
+    module->initializing=true;
+    struct Reset { bool& flag; ~Reset() { flag=false; } } reset{module->initializing};
+    for (Module* dependency:module->dependencies)
+        if (!InitializeModule(state,dependency,error,reserved)) {
+            module->initializationFailed=dependency->initializationFailed;
+            return false;
+        }
+    if (!CallTls(state,*module,1)) { error="TLS initialization interrupted"; return false; }
+    if (module->isDll && module->entryRva) {
+        cpu::CpuState local=state;
+        const uint32_t teb=CurrentTebAddress();
+        const uint32_t ok=win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+            {module->base,1,reserved},teb,teb);
+        if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) {
+            error="DLL initialization interrupted"; return false;
+        }
+        if (!ok) {
+            module->initializationFailed=true;
+            error=module->name+": DllMain returned FALSE"; return false;
         }
     }
-    if (m->isDll && m->entryRva) {
-        uint32_t ok = win32::CallGuestFunctionStdcall(cpu, mem_, m->base + m->entryRva, {m->base, 1, 1}, kTebAddress, kTebAddress);
-        if (!ok) { error = m->name + ": DllMain вернул FALSE"; return false; }
+    module->initialized=true;
+    if (!module->hle) initializationOrder_.push_back(module);
+    return true;
+}
+
+bool Process::InitializeModules(cpu::CpuState& state, std::string& error) {
+    LoaderLock lock(*this);
+    if (!lock) { error="loader initialization interrupted"; return false; }
+    // Indexed traversal remains valid if a callback loads another module.
+    for (size_t i=0;i<modules_.size();++i) {
+        Module* module=modules_[i].get();
+        if (module!=main_ && !InitializeModule(state,module,error,1)) return false;
+    }
+    return main_ && InitializeModule(state,main_,error,1);
+}
+
+bool Process::InitializeNewModules(cpu::CpuState& state, std::string& error) {
+    LoaderLock lock(*this);
+    if (!lock) { error="loader initialization interrupted"; return false; }
+    for (size_t i=0;i<modules_.size();++i) {
+        Module* module=modules_[i].get();
+        if (module==main_ || module->initializationFailed) continue;
+        if (!InitializeModule(state,module,error)) return false;
     }
     return true;
 }
 
-bool Process::InitializeModules(cpu::CpuState& cpu, std::string& error) {
-    // Состояние главного потока сохраняется: вложенные вызовы восстанавливают
-    // ESP сами, но EIP/регистры для точки входа берём заново.
-    cpu::CpuState saved = cpu;
-    for (auto& m : modules_) {
-        if (m.get() == main_) continue;
-        if (!InitializeModule(cpu, m.get(), error)) return false;
-    }
-    if (main_ && main_->tlsCallbacks) {
-        bool wasInit = main_->initialized;
-        main_->initialized = false;
-        if (!InitializeModule(cpu, main_, error)) return false;
-        main_->initialized = wasInit;
-    }
-    main_->initialized = true;
-    uint32_t esp = saved.ESP();
-    cpu = saved;
-    cpu.ESP() = esp;
-    return true;
-}
-
-bool Process::InitializeNewModules(cpu::CpuState& cpu, std::string& error) {
-    for (size_t i = 0; i < modules_.size(); ++i) {
-        Module* m = modules_[i].get();
-        if (m->initialized || m == main_) continue;
-        if (!InitializeModule(cpu, m, error)) return false;
+bool Process::NotifyThread(GuestThread& thread, uint32_t reason) {
+    LoaderLock lock(*this);
+    if (!lock) return false;
+    // A DLL loaded by this notification gets PROCESS_ATTACH on this thread,
+    // never a retrospective THREAD_ATTACH. Detach visits current modules.
+    auto order=initializationOrder_;
+    if (reason==3) std::reverse(order.begin(),order.end());
+    for (Module* module:order) {
+        if (module->threadCallsDisabled) continue;
+        if (!CallTls(thread.cpu,*module,reason)) return false;
+        if (module->isDll && module->entryRva) {
+            cpu::CpuState local=thread.cpu;
+            win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+                {module->base,reason,0},thread.teb,thread.teb);
+            if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+        }
     }
     return true;
 }

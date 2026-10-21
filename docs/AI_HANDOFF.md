@@ -448,3 +448,66 @@ not libnx TLS/newlib behavior or actual Switch rendering. JIT remains separate.
   host ownership, and tests an exited parked continuation on session teardown.
 - Check the exact resulting SHA's CI separately. Physical Switch/Paint
   regression still requires hardware.
+
+## DLL/TLS thread lifecycle and cooperative loader serialization
+
+Incoming baseline: 9e434f0 (thread mapping reclamation), CI 39660483591 green.
+
+- GuestThread.needsThreadAttach is consumed on the worker's first native fiber
+  entry, before its LPTHREAD_START_ROUTINE. CREATE_SUSPENDED delays callbacks.
+  TLS callbacks precede DllMain within a module; modules follow completed
+  initialization order on attach, reverse order on detach. EXE receives TLS
+  callbacks too. Thread callback DllMain return values are ignored.
+- ExitThread/worker return request exit, making checkpoints unwind the original
+  native guest-call wrappers. GuestExecution then enters a detach phase on the
+  same guest fiber, allowing DLL/TLS guest code while preserving the original
+  requested exit code. Scheduler.Exit, HANDLE signal, mutex abandonment and
+  memory reaping happen afterward. ExitThread during detach aborts further
+  callbacks rather than recursively detaching. Direct Scheduler.Exit remains
+  forceful with no guest notifications; standalone unscheduled HLE retains its
+  immediate-exit fallback for old host harnesses.
+- Process::LoaderLock is recursive per guest ID, uses internal wait token
+  0xfffffff1 (not a public HANDLE), and parks native continuations cooperatively.
+  The lock spans HLE LoadLibrary (mapping + initialization), Process::LoadLibrary,
+  module initialization, GetProcAddress, GetModuleHandle, DisableThreadLibraryCalls
+  and thread notifications. A checkpoint precedes the lock ownership test;
+  no yield is permitted between finding it free and assigning the owner.
+- Modules distinguish initializing, initialized, failed and disabled-thread-calls.
+  initialize-order snapshots survive nested LoadLibrary/vector growth. Callbacks
+  execute on local CPU copies/current TEB; the caller's entry EIP/ESP/registers
+  remain intact. Static process loads pass nonzero DllMain reserved; dynamic
+  loads and thread notifications pass zero. Failed initializations cannot be
+  reported as successful by a subsequent LoadLibrary/GetModuleHandle.
+- Runtime static TLS setup now populates all live guest TLS vectors, including
+  existing suspended workers. Each owns a fresh template + zero-fill mapping;
+  existing threads receive no retrospective THREAD_ATTACH. Reclaimed main TEB/
+  TLS is never touched. DisableThreadLibraryCalls rejects invalid/EXE handles
+  and modules with a static TLS directory, and suppresses thread callbacks for
+  eligible DLLs.
+- tests/guest/gui_thread_dll_lifecycle.c + six CRT-free lifecycle_*.dll fixtures:
+  dependency TLS/DllMain order; real PE TLS templates and zero-fill; EXE callbacks;
+  suspended start; two concurrent runtime loads (one PROCESS_ATTACH); recursive
+  LoadLibrary; Sleep inside DLL callbacks with peers attempting loader entry;
+  independent dynamic TLS for existing threads and fresh TLS for later workers;
+  DisableThreadLibraryCalls; failed DllMain/dependent module/repeated load/GetModuleHandle;
+  normal worker return, ExitThread inside WndProc, initial-thread ExitThread;
+  checks inside every detach that current exit code is STILL_ACTIVE and self
+  HANDLE is nonsignaled. Survivor checks initial detach before handle signal.
+  Failing guest prints its stage and full notification log for diagnosis.
+- The fixture compiles only project-owned code; no Microsoft binaries added.
+
+Validation: full host suite passed with -fno-rtti/-fno-exceptions, including
+resource reclamation, all CRT/C++/SEH/thread guests, the lifecycle test, and
+COMDLG Open/List/Save. The first pass used older kernel32 objects during an
+in-progress edit; GetModuleHandle(failed) test caught the missing guard.
+After the full pass, propagated dependency initialization failure to the parent
+module and added lifecycle_parent.dll coverage; rebuilt process.o/winrun and
+the expanded guest passed against those final objects. Exact SHA CI and
+physical Horizon/Paint verification are separate gates.
+
+Remaining: physical Horizon/Paint checks; per-thread USER32/message routing,
+APC/MsgWait; full DLL unload/refcounts and failed-load mapping rollback;
+PROCESS_DETACH/process shutdown; TerminateThread. Startup module initialization
+before GuestExecution is synchronous (no blocking inter-thread waits in startup
+DllMain). Failed module mappings/TLS allocations remain owned until thread/
+Process teardown; this is not a full Windows loader/unloader implementation.

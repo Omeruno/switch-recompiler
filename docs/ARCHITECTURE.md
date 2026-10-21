@@ -52,8 +52,9 @@
 - При переключении восстанавливаются USER32 GuestCtx, TEB binding и host
   errno. Глубина callback и активные SEH frames принадлежат GuestThread.
   Отдельная копия CpuState SEH-обработчика остаётся на сохранённом стеке.
-- При ExitThread вложенный гостевой код больше не исполняется, нативные
-  обёртки возвращаются обычным путём. При остановке всей сессии pending
+- При ExitThread исходный вложенный гостевой код больше не исполняется,
+  нативные обёртки возвращаются обычным путём. Затем на том же guest fiber
+  выполняются TLS/DLL detach callbacks. При остановке всей сессии pending
   continuations дренируются с флагом выхода, чтобы выполнились деструкторы.
   Завершённый нативный стек освобождается после возврата на стек scheduler.
 - USER32 GetMessage при живых peers периодически отдаёт исполнение; полных
@@ -68,10 +69,26 @@ GuestExecution разворачивает его оставшиеся натив
 хранятся на хосте, независимо от изменяемых гостем указателей TEB/TLS.
 У главного потока освобождается страница TEB, но сохраняется соседняя PEB.
 Метаданные потока остаются в Process/Scheduler для HANDLE и exit-code queries;
-это ещё не полная очистка объектов NT. DLL_THREAD_ATTACH/DETACH и TLS thread
-callbacks пока не реализованы; будущий detach должен предшествовать выходу
-потока и освобождению его памяти. Динамический static TLS пока настраивается
-только для главного потока; после освобождения его памяти запись пропускается.
+это ещё не полная очистка объектов NT.
+
+- До первой инструкции worker исполняются TLS callbacks и
+  `DllMain(DLL_THREAD_ATTACH)` в порядке завершённой инициализации модулей;
+  `CREATE_SUSPENDED` откладывает их до фактического запуска. EXE получает TLS
+  thread callbacks, но не DllMain. При штатном выходе порядок модулей обратный,
+  внутри модуля TLS callbacks предшествуют DllMain. Detach заканчивается до
+  смены exit code, сигнализации HANDLE, abandonment mutex и освобождения памяти.
+- Recursive loader lock принадлежит guest thread, а не native OS thread.
+  Ожидающие гости паркуются на внутреннем scheduler token. Lock охватывает
+  LoadLibrary/инициализацию, GetProcAddress, GetModuleHandle и уведомления;
+  новые потоки ждут завершения текущего DLL callback перед стартом.
+  Вызов из DllMain может повторно войти в loader на том же guest thread.
+- `Module` различает initializing/initialized/failed; завершённый порядок
+  хранится отдельно от порядка загрузки. Callback работает с локальной копией
+  CPU и текущим TEB, сохраняя EIP/ESP/регистры вызывающего HLE или entry point.
+- Статический TLS при LoadLibrary выделяется всем живым потокам, включая
+  suspended; существующие потоки не получают ретроспективный THREAD_ATTACH.
+  `DisableThreadLibraryCalls` отключает thread notifications для DLL без
+  статического TLS; неверный handle и DLL со статическим TLS отклоняются.
 
 - `GuestScheduler` чередует runnable-потоки, учитывает suspend count,
   Sleep и тайм-ауты ожиданий по монотонным абсолютным срокам.
@@ -98,7 +115,11 @@ callbacks пока не реализованы; будущий detach долже
 
 Ограничения: нет межпроцессного DuplicateHandle, enforcement access masks,
 наследования/security descriptors, именованного пространства NT-объектов,
-полной DLL_THREAD_ATTACH/DETACH, APC и MsgWait*. Стандартные HANDLE консоли
+APC и MsgWait*. Нет DLL unload/refcounts, rollback отображений неудачной
+загрузки, полноценного PROCESS_DETACH/ExitProcess shutdown и TerminateThread.
+Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
+блокирующие ожидания между гостевыми потоками из startup DllMain.
+Стандартные HANDLE консоли
 пока сохраняют прежнюю политику CloseHandle. Для standalone/v1 HLE
 используется отдельная резервная таблица, когда нет `rt::g_process`.
 
@@ -145,6 +166,6 @@ SHELL32, OLE32/OLEAUT32, COMCTL32, GDI+ и UXTHEME имеют частичные
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-DLL notifications и динамический static TLS, per-thread USER32,
+полный process/DLL shutdown, per-thread USER32,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

@@ -10,6 +10,21 @@ $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -Wl,--image-base,0x400000 \
     "$here/testdll.c" "$here/testdll.def" -o "$out/testdll.dll" -lkernel32
 $cc -O1 -nostdlib -e _start@0 -Wl,--image-base,0x400000 "$here/dlltest.c" "$out/testdll.dll" \
     -o "$out/dlltest.exe" -lkernel32
+# Redistributable, CRT-free lifecycle DLLs; real PE TLS directories/callbacks.
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/lifecycle_dep.c" \
+    -o "$out/lifecycle_dep.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=2 "$here/lifecycle_module.c" \
+    "$out/lifecycle_dep.dll" -o "$out/lifecycle_top.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=3 -DLIFE_DISABLE "$here/lifecycle_module.c" \
+    "$out/lifecycle_dep.dll" -o "$out/lifecycle_disabled.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=4 -DLIFE_TLS "$here/lifecycle_module.c" \
+    "$out/lifecycle_dep.dll" -o "$out/lifecycle_late.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=6 -DLIFE_FAIL "$here/lifecycle_module.c" \
+    "$out/lifecycle_dep.dll" -o "$out/lifecycle_failed.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=7 -DLIFE_PARENT "$here/lifecycle_module.c" \
+    "$out/lifecycle_failed.dll" "$out/lifecycle_dep.dll" -o "$out/lifecycle_parent.dll" -lkernel32
+$cc -O1 "$here/gui_thread_dll_lifecycle.c" "$out/lifecycle_top.dll" "$out/lifecycle_dep.dll" \
+    -o "$out/gui_thread_dll_lifecycle.exe" -luser32 -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
@@ -18,6 +33,7 @@ done
 for t in "$here"/gui_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
+    [ "$name" = "gui_thread_dll_lifecycle" ] && continue
     res=""
     if [ -e "$here/$name.rc" ]; then
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"

@@ -19,6 +19,11 @@ struct GuestThread {
     // Metadata survives exit for HANDLE queries; mappings do not.
     std::vector<std::pair<uint32_t,uint32_t>> memoryRegions;
     bool memoryReleased = false;
+    bool needsThreadAttach = false;
+    bool exitRequested = false;
+    uint32_t requestedExitCode = 0;
+    bool detaching = false;
+    bool detachAborted = false;
     uint32_t exitCode = 259; // STILL_ACTIVE
     uint32_t suspendCount = 0;
     uint32_t waitObject = 0;
@@ -46,6 +51,10 @@ struct GuestThread {
 
     bool IsRunnable() const {
         return status == GuestThreadStatus::Runnable && suspendCount == 0;
+    }
+    bool ShouldUnwind() const {
+        return status==GuestThreadStatus::Exited ||
+            (exitRequested && (!detaching || detachAborted));
     }
 };
 } // namespace rt
