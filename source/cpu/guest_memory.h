@@ -56,7 +56,7 @@ inline bool g_sehRaised = false;
 inline uint32_t g_sehExceptionCode = 0;
 inline uint32_t g_sehExceptionFlags = 0;
 inline uint32_t g_sehExceptionArgumentCount = 0;
-inline uint32_t g_sehExceptionArguments[4] = {};
+inline uint32_t g_sehExceptionArguments[15] = {};
 
 inline void RecordDynamicImport(const char* dll, const char* func, uint32_t result) {
     uint32_t slot = g_recentDynamicImportSerial++ % 8;
