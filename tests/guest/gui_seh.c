@@ -11,6 +11,7 @@ static int __cdecl FirstHandler(EXCEPTION_RECORD *record, void *frame,
                                 CONTEXT *ctx, void *dispatcher) {
     (void)frame; (void)dispatcher;
     firstCalls++;
+    if (record->ExceptionCode==EXCEPTION_BREAKPOINT) return 1; /* CPU fault, search next */
     if (record->ExceptionCode!=expectedCode || record->NumberParameters!=2 ||
         record->ExceptionInformation[0]!=expectedParams[0] ||
         record->ExceptionInformation[1]!=expectedParams[1] ||
@@ -21,6 +22,12 @@ static int __cdecl SecondHandler(EXCEPTION_RECORD *record, void *frame,
                                  CONTEXT *ctx, void *dispatcher) {
     (void)frame; (void)dispatcher;
     secondCalls++;
+    if (record->ExceptionCode==EXCEPTION_BREAKPOINT) {
+        /* Interpreted INT3 faults at the opcode; skip its one byte. */
+        if (!ctx->Eip) unexpected++;
+        else ctx->Eip += 1;
+        return 0;
+    }
     if (record->ExceptionCode!=expectedCode || !ctx->Eip) unexpected++;
     return 0; /* ExceptionContinueExecution */
 }
@@ -34,8 +41,9 @@ int main(void) {
     first.handler=(void*)&FirstHandler;
     __asm__ __volatile__("movl %0, %%fs:0" : : "r"(&first) : "memory");
     RaiseException(expectedCode,0,2,expectedParams);
+    __asm__ __volatile__("int3");
     __asm__ __volatile__("movl %0, %%fs:0" : : "r"(original) : "memory");
-    if(firstCalls!=1 || secondCalls!=1 || unexpected) {
+    if(firstCalls!=2 || secondCalls!=2 || unexpected) {
         printf("SEH FAILED first=%d second=%d unexpected=%d\n",
                firstCalls,secondCalls,unexpected);
         return 1;
