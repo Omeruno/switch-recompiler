@@ -20,6 +20,12 @@ struct GuestThread {
     GuestThreadStatus status = GuestThreadStatus::Created;
     cpu::CpuState cpu{};
 
+    // Nested exception handlers belong to a thread, never the process.
+    // Used by x86 SEH while dispatching guest callbacks recursively.
+    struct ActiveSehFrame { uint32_t frame = 0; };
+    ActiveSehFrame activeSeh[16] = {};
+    uint32_t activeSehDepth = 0;
+
     bool IsRunnable() const {
         return status == GuestThreadStatus::Runnable && suspendCount == 0;
     }
