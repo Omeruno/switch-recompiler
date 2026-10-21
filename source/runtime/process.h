@@ -111,6 +111,11 @@ public:
     uint32_t CurrentThreadId() const { return mainThread_.id; }
     const GuestThread& MainThread() const { return mainThread_; }
     GuestThread& MainThread() { return mainThread_; }
+    // Allocate a separate x86 worker stack, TEB and TLS; does not schedule it.
+    GuestThread* CreateGuestThread(uint32_t startAddress, uint32_t parameter,
+                                   uint32_t stackReserve, bool suspended,
+                                   std::string& error);
+    GuestThread* FindThread(uint32_t id);
     GuestScheduler& Scheduler() { return scheduler_; }
     const GuestScheduler& Scheduler() const { return scheduler_; }
     uint32_t PebAddress() const { return kPebAddress; }
@@ -146,6 +151,8 @@ private:
     uint32_t crtGlobals_ = 0;
     bool threadReady_ = false;
     GuestThread mainThread_{};
+    std::vector<std::unique_ptr<GuestThread>> workerThreads_;
+    uint32_t nextThreadId_ = 0x1008u;
     GuestScheduler scheduler_{};
 };
 
