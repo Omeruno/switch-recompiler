@@ -541,7 +541,9 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
     w->hInstance = hInstance;
     uint32_t hwnd = w->hwnd;
     S().windows[hwnd] = std::move(win);
-    InsertZ(w, 0);
+    // как в Windows: дочернее окно — в конец z-порядка (он же порядок Tab
+    // в диалогах и обхода GetWindow), окно верхнего уровня — наверх
+    InsertZ(w, (style & WS_CHILD) ? 1 : 0);
     ui::g_gdi.InvalidateLayout();
 
     // CREATESTRUCT на стеке гостя; строки — в кодировке окна

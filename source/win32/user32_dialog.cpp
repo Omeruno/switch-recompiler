@@ -256,8 +256,8 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
     // WM_INITDIALOG: фокус на первый элемент с WS_TABSTOP
     uint32_t first = 0;
     if ((dw = Win(hwnd)))
-        for (auto it = dw->children.rbegin(); it != dw->children.rend(); ++it) // в порядке создания
-            if (Window* cw2 = Win(*it)) if ((cw2->style & WS_TABSTOP) && (cw2->style & WS_VISIBLE) && !(cw2->style & 0x08000000)) { first = *it; break; }
+        for (uint32_t ch : dw->children) // z-порядок детей = порядок создания
+            if (Window* cw2 = Win(ch)) if ((cw2->style & WS_TABSTOP) && (cw2->style & WS_VISIBLE) && !(cw2->style & 0x08000000)) { first = ch; break; }
     uint32_t r = CallProc(dlgProc, unicode, hwnd, WM_INITDIALOG, first, param, unicode);
     if (!Win(hwnd)) return 0;
     if (r && first) SetFocusInternal(first);
@@ -281,8 +281,7 @@ namespace {
 // Следующий элемент для Tab/стрелок
 std::vector<uint32_t> Controls(uint32_t dlg) {
     std::vector<uint32_t> v;
-    if (Window* d = Win(dlg)) for (uint32_t c : d->children) v.push_back(c);
-    std::reverse(v.begin(), v.end()); // порядок создания: дети хранятся сверху вниз
+    if (Window* d = Win(dlg)) for (uint32_t c : d->children) v.push_back(c); // z-порядок = порядок Tab
     return v;
 }
 bool Usable(uint32_t h) {

@@ -282,7 +282,7 @@ void ClickButton(uint32_t hwnd) {
     else if (type == AUTO3) c->check = (c->check + 1) % 3;
     else if (type == AUTORADIO) {
         if (Window* p = Win(w->parent)) {
-            std::vector<uint32_t> v(p->children.rbegin(), p->children.rend());
+            std::vector<uint32_t> v(p->children); // z-порядок = порядок создания
             size_t i = static_cast<size_t>(std::find(v.begin(), v.end(), hwnd) - v.begin());
             size_t gs = i;
             while (gs > 0 && Win(v[gs]) && !(Win(v[gs])->style & 0x20000)) --gs;
