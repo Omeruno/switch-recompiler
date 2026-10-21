@@ -271,6 +271,17 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
     constexpr uint32_t kWaitTimeout=0x102u;
     rt::GuestThread* current=rt::g_process ?
         rt::g_process->Scheduler().Current() : nullptr;
+    auto finish=[&](uint32_t result) -> HostCallOutcome {
+        if (current) {
+            current->retryWaitToken=0;
+            current->retryWaitDeadlineUs=0;
+        }
+        return Ret(result);
+    };
+    if (current && current->retryWaitToken == handle &&
+        current->retryWaitDeadlineUs &&
+        rt::Clock::NowUs() >= current->retryWaitDeadlineUs)
+        return finish(kWaitTimeout);
     auto tryPark=[&]() -> HostCallOutcome {
         if (!current || !rt::g_process) return Ret(kWaitTimeout);
         if (!rt::g_process->Scheduler().WaitFor(*current,handle,milliseconds))
@@ -287,10 +298,10 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
         }
         if(current && current->timedOutHandle==handle) {
             current->timedOutHandle=0;
-            return Ret(kWaitTimeout);
+            return finish(kWaitTimeout);
         }
-        if (target->status==rt::GuestThreadStatus::Exited) return Ret(0);
-        if (milliseconds==0) return Ret(kWaitTimeout);
+        if (target->status==rt::GuestThreadStatus::Exited) return finish(0);
+        if (milliseconds==0) return finish(kWaitTimeout);
         return tryPark();
     }
     auto it=Objects().find(handle);
@@ -303,7 +314,7 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
         return Ret(kWaitTimeout);
     }
     uint32_t acquired=TryAcquire(handle);
-    if(acquired!=kWaitTimeout || milliseconds==0) return Ret(acquired);
+    if(acquired!=kWaitTimeout || milliseconds==0) return finish(acquired);
     return tryPark();
 }
 HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) {
