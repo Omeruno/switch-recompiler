@@ -3,6 +3,7 @@
 // Each guest has its own CPU/TEB/stack; GuestScheduler interleaves quanta.
 #include <cstdint>
 #include <vector>
+#include <utility>
 #include "../cpu/cpu_state.h"
 
 namespace rt {
@@ -14,6 +15,10 @@ struct GuestThread {
     uint32_t stackLimit = 0;
     uint32_t stackBase = 0;
     uint32_t tlsArray = 0;
+    // Host-owned mappings, independent of guest-writable TEB/TLS pointers.
+    // Metadata survives exit for HANDLE queries; mappings do not.
+    std::vector<std::pair<uint32_t,uint32_t>> memoryRegions;
+    bool memoryReleased = false;
     uint32_t exitCode = 259; // STILL_ACTIVE
     uint32_t suspendCount = 0;
     uint32_t waitObject = 0;

@@ -88,6 +88,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    # Real Process allocation/reclamation, including static TLS from MinGW PE.
+    if $cxx $flags "$root/tests/test_thread_resources.cpp" $src -o "$out/test_thread_resources" &&
+       "$out/test_thread_resources" "$guestRoot/gui_seh.exe" > "$out/test_thread_resources.log" 2>&1; then
+        tail -n 1 "$out/test_thread_resources.log"
+    else
+        echo "   THREAD RESOURCE RECLAMATION FAILED"
+        tail -n 20 "$out/test_thread_resources.log"
+        failed=1
+    fi
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
     if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then

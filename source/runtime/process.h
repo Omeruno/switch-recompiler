@@ -137,6 +137,9 @@ public:
     static std::string NormalizeName(const std::string& name);
 
 private:
+    friend class GuestExecution;
+    // Only after all native frames of this thread have returned to scheduler.
+    void ReleaseThreadMemory(GuestThread& thread);
     Module* LoadModuleFile(const std::string& path, const std::string& lowerName, std::string& error);
     Module* CreateHleModule(const std::string& lowerName);
     std::string FindFile(const std::string& lowerName) const;

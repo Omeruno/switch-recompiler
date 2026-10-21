@@ -414,3 +414,37 @@ objects are not yet protected against arbitrary peer destruction while a native
 callback retains references. Blocking filesystem/native library calls are not
 made asynchronously by this change. ARM64/QEMU proves register/stack mechanics,
 not libnx TLS/newlib behavior or actual Switch rendering. JIT remains separate.
+
+## Thread resource reclamation (incoming baseline aed2a39)
+
+- GuestThread records host-owned guest allocation ranges: stack, TEB, TLS
+  vector and static TLS blocks. Main-thread TEB is reclaimed separately from
+  the neighboring process-owned PEB page. Guest-writable TLS/TEB pointers are
+  never used to discover ownership during cleanup.
+- GuestExecution reaps exited continuations at scheduler/root-stack boundaries.
+  A parked native stack is first resumed with Exited status so checkpoints
+  unwind wrappers normally. Only after fiber completion are guest mappings
+  unmapped and the continuation record erased. Never-started suspended workers
+  are reclaimed without allocating a native stack. Destructor also reaps exited
+  threads after draining pending native frames.
+- GuestThread metadata remains in Process/Scheduler for open/duplicated thread
+  HANDLEs and exit codes; metadata garbage collection is a separate task.
+- Native HostFiber already released its stack on ordinary completion before
+  this batch. This batch removes retained continuation metadata, handles parked
+  exits promptly, and adds guest-memory reclamation.
+- test_thread_resources uses an actual generated MinGW PE containing static
+  TLS: 256 create/exit cycles, reused stack/TEB addresses, all owned pages
+  unmapped, native RAII sees mappings before cleanup, retained HANDLE aliases,
+  externally exited parked worker, unstarted suspended worker, and main-thread
+  exit preserving PEB. Runs in run_host_tests.sh after guest fixture build.
+- DLL thread notifications/TLS callbacks, loader serialization and dynamic
+  static TLS for existing workers remain unfinished. SetupStaticTls avoids
+  writing into a reclaimed main-thread TLS vector after initial-thread exit.
+- Local full host suite passed with -fno-rtti/-fno-exceptions, including guest
+  CRT/C++/DLL/SEH/thread and COMDLG scenarios. After the destructor reaping
+  addition, rebuilt guest_execution.o and reran test_guest_execution and the
+  final test_thread_resources: both passed. Final resource test also corrupts
+  guest TLS slots to reference the main TEB, checking that cleanup follows
+  host ownership, and tests an exited parked continuation on session teardown.
+- Check the exact resulting SHA's CI separately. Physical Switch/Paint
+  regression still requires hardware.

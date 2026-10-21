@@ -18,6 +18,7 @@ GuestExecution::~GuestExecution() {
     for (auto& item:continuations_)
         if (item.second && item.second->fiber.Started() && !item.second->fiber.Finished())
             Resume(*item.second);
+    ReapExited();
     win32::g_guestExitRequested=exitRequested;
     win32::g_guestExitCode=exitCode;
     active=previous_;
@@ -70,7 +71,37 @@ void GuestExecution::Resume(Continuation& continuation) {
     win32::g_tebAddr=teb;
     errno=error;
 }
+void GuestExecution::ReapExited() {
+    for (auto it=continuations_.begin();it!=continuations_.end();) {
+        auto& continuation=it->second;
+        if (!continuation || continuation->thread->status!=GuestThreadStatus::Exited) {
+            ++it;
+            continue;
+        }
+        // An exit may have been requested by a peer while this native stack
+        // was parked in a callback. Checkpoint now returns false, unwinding
+        // its wrappers normally before any guest mappings can be reclaimed.
+        if (continuation->fiber.Started() && !continuation->fiber.Finished())
+            Resume(*continuation);
+        if (continuation->fiber.Started() && !continuation->fiber.Finished()) {
+            ++it;
+            continue;
+        }
+        process_.ReleaseThreadMemory(*continuation->thread);
+        it=continuations_.erase(it);
+    }
+    // Created-suspended workers can exit before a native stack ever exists.
+    // Keep tombstones in Process/Scheduler for open thread HANDLEs.
+    const auto releaseWithoutContinuation=[&](GuestThread& thread) {
+        if (thread.status==GuestThreadStatus::Exited &&
+            continuations_.find(thread.id)==continuations_.end())
+            process_.ReleaseThreadMemory(thread);
+    };
+    releaseWithoutContinuation(process_.MainThread());
+    for (auto& thread:process_.workerThreads_) releaseWithoutContinuation(*thread);
+}
 GuestExecution::Result GuestExecution::RunOne() {
+    ReapExited();
     if (stopped_ || win32::g_guestExitRequested) { stopped_=true; return Result::Stopped; }
     GuestThread* thread=process_.Scheduler().Next();
     if (!thread) return Result::Idle;
@@ -84,6 +115,7 @@ GuestExecution::Result GuestExecution::RunOne() {
         continuation=std::move(created);
     }
     Resume(*continuation);
+    ReapExited();
     return stopped_ || win32::g_guestExitRequested ? Result::Stopped : Result::Ran;
 }
 } // namespace rt

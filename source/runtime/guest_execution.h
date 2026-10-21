@@ -33,6 +33,7 @@ private:
     bool CheckCurrent();
     void SuspendCurrent();
     void Resume(Continuation& continuation);
+    void ReapExited();
     Process& process_;
     Step step_;
     HostFiber root_;

@@ -396,10 +396,13 @@ bool Process::BindImports(Module* m, const pe::PEParser& parser, std::string& er
 }
 
 void Process::SetupStaticTls(Module* m) {
-    if (m->tlsIndex == 0xFFFFFFFFu || !tlsArray_ || m->tlsIndex >= kTlsSlots) return;
+    if (m->tlsIndex == 0xFFFFFFFFu || !tlsArray_ || m->tlsIndex >= kTlsSlots ||
+        mainThread_.memoryReleased) return;
     uint32_t tmplSize = m->tlsTemplateEnd > m->tlsTemplateStart ? m->tlsTemplateEnd - m->tlsTemplateStart : 0;
     uint32_t total = tmplSize + m->tlsZeroFill;
     uint32_t block = mem_.Allocate(total ? total : 4, cpu::kProtRW);
+    if (!block) cpu::FatalError("cannot allocate static TLS block");
+    mainThread_.memoryRegions.emplace_back(block,total ? total : 4);
     for (uint32_t i = 0; i < tmplSize; ++i) mem_.Write8(block + i, mem_.Read8(m->tlsTemplateStart + i));
     mem_.Write32(tlsArray_ + m->tlsIndex * 4, block);
 }
@@ -418,6 +421,9 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     uint32_t stackBase = mem_.Allocate(stackSize, cpu::kProtRW, 0x00010000u, 0x7F000000u);
     if (!stackBase) { error = "нет места под стек"; return false; }
     uint32_t stackTop = stackBase + stackSize;
+    // TEB shares the initial mapping with process-owned PEB: unmap only TEB.
+    mainThread_.memoryRegions.emplace_back(kTebAddress,0x1000u);
+    mainThread_.memoryRegions.emplace_back(stackBase,stackSize);
 
     // Старые HLE-функции ожидают области CRT-глобалов, «состояния MFC» и
     // простой кучи (см. host_functions.h)
@@ -426,6 +432,7 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     uint32_t heap = mem_.Allocate(win32::HEAP_SIZE, cpu::kProtRW);
     tlsArray_ = mem_.Allocate(kTlsSlots * 4, cpu::kProtRW);
     if (!crtGlobals_ || !mfcState || !heap || !tlsArray_) { error = "нет места под служебные области"; return false; }
+    mainThread_.memoryRegions.emplace_back(tlsArray_,kTlsSlots*4u);
     if (commandLine_.empty()) commandLine_ = main_->path;
     win32::InitCrtGlobals(mem_, crtGlobals_, commandLine_.c_str());
     win32::g_mfcStateBase = mfcState;
@@ -602,9 +609,20 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
         cleanup();
         return nullptr;
     }
+    worker->memoryRegions=std::move(tlsBlocks);
+    worker->memoryRegions.emplace_back(tls,kTlsSlots*4u);
+    worker->memoryRegions.emplace_back(stack,stackReserve);
+    worker->memoryRegions.emplace_back(teb,0x1000u);
     workerThreads_.push_back(std::move(worker));
     nextThreadId_+=4u;
     return result;
+}
+
+void Process::ReleaseThreadMemory(GuestThread& thread) {
+    if (thread.status!=GuestThreadStatus::Exited || thread.memoryReleased) return;
+    for (const auto& region:thread.memoryRegions) mem_.Unmap(region.first,region.second);
+    thread.memoryRegions.clear();
+    thread.memoryReleased=true;
 }
 
 bool Process::InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error) {
