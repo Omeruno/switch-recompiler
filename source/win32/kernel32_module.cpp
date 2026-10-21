@@ -327,7 +327,7 @@ HostCallOutcome K32_TlsAlloc(cpu::CpuState&, cpu::IGuestMemory& m) {
         // слоты, занятые статическим TLS модулей, тут не пересекаются: это другой массив
         if (!g_tlsUsed[i]) {
             g_tlsUsed[i] = true;
-            if (g_tebAddr) m.Write32(g_tebAddr + kTlsSlotsOffset + i * 4, 0);
+            if (CurrentHleTeb()) m.Write32(CurrentHleTeb() + kTlsSlotsOffset + i * 4, 0);
             return Ret(i);
         }
     }
@@ -342,14 +342,14 @@ HostCallOutcome K32_TlsFree(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_TlsGetValue(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t i = Arg(c, m, 0);
-    if (i >= 64) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
+    if (i >= 64 || !g_tlsUsed[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
     SetLastError(m, ERROR_SUCCESS);
-    return Ret(g_tebAddr ? m.Read32(g_tebAddr + kTlsSlotsOffset + i * 4) : 0);
+    return Ret(CurrentHleTeb() ? m.Read32(CurrentHleTeb() + kTlsSlotsOffset + i * 4) : 0);
 }
 HostCallOutcome K32_TlsSetValue(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t i = Arg(c, m, 0), v = Arg(c, m, 1);
-    if (i >= 64) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
-    if (g_tebAddr) m.Write32(g_tebAddr + kTlsSlotsOffset + i * 4, v);
+    if (i >= 64 || !g_tlsUsed[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
+    if (CurrentHleTeb()) m.Write32(CurrentHleTeb() + kTlsSlotsOffset + i * 4, v);
     return Ret(1);
 }
 
