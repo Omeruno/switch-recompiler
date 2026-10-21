@@ -81,3 +81,10 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - Fix in commits `6d73520`, `3dfa89a`: preserve RaiseException code/flags/first arguments into Switch fatal log, stop with explicit `Unhandled Win32 RaiseException (guest SEH dispatch not implemented)` instead of silently returning. No real SEH dispatch yet: requires guest FS:[0] registration chain, exception/CPU context records, handler invocation, unwind semantics. Do not claim implemented.
 - Hardware feedback requested after *one* successful CI build: crash log should show either `Win32 RaiseException: code=...` and `Recent GetProcAddress calls...` or exact null jump. Use it to pinpoint missing export before implementing another API. Avoid repeated full CI between tiny edits.
 - User has no local repository; all code work lives in GitHub branch `claude/wonderful-hawking-10mpr0`. User can supply legitimate Windows DLL/EXE or diagnostic utilities if needed, with exact version/source requested.
+
+## 2026-10-21 confirmed Switch Paint success and SEH continuation
+- **User hardware-confirmed:** Paint successfully opens and saves files with current builds containing `COMDLG32!GetFileTitleW/A` (commit `c59099d`). Opening and saving now work correctly on physical Switch; retain known-good build `2c9a1fa` (CI 39622736600 green). This is actual hardware feedback, not only host tests.
+- User explicitly requested: stop repeated planning, continue implementing universal Win32 foundation. Main priority is SEH, followed by guest threads and synchronization. Do not regress Paint.
+- Initial SEH dispatch in `source/win32/seh_dispatch.cpp` and `RaiseException` wiring exists and CI green on `2c9a1fa`; it is **not full SEH** (missing CPU fault dispatch, unwinding, nested handling and per-thread TEB).
+- Commit `180a6e4` upgraded guest SEH test to a two-handler FS:[0] chain, verifying ContinueSearch -> ContinueExecution, proper exception code/arguments and CPU context. Check CI; if it fails, fix based on logs.
+- User prefers one consolidated full CI pass over repeatedly compiling after each small change. All work GitHub branch `claude/wonderful-hawking-10mpr0`.
