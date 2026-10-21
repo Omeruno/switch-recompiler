@@ -226,10 +226,30 @@ HostCallOutcome K32_CloseHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(0);
 }
 // BOOL DuplicateHandle(srcProc, src, dstProc, LPHANDLE dst, access, inherit, options)
+// BOOL DuplicateHandle(srcProc, src, dstProc, LPHANDLE dst, access, inherit, options)
+// Only file descriptors currently support independent host-side references.
+// Returning the original numeric value for a sync/thread handle would make
+// CloseHandle on either alias invalidate the other, violating Win32 semantics.
 HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t src = Arg(c, m, 1), dst = Arg(c, m, 3);
-    uint32_t d = rt::Files().Get(src) ? rt::Files().Duplicate(src) : src;
-    if (dst) m.Write32(dst, d);
+    const uint32_t src = Arg(c,m,1), dst = Arg(c,m,3);
+    const uint32_t options = Arg(c,m,6);
+    if (!dst || !m.IsRangeMapped(dst,4) || (options & ~0x3u)) {
+        SetLastError(m,ERROR_INVALID_PARAMETER);
+        return Ret(0);
+    }
+    if (!rt::Files().Get(src)) {
+        // Fail closed until a shared, reference-counted HANDLE object table
+        // supports thread, event, mutex and semaphore duplication.
+        SetLastError(m,ERROR_INVALID_HANDLE);
+        return Ret(0);
+    }
+    const uint32_t duplicated = rt::Files().Duplicate(src);
+    if (!duplicated) {
+        SetLastError(m,ERROR_INVALID_HANDLE);
+        return Ret(0);
+    }
+    m.Write32(dst,duplicated);
+    if ((options & 1u) != 0) rt::Files().Close(src); // DUPLICATE_CLOSE_SOURCE
     return Ret(1);
 }
 HostCallOutcome K32_GetFileTime(cpu::CpuState& c, cpu::IGuestMemory& m) {
