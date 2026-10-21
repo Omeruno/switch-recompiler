@@ -115,3 +115,10 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - New `e022e5e` passes guest dispatcher-context pointer to termination handlers, accepts `ExceptionCollidedUnwind` when handler supplies a validated forward frame inside pre-scanned unwind chain; rejects backwards or malformed frame redirects. `tests/guest/gui_seh_collided.c` checks skipped frame, collision flag, and chain head. This is a conservative subset, **not complete collision/unwind state management**.
 - New SHA CI must be checked before claiming tests pass. Keep hardware-confirmed Paint baseline `2c9a1fa` available.
 - Next: thread-owned active SEH state, proper x86 CONTEXT FPU / SSE fields, ensure nested-dispatch exception-record scratch buffers and callback stack isolation are robust.
+
+## 2026-10-21 CONTEXT32 floating/SSE implementation
+- Nested and collided SEH tests are on branch; `3791faf` CI green; some newer runs still in progress. Preserve hardware-confirmed Paint build `2c9a1fa`.
+- Commit `422f3fb`: `seh_dispatch.cpp` now uses `CpuState::GetEflags()` to materialize lazy CPU arithmetic flags into guest CONTEXT and `SetEflags` on restore. Sets CONTEXT_CONTROL|INTEGER|SEGMENTS|FLOATING_POINT|EXTENDED_REGISTERS (0x1002f). Serializes x87 control/status/tag/last pointers and 80-bit register images in FLOATING_SAVE_AREA (CPU internally holds double, therefore x87 precision remains bounded by double), plus MXCSR and XMM0..7 in FXSAVE-layout ExtendedRegisters. Honors CONTEXT flags on floating restore.
+- Commit `7610813`: guest `gui_seh_context.c` verifies XMM0 visible in CONTEXT, then modified and restored alongside MXCSR after `RaiseException`.
+- Exact SHA CI for these commits **not yet confirmed successful** when written; check GitHub Actions run `39630744462`. Do not claim fully correct Windows x87 ABI until broader FPU and SSE tests pass.
+- Next: verify CI and fix compilation/test failures, then address per-thread SEH active-handler state and guest scheduler.
