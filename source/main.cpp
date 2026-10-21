@@ -287,7 +287,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     proc.SetCommandLine(g_selectedExePath);
 
     std::string err;
-    cpu::CpuState cpuState;
+    cpu::CpuState& cpuState = proc.MainThread().cpu;
     rt::Module* exe = proc.LoadMainExe(path, err);
     if (!exe || !proc.PrepareMainThread(cpuState, err))
     {
