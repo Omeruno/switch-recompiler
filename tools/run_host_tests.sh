@@ -70,6 +70,8 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     if (cd "$out/guest" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe open > "$out/comdlg_open.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_open.log" &&
+        "$out/winrun" --new-ui -f 60 -c 8:175:173 -c 16:575:420 gui_comdlg_interactive.exe list > "$out/comdlg_list.log" 2>&1 &&
+        grep -q "PASSED" "$out/comdlg_list.log" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe save > "$out/comdlg_save.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_save.log" &&
         [ -f "$out/guest/output.bmp" ]); then
@@ -77,6 +79,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   comdlg32 end-to-end: FAILED"
         tail -n 30 "$out/comdlg_open.log" 2>/dev/null || true
+        tail -n 30 "$out/comdlg_list.log" 2>/dev/null || true
         tail -n 30 "$out/comdlg_save.log" 2>/dev/null || true
         failed=1
     fi
