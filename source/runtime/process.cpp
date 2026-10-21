@@ -538,6 +538,13 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     mem_.Write32(teb+0x2c,tls);
     mem_.Write32(teb+0x30,kPebAddress);
     // Each DLL with static TLS needs an independent initialized TLS block.
+    std::vector<std::pair<uint32_t,uint32_t>> tlsBlocks;
+    const auto cleanup = [&]() {
+        for (const auto& item : tlsBlocks) mem_.Unmap(item.first,item.second);
+        mem_.Unmap(tls,kTlsSlots*4u);
+        mem_.Unmap(stack,stackReserve);
+        mem_.Unmap(teb,0x1000u);
+    };
     for (const auto& mod : modules_) {
         if (mod->tlsIndex==0xffffffffu || mod->tlsIndex>=kTlsSlots) continue;
         const uint32_t templateSize=mod->tlsTemplateEnd>mod->tlsTemplateStart
@@ -545,18 +552,17 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
         if (templateSize > 0x1000000u ||
             mod->tlsZeroFill > 0x1000000u-templateSize) {
             error="worker TLS template too large";
-            mem_.Unmap(tls,kTlsSlots*4u);mem_.Unmap(stack,stackReserve);mem_.Unmap(teb,0x1000u);
+            cleanup();
             return nullptr;
         }
         const uint32_t block=mem_.Allocate(templateSize+mod->tlsZeroFill?
                                            templateSize+mod->tlsZeroFill:4u,cpu::kProtRW);
         if(!block) {
             error="cannot allocate worker TLS block";
-            // Blocks already allocated remain owned by guest memory; memory
-            // rollback for partial TLS allocation must be added separately.
-            mem_.Unmap(tls,kTlsSlots*4u);mem_.Unmap(stack,stackReserve);mem_.Unmap(teb,0x1000u);
+            cleanup();
             return nullptr;
         }
+        tlsBlocks.emplace_back(block,templateSize+mod->tlsZeroFill?templateSize+mod->tlsZeroFill:4u);
         for(uint32_t i=0;i<templateSize;++i)
             mem_.Write8(block+i,mem_.Read8(mod->tlsTemplateStart+i));
         mem_.Write32(tls+mod->tlsIndex*4u,block);
@@ -564,6 +570,7 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     GuestThread* result=worker.get();
     if(!scheduler_.Add(*result)) {
         error="cannot register worker with guest scheduler";
+        cleanup();
         return nullptr;
     }
     workerThreads_.push_back(std::move(worker));
