@@ -10,13 +10,14 @@
 
 int main(int argc, char **argv) {
     const int save = argc > 1 && strcmp(argv[1], "save") == 0;
+    const int selectFromList = argc > 1 && strcmp(argv[1], "list") == 0;
     wchar_t filename[MAX_PATH];
     OPENFILENAMEW o;
     DWORD attr;
     HANDLE h;
     memset(&o, 0, sizeof(o));
     memset(filename, 0, sizeof(filename));
-    wcscpy(filename, save ? L"output.bmp" : L"sample.bmp");
+    wcscpy(filename, save ? L"output.bmp" : selectFromList ? L"" : L"sample.bmp");
     o.lStructSize = sizeof(o);
     o.lpstrFilter = L"Bitmaps (*.bmp)\0*.bmp\0All files (*.*)\0*.*\0";
     o.nFilterIndex = 1;
