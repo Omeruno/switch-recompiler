@@ -140,6 +140,8 @@ void UpdateList(Request& r) {
         }
     }
     if (Window* top = Win(r.hwnd)) top->text = (r.save ? u"Save As — " : u"Open — ") + Text(r.directory);
+    // Recalculate ListBox scroll range after populating its host-owned items.
+    SendMsg(r.list, user::WM_SIZE, 0, 0);
     Redraw(r.list);
 }
 bool PutResult(Request& r, std::string full) {
