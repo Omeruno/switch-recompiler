@@ -3,6 +3,7 @@
 #include "seh_dispatch.h"
 #include "seh_abi.h"
 #include "message_loop.h"
+#include "../runtime/process.h"
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -14,27 +15,25 @@ constexpr uint32_t kContextFlags = 0x1002Fu; // x86 CONTROL | INTEGER | SEGMENTS
 constexpr uint32_t kContextSize = 716;
 constexpr uint32_t kMaxChainDepth = 64;
 
-// Reentrant guest calls can themselves RaiseException. Track the active
-// registration frame so a nested exception does not recursively invoke the
-// handler which is already executing. This is single-guest-thread state;
-// the guest scheduler must move it into GuestThread before multithreading.
-struct ActiveHandler { uint32_t teb; uint32_t frame; };
-ActiveHandler g_activeHandlers[16] = {};
-unsigned g_activeDepth = 0;
+// The active handler stack is owned by GuestThread, not process globals.
+// Until multi-thread scheduling lands, only the main thread is runnable.
 struct ActiveHandlerScope {
-    bool entered;
-    ActiveHandlerScope(uint32_t teb,uint32_t frame) : entered(g_activeDepth<16) {
-        if (entered) g_activeHandlers[g_activeDepth++] = {teb,frame};
+    rt::GuestThread* thread;
+    bool entered=false;
+    ActiveHandlerScope(rt::GuestThread* t,uint32_t frame) : thread(t) {
+        if (t && t->activeSehDepth < 16) {
+            t->activeSeh[t->activeSehDepth++].frame=frame;
+            entered=true;
+        }
     }
-    ~ActiveHandlerScope() { if (entered) --g_activeDepth; }
+    ~ActiveHandlerScope() { if (entered) --thread->activeSehDepth; }
 };
-bool IsActiveHandler(uint32_t teb,uint32_t frame) {
-    for(unsigned i=0;i<g_activeDepth;++i)
-        if(g_activeHandlers[i].teb==teb && g_activeHandlers[i].frame==frame)
-            return true;
+bool IsActiveHandler(const rt::GuestThread* t,uint32_t frame) {
+    if (!t) return false;
+    for(uint32_t i=0;i<t->activeSehDepth;++i)
+        if(t->activeSeh[i].frame==frame) return true;
     return false;
 }
-
 
 // Windows x86 CONTEXT offsets; validated against winnt.h.
 constexpr uint32_t kGs=140,kFs=144,kEs=148,kDs=152;
@@ -180,6 +179,8 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
                         uint32_t exceptionAddress, const uint32_t* params,
                         uint32_t paramCount) {
     if (!teb || !mem.IsRangeMapped(teb,4)) return DispatchResult::InvalidChain;
+    rt::GuestThread* thread = rt::g_process && rt::g_process->MainThread().teb == teb
+        ? &rt::g_process->MainThread() : nullptr;
     uint32_t frame=mem.Read32(teb); // NT_TIB.ExceptionList == FS:[0]
     if(frame==kEndOfChain) return DispatchResult::Unhandled;
     const uint32_t entryEsp=state.Get(cpu::Reg32::ESP);
@@ -216,15 +217,15 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
         // The currently executing handler is already processing another
         // exception; nested dispatch searches any inner registrations and
         // then continues with older outer frames.
-        if (IsActiveHandler(teb,frame)) {
+        if (IsActiveHandler(thread,frame)) {
             mem.Write32(exceptionPtr+4,mem.Read32(exceptionPtr+4)|kExceptionNestedCall);
             frame=next;
             continue;
         }
-        if (g_activeDepth>=16) return DispatchResult::InvalidChain;
+        if (thread && thread->activeSehDepth>=16) return DispatchResult::InvalidChain;
         cpu::CpuState handlerCpu=state;
         handlerCpu.ESP()=exceptionPtr-64; // leave scratch data intact
-        ActiveHandlerScope scope(teb,frame);
+        ActiveHandlerScope scope(thread,frame);
         uint32_t disposition=CallGuestFunctionStdcall(handlerCpu,mem,handler,
             {exceptionPtr,frame,contextPtr,0},teb,teb);
         if(disposition==static_cast<uint32_t>(Disposition::ContinueExecution)){
