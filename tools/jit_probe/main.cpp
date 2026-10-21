@@ -56,9 +56,12 @@ int main(int argc, char** argv) {
             std::printf("jitClose failed: 0x%08x\n",closeResult);
     }
     std::puts("Press + to exit");
+    PadState pad;
+    padConfigureInput(1,HidNpadStyleSet_NpadStandard);
+    padInitializeDefault(&pad);
     while(appletMainLoop()) {
-        hidScanInput();
-        if(hidKeysDown(CONTROLLER_P1_AUTO)&KEY_PLUS) break;
+        padUpdate(&pad);
+        if(padGetButtonsDown(&pad)&HidNpadButton_Plus) break;
         consoleUpdate(nullptr);
     }
     consoleExit(nullptr);
