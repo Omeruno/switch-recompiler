@@ -39,6 +39,35 @@ public:
         return nullptr;
     }
 
+    struct QuantumResult {
+        uint32_t threadId = 0;
+        uint32_t executed = 0;
+        bool stoppedByCallback = false;
+    };
+
+    // Execute at most 'budget' instructions in one selected guest thread.
+    // step(thread) must execute precisely one guest instruction and return
+    // true if execution may continue; false means yield/stop. The scheduler
+    // never touches the host clock or calls a blocking OS wait.
+    // The callback may change the guest lifecycle (Wait/Exit/Suspend);
+    // observe that immediately before executing the next instruction.
+    template <typename Step>
+    QuantumResult RunQuantum(Step&& step, uint32_t budget = kDefaultQuantum) {
+        QuantumResult result{};
+        GuestThread* thread = Next();
+        if (!thread) return result;
+        result.threadId = thread->id;
+        for (uint32_t n = 0; n < budget && thread->IsRunnable(); ++n) {
+            bool keepRunning = step(*thread);
+            ++result.executed;
+            if (!keepRunning) {
+                result.stoppedByCallback = true;
+                break;
+            }
+        }
+        return result;
+    }
+
     uint32_t Suspend(GuestThread& thread) {
         uint32_t previous = thread.suspendCount;
         if (previous != UINT32_MAX && thread.status != GuestThreadStatus::Exited)
