@@ -33,11 +33,18 @@ public:
             size_t index = (cursor_ + searched) % threads_.size();
             if (threads_[index]->IsRunnable()) {
                 cursor_ = (index + 1) % threads_.size();
+                current_ = threads_[index];
                 return threads_[index];
             }
         }
+        current_ = nullptr;
         return nullptr;
     }
+
+    GuestThread* Current() const { return current_; }
+    // Restore the host-visible running thread after a nested callback or
+    // host-only thread probe without disturbing round-robin cursor.
+    void SetCurrent(GuestThread* thread) { current_ = thread; }
 
     struct QuantumResult {
         uint32_t threadId = 0;
@@ -117,5 +124,6 @@ public:
 private:
     std::vector<GuestThread*> threads_;
     size_t cursor_ = 0;
+    GuestThread* current_ = nullptr;
 };
 } // namespace rt
