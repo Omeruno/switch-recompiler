@@ -3,13 +3,15 @@
 #include <stdio.h>
 
 struct Registration { struct Registration *next; void *handler; };
-static volatile int callbacks, wrongFlags, returnedUnexpectedly;
+static volatile int callbacks, wrongFlags, wrongExitFlags, returnedUnexpectedly;
+static volatile int expectExit;
 
 static int __cdecl UnwindHandler(EXCEPTION_RECORD *record, void *frame,
                                  CONTEXT *context, void *dispatcher) {
     (void)frame; (void)context; (void)dispatcher;
     callbacks++;
     if ((record->ExceptionFlags & EXCEPTION_UNWINDING)==0) wrongFlags++;
+    if (((record->ExceptionFlags & EXCEPTION_EXIT_UNWIND)!=0) != (expectExit!=0)) wrongExitFlags++;
     return 1; /* ExceptionContinueSearch */
 }
 int main(void) {
@@ -33,6 +35,20 @@ resumed:
     if(head != &target || callbacks!=1 || wrongFlags || returnedUnexpectedly) {
         printf("RtlUnwind FAILED head=%p target=%p cb=%d flags=%d returned=%d\n",
                head,(void *)&target,callbacks,wrongFlags,returnedUnexpectedly);
+        return 1;
+    }
+    /* Exit-unwind must notify both registered frames and clear FS:[0]. */
+    callbacks=0;
+    expectExit=1;
+    __asm__ __volatile__("movl %0, %%fs:0" : : "r"(&inner) : "memory");
+    unwind(NULL, &&exitResumed, NULL, (void *)0x4321u);
+    returnedUnexpectedly++;
+exitResumed:
+    __asm__ __volatile__("movl %%fs:0, %0" : "=r"(head));
+    __asm__ __volatile__("movl %0, %%fs:0" : : "r"(old) : "memory");
+    if(head != old || callbacks!=2 || wrongFlags || wrongExitFlags || returnedUnexpectedly) {
+        printf("Exit-unwind FAILED head=%p expected=%p cb=%d flags=%d exitflags=%d returned=%d\\n",
+               head,old,callbacks,wrongFlags,wrongExitFlags,returnedUnexpectedly);
         return 1;
     }
     puts("PASSED");
