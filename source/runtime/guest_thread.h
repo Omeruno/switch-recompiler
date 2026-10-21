@@ -21,6 +21,8 @@ struct GuestThread {
     uint64_t sleepDeadlineUs = 0;
     bool sleeping = false;
     bool yieldRequested = false;
+    uint64_t waitDeadlineUs = 0;
+    uint32_t timedOutHandle = 0;
     GuestThreadStatus status = GuestThreadStatus::Created;
     cpu::CpuState cpu{};
 
