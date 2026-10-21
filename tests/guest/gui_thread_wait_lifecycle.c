@@ -54,6 +54,17 @@ int main(void) {
     if (WaitForSingleObject(closer,INFINITE)!=WAIT_OBJECT_0 ||
         !GetExitCodeThread(closer,&code) || code!=42) return 15;
     if (!CloseHandle(closer)) return 16;
+    /* Unsupported object duplication must fail, not create an alias whose
+       CloseHandle unexpectedly destroys the original event. */
+    HANDLE original=CreateEventA(NULL,TRUE,FALSE,NULL), duplicate=NULL;
+    if (!original) return 17;
+    if (DuplicateHandle(GetCurrentProcess(),original,GetCurrentProcess(),
+                        &duplicate,0,FALSE,DUPLICATE_SAME_ACCESS)) {
+        puts("UNSUPPORTED_SYNC_DUPLICATE_FALSE_SUCCESS"); return 18;
+    }
+    if (!SetEvent(original) || WaitForSingleObject(original,0)!=WAIT_OBJECT_0)
+        return 19;
+    if (!CloseHandle(original)) return 20;
     puts("PASSED: wait-all deadline, auto-reset atomicity and close wake");
     return 0;
 }
