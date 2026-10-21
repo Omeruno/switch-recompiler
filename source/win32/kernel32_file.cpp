@@ -20,6 +20,7 @@ namespace win32 {
 
 bool HleConsoleWrite(uint32_t handle, const char* data, size_t len); // kernel32_module.cpp
 bool HleCloseSyncHandle(uint32_t handle);                            // kernel32_sync.cpp
+bool HleCloseThreadHandle(uint32_t handle);                          // kernel32_module.cpp
 
 namespace {
 
@@ -220,8 +221,9 @@ HostCallOutcome K32_CloseHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0);
     if (rt::Files().Get(h)) { rt::Files().Close(h); return Ret(1); }
     if (HleCloseSyncHandle(h)) return Ret(1);
-    // хендлы потоков, процессов, модулей и прочего — молча закрываем
-    return Ret(1);
+    if (HleCloseThreadHandle(h)) return Ret(1);
+    SetLastError(m, ERROR_INVALID_HANDLE);
+    return Ret(0);
 }
 // BOOL DuplicateHandle(srcProc, src, dstProc, LPHANDLE dst, access, inherit, options)
 HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
