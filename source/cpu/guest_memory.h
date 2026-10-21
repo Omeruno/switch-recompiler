@@ -48,6 +48,17 @@ inline uint32_t g_fatalRegisters[8] = {};
 inline uint32_t g_fatalStackWords[8] = {};
 inline uint32_t g_fatalStackCount = 0;
 
+// In-memory ring buffer: no SD writes during guest execution.
+inline char g_recentDynamicImports[8][176] = {};
+inline uint32_t g_recentDynamicImportSerial = 0;
+inline void RecordDynamicImport(const char* dll, const char* func, uint32_t result) {
+    uint32_t slot = g_recentDynamicImportSerial++ % 8;
+    std::snprintf(g_recentDynamicImports[slot], sizeof(g_recentDynamicImports[slot]),
+                  "%s!%s => 0x%08x", dll ? dll : "(null)",
+                  func ? func : "(null)", result);
+}
+
+
 
 // Logging must never attempt printing into libnx's already-closed console.
 // This is intentionally only called on fatal exit, not during frame rendering.
@@ -69,6 +80,12 @@ inline void WriteFatalGuestReport(const char* type, const char* msg, uint32_t ad
                  g_fatalRegisters[4], g_fatalRegisters[5], g_fatalRegisters[6], g_fatalRegisters[7]);
     for (uint32_t i = 0; i < g_fatalStackCount; ++i)
         std::fprintf(f, "Stack[ESP+%u]: 0x%08x\n", i * 4, g_fatalStackWords[i]);
+    std::fprintf(f, "Recent GetProcAddress calls (oldest to newest):\n");
+    uint32_t count = g_recentDynamicImportSerial < 8 ? g_recentDynamicImportSerial : 8;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t slot = (g_recentDynamicImportSerial - count + i) % 8;
+        std::fprintf(f, "  %s\n", g_recentDynamicImports[slot]);
+    }
     std::fprintf(f, "Guest exception code: 0x%08x\n", g_fatalGuestCode);
     std::fprintf(f, "Guest fault address: 0x%08x\n", addr ? addr : g_fatalGuestAddress);
     std::fclose(f);
