@@ -352,12 +352,17 @@ int main(int argc, char** argv) {
     std::unique_ptr<cpu::Interpreter> runningInterpreter;
     unsigned quantumLeft=0;
     for (uint64_t steps=0;;++steps) {
-        if (!running || !running->IsRunnable() || quantumLeft==0) {
+        if (!running || !running->IsRunnable() || running->yieldRequested || quantumLeft==0) {
             running=proc.Scheduler().Next();
             if(!running) {
+                if(proc.Scheduler().HasSleepingThreads()) {
+                    rt::Clock::Sleep(1);
+                    continue;
+                }
                 std::fprintf(stderr,"winrun: no runnable guest threads (all waiting/exited)\n");
                 return 3;
             }
+            running->yieldRequested=false;
             quantumLeft=256;
             runningInterpreter.reset(new cpu::Interpreter(mem,running->teb,running->teb));
             runningInterpreter->lenientDivide=false;
