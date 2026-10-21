@@ -12,6 +12,7 @@
 #include "../win32/host_functions.h"
 #include "../win32/iat_patcher.h"
 #include "../win32/message_loop.h"
+#include "../win32/seh_abi.h"
 
 namespace rt {
 
@@ -434,7 +435,7 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
 
     // TEB (NT_TIB + немного полей), PEB
     uint32_t t = kTebAddress;
-    mem_.Write32(t + 0x00, 0xFFFFFFFFu);  // SEH: обработчиков нет
+    mem_.Write32(t + 0x00, win32::seh::kEndOfChain);  // FS:[0] guest SEH registration chain
     mem_.Write32(t + 0x04, stackTop);
     mem_.Write32(t + 0x08, stackBase);
     mem_.Write32(t + 0x18, t);            // Self
