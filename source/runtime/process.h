@@ -22,6 +22,7 @@
 
 #include "../cpu/cpu_state.h"
 #include "../cpu/guest_memory.h"
+#include "guest_thread.h"
 #include "../loader/pe_parser.h"
 
 namespace rt {
@@ -105,7 +106,10 @@ public:
     void SetCommandLine(const std::string& cmd) { commandLine_ = cmd; }
     const std::string& CommandLine() const { return commandLine_; }
 
-    uint32_t TebAddress() const { return kTebAddress; }
+    uint32_t TebAddress() const { return mainThread_.teb ? mainThread_.teb : kTebAddress; }
+    uint32_t CurrentThreadId() const { return mainThread_.id; }
+    const GuestThread& MainThread() const { return mainThread_; }
+    GuestThread& MainThread() { return mainThread_; }
     uint32_t PebAddress() const { return kPebAddress; }
     uint32_t TlsArrayAddress() const { return tlsArray_; }
 
@@ -138,6 +142,7 @@ private:
     uint32_t nextTlsIndex_ = 0;
     uint32_t crtGlobals_ = 0;
     bool threadReady_ = false;
+    GuestThread mainThread_{};
 };
 
 // Текущий процесс — для HLE-функций (LoadLibrary, GetProcAddress, ...).
