@@ -17,6 +17,10 @@ struct GuestThread {
     uint32_t exitCode = 259; // STILL_ACTIVE
     uint32_t suspendCount = 0;
     uint32_t waitObject = 0;
+    // Cooperative Sleep: monotonic guest-clock deadline; no host thread sleep.
+    uint64_t sleepDeadlineUs = 0;
+    bool sleeping = false;
+    bool yieldRequested = false;
     GuestThreadStatus status = GuestThreadStatus::Created;
     cpu::CpuState cpu{};
 
