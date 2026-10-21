@@ -349,6 +349,7 @@ int main(int argc, char** argv) {
     // original one-thread behavior, but rotate after a bounded instruction
     // quantum as soon as a guest CreateThread registers a worker.
     rt::GuestThread* running=nullptr;
+    std::unique_ptr<cpu::Interpreter> runningInterpreter;
     unsigned quantumLeft=0;
     for (uint64_t steps=0;;++steps) {
         if (!running || !running->IsRunnable() || quantumLeft==0) {
@@ -358,11 +359,11 @@ int main(int argc, char** argv) {
                 return 3;
             }
             quantumLeft=256;
+            runningInterpreter.reset(new cpu::Interpreter(mem,running->teb,running->teb));
+            runningInterpreter->lenientDivide=false;
         }
         --quantumLeft;
         cpu::CpuState& state=running->cpu;
-        cpu::Interpreter threadInterpreter(mem,running->teb,running->teb);
-        threadInterpreter.lenientDivide=false;
         win32::HostCallOutcome out;
         if (win32::TryHandleHostCall(state,mem,out)) {
             if(out.requestExit) {
@@ -371,7 +372,7 @@ int main(int argc, char** argv) {
             }
             continue;
         }
-        cpu::StepResult r=threadInterpreter.Step(state);
+        cpu::StepResult r=runningInterpreter->Step(state);
         if(r==cpu::StepResult::Continue) continue;
         if(r==cpu::StepResult::Halted) {
             // HLT remains a no-op for compatibility with existing tests;
@@ -379,7 +380,7 @@ int main(int argc, char** argv) {
             continue;
         }
         if(win32::seh::DispatchCpuFault(state,mem,running->teb,
-                                        threadInterpreter.LastException()) ==
+                                        runningInterpreter->LastException()) ==
            win32::seh::DispatchResult::Handled) continue;
         if(dumpPath) DumpScreen(dumpPath);
         const cpu::CpuException& e=threadInterpreter.LastException();
