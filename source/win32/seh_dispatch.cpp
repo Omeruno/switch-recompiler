@@ -198,15 +198,36 @@ UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
     mem.Write32(record+4,mem.Read32(record+4)|kExceptionUnwinding|
                 (exitUnwind?kExceptionExitUnwind:0u));
     SaveContext(mem,context,state);
-    for(unsigned i=0;i<count;++i) {
+    // On x86 DispatcherContext is a pointer to a registration-record
+    // pointer; a collided unwind handler can supply where unwinding resumes.
+    const uint32_t dispatcherContext = context + kContextSize + 4;
+    if (!mem.IsRangeMapped(dispatcherContext,4))
+        return UnwindResult::InvalidChain;
+    for(unsigned i=0;i<count;) {
+        mem.Write32(dispatcherContext,0);
         cpu::CpuState handlerState=state;
         handlerState.ESP()=record-64;
         uint32_t disposition=CallGuestFunctionStdcall(handlerState,mem,handlers[i],
-            {record,frames[i],context,0},teb,teb);
+            {record,frames[i],context,dispatcherContext},teb,teb);
+        if(disposition==static_cast<uint32_t>(Disposition::CollidedUnwind)) {
+            uint32_t replacement=mem.Read32(dispatcherContext);
+            // Only frames already validated in our current unwind chain
+            // are eligible. Refuse loops and backwards redirects.
+            unsigned target=i+1;
+            while(target<count && frames[target]!=replacement) ++target;
+            if(target==count && replacement!=stopFrame)
+                return UnwindResult::InvalidChain;
+            if(target<=i) return UnwindResult::InvalidChain;
+            mem.Write32(record+4,mem.Read32(record+4)|kExceptionCollidedUnwind);
+            mem.Write32(teb,replacement);
+            i=target;
+            continue;
+        }
         if(disposition!=static_cast<uint32_t>(Disposition::ContinueSearch))
             return UnwindResult::UnsupportedDisposition;
+        ++i;
         // Once the frame's termination handler finishes, FS:[0] advances.
-        mem.Write32(teb,i+1<count?frames[i+1]:stopFrame);
+        mem.Write32(teb,i<count?frames[i]:stopFrame);
     }
     // RtlUnwind is non-returning for a valid target. The caller supplies a
     // continuation in its own active stack frame. This does not implement
