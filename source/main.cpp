@@ -54,8 +54,9 @@ static bool g_graphicsInitialized = false;
 // в main() (см. ниже) ДО создания игрового потока; объявлена здесь так рано
 // специально, чтобы GameThreadFunc (которая идёт по файлу раньше, чем сам
 // пикер) могла её использовать.
-// Новая оконная подсистема: для всех программ, кроме Paint (ему пока нужны
-// заглушки MFC прежнего слоя). Зажатый при запуске L — прежний слой.
+// Новая оконная подсистема: для всех программ, кроме Paint (у него на новом
+// слое ещё нет диалогов открытия/сохранения). Зажатый при запуске L
+// переключает слой: у Paint — на новый, у остальных — на прежний.
 static bool g_useNewUi = false;
 namespace newui {
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
@@ -252,7 +253,9 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     static cpu::PagedGuestMemory mem;
     static rt::Process proc(mem);
     rt::g_process = &proc;
-    proc.ForceHle("mfc42u.dll");
+    // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
+    // (из каталога программы), если она есть
+    if (!g_useNewUi) proc.ForceHle("mfc42u.dll");
     proc.SetCommandLine(g_selectedExePath);
 
     std::string err;
@@ -1865,7 +1868,7 @@ int main(int argc, char* argv[])
     // ещё доступна (проще всего показать текстовый список именно тут)
     PickExecutableFile();
     padUpdate(&g_pad);
-    g_useNewUi = !IsRunningPaint() && !(padGetButtons(&g_pad) & HidNpadButton_L);
+    g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad) & HidNpadButton_L);
     printf("Launching: %s (%s window layer)\n", g_selectedExePath.c_str(), g_useNewUi ? "new" : "legacy");
     consoleUpdate(NULL);
 
