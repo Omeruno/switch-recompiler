@@ -2,6 +2,7 @@
 // Cooperative guest-thread scheduler. It does not create host OS threads.
 // A quantum is an instruction budget; callers execute the selected
 // GuestThread::cpu and then explicitly yield to the scheduler.
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -87,6 +88,8 @@ public:
         }
         thread.waitDeadlineUs=0;
         thread.timedOutHandle=0;
+        thread.waitHandles.clear();
+        thread.waitAll=false;
         thread.sleeping = true;
         thread.sleepDeadlineUs = Clock::NowUs() + uint64_t(milliseconds) * 1000u;
         thread.waitObject = 0;
@@ -121,6 +124,15 @@ public:
         return true;
     }
 
+    bool WaitForMultiple(GuestThread& thread, const std::vector<uint32_t>& handles,
+                         bool all, uint32_t milliseconds) {
+        if (handles.empty() || !WaitFor(thread, handles.front(), milliseconds))
+            return false;
+        thread.waitHandles = handles;
+        thread.waitAll = all;
+        return true;
+    }
+
     size_t WakeExpiredWaits() {
         const uint64_t now=Clock::NowUs();
         size_t woke=0;
@@ -129,6 +141,8 @@ public:
                !t->waitObject || !t->waitDeadlineUs ||
                now<t->waitDeadlineUs) continue;
             t->timedOutHandle=t->waitObject;
+            t->waitHandles.clear();
+            t->waitAll=false;
             t->waitObject=0;
             t->waitDeadlineUs=0;
             t->status=GuestThreadStatus::Runnable;
@@ -164,6 +178,8 @@ public:
         if (!objectHandle || thread.status == GuestThreadStatus::Exited) return false;
         thread.sleeping=false;
         thread.sleepDeadlineUs=0;
+        thread.waitHandles.clear();
+        thread.waitAll=false;
         thread.waitObject = objectHandle;
         thread.waitDeadlineUs=0;
         thread.timedOutHandle=0;
@@ -175,8 +191,11 @@ public:
         size_t count = 0;
         for (GuestThread* thread : threads_) {
             if (thread->status != GuestThreadStatus::Waiting ||
-                thread->waitObject != objectHandle) continue;
+                (thread->waitObject != objectHandle &&
+                 std::find(thread->waitHandles.begin(), thread->waitHandles.end(), objectHandle) == thread->waitHandles.end())) continue;
             thread->waitObject = 0;
+            thread->waitHandles.clear();
+            thread->waitAll=false;
             thread->waitDeadlineUs=0;
             thread->timedOutHandle=0;
             thread->status = GuestThreadStatus::Runnable;
@@ -190,6 +209,8 @@ public:
         thread.exitCode = code;
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
+        thread.waitHandles.clear();
+        thread.waitAll=false;
         thread.waitDeadlineUs=0;
         thread.timedOutHandle=0;
         thread.sleeping = false;
