@@ -214,3 +214,12 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - CI change `3d7081e` builds and publishes experimental `jit_probe.nro` in a separate `jit-probe-build` job, leaving primary Switch artifact build independent. **Compilation success is not physical permission validation**, user must run experimental NRO on real Switch; collect Result codes and launch context. No JIT integrated into x86 engine.
 - Prior CI attempts `ee18a07` / `1be6eec` included probe build inside main Switch job; new independent job avoids losing primary NRO on JIT build failure. Check latest CI run after `3d7081e` for compilation errors.
 - Next: investigate HLE nested guest callbacks blocking scheduler / message pump, add latency and watchdog instrumentation. Avoid claiming a busy-wait guest test establishes fairness for all HLE paths. Preserve hardware Paint fallback.
+
+## 2026-10-21 non-blocking guest Sleep HLE and full-sleep scheduler
+- Verified prior `b7f75b2` pure busy-spin guest test CI success, and isolated JIT probe separate job compiled green on run `39642997564`; no physical Switch JIT validation yet.
+- `source/runtime/guest_thread.h` `ae2c8a8`: per-guest sleepDeadlineUs, sleeping flag and yieldRequested.
+- `guest_scheduler.h` `df55c27`: Sleep(thread,ms) defers virtual CPU, WakeExpiredSleepers checks rt::Clock::NowUs every Next, HasSleepingThreads detects all-asleep; Sleep(0) requests preemption; Wait(object) clears sleep state; Exit clears state.
+- `kernel32_sync.cpp` `66bd6d6`: HLE Sleep/SleepEx no longer blocks host when scheduler is executing guest thread; SwitchToThread requests quantum yield. Legacy HLE without running guest scheduler still uses rt::Clock::Sleep.
+- `tests/winrun.cpp` `3cec271` and `source/main.cpp` `6d8f0df` rotate upon yieldRequested or quantum exhaustion, when all guest threads sleeping tick rt::Clock::Sleep(1) instead of treating as fatal no-runnable.
+- `tests/guest/gui_thread_sleep.c` `020da68`: end-to-end worker Sleep(100) and main observes successful completion; `tests/test_guest_scheduler.cpp` `9164b3f`: deterministic fast-forward wake order when all guests sleeping, Sleep(0) yield.
+- **Caveats**: SleepEx alertable/APC semantics not implemented; timed object waits not completed, nested guest callbacks may still hold host thread; renderer/graphics event loop and fairness on real Switch need actual test. Full CI for exact HEAD not yet confirmed at handoff; follow runs e.g. `39643603791`.
