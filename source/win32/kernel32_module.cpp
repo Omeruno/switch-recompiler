@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <set>
 
 #include "hle_util.h"
 #include "seh_dispatch.h"
@@ -178,12 +179,14 @@ HostCallOutcome K32_ExitProcess(cpu::CpuState& c, cpu::IGuestMemory& m) {
 // Worker-thread API. Handles use a reserved synthetic range until the
 // shared NT object handle table is available.
 constexpr uint32_t kThreadHandleBase = 0xE1000000u;
+std::set<uint32_t> g_openThreadHandles;
 uint32_t ThreadHandle(uint32_t id) { return kThreadHandleBase | (id & 0x00FFFFFFu); }
 rt::GuestThread* ThreadFromHandle(uint32_t handle) {
     if (!rt::g_process) return nullptr;
     if (handle == 0xFFFFFFFEu) return rt::g_process->Scheduler().Current()
         ? rt::g_process->Scheduler().Current() : &rt::g_process->MainThread();
-    if ((handle & 0xFF000000u) != kThreadHandleBase) return nullptr;
+    if ((handle & 0xFF000000u) != kThreadHandleBase ||
+        g_openThreadHandles.find(handle)==g_openThreadHandles.end()) return nullptr;
     return rt::g_process->FindThread(handle & 0x00FFFFFFu);
 }
 HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -201,7 +204,17 @@ HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
         return Ret(0);
     }
     if (idPtr && m.IsRangeMapped(idPtr,4)) m.Write32(idPtr,worker->id);
-    return Ret(ThreadHandle(worker->id));
+    uint32_t handle=ThreadHandle(worker->id);
+    g_openThreadHandles.insert(handle);
+    return Ret(handle);
+}
+// Expose thread-handle validation and closure to KERNEL32 synchronization
+// and file-HANDLE dispatch. Closing a HANDLE does not destroy the thread.
+bool IsValidGuestThreadHandle(uint32_t handle) {
+    return ThreadFromHandle(handle)!=nullptr;
+}
+bool CloseGuestThreadHandle(uint32_t handle) {
+    return g_openThreadHandles.erase(handle)!=0;
 }
 HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
