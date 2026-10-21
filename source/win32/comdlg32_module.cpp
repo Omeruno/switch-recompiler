@@ -358,6 +358,37 @@ HostCallOutcome GetOpenFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) { retur
 HostCallOutcome GetSaveFileNameA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,false,true); }
 HostCallOutcome GetSaveFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,true,true); }
 HostCallOutcome CommDlgExtendedError(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(g_extendedError); }
+
+// short WINAPI GetFileTitleA/W(LPCTSTR path, LPTSTR title, WORD cchSize).
+// Unlike GetOpenFileName, GetFileTitle does not open a modal window or access
+// the filesystem. It returns 0 on success, required chars on short buffer.
+HostCallOutcome FileTitle(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
+    const uint32_t input = Arg(c,m,0);
+    const uint32_t output = Arg(c,m,1);
+    const uint32_t capacity = Arg(c,m,2) & 0xffffu; // WORD in Win32 ABI
+    if (!input) return Ret(static_cast<uint32_t>(static_cast<int32_t>(-1)));
+    if (wide) {
+        std::u16string path = ReadWide(m,input,32768);
+        size_t sep = path.find_last_of(u"\\/");
+        std::u16string name = path.substr(sep == std::u16string::npos ? 0 : sep + 1);
+        if (name.empty() || name.size() >= 0x7fff) return Ret(0xffffffffu);
+        uint32_t required = static_cast<uint32_t>(name.size() + 1);
+        if (!output || capacity < required) return Ret(required);
+        WriteWide(m,output,name,capacity);
+    } else {
+        std::string path = ReadAnsi(m,input,32768);
+        size_t sep = path.find_last_of("\\/");
+        std::string name = path.substr(sep == std::string::npos ? 0 : sep + 1);
+        if (name.empty() || name.size() >= 0x7fff) return Ret(0xffffffffu);
+        uint32_t required = static_cast<uint32_t>(name.size() + 1);
+        if (!output || capacity < required) return Ret(required);
+        WriteAnsi(m,output,name,capacity);
+    }
+    return Ret(0);
+}
+HostCallOutcome GetFileTitleA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileTitle(c,m,false); }
+HostCallOutcome GetFileTitleW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileTitle(c,m,true); }
+
 const HostFunctionEntry kEntries[] = {
     {"COMDLG32.dll","GetOpenFileNameA",4,CallConv::Stdcall,&GetOpenFileNameA},
     {"COMDLG32.dll","GetOpenFileNameW",4,CallConv::Stdcall,&GetOpenFileNameW},
@@ -366,6 +397,13 @@ const HostFunctionEntry kEntries[] = {
     {"COMDLG32.dll","CommDlgExtendedError",0,CallConv::Stdcall,&CommDlgExtendedError},
     {"COMDLG32.dll","__FileDialogWndProc",16,CallConv::Stdcall,&HostDialogProc},
 };
+// These exports are part of COMDLG32 regardless of which file-dialog UI is active.
+// MSVC/MFC resolves them dynamically via GetProcAddress (delay-load).
+const HostFunctionEntry kCoreEntries[] = {
+    {"COMDLG32.dll","GetFileTitleA",12,CallConv::Stdcall,&GetFileTitleA},
+    {"COMDLG32.dll","GetFileTitleW",12,CallConv::Stdcall,&GetFileTitleW},
+};
+const bool kRegisteredCore = RegisterHostFunctions(kCoreEntries, sizeof(kCoreEntries)/sizeof(kCoreEntries[0]));
 const bool kRegistered = RegisterHostFunctionsLayer(kEntries, sizeof(kEntries)/sizeof(kEntries[0]), kUiLayer);
 } // namespace
 } // namespace win32
