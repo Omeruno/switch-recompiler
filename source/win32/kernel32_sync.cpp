@@ -20,8 +20,13 @@ namespace {
 using namespace hle;
 
 constexpr uint32_t kCurrentThreadId = 0x1004;
+constexpr uint32_t kErrorNotOwner = 288;
+uint32_t GuestTid() {
+    return rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
+}
 
-// CRITICAL_SECTION: DebugInfo, LockCount, RecursionCount, OwningThread, LockSemaphore, SpinCount
+// CRITICAL_SECTION uses the Windows 32-bit six-DWORD layout.
+// The guest address doubles as a scheduler wait key; no host OS lock is held.
 HostCallOutcome K32_InitializeCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t cs = Arg(c, m, 0);
     m.Write32(cs + 0, 0);
@@ -38,22 +43,56 @@ HostCallOutcome K32_InitializeCriticalSectionAndSpinCount(cpu::CpuState& c, cpu:
     return Ret(1);
 }
 HostCallOutcome K32_InitializeCriticalSectionEx(cpu::CpuState& c, cpu::IGuestMemory& m) { return K32_InitializeCriticalSectionAndSpinCount(c, m); }
-HostCallOutcome K32_DeleteCriticalSection(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
-HostCallOutcome K32_EnterCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t cs = Arg(c, m, 0);
-    m.Write32(cs + 4, m.Read32(cs + 4) + 1);
-    m.Write32(cs + 8, m.Read32(cs + 8) + 1);
-    m.Write32(cs + 12, kCurrentThreadId);
+HostCallOutcome K32_DeleteCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t cs = Arg(c, m, 0);
+    // A deleted section must not strand any previously parked guest worker.
+    if (rt::g_process) rt::g_process->Scheduler().Signal(cs, true);
+    m.Write32(cs + 4, 0xFFFFFFFFu);
+    m.Write32(cs + 8, 0);
+    m.Write32(cs + 12, 0);
     return Ret(0);
 }
-HostCallOutcome K32_TryEnterCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) { K32_EnterCriticalSection(c, m); return Ret(1); }
+bool TryAcquireCriticalSection(cpu::IGuestMemory& m, uint32_t cs) {
+    const uint32_t current = GuestTid();
+    const uint32_t owner = m.Read32(cs + 12);
+    if (owner != 0 && owner != current) return false;
+    const uint32_t recursion = m.Read32(cs + 8);
+    m.Write32(cs + 8, recursion + 1);
+    m.Write32(cs + 4, recursion);
+    m.Write32(cs + 12, current);
+    return true;
+}
+HostCallOutcome K32_EnterCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t cs = Arg(c, m, 0);
+    if (TryAcquireCriticalSection(m, cs)) return Ret(0);
+    // Keep guest EIP and stdcall stack intact: retry the HLE instruction when
+    // the owning thread leaves. This is cooperative, never a host-side spin.
+    rt::GuestThread* current = rt::g_process ?
+        rt::g_process->Scheduler().Current() : nullptr;
+    if (current && rt::g_process->Scheduler().Wait(*current, cs)) {
+        HostCallOutcome pending;
+        pending.customReturn = true;
+        return pending;
+    }
+    // Standalone, unscheduled HLE callers cannot safely wait for an owner.
+    SetLastError(m, kErrorNotOwner);
+    return Ret(0);
+}
+HostCallOutcome K32_TryEnterCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return Ret(TryAcquireCriticalSection(m, Arg(c, m, 0)) ? 1 : 0);
+}
 HostCallOutcome K32_LeaveCriticalSection(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t cs = Arg(c, m, 0);
-    uint32_t rec = m.Read32(cs + 8);
-    if (rec) {
-        m.Write32(cs + 8, rec - 1);
-        m.Write32(cs + 4, m.Read32(cs + 4) - 1);
-        if (rec == 1) m.Write32(cs + 12, 0);
+    const uint32_t cs = Arg(c, m, 0);
+    const uint32_t rec = m.Read32(cs + 8);
+    if (!rec || m.Read32(cs + 12) != GuestTid()) {
+        SetLastError(m, kErrorNotOwner);
+        return Ret(0);
+    }
+    m.Write32(cs + 8, rec - 1);
+    m.Write32(cs + 4, rec - 2); // Windows LockCount: -1 when unlocked
+    if (rec == 1) {
+        m.Write32(cs + 12, 0);
+        if (rt::g_process) rt::g_process->Scheduler().Signal(cs, false);
     }
     return Ret(0);
 }
