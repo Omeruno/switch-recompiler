@@ -53,6 +53,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     sh "$root/tests/guest/build.sh" "$out/guest"
     for exe in "$out"/guest/*.exe; do
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
+        [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
         # программы работают в своём каталоге: C:\ гостя = build-host/guest
         if (cd "$out/guest" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
             tail -n 1 "$out/$(basename "$exe").log"
@@ -81,6 +82,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 30 "$out/comdlg_open.log" 2>/dev/null || true
         tail -n 30 "$out/comdlg_list.log" 2>/dev/null || true
         tail -n 30 "$out/comdlg_save.log" 2>/dev/null || true
+        failed=1
+    fi
+    # Run the special-folder test AFTER file-dialog scenarios: it creates
+    # My Documents, otherwise the list's first item becomes a directory.
+    if (cd "$out/guest" && "$out/winrun" gui_shell32.exe > "$out/gui_shell32.exe.log" 2>&1); then
+        tail -n 1 "$out/gui_shell32.exe.log"
+    else
+        echo "   gui_shell32.exe: НЕ ПРОЙДЕН"
+        tail -n 20 "$out/gui_shell32.exe.log"
         failed=1
     fi
 else
