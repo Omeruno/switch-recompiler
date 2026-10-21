@@ -249,3 +249,16 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - **Current build status NOT YET VERIFIED**: CI run for latest code [39648242384](https://github.com/Omeruno/switch-recompiler/actions/runs/39648242384) was queued when written. Verify all jobs before user deploys.
 - **Known incomplete semantics**: wait-all on auto-reset events may wake/re-evaluate rather than reserving a signal atomically; unrelated intermediate signals can reset a finite deadline when the call re-parks. HANDLE object close/reuse/abandonment and MAXIMUM_WAIT_OBJECTS edge cases need stronger compatibility work. The current guest test intentionally tests manual-reset events only. Hardware not tested.
 - For next substantial batch, fix intermediate-signal timeout preservation and auto-reset wait-all behavior, then implement thread lifetime / object ownership; do not infer native Switch correctness from CI alone.
+
+## 2026-10-21 large synchronization correctness batch
+- Confirmed previous multi-object-wait release `994c378` all four jobs SUCCESS at [39648308984](https://github.com/Omeruno/switch-recompiler/actions/runs/39648308984).
+- New linked changes:
+  - `6953720`: guest thread stores original absolute retry deadline/token.
+  - `31433a1`, later refined by `c8ed306`: scheduler preserves finite timeout on repeated wait attempts after partial object signaling; applies to both single and multiple waits. Sleeping/exited flows clear retry state.
+  - `0b39e11`: multiple-object wait returns WAIT_TIMEOUT when original deadline elapsed and clears retry state when fulfilled; closing a sync HANDLE wakes parked guest threads.
+  - `13974a2`: closing an open synthetic guest thread HANDLE similarly wakes waiters without terminating underlying thread.
+  - `eb1efcf`: single-object waits also honour preserved deadline across intermediate wakes.
+  - `98ed113`: release/signal of mutex, semaphore or auto-reset event wakes all candidate cooperative waiters to re-evaluate available resources; only successful HLE acquisition consumes a token.
+- New tests: `tests/guest/gui_thread_wait_lifecycle.c` (auto-reset wait-all preflight/consume, partial signals vs timeout, close while waiting); additions to `tests/test_guest_scheduler.cpp` (deterministic original-deadline persistence across partial signals).
+- **DO NOT CLAIM NEW WORK GREEN YET**. Latest relevant CI [39649844525](https://github.com/Omeruno/switch-recompiler/actions/runs/39649844525) was in progress at this writing; earlier code runs mostly in progress due lengthy host tests. Last confirmed all-green baseline is `994c378`.
+- **Limitations**: Multiple-object wait-all is preflight + consume within a cooperative CPU instruction, but strict Windows kernel wait-all fairness and token reservation with external waiters is not yet fully modelled. No guest hardware validation. Thread HANDLEs still use synthetic one-per-ID mapping rather than reference-counted NT objects; DuplicateHandle semantics beyond file handles need work. ExitThread on main still deliberately fatal.
