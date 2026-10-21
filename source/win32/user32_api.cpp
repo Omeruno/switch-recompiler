@@ -610,6 +610,16 @@ FN(SetWindowPlacement) {
     uint32_t hwnd = A(c, m, 0), p = A(c, m, 1);
     if (!Win(hwnd) || !p) return Ret(0);
     Rect r = ReadRect(m, p + 28);
+    // Как в Windows: окно, которое оказалось бы вне экрана, возвращается на
+    // экран (Paint без сохранённых настроек передаёт координаты CW_USEDEFAULT)
+    constexpr int kDefault = static_cast<int>(0x80000000u);
+    Rect screen(0, 0, S().screenW, S().screenH);
+    if (r.left == kDefault || r.top == kDefault || r.Width() <= 0 || r.Height() <= 0)
+        r = Rect(24, 24, 24 + S().screenW * 3 / 4, 24 + S().screenH * 3 / 4);
+    if (r.right <= 0 || r.bottom <= 0 || r.left >= screen.right || r.top >= screen.bottom) {
+        int w = std::min(r.Width(), S().screenW), h = std::min(r.Height(), S().screenH);
+        r = Rect(0, 0, w, h);
+    }
     SetWindowPosInternal(hwnd, 0, r.left, r.top, r.Width(), r.Height(), 0x4 | 0x10);
     ShowWindowInternal(hwnd, static_cast<int>(m.Read32(p + 8)));
     return Ret(1);
