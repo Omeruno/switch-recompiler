@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "hle_util.h"
+#include "seh_dispatch.h"
 #include "../runtime/files.h"
 #include "../runtime/process.h"
 #include "../runtime/resources.h"
@@ -319,7 +320,30 @@ HostCallOutcome K32_SizeofResource(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_FreeResource(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
 
+// RtlUnwind on Windows XP x86 is exported by KERNEL32.
+// A successful targeted unwind resumes at TargetIp instead of returning.
+HostCallOutcome K32_RtlUnwind(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t targetFrame=Arg(c,m,0);
+    const uint32_t targetIp=Arg(c,m,1);
+    const uint32_t record=Arg(c,m,2);
+    const uint32_t value=Arg(c,m,3);
+    seh::UnwindResult result=seh::UnwindToFrame(
+        c,m,g_tebAddr,targetFrame,targetIp,record,value);
+    if(result!=seh::UnwindResult::Completed) {
+        cpu::g_lastKnownEip=c.eip;
+        cpu::FatalError(result==seh::UnwindResult::InvalidTarget ?
+            "RtlUnwind: target frame or continuation is invalid" :
+            result==seh::UnwindResult::InvalidChain ?
+            "RtlUnwind: invalid guest SEH registration chain" :
+            "RtlUnwind: nested/collided unwind requires support");
+    }
+    HostCallOutcome out;
+    out.customReturn=true;
+    return out;
+}
+
 const HostFunctionEntry kEntries[] = {
+    {"KERNEL32.dll", "RtlUnwind", 16, CallConv::Stdcall, &K32_RtlUnwind},
     {"KERNEL32.dll", "FindResourceA", 12, CallConv::Stdcall, &K32_FindResourceA},
     {"KERNEL32.dll", "FindResourceW", 12, CallConv::Stdcall, &K32_FindResourceW},
     {"KERNEL32.dll", "FindResourceExA", 16, CallConv::Stdcall, &K32_FindResourceExA},
