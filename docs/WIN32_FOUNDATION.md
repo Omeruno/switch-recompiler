@@ -5,7 +5,14 @@ Target: **32-bit Windows XP / NT 5.1 user-mode** programs running as
 x86 interpreted guests on Switch (libnx). Do not simulate a Windows
 kernel or recompile the guest.
 
-## Starting point (verified in code 2026-10-21)
+## Historical starting point (before SEH/thread implementation)
+
+The paragraphs below describe the original planning checkpoint, not current
+HEAD. SEH dispatch/unwind, runnable workers, cooperative waits and the common
+HANDLE table now have implementations. Read [ARCHITECTURE.md](ARCHITECTURE.md),
+[ROADMAP.md](ROADMAP.md) and the latest dated AI_HANDOFF entry first.
+
+### Original observations
 - \`rt::Process\` maps PE EXE/DLL and imports, has a single prepared main
   guest CPU/stack and a synthetic TEB/PEB. At \`PrepareMainThread\`,
   \`TEB+0x00\` (NT_TIB.ExceptionList, \`FS:[0]\`) is \`0xffffffff\`.
@@ -103,7 +110,7 @@ Acceptance tests (guest x86, compiled with mingw where supported):
 - Never commit proprietary Paint / MFC binaries. Request a matching
   legally sourced DLL only when symbol/disassembly requires it.
 
-## Immediate next implementation slice
+## Original first implementation slice (already implemented as a subset)
 Create SEH ABI structs/constants with compile-time size/offset assertions
 and a focused host test. Then implement the dispatcher and wire both CPU
 loops and \`RaiseException\` to it. Do not re-enable silent exception

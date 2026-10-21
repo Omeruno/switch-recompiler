@@ -1,7 +1,6 @@
 #pragma once
 // Guest thread metadata for 32-bit Windows XP user mode.
-// Process currently executes one guest CPU state externally. This model
-// establishes per-thread ownership without introducing a scheduler yet.
+// Each guest has its own CPU/TEB/stack; GuestScheduler interleaves quanta.
 #include <cstdint>
 #include <vector>
 #include "../cpu/cpu_state.h"

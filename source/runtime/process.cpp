@@ -82,7 +82,27 @@ uint32_t EntryReturnAddress() {
     return win32::IndexToHostAddress(idx);
 }
 
-Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) { win32::SetImportBindingMemory(&mem_); }
+Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {
+    win32::SetImportBindingMemory(&mem_);
+    scheduler_.SetExitCallback([this](GuestThread& thread) {
+        for (const auto& object : handles_.Objects()) {
+            bool signal = false;
+            if (object->type == ObjectKind::Thread)
+                signal = static_cast<ThreadObject&>(*object).threadId == thread.id;
+            else if (object->type == ObjectKind::Mutex) {
+                auto& mutex = static_cast<SyncObject&>(*object);
+                if (mutex.ownerThread == thread.id) {
+                    mutex.ownerThread = mutex.recursion = 0;
+                    mutex.abandoned = mutex.signaled = true;
+                    signal = true;
+                }
+            }
+            if (signal)
+                for (uint32_t handle : handles_.Aliases(object.get()))
+                    scheduler_.Signal(handle, true);
+        }
+    });
+}
 
 std::string Process::NormalizeName(const std::string& name) {
     std::string base = name;

@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "handle_table.h"
 
 namespace rt {
 
@@ -48,7 +49,8 @@ private:
 Vfs& FileSystem();
 
 // Открытый файл или устройство.
-struct OpenFile {
+struct OpenFile : KernelObject {
+    OpenFile() : KernelObject(ObjectKind::File) {}
     enum Kind { Disk, ConsoleIn, ConsoleOut, ConsoleErr, Directory, Null } kind = Disk;
     std::FILE* f = nullptr;
     std::string hostPath;
@@ -69,9 +71,6 @@ public:
 
     static constexpr uint32_t kStdIn = 0x03, kStdOut = 0x07, kStdErr = 0x0B;
 
-private:
-    std::map<uint32_t, std::shared_ptr<OpenFile>> handles_;
-    uint32_t next_ = 0x100;
 };
 
 FileTable& Files();

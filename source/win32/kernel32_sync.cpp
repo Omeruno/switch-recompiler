@@ -1,9 +1,7 @@
 // kernel32_sync.cpp — KERNEL32: синхронизация.
 //
-// Пока гость однопоточный: критическая секция никогда не ждёт, а только
-// считает рекурсивные входы; объекты ожидания (события, мьютексы,
-// семафоры) хранят состояние, и ожидание сразу возвращает результат.
-// Когда появятся потоки (планировщик), ожидание будет переключать поток.
+// Cooperative waits retry their original HLE call after an object signal.
+// Objects live in the common per-process HANDLE table.
 
 #include <map>
 
@@ -13,7 +11,7 @@
 
 namespace win32 {
 
-bool HleIsOpenThreadHandle(uint32_t handle); // kernel32_module.cpp
+rt::GuestThread* HleThreadFromHandle(uint32_t handle); // kernel32_module.cpp
 
 namespace {
 
@@ -132,47 +130,43 @@ HostCallOutcome K32_InterlockedCompareExchange(cpu::CpuState& c, cpu::IGuestMemo
 }
 
 // --- Объекты ожидания ---
-struct WaitObject {
-    enum Kind { Event, Mutex, Semaphore } kind;
-    bool manualReset = false;
-    bool signaled = false;
-    int32_t count = 0, maxCount = 0;
-    uint32_t ownerThread = 0;
-    uint32_t recursion = 0;
-};
-std::map<uint32_t, WaitObject>& Objects() {
-    static std::map<uint32_t, WaitObject> objs;
-    return objs;
+using WaitObject = rt::SyncObject;
+using Kind = rt::ObjectKind;
+std::shared_ptr<WaitObject> GetSync(uint32_t handle) {
+    auto object = rt::Handles().Get(handle);
+    if (!object || (object->type != Kind::Event && object->type != Kind::Mutex &&
+                    object->type != Kind::Semaphore)) return nullptr;
+    return std::static_pointer_cast<WaitObject>(object);
 }
-uint32_t g_nextSyncHandle = 0x00100000u; // не пересекается с файловыми хендлами (0x100..)
-
-uint32_t NewObject(const WaitObject& o) {
-    uint32_t h = (g_nextSyncHandle += 4);
-    Objects()[h] = o;
-    return h;
+uint32_t NewObject(const WaitObject& object) {
+    return rt::Handles().Add(std::make_shared<WaitObject>(object));
 }
-
 HostCallOutcome K32_CreateEventA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    WaitObject o{WaitObject::Event, Arg(c, m, 1) != 0, Arg(c, m, 2) != 0, 0, 0};
+    WaitObject o(Kind::Event);
+    o.manualReset=Arg(c,m,1)!=0; o.signaled=Arg(c,m,2)!=0;
     return Ret(NewObject(o));
 }
 HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto it = Objects().find(Arg(c, m, 0));
-    if (it == Objects().end()) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
-    it->second.signaled = true;
-    if (rt::g_process)
-        rt::g_process->Scheduler().Signal(Arg(c,m,0),true); // all contenders re-evaluate; only one consumes auto-reset
+    auto object = GetSync(Arg(c,m,0));
+    if (!object || object->type != Kind::Event) {
+        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
+    }
+    object->signaled = true;
+    rt::SignalObject(object.get());
     return Ret(1);
 }
 HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto it = Objects().find(Arg(c, m, 0));
-    if (it == Objects().end()) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
-    it->second.signaled = false;
+    auto object = GetSync(Arg(c,m,0));
+    if (!object || object->type != Kind::Event) {
+        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
+    }
+    object->signaled = false;
     return Ret(1);
 }
 HostCallOutcome K32_CreateMutexA(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const bool initiallyOwned=Arg(c,m,1)!=0;
-    WaitObject o{WaitObject::Mutex, false, !initiallyOwned, 0, 0};
+    WaitObject o(Kind::Mutex);
+    o.signaled=!initiallyOwned;
     if (initiallyOwned) {
         o.ownerThread=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
         o.recursion=1;
@@ -182,12 +176,12 @@ HostCallOutcome K32_CreateMutexA(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t handle=Arg(c,m,0);
-    auto it=Objects().find(handle);
-    if (it==Objects().end() || it->second.kind!=WaitObject::Mutex) {
+    auto object=GetSync(handle);
+    if (!object || object->type!=Kind::Mutex) {
         SetLastError(m,ERROR_INVALID_HANDLE);
         return Ret(0);
     }
-    WaitObject& o=it->second;
+    WaitObject& o=*object;
     uint32_t current=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
     if (o.ownerThread!=current || !o.recursion) {
         SetLastError(m,288u); // ERROR_NOT_OWNER
@@ -196,7 +190,7 @@ HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (--o.recursion==0) {
         o.ownerThread=0;
         o.signaled=true;
-        if(rt::g_process)rt::g_process->Scheduler().Signal(handle,true);
+        rt::SignalObject(object.get());
     }
     return Ret(1);
 }
@@ -207,17 +201,18 @@ HostCallOutcome K32_CreateSemaphoreA(cpu::CpuState& c, cpu::IGuestMemory& m) {
         SetLastError(m,ERROR_INVALID_PARAMETER);
         return Ret(0);
     }
-    WaitObject o{WaitObject::Semaphore,false,false,initial,maximum};
+    WaitObject o(Kind::Semaphore);
+    o.count=initial; o.maxCount=maximum;
     return Ret(NewObject(o));
 }
 HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t handle=Arg(c,m,0);
-    auto it=Objects().find(handle);
-    if(it==Objects().end() || it->second.kind!=WaitObject::Semaphore) {
+    auto object=GetSync(handle);
+    if(!object || object->type!=Kind::Semaphore) {
         SetLastError(m,ERROR_INVALID_HANDLE);
         return Ret(0);
     }
-    WaitObject& o=it->second;
+    WaitObject& o=*object;
     const int32_t amount=static_cast<int32_t>(Arg(c,m,1));
     if(amount<=0 || amount>o.maxCount-o.count) {
         SetLastError(m,ERROR_INVALID_PARAMETER);
@@ -229,39 +224,50 @@ HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
         m.Write32(prev,static_cast<uint32_t>(o.count));
     }
     o.count+=amount;
-    if(rt::g_process) {
-        // Wake all candidates, including partial wait-all contenders.
-        // Actual semaphore tokens are acquired in guest scheduling order.
-        rt::g_process->Scheduler().Signal(handle,true);
-    }
+    rt::SignalObject(object.get());
     return Ret(1);
 }
 
-// Однопоточный гость: ждать некого, поэтому сразу отвечаем по состоянию.
-uint32_t TryAcquire(uint32_t h) {
-    auto it = Objects().find(h);
-    if (it == Objects().end()) return 0; // хендлы потоков/процессов/файлов: «уже сигнален»
-    WaitObject& o = it->second;
-    switch (o.kind) {
-        case WaitObject::Event:
-            if (!o.signaled) return 0x102; // WAIT_TIMEOUT
-            if (!o.manualReset) o.signaled = false;
+constexpr uint32_t kWaitAbandoned = 0x80u;
+uint32_t TryAcquire(uint32_t handle) {
+    auto object = GetSync(handle);
+    if (!object) return 0xffffffffu;
+    WaitObject& o=*object;
+    switch (o.type) {
+        case Kind::Event:
+            if (!o.signaled) return 0x102;
+            if (!o.manualReset) o.signaled=false;
             return 0;
-        case WaitObject::Mutex:
-            {
-                const uint32_t id=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
-                if(o.ownerThread && o.ownerThread!=id) return 0x102;
-                o.ownerThread=id;
-                ++o.recursion;
-                o.signaled=false;
-                return 0;
-            }
-        case WaitObject::Semaphore:
-            if (o.count <= 0) return 0x102;
-            o.count--;
+        case Kind::Mutex: {
+            if (o.ownerThread && o.ownerThread!=GuestTid()) return 0x102;
+            const bool abandoned=o.abandoned;
+            o.abandoned=false;
+            o.ownerThread=GuestTid();
+            ++o.recursion;
+            o.signaled=false;
+            return abandoned ? kWaitAbandoned : 0;
+        }
+        case Kind::Semaphore:
+            if (o.count<=0) return 0x102;
+            --o.count;
             return 0;
+        default: return 0xffffffffu;
     }
-    return 0;
+}
+bool ValidWaitHandle(uint32_t h) {
+    return HleThreadFromHandle(h) || GetSync(h)!=nullptr;
+}
+bool WaitHandleReady(uint32_t h) {
+    if (auto* thread=HleThreadFromHandle(h))
+        return thread->status==rt::GuestThreadStatus::Exited;
+    auto object=GetSync(h);
+    if (!object) return false;
+    if (object->type==Kind::Event) return object->signaled;
+    if (object->type==Kind::Semaphore) return object->count>0;
+    return !object->ownerThread || object->ownerThread==GuestTid();
+}
+uint32_t AcquireWaitHandle(uint32_t h) {
+    return HleThreadFromHandle(h) ? 0 : TryAcquire(h);
 }
 // An unfinished finite wait is parked in the scheduler, then the guest
 // retries the same HLE import upon signal or timeout. This avoids blocking
@@ -279,44 +285,23 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
         }
         return Ret(result);
     };
-    if (current && current->retryWaitToken == handle &&
-        current->retryWaitDeadlineUs &&
-        rt::Clock::NowUs() >= current->retryWaitDeadlineUs)
-        return finish(kWaitTimeout);
-    auto tryPark=[&]() -> HostCallOutcome {
-        if (!current || !rt::g_process) return Ret(kWaitTimeout);
-        if (!rt::g_process->Scheduler().WaitFor(*current,handle,milliseconds))
-            return Ret(kWaitFailed);
-        HostCallOutcome pending;
-        pending.customReturn=true;
-        return pending;
-    };
-    if ((handle & 0xff000000u)==0xE1000000u && rt::g_process) {
-        rt::GuestThread* target=rt::g_process->FindThread(handle & 0x00ffffffu);
-        if (!target || !HleIsOpenThreadHandle(handle)) {
-            SetLastError(m,ERROR_INVALID_HANDLE);
-            return Ret(kWaitFailed);
-        }
-        if(current && current->timedOutHandle==handle) {
-            current->timedOutHandle=0;
-            return finish(kWaitTimeout);
-        }
-        if (target->status==rt::GuestThreadStatus::Exited) return finish(0);
-        if (milliseconds==0) return finish(kWaitTimeout);
-        return tryPark();
-    }
-    auto it=Objects().find(handle);
-    if(it==Objects().end()) {
+    if (!ValidWaitHandle(handle)) {
         SetLastError(m,ERROR_INVALID_HANDLE);
-        return Ret(kWaitFailed);
+        return finish(kWaitFailed);
     }
-    if(current && current->timedOutHandle==handle) {
+    if (current && (current->timedOutHandle==handle ||
+        (current->retryWaitToken==handle && current->retryWaitDeadlineUs &&
+         rt::Clock::NowUs()>=current->retryWaitDeadlineUs))) {
         current->timedOutHandle=0;
-        return Ret(kWaitTimeout);
+        return finish(kWaitTimeout);
     }
-    uint32_t acquired=TryAcquire(handle);
-    if(acquired!=kWaitTimeout || milliseconds==0) return finish(acquired);
-    return tryPark();
+    if (WaitHandleReady(handle)) return finish(AcquireWaitHandle(handle));
+    if (milliseconds==0 || !current) return finish(kWaitTimeout);
+    if (!rt::g_process->Scheduler().WaitFor(*current,handle,milliseconds))
+        return finish(kWaitFailed);
+    HostCallOutcome pending;
+    pending.customReturn=true;
+    return pending;
 }
 HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
@@ -324,31 +309,7 @@ HostCallOutcome K32_WaitForSingleObject(cpu::CpuState& c, cpu::IGuestMemory& m) 
 HostCallOutcome K32_WaitForSingleObjectEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return WaitSingle(c,m,Arg(c,m,0),Arg(c,m,1));
 }
-// Multiple waits are evaluated atomically within a cooperative guest quantum.
-// For wait-all, preflight every object's readiness before consuming any state.
-bool WaitHandleReady(uint32_t h) {
-    if ((h & 0xff000000u) == 0xE1000000u && rt::g_process) {
-        if (!HleIsOpenThreadHandle(h)) return false;
-        rt::GuestThread* t = rt::g_process->FindThread(h & 0x00ffffffu);
-        return t && t->status == rt::GuestThreadStatus::Exited;
-    }
-    auto it = Objects().find(h);
-    if (it == Objects().end()) return false;
-    const WaitObject& o = it->second;
-    if (o.kind == WaitObject::Event) return o.signaled;
-    if (o.kind == WaitObject::Semaphore) return o.count > 0;
-    return !o.ownerThread || o.ownerThread == GuestTid();
-}
-bool ValidWaitHandle(uint32_t h) {
-    if ((h & 0xff000000u) == 0xE1000000u && rt::g_process)
-        return HleIsOpenThreadHandle(h) &&
-               rt::g_process->FindThread(h & 0x00ffffffu) != nullptr;
-    return Objects().find(h) != Objects().end();
-}
-uint32_t AcquireWaitHandle(uint32_t h) {
-    if ((h & 0xff000000u) == 0xE1000000u) return 0;
-    return TryAcquire(h);
-}
+// Preflight all objects before any auto-reset/token/ownership mutation.
 HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
     constexpr uint32_t kWaitFailed = 0xffffffffu;
     constexpr uint32_t kWaitTimeout = 0x102u;
@@ -363,10 +324,20 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
     handles.reserve(n);
     for (uint32_t i=0;i<n;++i) {
         const uint32_t h=m.Read32(arr+i*4);
-        if (!ValidWaitHandle(h) ||
-            std::find(handles.begin(),handles.end(),h) != handles.end()) {
+        if (!ValidWaitHandle(h)) {
             SetLastError(m, ERROR_INVALID_HANDLE);
             return Ret(kWaitFailed);
+        }
+        for (uint32_t previous : handles) {
+            auto object=rt::Handles().Get(h);
+            auto old=rt::Handles().Get(previous);
+            const auto* thread=HleThreadFromHandle(h);
+            const auto* oldThread=HleThreadFromHandle(previous);
+            if (h==previous || (all && ((object && object==old) ||
+                (thread && thread==oldThread)))) {
+                SetLastError(m,ERROR_INVALID_PARAMETER);
+                return Ret(kWaitFailed);
+            }
         }
         handles.push_back(h);
     }
@@ -399,14 +370,16 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
         bool ready=true;
         for (uint32_t h:handles) if (!WaitHandleReady(h)) { ready=false; break; }
         if (ready) {
-            for (uint32_t h:handles) AcquireWaitHandle(h);
-            return finish(0);
+            uint32_t result=0;
+            for (uint32_t i=0;i<n;++i)
+                if (AcquireWaitHandle(handles[i])==kWaitAbandoned && !result)
+                    result=kWaitAbandoned+i;
+            return finish(result);
         }
     } else {
         for (uint32_t i=0;i<n;++i)
             if (WaitHandleReady(handles[i])) {
-                AcquireWaitHandle(handles[i]);
-                return finish(i);
+                return finish(AcquireWaitHandle(handles[i])+i);
             }
     }
     if (ms==0 || !current || !rt::g_process) return finish(kWaitTimeout);
@@ -472,13 +445,5 @@ const HostFunctionEntry kEntries[] = {
 const bool kRegistered = RegisterHostFunctions(kEntries, sizeof(kEntries) / sizeof(kEntries[0]));
 
 } // namespace
-
-bool HleCloseSyncHandle(uint32_t handle) {
-    if (!Objects().erase(handle)) return false;
-    // Wake parked x86 guests so their pending Win32 call can observe the
-    // invalid handle instead of remaining asleep forever.
-    if (rt::g_process) rt::g_process->Scheduler().Signal(handle, true);
-    return true;
-}
 
 } // namespace win32

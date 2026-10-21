@@ -37,7 +37,22 @@ if [ -n "$dups" ]; then
     failed=1
 fi
 
-for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86; do
+# Compile the common runtime once per suite, then link each harness against
+# exactly the same objects. Rebuild on every invocation so header changes
+# cannot leave stale objects; do not archive away static HLE registrations.
+mkdir -p "$out/objects"
+objects=""
+for cpp in $src; do
+    obj="$out/objects/$(basename "$cpp" .cpp).o"
+    if ! $cxx $flags -c "$cpp" -o "$obj"; then
+        echo "   RUNTIME COMPILE FAILED: $cpp"
+        exit 1
+    fi
+    objects="$objects $obj"
+done
+src="$objects"
+
+for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then

@@ -40,7 +40,7 @@
 
 ## Дорожная карта
 
-1. Структурные исключения Windows (SEH) и потоки.
+1. Довести SEH, жизненный цикл потоков/HANDLE и ожидания, включая вложенные callbacks.
 2. USER32/GDI32 заново, без привязки к конкретной программе; затем
    настоящая `mfc42u.dll` вместо HLE-заглушек MFC.
 3. DirectDraw/Direct3D, DirectSound, ввод — для игр.
@@ -51,6 +51,9 @@
 | Файл | О чём |
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Как устроен рантайм: от PE-файла до пикселя на экране |
+| [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md) | История изменений, проверенные SHA/CI и оставшиеся ограничения |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Текущие приоритеты и критерии готовности |
+| [`docs/WIN32_FOUNDATION.md`](docs/WIN32_FOUNDATION.md) | Исходные контракты Win32/SEH (план с историческим исходным состоянием) |
 | [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md) | Итоги v1.0 и уроки (исторический) |
 | [`docs/archive/`](docs/archive/) | Рабочий журнал расследования Paint (исторический, местами устарел) |
 

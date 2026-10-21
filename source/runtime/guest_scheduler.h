@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 #include "guest_thread.h"
 #include "clock.h"
@@ -46,6 +47,9 @@ public:
     }
 
     GuestThread* Current() const { return current_; }
+    void SetExitCallback(std::function<void(GuestThread&)> callback) {
+        onExit_ = std::move(callback);
+    }
     // Restore the host-visible running thread after a nested callback or
     // host-only thread probe without disturbing round-robin cursor.
     void SetCurrent(GuestThread* thread) { current_ = thread; }
@@ -216,6 +220,8 @@ public:
     }
 
     void Exit(GuestThread& thread, uint32_t code) {
+        if (thread.status == GuestThreadStatus::Exited) return;
+        lastExitCode_ = code;
         thread.exitCode = code;
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
@@ -229,16 +235,23 @@ public:
         thread.sleepDeadlineUs = 0;
         thread.yieldRequested = false;
         thread.suspendCount = 0;
-        // Thread HANDLE becomes signaled when its guest thread exits.
-        Signal(0xE1000000u | (thread.id & 0x00FFFFFFu), true);
+        if (onExit_) onExit_(thread);
     }
 
     size_t Size() const { return threads_.size(); }
+    bool HasLiveThreads() const {
+        for (const GuestThread* thread : threads_)
+            if (thread->status != GuestThreadStatus::Exited) return true;
+        return false;
+    }
+    uint32_t LastExitCode() const { return lastExitCode_; }
     uint32_t Quantum() const { return kDefaultQuantum; }
 
 private:
     std::vector<GuestThread*> threads_;
     size_t cursor_ = 0;
     GuestThread* current_ = nullptr;
+    std::function<void(GuestThread&)> onExit_;
+    uint32_t lastExitCode_ = 0;
 };
 } // namespace rt

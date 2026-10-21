@@ -54,17 +54,15 @@ int main(void) {
     if (WaitForSingleObject(closer,INFINITE)!=WAIT_OBJECT_0 ||
         !GetExitCodeThread(closer,&code) || code!=42) return 15;
     if (!CloseHandle(closer)) return 16;
-    /* Unsupported object duplication must fail, not create an alias whose
-       CloseHandle unexpectedly destroys the original event. */
+    /* Duplicate references survive closure of the original HANDLE. */
     HANDLE original=CreateEventA(NULL,TRUE,FALSE,NULL), duplicate=NULL;
     if (!original) return 17;
-    if (DuplicateHandle(GetCurrentProcess(),original,GetCurrentProcess(),
-                        &duplicate,0,FALSE,DUPLICATE_SAME_ACCESS)) {
-        puts("UNSUPPORTED_SYNC_DUPLICATE_FALSE_SUCCESS"); return 18;
-    }
-    if (!SetEvent(original) || WaitForSingleObject(original,0)!=WAIT_OBJECT_0)
-        return 19;
-    if (!CloseHandle(original)) return 20;
+    if (!DuplicateHandle(GetCurrentProcess(),original,GetCurrentProcess(),
+                        &duplicate,0,FALSE,DUPLICATE_SAME_ACCESS) ||
+        duplicate==original) return 18;
+    if (!CloseHandle(original) || !SetEvent(duplicate) ||
+        WaitForSingleObject(duplicate,0)!=WAIT_OBJECT_0) return 19;
+    if (!CloseHandle(duplicate) || CloseHandle(duplicate)) return 20;
     /* Supported file HANDLE copies have independent ownership. */
     HANDLE file=CreateFileA("dup_handle_test.tmp",GENERIC_READ|GENERIC_WRITE,
                             0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);

@@ -24,6 +24,7 @@
 #include "../cpu/guest_memory.h"
 #include "guest_thread.h"
 #include "guest_scheduler.h"
+#include "handle_table.h"
 #include "../loader/pe_parser.h"
 
 namespace rt {
@@ -125,6 +126,7 @@ public:
     GuestThread* FindThread(uint32_t id);
     GuestScheduler& Scheduler() { return scheduler_; }
     const GuestScheduler& Scheduler() const { return scheduler_; }
+    HandleTable& Handles() { return handles_; }
     uint32_t PebAddress() const { return kPebAddress; }
     uint32_t TlsArrayAddress() const { return tlsArray_; }
 
@@ -161,6 +163,7 @@ private:
     std::vector<std::unique_ptr<GuestThread>> workerThreads_;
     uint32_t nextThreadId_ = 0x1008u;
     GuestScheduler scheduler_{};
+    HandleTable handles_{};
 };
 
 // Текущий процесс — для HLE-функций (LoadLibrary, GetProcAddress, ...).

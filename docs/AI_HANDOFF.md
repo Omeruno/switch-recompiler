@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch `claude/wonderful-hawking-10mpr0` (2026-10-21 11:41 UTC). This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified incoming GitHub state: **83b299be01406d86d0796107d9b1c309b9ab0257**, branch `claude/wonderful-hawking-10mpr0` (2026-10-21). All four jobs passed in run [39650590532](https://github.com/Omeruno/switch-recompiler/actions/runs/39650590532). This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -271,3 +271,85 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 
 - Commit `af7a63d`: added positive file-HANDLE duplication guest regression in `gui_thread_wait_lifecycle.c`: closing the source must leave the duplicate writable; independently closes duplicate and removes temporary file. Relies on FileTable's shared_ptr semantics, verified in source review. CI [39650536464](https://github.com/Omeruno/switch-recompiler/actions/runs/39650536464) queued when recorded.
 - Wait-correctness release `98ed113` all four CI jobs completed green at [39649844525](https://github.com/Omeruno/switch-recompiler/actions/runs/39649844525). The `gui_thread_wait_lifecycle.c` integration test first introduced at `87d0312` also had full green CI [39649623623](https://github.com/Omeruno/switch-recompiler/actions/runs/39649623623).
+
+
+## 2026-10-21 resumed shift: shared HANDLE objects and thread-exit lifecycle
+
+Read this entry before the older chronological checkpoints above. The previous
+ARCHITECTURE.md was v1; it is now preserved as archive/ARCHITECTURE_v1.md and
+replaced by a v2 map. ROADMAP.md's obsolete immediate queue has been refreshed.
+Historical WIN32_FOUNDATION observations are explicitly marked historical.
+
+Implemented together in this batch:
+- `runtime/handle_table.*`: Process-owned typed table for File/Thread/Event/
+  Mutex/Semaphore. Each HANDLE owns a shared reference; duplicates get unique
+  monotonically increasing values in reserved 0xD0000100..0xDFFFFFF8 range.
+  FileTable is now a facade over it; standalone/v1 HLE has an isolated fallback.
+- Removed global sync-object map and synthetic thread-id HANDLE set. Thread
+  handles resolve objects, not encoded IDs. DuplicateHandle supports current-
+  process file/sync/thread aliases and current-thread pseudo-handle conversion,
+  source-close transfer, close-only form, and close-source on a failed duplicate.
+  Source/target process validation rejects foreign handles. NULL destination
+  retains documented legacy duplicate-without-return behavior.
+- Signaling uses every alias; closing one alias wakes only waiters on that
+  closed number without destroying other references. Auto-reset and semaphore
+  consumption still happens only after complete wait-all readiness preflight.
+  Wait-all rejects aliases to the same underlying object before consumption;
+  wait-any retains lowest-index semantics.
+- Scheduler exit observer signals every HANDLE for the exiting guest and
+  abandons its owned mutexes. WAIT_ABANDONED is propagated by single/any/all
+  waits; partial wait-all does not take ownership or clear abandonment.
+- ExitThread on the initial guest no longer aborts the host. Workers continue;
+  host/Switch loops distinguish all-exited from deadlock and finish on last
+  thread exit. Entry-return/ExitProcess remain process-wide exits.
+- Console output recognizes duplicate console HANDLEs by object type.
+- Host suite compiles common runtime objects once per invocation, linking them
+  directly into each harness (retaining static HLE registration); it rebuilds
+  them each time so edited headers cannot leave stale cached code.
+
+Local validation before upload:
+- `CXX='g++ -fno-rtti -fno-exceptions' sh tools/run_host_tests.sh`: scheduler,
+  five original x86 tests and new `test_handle_objects` all PASS. MinGW was
+  initially absent from PATH, so the guest section was then run separately
+  from the same script against the same compiled objects with the extracted
+  i686 MinGW GCC 13 Win32 toolchain.
+- Complete guest section PASS: 26 Windows EXEs (interactive dialog / SHELL32
+  handled in their dedicated scenarios), both thread probes, CRT/C++/DLL/SEH,
+  all thread/wait tests, and scripted Open/List/Save plus SHELL32.
+- New `gui_thread_handles.c` PASS: event alias wake, thread alias survives source
+  closure, shared semaphore tokens, wrong-type rejection, duplicate-object
+  wait-all rejection with no token consumption, recursive mutex abandonment
+  in wait-any/all, close-source including failure, file-position sharing,
+  last-reference delete-on-close and duplicate-console writes.
+- New `gui_thread_main_exit.c` PASS: worker observes initial thread exit code
+  73 and survives even after its own HANDLE is closed; last thread returns 0.
+- New deterministic host `test_handle_objects.cpp` PASS: HLE stdcall stack/PC,
+  pending retry, alias wake, object destruction, Process table isolation and
+  thread-exit callback/abandonment. Uses no RTTI or host C++ exceptions.
+- Local CPU oracle cannot compile because the environment lacks 32-bit libc
+  headers (`bits/wordsize.h`). No local devkitA64/libnx. Full CPU oracle and
+  Switch/JIT builds MUST be read from CI for this batch's exact resulting SHA.
+  No new physical Switch validation; preserve Paint baseline `2c9a1fa` NRO.
+
+Test-environment notes: local GCC MinGW POSIX variant fails pre-existing CRT
+TLS/C++ cases, while the Win32 variant used by CI passes. Rerunning the file
+picker scenario with a pre-existing `build-host/guest/My Documents` directory
+created by gui_shell32 makes its semantic first-row click select a directory.
+Use a fresh generated guest working directory when repeating that scenario;
+this is not evidence of a runtime regression. Never delete user program data.
+
+Remaining contracts: nested callbacks still execute synchronously and cannot
+safely park the guest with an outer native callback stack alive. Prioritize a
+reproducible WndProc+worker wait test and resumable callback design next.
+Thread stack/TEB/TLS storage is retained until Process destruction; full
+DLL_THREAD_ATTACH/DETACH, named objects, access-mask enforcement, inheritance,
+protect-from-close, APC, MsgWait* and isolated per-thread USER32 queues remain.
+GetCurrentProcess pseudo-handle as a source object is not implemented (only
+current-thread conversion); cross-process duplicate is unsupported. Standard
+console HANDLE closure retains the old runtime policy. Active-wait handle
+closure returns WAIT_FAILED defensively; Windows defines that case as undefined.
+Do NOT call this complete NT object/security or thread-lifetime support.
+JIT stays an independent probe, with no x86 dynarec integration.
+
+Contract references: Microsoft Learn DuplicateHandle / WaitForMultipleObjects
+and Microsoft's Old New Thing 2011-02-25 duplicate-object wait-all explanation.

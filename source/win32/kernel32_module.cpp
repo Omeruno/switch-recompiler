@@ -6,7 +6,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <set>
 
 #include "hle_util.h"
 #include "seh_dispatch.h"
@@ -176,18 +175,14 @@ HostCallOutcome K32_ExitProcess(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return r;
 }
 
-// Worker-thread API. Handles use a reserved synthetic range until the
-// shared NT object handle table is available.
-constexpr uint32_t kThreadHandleBase = 0xE1000000u;
-std::set<uint32_t> g_openThreadHandles;
-uint32_t ThreadHandle(uint32_t id) { return kThreadHandleBase | (id & 0x00FFFFFFu); }
+// HANDLE references are process-owned and independent of guest thread IDs.
 rt::GuestThread* ThreadFromHandle(uint32_t handle) {
     if (!rt::g_process) return nullptr;
     if (handle == 0xFFFFFFFEu) return rt::g_process->Scheduler().Current()
         ? rt::g_process->Scheduler().Current() : &rt::g_process->MainThread();
-    if ((handle & 0xFF000000u) != kThreadHandleBase ||
-        g_openThreadHandles.find(handle)==g_openThreadHandles.end()) return nullptr;
-    return rt::g_process->FindThread(handle & 0x00FFFFFFu);
+    auto object = rt::Handles().Get(handle);
+    if (!object || object->type != rt::ObjectKind::Thread) return nullptr;
+    return rt::g_process->FindThread(static_cast<rt::ThreadObject&>(*object).threadId);
 }
 HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t stack=Arg(c,m,1), start=Arg(c,m,2);
@@ -204,24 +199,14 @@ HostCallOutcome K32_CreateThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
         return Ret(0);
     }
     if (idPtr && m.IsRangeMapped(idPtr,4)) m.Write32(idPtr,worker->id);
-    uint32_t handle=ThreadHandle(worker->id);
-    g_openThreadHandles.insert(handle);
+    uint32_t handle=rt::Handles().Add(std::make_shared<rt::ThreadObject>(worker->id));
     return Ret(handle);
-}
-// Expose thread-handle validation and closure to KERNEL32 synchronization
-// and file-HANDLE dispatch. Closing a HANDLE does not destroy the thread.
-bool IsValidGuestThreadHandleLocal(uint32_t handle) {
-    return ThreadFromHandle(handle)!=nullptr;
-}
-bool CloseGuestThreadHandleLocal(uint32_t handle) {
-    if (!g_openThreadHandles.erase(handle)) return false;
-    if (rt::g_process) rt::g_process->Scheduler().Signal(handle, true);
-    return true;
 }
 HostCallOutcome K32_GetExitCodeThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=ThreadFromHandle(Arg(c,m,0));
     uint32_t output=Arg(c,m,1);
-    if (!t || !output || !m.IsRangeMapped(output,4)) {
+    if (!t) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0); }
+    if (!output || !m.IsRangeMapped(output,4)) {
         SetLastError(m,ERROR_INVALID_PARAMETER);return Ret(0);
     }
     m.Write32(output,t->exitCode);return Ret(1);
@@ -254,12 +239,7 @@ HostCallOutcome K32_WorkerReturn(cpu::CpuState& c, cpu::IGuestMemory&) {
 }
 HostCallOutcome K32_ExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::GuestThread* t=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
-    if (!t || t==&rt::g_process->MainThread()) {
-        // ExitThread on the initial thread terminates the process only
-        // when there are no other runnable threads. For now fail visibly
-        // rather than silently killing all guest workers.
-        cpu::FatalError("ExitThread on main thread needs process lifetime management");
-    }
+    if (!t) cpu::FatalError("ExitThread outside a scheduled guest thread");
     rt::g_process->Scheduler().Exit(*t,Arg(c,m,0));
     HostCallOutcome out;
     out.customReturn=true; // nonreturning; outer loop sees Exited state
@@ -277,21 +257,24 @@ HostCallOutcome K32_GetStdHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(0xFFFFFFFFu);
 }
 
-bool IsConsoleOut(uint32_t h) { return h == kStdOutput || h == kStdError; }
-
 }  // namespace
 
 // Win32 HANDLE utilities implemented by the KERNEL32 thread layer.
-bool HleIsOpenThreadHandle(uint32_t h) { return IsValidGuestThreadHandleLocal(h); }
-bool HleCloseThreadHandle(uint32_t h) { return CloseGuestThreadHandleLocal(h); }
+rt::GuestThread* HleThreadFromHandle(uint32_t h) { return ThreadFromHandle(h); }
 
 // Используется файловым вводом-выводом (kernel32_file.cpp) для консольных хендлов.
 bool HleConsoleWrite(uint32_t handle, const char* data, size_t len) {
-    if (!IsConsoleOut(handle)) return false;
-    ConsoleWrite(data, len, handle == kStdError);
+    auto file=rt::Files().Get(handle);
+    if (!file || (file->kind!=rt::OpenFile::ConsoleOut &&
+                  file->kind!=rt::OpenFile::ConsoleErr)) return false;
+    ConsoleWrite(data, len, file->kind==rt::OpenFile::ConsoleErr);
     return true;
 }
-bool HleIsConsoleHandle(uint32_t handle) { return handle == kStdInput || IsConsoleOut(handle); }
+bool HleIsConsoleHandle(uint32_t handle) {
+    auto file=rt::Files().Get(handle);
+    return file && (file->kind==rt::OpenFile::ConsoleIn ||
+                    file->kind==rt::OpenFile::ConsoleOut || file->kind==rt::OpenFile::ConsoleErr);
+}
 
 } // namespace win32
 

@@ -13,7 +13,8 @@
 - Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
 - Интерпретатор x86, PE EXE/DLL loader, импорты, Win32 HLE, файловые диалоги, USER32/GDI существуют, но совместимость неполная.
 - SEH: RaiseException, dispatch CPU traps, FS:[0], CONTEXT32 частично включая x87/SSE, RtlUnwind, nested/collided subset; не подтверждать полноту SEH без пограничных тестов.
-- GuestThread, собственные TEB/stack/TLS и GuestScheduler имеются. CI `39633725215` на `a9e62cff`: successful. Потоки пока не исполняются конкурентно; worker return thunk ещё временный. 
+- GuestThread/TEB/stack/TLS и GuestScheduler исполняют x86 по квантам в winrun и Switch. CreateThread/worker return, Sleep, single/multiple waits и critical sections существуют. Базовый HEAD `83b299b` имеет зелёный CI `39650590532`; новые изменения проверять отдельно.
+- Добавлены общая process-owned HANDLE table, независимое дублирование объектов, alias wake, abandoned mutex и ExitThread главного потока. Наличие кода не заменяет CI и аппаратную проверку.
 - Визуальный desktop-shell ещё не существует как законченная функция.
 
 ## Этап A — корректность и регрессионная база [постоянно]
@@ -72,12 +73,12 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 - Таблица совместимости программ, настройка производительности и контроллеров.
 - x64 — отдельная архитектурная программа (x86-64 decoder/ABI/PE32+/Win64); не включать молча в текущий XP x86 scope.
 
-## Ближайшая очередь коммитов
-1. GuestScheduler — метод исполнения кванта через callback с устойчивыми правилами остановки.
-2. Исполнитель планировщика в host winrun, тест двух независимых x86 рабочих потоков.
-3. Безопасный ExitThread trampoline, CreateThread/HANDLE, честное завершение только текущего гостя.
-4. Thread-scoped Win32 last-error/TEB, SEH and synchronization.
-5. Первый renderer-backend interface как отдельный модуль без переписывания проверенного GDI до результатов теста.
+## Ближайшая очередь работ
+1. Проверить текущий HANDLE/lifecycle пакет: хостовые ABI-тесты, MinGW-гости, CPU oracle и Switch build; отдельно проверить Paint на железе.
+2. Убрать блокировку планировщика вложенными guest callbacks: реентерабельное ожидание, правильный current-thread/TEB и завершение callback. Добавить воспроизводящий guest с WndProc и рабочим потоком.
+3. Довести жизненный цикл потоков: DLL_THREAD_ATTACH/DETACH, TLS callbacks и освобождение stack/TEB/TLS после безопасной точки.
+4. Per-thread USER32 queues и MsgWait*, затем APC/alertable waits. Отдельно — named objects и access/inherit/protect HANDLE policies.
+5. Ввести renderer-backend interface без переписывания эталонного CPU GDI. Desktop-shell и JIT — после соответствующих acceptance gates.
 
 Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.
 

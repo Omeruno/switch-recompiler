@@ -355,6 +355,10 @@ int main(int argc, char** argv) {
         if (!running || !running->IsRunnable() || running->yieldRequested || quantumLeft==0) {
             running=proc.Scheduler().Next();
             if(!running) {
+                if(!proc.Scheduler().HasLiveThreads()) {
+                    if(dumpPath) DumpScreen(dumpPath);
+                    return static_cast<int>(proc.Scheduler().LastExitCode());
+                }
                 if(proc.Scheduler().HasPendingTimers()) {
                     rt::Clock::Sleep(1);
                     continue;

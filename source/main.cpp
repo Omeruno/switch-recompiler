@@ -321,6 +321,10 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         if (!runningThread || !runningThread->IsRunnable() || runningThread->yieldRequested || quantumLeft == 0) {
             runningThread = proc.Scheduler().Next();
             if (!runningThread) {
+                if(!proc.Scheduler().HasLiveThreads()) {
+                    stopReason = "guest called exit()";
+                    break;
+                }
                 if(proc.Scheduler().HasPendingTimers()) {
                     rt::Clock::Sleep(1);
                     ++steps;

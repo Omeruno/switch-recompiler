@@ -128,42 +128,20 @@ OpenFile::~OpenFile() {
     if (deleteOnClose && !hostPath.empty()) std::remove(hostPath.c_str());
 }
 
-FileTable::FileTable() {
-    auto in = std::make_shared<OpenFile>();
-    in->kind = OpenFile::ConsoleIn;
-    in->canRead = true;
-    auto out = std::make_shared<OpenFile>();
-    out->kind = OpenFile::ConsoleOut;
-    out->canWrite = true;
-    auto err = std::make_shared<OpenFile>();
-    err->kind = OpenFile::ConsoleErr;
-    err->canWrite = true;
-    handles_[kStdIn] = in;
-    handles_[kStdOut] = out;
-    handles_[kStdErr] = err;
-}
-
+FileTable::FileTable() = default;
 uint32_t FileTable::Add(std::shared_ptr<OpenFile> f) {
-    uint32_t h = next_;
-    next_ += 4;
-    handles_[h] = std::move(f);
-    return h;
+    return Handles().Add(std::move(f));
 }
-
 std::shared_ptr<OpenFile> FileTable::Get(uint32_t handle) const {
-    auto it = handles_.find(handle);
-    return it == handles_.end() ? nullptr : it->second;
+    auto object = Handles().Get(handle);
+    if (!object || object->type != ObjectKind::File) return nullptr;
+    return std::static_pointer_cast<OpenFile>(object);
 }
-
 bool FileTable::Close(uint32_t handle) {
-    if (handle == kStdIn || handle == kStdOut || handle == kStdErr) return true;
-    return handles_.erase(handle) != 0;
+    return Get(handle) && CloseGuestHandle(handle);
 }
-
 uint32_t FileTable::Duplicate(uint32_t handle) {
-    auto f = Get(handle);
-    if (!f) return 0;
-    return Add(f);
+    return Get(handle) ? Handles().Duplicate(handle) : 0;
 }
 
 } // namespace rt

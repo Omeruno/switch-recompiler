@@ -10,3 +10,7 @@
 
 Актуальное описание: [`../ARCHITECTURE.md`](../ARCHITECTURE.md) и
 [`../POSTMORTEM.md`](../POSTMORTEM.md).
+
+`ARCHITECTURE_v1.md` — прежнее описание первого рантайма.
+В нём нет актуальных DLL loader, CPU x87/SSE, SEH и потоков.
+Для v2 читать `../ARCHITECTURE.md`, `../ROADMAP.md` и последние записи `../AI_HANDOFF.md`.

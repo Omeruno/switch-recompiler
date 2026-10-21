@@ -19,8 +19,7 @@
 namespace win32 {
 
 bool HleConsoleWrite(uint32_t handle, const char* data, size_t len); // kernel32_module.cpp
-bool HleCloseSyncHandle(uint32_t handle);                            // kernel32_sync.cpp
-bool HleCloseThreadHandle(uint32_t handle);                          // kernel32_module.cpp
+rt::GuestThread* HleThreadFromHandle(uint32_t handle); // kernel32_module.cpp
 
 namespace {
 
@@ -218,38 +217,43 @@ HostCallOutcome K32_GetFileType(cpu::CpuState& c, cpu::IGuestMemory& m) {
     }
 }
 HostCallOutcome K32_CloseHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t h = Arg(c, m, 0);
-    if (rt::Files().Get(h)) { rt::Files().Close(h); return Ret(1); }
-    if (HleCloseSyncHandle(h)) return Ret(1);
-    if (HleCloseThreadHandle(h)) return Ret(1);
-    SetLastError(m, ERROR_INVALID_HANDLE);
+    if (rt::CloseGuestHandle(Arg(c,m,0))) return Ret(1);
+    SetLastError(m,ERROR_INVALID_HANDLE);
     return Ret(0);
 }
-// BOOL DuplicateHandle(srcProc, src, dstProc, LPHANDLE dst, access, inherit, options)
-// BOOL DuplicateHandle(srcProc, src, dstProc, LPHANDLE dst, access, inherit, options)
-// Only file descriptors currently support independent host-side references.
-// Returning the original numeric value for a sync/thread handle would make
-// CloseHandle on either alias invalidate the other, violating Win32 semantics.
+// Current-process duplication; the object survives until its last reference.
+// Access masks/security descriptors and cross-process handles remain unsupported.
 HostCallOutcome K32_DuplicateHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const uint32_t src = Arg(c,m,1), dst = Arg(c,m,3);
-    const uint32_t options = Arg(c,m,6);
-    if (!dst || !m.IsRangeMapped(dst,4) || (options & ~0x3u)) {
-        SetLastError(m,ERROR_INVALID_PARAMETER);
-        return Ret(0);
+    const uint32_t sourceProcess=Arg(c,m,0), src=Arg(c,m,1);
+    const uint32_t targetProcess=Arg(c,m,2), dst=Arg(c,m,3);
+    const uint32_t options=Arg(c,m,6);
+    if (sourceProcess!=0xffffffffu) {
+        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
     }
-    if (!rt::Files().Get(src)) {
-        // Fail closed until a shared, reference-counted HANDLE object table
-        // supports thread, event, mutex and semaphore duplication.
-        SetLastError(m,ERROR_INVALID_HANDLE);
-        return Ret(0);
+    auto object=rt::Handles().Get(src);
+    if (src==0xfffffffeu) {
+        if (auto* thread=HleThreadFromHandle(src)) {
+            // All handles to one thread share its canonical object identity.
+            for (const auto& candidate : rt::Handles().Objects())
+                if (candidate->type==rt::ObjectKind::Thread &&
+                    static_cast<rt::ThreadObject&>(*candidate).threadId==thread->id)
+                    object=candidate;
+            if (!object) object=std::make_shared<rt::ThreadObject>(thread->id);
+        }
     }
-    const uint32_t duplicated = rt::Files().Duplicate(src);
-    if (!duplicated) {
-        SetLastError(m,ERROR_INVALID_HANDLE);
-        return Ret(0);
+    // Pin the object before DUPLICATE_CLOSE_SOURCE, even on error paths.
+    if ((options & 1u) && src!=0xfffffffeu) rt::CloseGuestHandle(src);
+    if (!object) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0); }
+    if ((options & ~3u) || (dst && targetProcess && !m.IsRangeMapped(dst,4))) {
+        SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0);
     }
-    m.Write32(dst,duplicated);
-    if ((options & 1u) != 0) rt::Files().Close(src); // DUPLICATE_CLOSE_SOURCE
+    if (targetProcess==0 && (options & 1u)) return Ret(1);
+    if (targetProcess!=0xffffffffu) {
+        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
+    }
+    const uint32_t duplicated=rt::Handles().Add(object);
+    if (!duplicated) { SetLastError(m,ERROR_NOT_ENOUGH_MEMORY); return Ret(0); }
+    if (dst) m.Write32(dst,duplicated); // NULL output is legacy Win32 behavior.
     return Ret(1);
 }
 HostCallOutcome K32_GetFileTime(cpu::CpuState& c, cpu::IGuestMemory& m) {
