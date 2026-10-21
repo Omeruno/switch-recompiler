@@ -1770,19 +1770,24 @@ HostCallOutcome Impl_GetLastError(cpu::CpuState&, cpu::IGuestMemory&) {
     return result;
 }
 
-// void RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags,
-//                      DWORD nNumberOfArguments, const ULONG_PTR* lpArguments)
-//
-// ЭКСПЕРИМЕНТАЛЬНО, честно не корректно: у нас нет настоящего SEH (размотки
-// стека, цепочки обработчиков __try/__except). Судя по контексту находки —
-// этот конкретный вызов, похоже, часть ШТАТНОЙ логики MFC "попробовать
-// необязательную возможность (GDI+), если не вышло — тихо продолжить без
-// неё", то есть исключение ожидаемо ловится СОСЕДНИМ обработчиком, а не
-// является настоящей фатальной ошибкой. Пробуем просто "проглотить" —
-// вернуться как ни в чём не бывало — и посмотреть, что будет дальше.
-HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState&, cpu::IGuestMemory&) {
-    HostCallOutcome result;
-    return result;
+// Win32 RaiseException is noreturn unless a real SEH handler processes it.
+// Silently returning was incorrect: the MSVC delay-load helper then attempts
+// to jump through unresolved pointers (often jmp eax with EAX==0).
+// Until guest SEH dispatch is implemented, fail explicitly with exception
+// metadata instead of disguising a missing import as a CPU instruction bug.
+HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMemory& mem) {
+    cpu::g_sehRaised = true;
+    cpu::g_sehExceptionCode = ReadArg(c, mem, 0);
+    cpu::g_sehExceptionFlags = ReadArg(c, mem, 1);
+    uint32_t count = ReadArg(c, mem, 2);
+    uint32_t args = ReadArg(c, mem, 3);
+    cpu::g_sehExceptionArgumentCount = count;
+    for (unsigned i = 0; i < 4; ++i)
+        cpu::g_sehExceptionArguments[i] =
+            i < count && args && mem.IsRangeMapped(args + i * 4, 4) ?
+            mem.Read32(args + i * 4) : 0;
+    cpu::g_lastKnownEip = mem.IsRangeMapped(c.ESP(), 4) ? mem.Read32(c.ESP()) : c.eip;
+    cpu::FatalError("Unhandled Win32 RaiseException (guest SEH dispatch not implemented)");
 }
 
 // BOOL QueryPerformanceCounter(LARGE_INTEGER* lpCount) — высокоточный
