@@ -108,3 +108,10 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - Current commits `d692d27`, `e03114e`, `17df8d5`: `UnwindToFrame` now supports `targetFrame=0` exit-unwind, walks to `FS:[0]` sentinel `0xffffffff`, sets both `EXCEPTION_UNWINDING` and `EXCEPTION_EXIT_UNWIND`, calls each guest termination handler, clears chain, resumes at TargetIp; `gui_unwind.c` exercises flags and chain removal.
 - **Not yet CI-confirmed for latest commit** (GitHub Actions jobs backlogged and sometimes triggered out of order). Confirm exact SHA and host test output before advising Switch deploy.
 - Still unsupported: collided/nested dispositions, unwind into unrelated stack frame, NT unwind/context and guest threads.
+
+## 2026-10-21 nested and collided SEH work
+- User confirmed prior exit-unwind CI run completed green; `17df8d5` / `ffd2cae` show successful workflow runs.
+- New `seh_dispatch.cpp` changes: `41ec7a9` tracks currently executing guest exception handler registrations on the single guest thread, skips the same handler during nested `RaiseException`, and sets `EXCEPTION_NESTED_CALL`; `tests/guest/gui_seh_nested.c` tests inner/outer handler and counts. This is partial nested exception support, **not full NT nested frame semantics**.
+- New `e022e5e` passes guest dispatcher-context pointer to termination handlers, accepts `ExceptionCollidedUnwind` when handler supplies a validated forward frame inside pre-scanned unwind chain; rejects backwards or malformed frame redirects. `tests/guest/gui_seh_collided.c` checks skipped frame, collision flag, and chain head. This is a conservative subset, **not complete collision/unwind state management**.
+- New SHA CI must be checked before claiming tests pass. Keep hardware-confirmed Paint baseline `2c9a1fa` available.
+- Next: thread-owned active SEH state, proper x86 CONTEXT FPU / SSE fields, ensure nested-dispatch exception-record scratch buffers and callback stack isolation are robust.
