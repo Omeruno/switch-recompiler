@@ -37,6 +37,7 @@ struct GuestThread {
     struct ActiveSehFrame { uint32_t frame = 0; };
     ActiveSehFrame activeSeh[16] = {};
     uint32_t activeSehDepth = 0;
+    uint32_t callbackDepth = 0; // native guest-call frames parked on this guest's fiber
 
     bool IsRunnable() const {
         return status == GuestThreadStatus::Runnable && suspendCount == 0;

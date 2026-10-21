@@ -25,6 +25,7 @@
 #include "cpu/interpreter.h"
 #include "runtime/clock.h"
 #include "runtime/process.h"
+#include "runtime/guest_execution.h"
 #include "win32/user32.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
@@ -304,105 +305,63 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         return;
     }
 
-    rt::GuestThread* runningThread = nullptr;
-    std::unique_ptr<cpu::Interpreter> runningInterpreter;
-    unsigned quantumLeft = 0;
-
-    SafePrint("\n[+] Executing from entry point 0x%x:\n", cpuState.eip);
-    SafeConsoleUpdate(); // показываем прогресс сразу, на случай если что-то пойдёт не так дальше
-
-    int shown = 0;
-    int steps = 0;
-    const char* stopReason = "max steps reached";
-    const cpu::CpuException* stopException = nullptr;
-
-    while (steps < maxSteps)
-    {
-        if (!runningThread || !runningThread->IsRunnable() || runningThread->yieldRequested || quantumLeft == 0) {
-            runningThread = proc.Scheduler().Next();
-            if (!runningThread) {
-                if(!proc.Scheduler().HasLiveThreads()) {
-                    stopReason = "guest called exit()";
-                    break;
-                }
-                if(proc.Scheduler().HasPendingTimers()) {
-                    rt::Clock::Sleep(1);
-                    ++steps;
-                    continue;
-                }
-                stopReason = "no runnable guest threads";
-                break;
-            }
-            runningThread->yieldRequested=false;
-            runningInterpreter.reset(new cpu::Interpreter(mem, runningThread->teb, runningThread->teb));
-            quantumLeft = 256;
-        }
-        --quantumLeft;
-        cpu::CpuState& activeCpu = runningThread->cpu;
-        if (activeCpu.eip == 0)
-        {
-            stopReason = "called unimplemented import (address 0)";
-            break;
-        }
-
+    rt::GuestThread* runningThread=nullptr;
+    SafePrint("\n[+] Executing from entry point 0x%x:\n",cpuState.eip);
+    SafeConsoleUpdate();
+    int shown=0, steps=0;
+    const char* stopReason="max steps reached";
+    cpu::CpuException savedException{};
+    const cpu::CpuException* stopException=nullptr;
+    rt::GuestExecution execution(proc,[&](rt::GuestThread& thread) {
+        runningThread=&thread;
+        auto& activeCpu=thread.cpu;
+        if (++steps>maxSteps) return false;
+        if (!activeCpu.eip) { stopReason="called unimplemented import (address 0)"; return false; }
         win32::HostCallOutcome outcome;
-        if (win32::TryHandleHostCall(activeCpu, mem, outcome))
-        {
-            if (shown < maxLinesToShow)
-            {
-                SafePrint(" [host] eax=0x%x%s\n", outcome.returnValue,
-                       outcome.requestExit ? " (exit requested)" : "");
-                shown++;
+        if (win32::TryHandleHostCall(activeCpu,mem,outcome)) {
+            if (shown++<maxLinesToShow) {
+                SafePrint(" [host] eax=0x%x%s\n",outcome.returnValue,
+                          outcome.requestExit ? " (exit requested)" : "");
                 SafeConsoleUpdate();
             }
-            if (outcome.requestExit)
-            {
-                stopReason = "guest called exit()";
-                break;
+            if (outcome.requestExit) { stopReason="guest called exit()"; return false; }
+            return true;
+        }
+        cpu::Interpreter interpreter(mem,thread.teb,thread.teb);
+        cpu::g_lastKnownEip=activeCpu.eip;
+        cpu::Instruction instruction;
+        uint32_t previous=activeCpu.eip;
+        auto result=interpreter.Step(activeCpu,&instruction);
+        if (shown++<maxLinesToShow) {
+            SafePrint(" %06x: op %02x (len %u)\n",previous,instruction.rawOpcodeForDebug,instruction.length);
+            SafeConsoleUpdate();
+        }
+        if (result==cpu::StepResult::Halted) {
+            if (&thread!=&proc.MainThread()) {
+                proc.Scheduler().Exit(thread,activeCpu.Get(cpu::Reg32::EAX));
+                return true;
             }
-            steps++;
-            continue;
+            stopReason="HLT"; return false;
         }
-
-        cpu::Instruction instr;
-        uint32_t eipBefore = activeCpu.eip;
-        cpu::g_lastKnownEip = eipBefore; // НАЙДЕНО ЭТИМ СИСТЕМНЫМ ПРОСМОТРОМ: раньше
-                                          // обновлялось только во вложенном цикле
-                                          // (message_loop.cpp) — краши в ОСНОВНОМ
-                                          // цикле на реальном Switch показывали бы
-                                          // устаревший/нулевой EIP в диагностике.
-        auto result = runningInterpreter->Step(activeCpu, &instr);
-
-        if (shown < maxLinesToShow)
-        {
-            SafePrint(" %06x: op %02x (len %u)\n", eipBefore, instr.rawOpcodeForDebug, instr.length);
-            shown++;
-            SafeConsoleUpdate(); // печатаем прогресс "в реальном времени"
+        if (result==cpu::StepResult::Continue) return true;
+        if (win32::seh::DispatchCpuFault(activeCpu,mem,thread.teb,interpreter.LastException())==
+                win32::seh::DispatchResult::Handled) return true;
+        savedException=interpreter.LastException();
+        stopException=&savedException;
+        stopReason=result==cpu::StepResult::UnknownOpcode ? "unknown opcode" : "guest exception";
+        return false;
+    });
+    while (steps<maxSteps && !execution.Stopped()) {
+        auto result=execution.RunOne();
+        runningThread=proc.Scheduler().Current();
+        if (result==rt::GuestExecution::Result::AllocationFailed) {
+            stopReason="cannot allocate guest native continuation stack"; break;
         }
-
-        if (result == cpu::StepResult::Halted) {
-            if (runningThread != &proc.MainThread()) {
-                proc.Scheduler().Exit(*runningThread, activeCpu.Get(cpu::Reg32::EAX));
-                ++steps;
-                continue;
-            }
-            stopReason = "HLT"; break;
+        if (result==rt::GuestExecution::Result::Idle) {
+            if (!proc.Scheduler().HasLiveThreads()) { stopReason="guest called exit()"; break; }
+            if (proc.Scheduler().HasPendingTimers()) { rt::Clock::Sleep(1); continue; }
+            stopReason="no runnable guest threads"; break;
         }
-        if ((result == cpu::StepResult::UnknownOpcode || result == cpu::StepResult::Exception) &&
-            win32::seh::DispatchCpuFault(activeCpu, mem, runningThread->teb, runningInterpreter->LastException()) == win32::seh::DispatchResult::Handled) {
-            ++steps;
-            continue;
-        }
-        if (result == cpu::StepResult::UnknownOpcode) { stopReason = "unknown opcode"; break; }
-        if (result == cpu::StepResult::Exception)
-        {
-            const cpu::CpuException& e = runningInterpreter->LastException();
-            stopException = &e;
-            SafePrint("[!] Guest exception 0x%08x at EIP=0x%x (address 0x%x)\n", e.code, e.eip, e.faultAddress);
-            stopReason = "guest exception";
-            break;
-        }
-        steps++;
     }
 
     if (strcmp(stopReason, "guest called exit()") != 0 && strcmp(stopReason, "max steps reached") != 0)

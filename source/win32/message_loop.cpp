@@ -3,6 +3,7 @@
 #include "host_functions.h" // TryHandleHostCall, HostCallOutcome
 #include "../cpu/interpreter.h"
 #include "../runtime/process.h"
+#include "../runtime/guest_execution.h"
 #include "../decoder/x86_decoder.h"
 #include <cstdio>
 
@@ -122,13 +123,21 @@ void* g_threadStackBase = nullptr;
 uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
                                    uint32_t functionAddr, const std::vector<uint32_t>& args,
                                    uint32_t fsBase, uint32_t gsBase, int maxSteps) {
-    g_nestedCallDepth++;
-    if (g_nestedCallDepth > kMaxNestedCallDepth) {
+    if (!rt::GuestExecution::Checkpoint()) return 0;
+    rt::GuestThread* owner=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    uint32_t fallbackDepth=0;
+    // Unscheduled v1 callbacks retain their existing recursion accounting.
+    uint32_t* depth=owner ? &owner->callbackDepth : &fallbackDepth;
+    if (!owner) fallbackDepth=static_cast<uint32_t>(g_nestedCallDepth);
+    ++*depth;
+    if (!owner) g_nestedCallDepth=static_cast<int>(*depth);
+    if (*depth > kMaxNestedCallDepth) {
         cpu::FatalError(
             "CallGuestFunctionStdcall: превышена максимальная глубина вложенности "
             "(похоже на реальную рекурсию — WndProc зациклился сам на себя, "
             "например через UpdateWindow/InvalidateRect внутри обработки клика)");
     }
+    if (rt::GuestExecution::Active() && owner) fsBase=gsBase=owner->teb;
 
     // Реальный x86 никогда сам не сгенерирует этот адрес — используем его как
     // "фейковый" адрес возврата, по которому поймём, что вложенная функция
@@ -151,6 +160,7 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
     uint32_t lastEip = functionAddr;
     while (cpu.eip != SENTINEL) {
         if (g_guestExitRequested) break; // процесс завершается: разматываемся
+        if (!rt::GuestExecution::Checkpoint()) break;
         if (steps >= maxSteps) {
             cpu::FatalError(
                 "Вложенный вызов гостевой функции не вернулся (превышен лимит "
@@ -250,7 +260,8 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
         steps++;
     }
 
-    g_nestedCallDepth--;
+    --*depth;
+    if (!owner) g_nestedCallDepth=static_cast<int>(*depth);
     return cpu.Get(cpu::Reg32::EAX);
 }
 

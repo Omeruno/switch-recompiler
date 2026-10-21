@@ -19,6 +19,15 @@ src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $ro
 mkdir -p "$out"
 failed=0
 
+# Native continuation ABI (also tested on AArch64/QEMU by CI).
+if $cxx $flags "$root/tests/test_host_fiber.cpp" "$root/source/runtime/host_fiber.cpp" -o "$out/test_host_fiber" &&
+   "$out/test_host_fiber"; then
+    :
+else
+    echo "   HOST FIBER FAILED"
+    failed=1
+fi
+
 # Fast, standalone guest scheduler regression (no PE emulator link step).
 printf '== guest scheduler\\n'
 if $cxx $flags "$root/tests/test_guest_scheduler.cpp" -o "$out/test_guest_scheduler" &&
@@ -52,7 +61,7 @@ for cpp in $src; do
 done
 src="$objects"
 
-for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects; do
+for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
@@ -73,12 +82,15 @@ done
 # Программы Windows из tests/guest через winrun (нужен mingw-w64)
 if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     printf '== guest programs\n'
+    # Isolate generated files/directories so repeated suites cannot change
+    # which directory-list row the scripted file picker selects.
+    guestRoot=$(mktemp -d "$out/guest-run.XXXXXX")
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
-    sh "$root/tests/guest/build.sh" "$out/guest"
+    sh "$root/tests/guest/build.sh" "$guestRoot"
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
-    if (cd "$out/guest" && "$out/winrun" --probe-x86-threads "$out/guest/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then
+    if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then
         tail -n 1 "$out/x86_threads.log"
     else
         echo "   x86 worker execution: FAILED"
@@ -86,18 +98,18 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         failed=1
     fi
     # Verify two separately allocated guest TEB/TLS/stacks before execution.
-    if (cd "$out/guest" && "$out/winrun" --probe-threads "$out/guest/gui_seh.exe" > "$out/thread_probe.log" 2>&1); then
+    if (cd "$guestRoot" && "$out/winrun" --probe-threads "$guestRoot/gui_seh.exe" > "$out/thread_probe.log" 2>&1); then
         tail -n 1 "$out/thread_probe.log"
     else
         echo "   guest worker isolation: FAILED"
         tail -n 20 "$out/thread_probe.log"
         failed=1
     fi
-    for exe in "$out"/guest/*.exe; do
+    for exe in "$guestRoot"/*.exe; do
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
-        # программы работают в своём каталоге: C:\ гостя = build-host/guest
-        if (cd "$out/guest" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
+        # программы работают в своём каталоге: C:\ гостя = свежий guest-run каталог
+        if (cd "$guestRoot" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
             tail -n 1 "$out/$(basename "$exe").log"
         else
             echo "   $(basename "$exe"): НЕ ПРОЙДЕН"
@@ -108,16 +120,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # End-to-end dialog test: open an existing file, then save a new file.
     # The virtual 800x600 desktop centers a 530x390 dialog. Script a click
     # on the dialog Open/Save button at approximately (575,420).
-    printf 'BMtest' > "$out/guest/sample.bmp"
-    rm -f "$out/guest/output.bmp"
-    if (cd "$out/guest" &&
+    printf 'BMtest' > "$guestRoot/sample.bmp"
+    if (cd "$guestRoot" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe open > "$out/comdlg_open.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_open.log" &&
         SR_COMDLG_TRACE=1 "$out/winrun" --new-ui -f 60 -c 8:-1003:0 -c 16:575:420 gui_comdlg_interactive.exe list > "$out/comdlg_list.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_list.log" &&
         "$out/winrun" --new-ui -f 60 -c 8:575:420 gui_comdlg_interactive.exe save > "$out/comdlg_save.log" 2>&1 &&
         grep -q "PASSED" "$out/comdlg_save.log" &&
-        [ -f "$out/guest/output.bmp" ]); then
+        [ -f "$guestRoot/output.bmp" ]); then
         echo "comdlg32 end-to-end open/save: PASSED"
     else
         echo "   comdlg32 end-to-end: FAILED"
@@ -128,7 +139,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     fi
     # Run the special-folder test AFTER file-dialog scenarios: it creates
     # My Documents, otherwise the list's first item becomes a directory.
-    if (cd "$out/guest" && "$out/winrun" gui_shell32.exe > "$out/gui_shell32.exe.log" 2>&1); then
+    if (cd "$guestRoot" && "$out/winrun" gui_shell32.exe > "$out/gui_shell32.exe.log" 2>&1); then
         tail -n 1 "$out/gui_shell32.exe.log"
     else
         echo "   gui_shell32.exe: НЕ ПРОЙДЕН"

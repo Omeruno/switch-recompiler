@@ -11,6 +11,7 @@
 #include <cstdio>
 
 #include "../runtime/clock.h"
+#include "../runtime/guest_execution.h"
 #include "user32.h"
 
 namespace win32 {
@@ -226,6 +227,10 @@ void PresentIfNeeded(bool force) {
 bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remove, bool wait) {
     State& s = S();
     for (;;) {
+        if (!rt::GuestExecution::Checkpoint()) {
+            out=Msg(); out.message=WM_QUIT;
+            return true;
+        }
         // ввод с платформы — не чаще раза в несколько мс (PeekMessage в цикле игры)
         uint32_t now = NowMs();
         if (now - g_lastPollMs >= 4) {
@@ -287,6 +292,14 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             return false;
         }
         PresentIfNeeded(true);
+        // A peer can post the message we need. Do not enter a platform's
+        // unbounded native wait while that peer's guest CPU is parked.
+        if (rt::GuestExecution::Active() && rt::g_process->Scheduler().HasLivePeer(
+                rt::g_process->CurrentThreadId())) {
+            rt::g_process->Scheduler().Sleep(*rt::g_process->Scheduler().Current(),1);
+            rt::GuestExecution::Yield();
+            continue;
+        }
         int timeout = -1;
         for (const Timer& t : s.timers) {
             int d = t.due > now ? static_cast<int>(t.due - now) : 0;

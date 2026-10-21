@@ -22,6 +22,7 @@
 
 #include "source/cpu/interpreter.h"
 #include "source/runtime/process.h"
+#include "source/runtime/guest_execution.h"
 #include "source/win32/gdi.h"
 #include "source/win32/host_functions.h"
 #include "source/win32/message_loop.h"
@@ -345,58 +346,46 @@ int main(int argc, char** argv) {
     }
     if (!proc.InitializeModules(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
 
-    // Every running x86 CPU context is owned by its GuestThread. Keep the
-    // original one-thread behavior, but rotate after a bounded instruction
-    // quantum as soon as a guest CreateThread registers a worker.
     rt::GuestThread* running=nullptr;
-    std::unique_ptr<cpu::Interpreter> runningInterpreter;
-    unsigned quantumLeft=0;
-    for (uint64_t steps=0;;++steps) {
-        if (!running || !running->IsRunnable() || running->yieldRequested || quantumLeft==0) {
-            running=proc.Scheduler().Next();
-            if(!running) {
-                if(!proc.Scheduler().HasLiveThreads()) {
-                    if(dumpPath) DumpScreen(dumpPath);
-                    return static_cast<int>(proc.Scheduler().LastExitCode());
-                }
-                if(proc.Scheduler().HasPendingTimers()) {
-                    rt::Clock::Sleep(1);
-                    continue;
-                }
-                std::fprintf(stderr,"winrun: no runnable guest threads (all waiting/exited)\n");
-                return 3;
-            }
-            running->yieldRequested=false;
-            quantumLeft=256;
-            runningInterpreter.reset(new cpu::Interpreter(mem,running->teb,running->teb));
-            runningInterpreter->lenientDivide=false;
-        }
-        --quantumLeft;
-        cpu::CpuState& state=running->cpu;
+    rt::GuestExecution execution(proc,[&](rt::GuestThread& thread) {
+        running=&thread;
+        auto& state=thread.cpu;
         win32::HostCallOutcome out;
-        if (win32::TryHandleHostCall(state,mem,out)) {
-            if(out.requestExit) {
-                if(dumpPath) DumpScreen(dumpPath);
-                return out.exitCode;
-            }
-            continue;
-        }
-        cpu::StepResult r=runningInterpreter->Step(state);
-        if(r==cpu::StepResult::Continue) continue;
-        if(r==cpu::StepResult::Halted) {
-            // HLT remains a no-op for compatibility with existing tests;
-            // workers must use ExitThread or return through their trampoline.
-            continue;
-        }
-        if(win32::seh::DispatchCpuFault(state,mem,running->teb,
-                                        runningInterpreter->LastException()) ==
-           win32::seh::DispatchResult::Handled) continue;
-        if(dumpPath) DumpScreen(dumpPath);
-        const cpu::CpuException& e=runningInterpreter->LastException();
+        if (win32::TryHandleHostCall(state,mem,out)) return !out.requestExit;
+        cpu::Interpreter interpreter(mem,thread.teb,thread.teb);
+        interpreter.lenientDivide=false;
+        cpu::StepResult result=interpreter.Step(state);
+        if (result==cpu::StepResult::Continue || result==cpu::StepResult::Halted) return true;
+        const auto& fault=interpreter.LastException();
+        if (win32::seh::DispatchCpuFault(state,mem,thread.teb,fault)==
+            win32::seh::DispatchResult::Handled) return true;
         std::fprintf(stderr,"winrun: thread 0x%x unhandled exception 0x%08x at 0x%08x (address 0x%08x)\n",
-                     running->id,e.code,e.eip,e.faultAddress);
-        rt::Module* module=proc.FindByAddress(e.eip);
-        if(module) std::fprintf(stderr,"        in %s +0x%x\n",module->name.c_str(),e.eip-module->base);
-        return static_cast<int>(e.code);
+                     thread.id,fault.code,fault.eip,fault.faultAddress);
+        if (auto* module=proc.FindByAddress(fault.eip))
+            std::fprintf(stderr,"        in %s +0x%x\n",module->name.c_str(),fault.eip-module->base);
+        // Keep the Windows exception code as process diagnostic exit status.
+        thread.exitCode=fault.code;
+        return false;
+    });
+    for (;;) {
+        auto result=execution.RunOne();
+        running=proc.Scheduler().Current();
+        if (result==rt::GuestExecution::Result::Ran) continue;
+        if (result==rt::GuestExecution::Result::Stopped) {
+            if(dumpPath) DumpScreen(dumpPath);
+            return win32::g_guestExitRequested ? win32::g_guestExitCode :
+                   static_cast<int>(running ? running->exitCode : 3);
+        }
+        if (result==rt::GuestExecution::Result::AllocationFailed) {
+            std::fprintf(stderr,"winrun: cannot allocate guest native continuation stack\n");
+            return 3;
+        }
+        if (!proc.Scheduler().HasLiveThreads()) {
+            if(dumpPath) DumpScreen(dumpPath);
+            return static_cast<int>(proc.Scheduler().LastExitCode());
+        }
+        if (proc.Scheduler().HasPendingTimers()) { rt::Clock::Sleep(1); continue; }
+        std::fprintf(stderr,"winrun: no runnable guest threads (all waiting)\n");
+        return 3;
     }
 }

@@ -353,3 +353,64 @@ JIT stays an independent probe, with no x86 dynarec integration.
 
 Contract references: Microsoft Learn DuplicateHandle / WaitForMultipleObjects
 and Microsoft's Old New Thing 2011-02-25 duplicate-object wait-all explanation.
+
+
+## 2026-10-21 saved native continuations for nested guest callbacks
+
+Incoming HEAD `3a2902d` was fully green (run 39655096557). This batch replaces
+recursive peer-pumping with one saved native stack per guest thread.
+
+- New `runtime/host_fiber.*`: stackful context, same host OS thread. x86 Linux
+  uses ucontext; AArch64 uses an AAPCS64 context switch saving x19-x30, SP,
+  d8-d15, FPCR and FPSR. Main native stack 2 MiB; workers 512 KiB. Canary and
+  safepoint reserve check; no Horizon guard-page claim. Finished native stacks
+  are released only after returning to scheduler, never while executing on them.
+- New `runtime/guest_execution.*`: runs existing GuestScheduler-selected guests
+  on these stacks. Nested callback checkpoints honor waits, Sleep, suspend,
+  explicit yields and ~256-operation quanta. Host errno, USER32 GuestCtx and
+  g_tebAddr are restored after resumption. Switching cannot re-enter a parked
+  guest's HLE import while its native caller frames are still active.
+- Main Switch/winrun loops both use GuestExecution. Existing old probes remain
+  independent. Unscheduled loader initialization / standalone v1 callbacks keep
+  their existing synchronous behavior. No new DLL notification implementation.
+- Callback nesting depth is per GuestThread. Active callbacks force FS/GS to
+  their actual guest owner even for local SEH CpuState copies. TryHandleHostCall
+  scopes USER32/TEB bindings and suppresses normal RET after nested ExitThread.
+- GetMessage waiting with live peers yields instead of indefinitely blocking
+  the native host. Legacy MFC/GetMessage/modal loops also have checkpoints.
+  Session shutdown drains pending continuations through ordinary native returns
+  under a temporary process-exit flag, releasing RAII objects. Guest code after
+  a nonreturning ExitThread is not executed.
+- Host tests use a fresh generated guest-run directory per invocation. This
+  fixes repeat-run contamination from SHELL32-created My Documents; no user
+  program data is removed.
+
+Evidence before upload (read exact resulting SHA CI separately):
+- Old baseline winrun did not complete gui_thread_callback_wait within 15 sec
+  (timeout status 124). With continuations the same mutual-wait case passes.
+- test_host_fiber: 20,000 alternating stack switches, nested local/RAII state,
+  FP rounding environment and clean completion. CI additionally builds it for
+  Linux AArch64 and executes under QEMU, including pinned x19/d8 checks; the
+  AArch64 switch is identical to the one used in the NRO.
+- test_guest_execution: actual x86 callbacks on local CpuState copies, mutual
+  event waits, current TEB/FS/errno, root GuestCtx restoration, and draining a
+  suspended callback on stop without executing guest instructions after wait.
+- gui_thread_callback_wait: two own-window WndProcs wait on each other; TLS and
+  IDs remain independent; nested GetMessage receives a worker PostMessage;
+  nested guest-only spin yields to a worker; finite callback wait times out.
+- gui_thread_callback_exit: initial thread ExitThread from WndProc signals its
+  real HANDLE, unwinds native frames, and leaves the survivor worker alive.
+- gui_thread_seh_wait: both guest SEH handlers park while their dispatcher CPU
+  copies and active-frame scopes remain alive; both resume and restore context.
+- Local full host suite with -fno-rtti/-fno-exceptions passes, including original
+  x86 tests, CRT/C++/DLL/SEH/thread cases and scripted COMDLG Open/List/Save.
+  Recheck final full-suite result and ARM64/Switch/CPU-oracle CI before claiming
+  the batch verified. Physical Switch/actual Paint binaries unavailable here.
+
+Remaining: physical Horizon regression (preserve known-good NRO), guest stack/
+TEB/TLS reclamation and DLL thread attach/detach, per-thread USER32 queues and
+cross-thread SendMessage ownership/routing, APC/MsgWait and loader lock. GUI
+objects are not yet protected against arbitrary peer destruction while a native
+callback retains references. Blocking filesystem/native library calls are not
+made asynchronously by this change. ARM64/QEMU proves register/stack mechanics,
+not libnx TLS/newlib behavior or actual Switch rendering. JIT remains separate.

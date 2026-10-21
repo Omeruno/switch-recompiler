@@ -3,7 +3,9 @@
 #include "win32_api_abi_table.h"
 #include "host_functions.h"
 #include "../runtime/process.h"
+#include "../runtime/guest_execution.h"
 #include "seh_dispatch.h"
+#include "user32.h"
 #include "menu_parser.h"
 #include <algorithm>
 #include <cstdio>
@@ -1319,6 +1321,7 @@ HostCallOutcome Impl_Mfc5710_Run(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     constexpr int kMaxIterations = 10'000'000; // защита от настоящего бесконечного цикла
     int guard = 0;
     while (guard++ < kMaxIterations) {
+        if (!rt::GuestExecution::Checkpoint()) break;
         if (win32::g_pumpHostFrame) {
             win32::HostFrameResult frame = win32::g_pumpHostFrame();
             if (frame.shouldQuit) break;
@@ -3719,6 +3722,7 @@ HostCallOutcome Impl_GetMessage(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     bool haveMsg = FetchNextMessage(msg);
 
     while (!haveMsg) {
+        if (!rt::GuestExecution::Checkpoint()) { msg.message=win32::WM_QUIT; break; }
         if (!g_pumpHostFrame) {
             // Нет реального железа (хостовый тест) — прежнее поведение
             msg = {0, win32::WM_QUIT, 0, 0};
@@ -4208,6 +4212,7 @@ HostCallOutcome Impl_DialogBoxParamW(cpu::CpuState& cpu, cpu::IGuestMemory& mem)
     // забираем и передаём напрямую в DlgProc, как и положено диалогу)
     int guard = 0;
     while (!g_dialogEndRequested && guard < 2000000) {
+        if (!rt::GuestExecution::Checkpoint()) break;
         guard++;
         if (g_pumpHostFrame) {
             HostFrameResult frame = g_pumpHostFrame();
@@ -4366,6 +4371,7 @@ HostCallOutcome Impl_ShellAboutW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
 
     int guard = 0;
     while (!g_aboutBoxCloseRequested && guard < 2000000) {
+        if (!rt::GuestExecution::Checkpoint()) break;
         guard++;
         if (g_pumpHostFrame) {
             HostFrameResult frame = g_pumpHostFrame();
@@ -5055,7 +5061,18 @@ HostCallOutcome Impl_MfcOrdinalStub(cpu::CpuState& cpu, cpu::IGuestMemory& mem, 
 } // namespace
 
 bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutcome& outOutcome) {
-    int idx = HostAddressToIndex(cpu.eip);
+    int idx=HostAddressToIndex(cpu.eip);
+    if (idx<0 && cpu.eip<MFC_STUB_BASE) return false;
+    // Context is a stack-scoped binding: nested SEH uses a local CpuState,
+    // and another guest fiber may run while this host call is suspended.
+    struct ContextScope {
+        user::GuestCtx previous=user::G();
+        uint32_t teb=g_tebAddr;
+        ~ContextScope() { user::G()=previous; g_tebAddr=teb; }
+    } contextScope;
+    user::G()={&cpu,&mem};
+    auto* current=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    if (current) g_tebAddr=current->teb;
     if (idx >= 0) {
         const HostFunctionEntry& entry = GetHostFunction(idx);
         if (g_traceHostCalls) {
@@ -5075,6 +5092,10 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
             outOutcome.requestExit = true;
             outOutcome.exitCode = g_guestExitCode;
         }
+        // ExitThread inside a nested WndProc must unwind native frames,
+        // never emulate another RET using its nonreturning syscall stack.
+        if (current && current->status==rt::GuestThreadStatus::Exited)
+            outOutcome.customReturn=true;
         if (outOutcome.customReturn) return true;
         cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;
 

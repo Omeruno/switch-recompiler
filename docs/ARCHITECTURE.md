@@ -15,9 +15,11 @@
    соблюдая размер аргументов и соглашение вызова.
 3. `Process` создаёт главный `GuestThread`: CPU, стек, TEB, TLS и общий PEB.
    `CreateGuestThread` выделяет независимые состояния рабочих потоков.
-4. Основные циклы в `main.cpp` и `tests/winrun.cpp` выбирают поток через
-   `GuestScheduler::Next()` и исполняют до 256 операций за квант.
-   Экземпляр интерпретатора получает FS/GS выбранного TEB.
+4. Основные циклы в `main.cpp` и `tests/winrun.cpp` используют
+   `GuestExecution`: он выбирает поток через `GuestScheduler::Next()` и
+   возобновляет его сохранённый нативный стек. Checkpoint переключает
+   исполнение примерно через 256 операций, включая вложенный гостевой код.
+   Интерпретатор получает FS/GS выбранного TEB.
 5. `cpu/interpreter.cpp`, `fpu.cpp`, `sse.cpp` исполняют IA-32, x87 и
    MMX/SSE/SSE2. Старый `decoder/x86_decoder.*` сохраняется для листинга
    и общих описаний инструкций; он не является главным ядром исполнения.
@@ -37,9 +39,25 @@
   Есть target/exit unwind и проверяемые подмножества nested/collided unwind.
 - Состояние активных SEH-обработчиков принадлежит гостевому потоку.
   Точность x87 ограничена внутренним double; полный NT SEH ABI не заявлен.
-- `CallGuestFunctionStdcall` в `message_loop.cpp` исполняет вложенные
-  callbacks синхронно. Вложенный callback ещё может монополизировать хост;
-  кооперативное ожидание из такого callback требует отдельной доработки.
+- `CallGuestFunctionStdcall` остаётся синхронным для своего вызывающего,
+  но его нативный стек сохраняется `runtime/guest_execution.*` и
+  `host_fiber.*`. Ожидание, Sleep, квант или busy-spin внутри WndProc/SEH
+  могут отдать исполнение другим гостям без рекурсивного исполнения peers.
+- Основной поток получает 2 MiB нативного стека, рабочие — 512 KiB каждый.
+  Linux x86 использует ucontext; AArch64 (Switch и Linux/QEMU) — собственное
+  сохранение callee-saved GPR/FP, SP и FPCR/FPSR по AAPCS64. Это программные
+  continuations на одном OS thread; нативные блокирующие syscalls остаются
+  отдельной проблемой. Есть canary и проверка запаса стека на safepoints,
+  но аппаратного guard page на Switch пока нет.
+- При переключении восстанавливаются USER32 GuestCtx, TEB binding и host
+  errno. Глубина callback и активные SEH frames принадлежат GuestThread.
+  Отдельная копия CpuState SEH-обработчика остаётся на сохранённом стеке.
+- При ExitThread вложенный гостевой код больше не исполняется, нативные
+  обёртки возвращаются обычным путём. При остановке всей сессии pending
+  continuations дренируются с флагом выхода, чтобы выполнились деструкторы.
+  Завершённый нативный стек освобождается после возврата на стек scheduler.
+- USER32 GetMessage при живых peers периодически отдаёт исполнение; полных
+  per-thread queues, cross-thread SendMessage routing и изоляции GUI пока нет.
 
 ## Процесс, потоки и HANDLE
 
@@ -112,11 +130,13 @@ SHELL32, OLE32/OLEAUT32, COMCTL32, GDI+ и UXTHEME имеют частичные
 - `tools/run_cpu_oracle.sh 50000 all`: 3 seed, сравнение с настоящим x86
   CPU, включая integer/x87/SSE. Не доказывает полноту набора инструкций.
 - `.github/workflows/ci.yml`: host tests, CPU oracle, основная Switch-сборка
-  и отдельная экспериментальная JIT-сборка.
+  и отдельная экспериментальная JIT-сборка. Дополнительный job исполняет
+  тот же ARM64 context switch под Linux/QEMU и проверяет регистры/FP/RAII;
+  это не заменяет теста на настоящем Horizon.
 - `tools/jit_probe/`: standalone ARM64 `movz w0,#42; ret` через libnx JIT.
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
-Следующие архитектурные задачи: вложенные callbacks и ожидания,
-жизненный цикл памяти потоков и DLL notifications, per-thread USER32,
+Следующие архитектурные задачи: аппаратная проверка continuations,
+жизненный цикл гостевой памяти потоков и DLL notifications, per-thread USER32,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.
