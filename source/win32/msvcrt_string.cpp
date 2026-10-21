@@ -139,6 +139,51 @@ HostCallOutcome C_strpbrk(cpu::CpuState& c, cpu::IGuestMemory& m) {
     size_t pos = s.find_first_of(set);
     return Ret(pos == std::string::npos ? 0 : Arg(c, m, 0) + static_cast<uint32_t>(pos));
 }
+HostCallOutcome C_wcspbrk(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    std::u16string s = ReadWide(m, Arg(c, m, 0)), set = ReadWide(m, Arg(c, m, 1));
+    size_t pos = s.find_first_of(set);
+    return Ret(pos == std::u16string::npos ? 0 : Arg(c, m, 0) + static_cast<uint32_t>(pos * 2));
+}
+
+// _splitpath: диск «X:», каталог до последней косой черты включительно,
+// имя и расширение (с последней точки после каталога)
+template <int W>
+HostCallOutcome SplitPath(cpu::IGuestMemory& m, uint32_t path, const uint32_t out[4], const uint32_t cap[4], bool secure) {
+    std::u16string p = W == 2 ? ReadWide(m, path) : AnsiToWide(ReadAnsi(m, path));
+    std::u16string part[4];
+    size_t i = 0;
+    if (p.size() >= 2 && p[1] == u':') { part[0] = p.substr(0, 2); i = 2; }
+    size_t slash = p.find_last_of(u"\\/");
+    size_t nameStart = (slash == std::u16string::npos || slash < i) ? i : slash + 1;
+    part[1] = p.substr(i, nameStart - i);
+    size_t dot = p.find_last_of(u'.');
+    if (dot == std::u16string::npos || dot < nameStart) dot = p.size();
+    part[2] = p.substr(nameStart, dot - nameStart);
+    part[3] = p.substr(dot);
+    for (int k = 0; k < 4; ++k) {
+        if (!out[k]) continue;
+        if (secure && part[k].size() + 1 > cap[k]) {
+            for (int j = 0; j < 4; ++j) if (out[j] && cap[j]) { if (W == 2) m.Write16(out[j], 0); else m.Write8(out[j], 0); }
+            return Ret(34); // ERANGE
+        }
+        if (W == 2) WriteWide(m, out[k], part[k], static_cast<uint32_t>(part[k].size() + 1));
+        else WriteAnsi(m, out[k], std::string(part[k].begin(), part[k].end()), static_cast<uint32_t>(part[k].size() + 1));
+    }
+    return Ret(0);
+}
+template <int W>
+HostCallOutcome C_splitpath(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t out[4] = {Arg(c, m, 1), Arg(c, m, 2), Arg(c, m, 3), Arg(c, m, 4)};
+    const uint32_t cap[4] = {0, 0, 0, 0};
+    return SplitPath<W>(m, Arg(c, m, 0), out, cap, false);
+}
+template <int W>
+HostCallOutcome C_splitpath_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t out[4] = {Arg(c, m, 1), Arg(c, m, 3), Arg(c, m, 5), Arg(c, m, 7)};
+    const uint32_t cap[4] = {Arg(c, m, 2), Arg(c, m, 4), Arg(c, m, 6), Arg(c, m, 8)};
+    if (!Arg(c, m, 0)) return Ret(22); // EINVAL
+    return SplitPath<W>(m, Arg(c, m, 0), out, cap, true);
+}
 uint32_t g_strtokNext = 0;
 HostCallOutcome C_strtok(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t s = Arg(c, m, 0);
@@ -434,7 +479,9 @@ const HostFunctionEntry kEntries[] = {
     CDECL_ENTRY("_wcsicmp", C_wcsicmp), CDECL_ENTRY("_wcsnicmp", C_wcsnicmp), CDECL_ENTRY("wcschr", C_wcschr),
     CDECL_ENTRY("wcsrchr", C_wcsrchr), CDECL_ENTRY("wcsstr", C_wcsstr), CDECL_ENTRY("_wcsdup", C_wcsdup),
     CDECL_ENTRY("_wcsupr", C_wcsupr), CDECL_ENTRY("_wcslwr", C_wcslwr), CDECL_ENTRY("wcsspn", C_wcsspn),
-    CDECL_ENTRY("wcscspn", C_wcscspn),
+    CDECL_ENTRY("wcscspn", C_wcscspn), CDECL_ENTRY("wcspbrk", C_wcspbrk),
+    CDECL_ENTRY("_splitpath", C_splitpath<1>), CDECL_ENTRY("_wsplitpath", C_splitpath<2>),
+    CDECL_ENTRY("_splitpath_s", C_splitpath_s<1>), CDECL_ENTRY("_wsplitpath_s", C_splitpath_s<2>),
     CDECL_ENTRY("strcpy_s", C_cpy_s<1>), CDECL_ENTRY("wcscpy_s", C_cpy_s<2>), CDECL_ENTRY("strncpy_s", C_ncpy_s<1>),
     CDECL_ENTRY("wcsncpy_s", C_ncpy_s<2>), CDECL_ENTRY("strcat_s", C_cat_s<1>), CDECL_ENTRY("wcscat_s", C_cat_s<2>),
     CDECL_ENTRY("strncat_s", C_ncat_s<1>), CDECL_ENTRY("wcsncat_s", C_ncat_s<2>), CDECL_ENTRY("memcpy_s", C_memcpy_s),
