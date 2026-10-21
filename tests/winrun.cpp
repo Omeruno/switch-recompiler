@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
     bool verbose = false;
     std::vector<std::string> libDirs;
     const char* dumpPath = nullptr;
-    bool forceLegacy = false, forceNew = false, listMissing = false;
+    bool forceLegacy = false, forceNew = false, listMissing = false, probeThreads = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
@@ -132,6 +132,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "-s") == 0 && i + 2 < argc) { g_snapFrame = std::atoi(argv[++i]); g_snapPath = argv[++i]; }
         else if (std::strcmp(argv[i], "-t") == 0) win32::g_traceHostCalls = true;
         else if (std::strcmp(argv[i], "-m") == 0) listMissing = true;
+        else if (std::strcmp(argv[i], "--probe-threads") == 0) probeThreads = true;
         else if (std::strcmp(argv[i], "--legacy-ui") == 0) forceLegacy = true;
         else if (std::strcmp(argv[i], "--new-ui") == 0) forceNew = true;
         else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
@@ -197,6 +198,41 @@ int main(int argc, char** argv) {
     }
     cpu::CpuState& c = proc.MainThread().cpu;
     if (!proc.PrepareMainThread(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
+    if (probeThreads) {
+        const uint32_t start=proc.MainThread().cpu.eip;
+        rt::GuestThread* a=proc.CreateGuestThread(start,0x12345678u,0x40000u,false,err);
+        if (!a) { std::fprintf(stderr,"thread probe: %s\n",err.c_str()); return 4; }
+        rt::GuestThread* b=proc.CreateGuestThread(start,0xABCDEF90u,0x40000u,true,err);
+        if (!b) { std::fprintf(stderr,"thread probe: %s\n",err.c_str()); return 4; }
+        const bool ok =
+            proc.Scheduler().Size()==3 && a!=b &&
+            a->teb!=b->teb && a->teb!=proc.MainThread().teb &&
+            a->tlsArray!=b->tlsArray && a->tlsArray!=proc.MainThread().tlsArray &&
+            (a->stackBase<=b->stackLimit || b->stackBase<=a->stackLimit);
+        const bool distinct =
+            (a->stackBase<=b->stackLimit || b->stackBase<=a->stackLimit) &&
+            a->id!=b->id && a->id!=proc.MainThread().id &&
+            mem.Read32(a->teb+0x00)==0xffffffffu &&
+            mem.Read32(b->teb+0x00)==0xffffffffu &&
+            mem.Read32(a->teb+0x18)==a->teb &&
+            mem.Read32(b->teb+0x18)==b->teb &&
+            mem.Read32(a->teb+0x24)==a->id &&
+            mem.Read32(b->teb+0x24)==b->id &&
+            mem.Read32(a->teb+0x2c)==a->tlsArray &&
+            mem.Read32(b->teb+0x2c)==b->tlsArray &&
+            mem.Read32(a->cpu.ESP())==rt::EntryReturnAddress() &&
+            mem.Read32(a->cpu.ESP()+4)==0x12345678u &&
+            mem.Read32(b->cpu.ESP()+4)==0xABCDEF90u &&
+            a->cpu.eip==start && b->cpu.eip==start &&
+            a->IsRunnable() && !b->IsRunnable() &&
+            b->suspendCount==1;
+        if (!ok || !distinct) {
+            std::fprintf(stderr,"thread probe: wrong TEB/TLS/CPU stack isolation\n");
+            return 4;
+        }
+        std::puts("PASSED: independent worker TEB TLS stack and CPU context");
+        return 0;
+    }
     // Консольный вывод гостя нужен всегда, даже без -v
     cpu::g_consoleAvailable = true;
     bool quiet = !verbose;
