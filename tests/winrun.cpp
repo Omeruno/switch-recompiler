@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
                                         runningInterpreter->LastException()) ==
            win32::seh::DispatchResult::Handled) continue;
         if(dumpPath) DumpScreen(dumpPath);
-        const cpu::CpuException& e=threadInterpreter.LastException();
+        const cpu::CpuException& e=runningInterpreter->LastException();
         std::fprintf(stderr,"winrun: thread 0x%x unhandled exception 0x%08x at 0x%08x (address 0x%08x)\n",
                      running->id,e.code,e.eip,e.faultAddress);
         rt::Module* module=proc.FindByAddress(e.eip);
