@@ -59,7 +59,24 @@ bool UiWait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     if (g_frame == g_snapFrame && g_snapPath) DumpScreen(g_snapPath);
     for (const Click& c : g_clicks) {
         if (c.frame != g_frame) continue;
-        InputEvent mv; mv.type = InputEvent::MouseMove; mv.x = c.x; mv.y = c.y;
+        int x = c.x, y = c.y;
+        // CI-only semantic click: -c frame:-control_id:row_index
+        // Compute the actual client origin instead of guessing titlebar/border sizes.
+        if (x <= -1000) {
+            uint32_t wanted = static_cast<uint32_t>(-x);
+            bool found = false;
+            for (const auto& pair : win32::user::S().windows) {
+                win32::user::Window* win = pair.second.get();
+                if (!(win->style & win32::user::WS_CHILD) || win->id != wanted ||
+                    !win32::user::IsVisibleChain(win)) continue;
+                x = win32::user::ClientOriginX(win) + 8;
+                y = win32::user::ClientOriginY(win) + 8 + c.y * 18;
+                found = true;
+                break;
+            }
+            if (!found) { std::fprintf(stderr, "winrun: scripted control %u not found\\n", wanted); continue; }
+        }
+        InputEvent mv; mv.type = InputEvent::MouseMove; mv.x = x; mv.y = y;
         InputEvent dn = mv; dn.type = InputEvent::MouseDown;
         InputEvent up = mv; up.type = InputEvent::MouseUp;
         out.push_back(mv); out.push_back(dn); out.push_back(up);
