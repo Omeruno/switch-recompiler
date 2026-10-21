@@ -30,6 +30,7 @@ public:
     // last selected thread. Waiting, suspended and exited threads are skipped.
     GuestThread* Next() {
         WakeExpiredSleepers();
+        WakeExpiredWaits();
         if (threads_.empty()) return nullptr;
         for (size_t searched = 0; searched < threads_.size(); ++searched) {
             size_t index = (cursor_ + searched) % threads_.size();
@@ -84,6 +85,8 @@ public:
             thread.yieldRequested = true;
             return;
         }
+        thread.waitDeadlineUs=0;
+        thread.timedOutHandle=0;
         thread.sleeping = true;
         thread.sleepDeadlineUs = Clock::NowUs() + uint64_t(milliseconds) * 1000u;
         thread.waitObject = 0;
@@ -110,6 +113,37 @@ public:
         return false;
     }
 
+    bool WaitFor(GuestThread& thread, uint32_t objectHandle, uint32_t milliseconds) {
+        if (!Wait(thread,objectHandle)) return false;
+        thread.waitDeadlineUs = milliseconds == UINT32_MAX ? 0 :
+            Clock::NowUs() + uint64_t(milliseconds) * 1000u;
+        thread.timedOutHandle = 0;
+        return true;
+    }
+
+    size_t WakeExpiredWaits() {
+        const uint64_t now=Clock::NowUs();
+        size_t woke=0;
+        for(GuestThread* t : threads_) {
+            if(t->status!=GuestThreadStatus::Waiting || t->sleeping ||
+               !t->waitObject || !t->waitDeadlineUs ||
+               now<t->waitDeadlineUs) continue;
+            t->timedOutHandle=t->waitObject;
+            t->waitObject=0;
+            t->waitDeadlineUs=0;
+            t->status=GuestThreadStatus::Runnable;
+            ++woke;
+        }
+        return woke;
+    }
+
+    bool HasPendingTimers() const {
+        for (const GuestThread* t:threads_)
+            if (t->status==GuestThreadStatus::Waiting &&
+                (t->sleeping || t->waitDeadlineUs)) return true;
+        return false;
+    }
+
     uint32_t Suspend(GuestThread& thread) {
         uint32_t previous = thread.suspendCount;
         if (previous != UINT32_MAX && thread.status != GuestThreadStatus::Exited)
@@ -131,6 +165,8 @@ public:
         thread.sleeping=false;
         thread.sleepDeadlineUs=0;
         thread.waitObject = objectHandle;
+        thread.waitDeadlineUs=0;
+        thread.timedOutHandle=0;
         thread.status = GuestThreadStatus::Waiting;
         return true;
     }
@@ -141,6 +177,8 @@ public:
             if (thread->status != GuestThreadStatus::Waiting ||
                 thread->waitObject != objectHandle) continue;
             thread->waitObject = 0;
+            thread->waitDeadlineUs=0;
+            thread->timedOutHandle=0;
             thread->status = GuestThreadStatus::Runnable;
             ++count;
             if (!wakeAll) break;
@@ -152,6 +190,8 @@ public:
         thread.exitCode = code;
         thread.status = GuestThreadStatus::Exited;
         thread.waitObject = 0;
+        thread.waitDeadlineUs=0;
+        thread.timedOutHandle=0;
         thread.sleeping = false;
         thread.sleepDeadlineUs = 0;
         thread.yieldRequested = false;
