@@ -2,6 +2,7 @@
 #include "mfc42u_abi_table.h"
 #include "win32_api_abi_table.h"
 #include "host_functions.h"
+#include "seh_dispatch.h"
 #include "menu_parser.h"
 #include <algorithm>
 #include <cstdio>
@@ -1786,8 +1787,28 @@ HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMe
         cpu::g_sehExceptionArguments[i] =
             i < count && args && mem.IsRangeMapped(args + i * 4, 4) ?
             mem.Read32(args + i * 4) : 0;
-    cpu::g_lastKnownEip = mem.IsRangeMapped(c.ESP(), 4) ? mem.Read32(c.ESP()) : c.eip;
-    cpu::FatalError("Unhandled Win32 RaiseException (guest SEH dispatch not implemented)");
+    // RaiseException is a stdcall function with 16 bytes of arguments.
+    // The saved guest CONTEXT describes the point to resume if a registered
+    // handler returns ExceptionContinueExecution.
+    uint32_t callerEip = mem.IsRangeMapped(c.ESP(),4) ? mem.Read32(c.ESP()) : c.eip;
+    cpu::CpuState resume = c;
+    resume.eip = callerEip;
+    resume.ESP() = c.ESP() + 20;
+    const uint32_t paramCount = count < 4 ? count : 4;
+    win32::seh::DispatchResult result = win32::seh::Dispatch(
+        resume, mem, g_tebAddr, cpu::g_sehExceptionCode,
+        cpu::g_sehExceptionFlags, callerEip,
+        cpu::g_sehExceptionArguments, paramCount);
+    if (result == win32::seh::DispatchResult::Handled) {
+        c = resume;
+        HostCallOutcome r;
+        r.customReturn = true;
+        return r;
+    }
+    cpu::g_lastKnownEip = callerEip;
+    cpu::FatalError(result == win32::seh::DispatchResult::Unhandled
+        ? "Unhandled Win32 SEH exception"
+        : "Unsupported or invalid Win32 SEH exception handler chain");
 }
 
 // BOOL QueryPerformanceCounter(LARGE_INTEGER* lpCount) — высокоточный
