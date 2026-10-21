@@ -180,3 +180,12 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `source/main.cpp` Switch regular Win32 execution loop now chooses a scheduler thread every 256 operations, creates FS-scoped interpreter per quantum, advances selected thread's CPU through HLE/Step/SEH; non-main HLT terminates only that worker. Commit `28e417a`; testing in CI run `39637524525` when written.
 - Found original host_functions.cpp GetCurrentThreadId legacy entry still returned hardcoded 5678 even though separate KERNEL32 module returned thread ID. Fixed to `Process::CurrentThreadId` (`09f89a0`), ensuring original import path and TEB identity match.
 - IMPORTANT: Currently no scheduler-integrated guest WaitForSingleObject or CloseHandle, main ExitThread still fatal; nested guest callbacks can block cooperative scheduling; some other HLE global per-thread state may need audits. New code not yet hardware tested. Exact SHA latest CI must be checked; Paint hardware-confirmed rollback SHA remains `2c9a1fa`.
+
+## 2026-10-21 cooperative Win32 thread waits checkpoint
+- Confirmed `d695ba0` run `39638620353` SUCCESS all 3 jobs. Four previous red workflows came from a stale variable `threadInterpreter` in winrun; fixed.
+- Discovered `kernel32_sync.cpp` previously treated *unknown* handles as already signaled via `TryAcquire`, not suitable for Win32 thread synchronization.
+- `guest_scheduler.h` `66ca31b`: Exit(thread) wakes all threads waiting for encoded synthetic thread handle `0xE1000000 | id`.
+- `kernel32_sync.cpp` `3696490`: `WaitForSingleObject` and `WaitForSingleObjectEx` special-case known synthetic thread handles: already exited => WAIT_OBJECT_0; zero timeout => WAIT_TIMEOUT; invalid thread id => WAIT_FAILED; infinite wait on live thread => scheduler.Wait(), HLE customReturn=true so blocked thread retains PC/stack, reexecutes HLE on wake. This does NOT implement finite positive timeouts, events/mutex/semaphores waiting, waitAll or true NT HANDLE refcounts.
+- Guest test `tests/guest/gui_thread_create.c` `e6ffdf2` uses `WaitForSingleObject(worker,INFINITE)` instead of busy polling, then verifies changed shared value and GetExitCodeThread 42.
+- CI `39639875326` for guest test initially in_progress. Must inspect exact HEAD SHA and jobs; no claims of verified real-hardware multiplayer yet.
+- Next: fix failures if any; introduce typed HANDLE table and CloseHandle, then event waits and finite timeouts, process lifecycle, full thread synchronization.
