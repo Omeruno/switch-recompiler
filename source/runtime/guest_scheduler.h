@@ -120,6 +120,10 @@ public:
         if (!Wait(thread,objectHandle)) return false;
         thread.waitDeadlineUs = milliseconds == UINT32_MAX ? 0 :
             Clock::NowUs() + uint64_t(milliseconds) * 1000u;
+        if (thread.retryWaitToken == objectHandle && thread.retryWaitDeadlineUs)
+            thread.waitDeadlineUs = thread.retryWaitDeadlineUs;
+        thread.retryWaitToken=0;
+        thread.retryWaitDeadlineUs=0;
         thread.timedOutHandle = 0;
         return true;
     }
@@ -130,11 +134,6 @@ public:
             return false;
         thread.waitHandles = handles;
         thread.waitAll = all;
-        // Re-parking after a partial wait-all wake must not extend the timeout.
-        if (thread.retryWaitToken == handles.front() && thread.retryWaitDeadlineUs)
-            thread.waitDeadlineUs = thread.retryWaitDeadlineUs;
-        thread.retryWaitToken = 0;
-        thread.retryWaitDeadlineUs = 0;
         return true;
     }
 
