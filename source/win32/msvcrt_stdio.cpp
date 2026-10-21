@@ -530,6 +530,27 @@ HostCallOutcome C_swprintf(cpu::CpuState& c, cpu::IGuestMemory& m) { return Swpr
 HostCallOutcome C_vswprintf(cpu::CpuState& c, cpu::IGuestMemory& m) { return Swprintf(m, Arg(c, m, 0), -1, Arg(c, m, 1), Arg(c, m, 2)); }
 HostCallOutcome C_snwprintf(cpu::CpuState& c, cpu::IGuestMemory& m) { return Swprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), c.ESP() + 16); }
 HostCallOutcome C_vsnwprintf(cpu::CpuState& c, cpu::IGuestMemory& m) { return Swprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), Arg(c, m, 3)); }
+// *_s: (buf, размер в символах, fmt, ...) — не влезло: пустая строка и -1
+HostCallOutcome C_sprintf_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    HostCallOutcome r = Sprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), c.ESP() + 16);
+    if (r.returnValue >= Arg(c, m, 1)) { if (Arg(c, m, 1)) m.Write8(Arg(c, m, 0), 0); r.returnValue = static_cast<uint32_t>(-1); }
+    return r;
+}
+HostCallOutcome C_vsprintf_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    HostCallOutcome r = Sprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), Arg(c, m, 3));
+    if (r.returnValue >= Arg(c, m, 1)) { if (Arg(c, m, 1)) m.Write8(Arg(c, m, 0), 0); r.returnValue = static_cast<uint32_t>(-1); }
+    return r;
+}
+HostCallOutcome C_swprintf_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    HostCallOutcome r = Swprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), c.ESP() + 16);
+    if (r.returnValue >= Arg(c, m, 1)) { if (Arg(c, m, 1)) m.Write16(Arg(c, m, 0), 0); r.returnValue = static_cast<uint32_t>(-1); }
+    return r;
+}
+HostCallOutcome C_vswprintf_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    HostCallOutcome r = Swprintf(m, Arg(c, m, 0), Arg(c, m, 1), Arg(c, m, 2), Arg(c, m, 3));
+    if (r.returnValue >= Arg(c, m, 1)) { if (Arg(c, m, 1)) m.Write16(Arg(c, m, 0), 0); r.returnValue = static_cast<uint32_t>(-1); }
+    return r;
+}
 HostCallOutcome C_scprintf(cpu::CpuState& c, cpu::IGuestMemory& m) {
     GuestVaList args{m, c.ESP() + 8};
     return Ret(static_cast<uint32_t>(FormatA(m, Arg(c, m, 0), args).size()));
@@ -874,6 +895,8 @@ const HostFunctionEntry kEntries[] = {
     CDECL_ENTRY("fwprintf", C_fwprintf), CDECL_ENTRY("vfwprintf", C_vfwprintf),
     CDECL_ENTRY("sprintf", C_sprintf), CDECL_ENTRY("vsprintf", C_vsprintf), CDECL_ENTRY("_snprintf", C_snprintf),
     CDECL_ENTRY("_vsnprintf", C_vsnprintf), CDECL_ENTRY("swprintf", C_swprintf), CDECL_ENTRY("vswprintf", C_vswprintf),
+    CDECL_ENTRY("sprintf_s", C_sprintf_s), CDECL_ENTRY("vsprintf_s", C_vsprintf_s), CDECL_ENTRY("swprintf_s", C_swprintf_s),
+    CDECL_ENTRY("vswprintf_s", C_vswprintf_s),
     CDECL_ENTRY("_swprintf", C_swprintf), CDECL_ENTRY("_snwprintf", C_snwprintf), CDECL_ENTRY("_vsnwprintf", C_vsnwprintf),
     CDECL_ENTRY("_scprintf", C_scprintf), CDECL_ENTRY("_vscprintf", C_vscprintf),
     CDECL_ENTRY("sscanf", C_sscanf), CDECL_ENTRY("swscanf", C_swscanf), CDECL_ENTRY("fscanf", C_fscanf),

@@ -2006,6 +2006,29 @@ HostCallOutcome Impl_RegOpenKeyExA(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     return result;
 }
 
+// LONG RegOpenKeyExW(hKey, LPCWSTR subKey, options, sam, PHKEY)
+HostCallOutcome Impl_RegOpenKeyExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
+    uint32_t phkResult = ReadArg(cpu, mem, 4);
+    bool found = false;
+    uint32_t handle = g_registry.OpenExistingKey(ReadArg(cpu, mem, 0), ReadWideCStringNarrow(mem, ReadArg(cpu, mem, 1)), found);
+    HostCallOutcome result;
+    result.returnValue = found ? ERROR_SUCCESS_ : ERROR_FILE_NOT_FOUND_;
+    if (found && phkResult != 0) mem.Write32(phkResult, handle);
+    return result;
+}
+// Перечисление подключей и удаление: виртуальный реестр подключи не
+// перечисляет, удалённых значений программы потом не ищут
+HostCallOutcome Impl_RegEnumKeyW(cpu::CpuState&, cpu::IGuestMemory&) {
+    HostCallOutcome result;
+    result.returnValue = 259; // ERROR_NO_MORE_ITEMS
+    return result;
+}
+HostCallOutcome Impl_RegDeleteW(cpu::CpuState&, cpu::IGuestMemory&) {
+    HostCallOutcome result;
+    result.returnValue = ERROR_SUCCESS_;
+    return result;
+}
+
 // Общая логика для RegQueryValueExW/A — отличаются только тем, как читается имя значения
 HostCallOutcome QueryValueCommon(cpu::CpuState& cpu, cpu::IGuestMemory& mem, const std::string& valueName) {
     uint32_t hKey     = ReadArg(cpu, mem, 0);
@@ -4673,6 +4696,12 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "USER32.dll",   "GetSystemMetrics",   4,  CallConv::Stdcall, &Impl_GetSystemMetrics },
     { "ADVAPI32.dll", "RegCreateKeyExW",    36, CallConv::Stdcall, &Impl_RegCreateKeyExW },
     { "ADVAPI32.dll", "RegOpenKeyExA",      20, CallConv::Stdcall, &Impl_RegOpenKeyExA },
+    { "ADVAPI32.dll", "RegOpenKeyExW",      20, CallConv::Stdcall, &Impl_RegOpenKeyExW },
+    { "ADVAPI32.dll", "RegEnumKeyW",        16, CallConv::Stdcall, &Impl_RegEnumKeyW },
+    { "ADVAPI32.dll", "RegEnumKeyExW",      32, CallConv::Stdcall, &Impl_RegEnumKeyW },
+    { "ADVAPI32.dll", "RegDeleteKeyW",      8,  CallConv::Stdcall, &Impl_RegDeleteW },
+    { "ADVAPI32.dll", "RegDeleteKeyExW",    16, CallConv::Stdcall, &Impl_RegDeleteW },
+    { "ADVAPI32.dll", "RegDeleteValueW",    8,  CallConv::Stdcall, &Impl_RegDeleteW },
     { "ADVAPI32.dll", "RegOpenKeyW",        12, CallConv::Stdcall, &Impl_RegOpenKeyW },
     { "ADVAPI32.dll", "RegQueryValueExW",   24, CallConv::Stdcall, &Impl_RegQueryValueExW },
     { "ADVAPI32.dll", "RegQueryValueExA",   24, CallConv::Stdcall, &Impl_RegQueryValueExA },
