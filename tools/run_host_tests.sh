@@ -19,6 +19,16 @@ src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $ro
 mkdir -p "$out"
 failed=0
 
+# Fast, standalone guest scheduler regression (no PE emulator link step).
+printf '== guest scheduler\\n'
+if $cxx $flags "$root/tests/test_guest_scheduler.cpp" -o "$out/test_guest_scheduler" &&
+   "$out/test_guest_scheduler"; then
+    :
+else
+    echo "   GUEST SCHEDULER FAILED"
+    failed=1
+fi
+
 # Сборка под Switch кладёт объектные файлы в один каталог по имени файла:
 # одинаковые имена .cpp в разных каталогах там ломают линковку.
 dups=$(ls "$root"/source/*.cpp "$root"/source/*/*.cpp | xargs -n1 basename | sort | uniq -d)
