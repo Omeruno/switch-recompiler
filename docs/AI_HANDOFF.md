@@ -199,3 +199,10 @@ Last verified GitHub state: **342f724be035586d818ce0b62e5092a84d9daeed**, branch
 - `kernel32_sync.cpp` `5f4b220`: WAIT on a closed guest thread HANDLE returns WAIT_FAILED rather than treating its thread object as open.
 - `tests/guest/gui_thread_create.c` `d0614ae`: checks thread CloseHandle, double CloseHandle failure and WAIT_FAILED for previously closed HANDLE.
 - Exact latest CI for these new commits in progress as of handoff, e.g. run `39640847744`. Verify before deploying Switch NRO. Existing real-hardware Paint baseline `2c9a1fa` remains rollback.
+
+## 2026-10-21 synchronization batch mutex/semaphore and CI fix
+- New events and HANDLE cleanup commits from last checkpoint had Switch compile failures: `kernel32_sync.cpp` calls `HleIsOpenThreadHandle` but no namespace declaration. Fixed in `46a1ed9` (prior run `39640970281` failed Switch with undeclared symbol; don't confuse this with post-fix result).
+- `kernel32_sync.cpp` `f09558b`: Mutex now tracks owner guest thread ID and recursion; CreateMutex(initialOwner) records owner, TryAcquire returns WAIT_TIMEOUT if owned by someone else, ReleaseMutex fails for non-owner (ERROR_NOT_OWNER) and wakes one waiting guest on final release. Semaphore validates initial/max count; ReleaseSemaphore validates increment and max and wakes waiting threads up to released count.
+- New `tests/guest/gui_thread_sync.c` `a105b3f` verifies owner mutex → worker handoff, release semaphore wake, count consumption, worker exit and CloseHandle.
+- Finite positive timeouts, WaitForMultipleObjects, typed HANDLE object lifecycle, critical sections, abandoned mutex and cleanup on thread termination remain future work.
+- Latest `a105b3f` CI run `39641366326` queued/in progress when written; check before declaring green. Paint hardware verified baseline `2c9a1fa`.
