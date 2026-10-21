@@ -350,6 +350,70 @@ HostCallOutcome C_iswctype(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 
 #define CDECL_ENTRY(name, fn) {"msvcrt.dll", name, 0, CallConv::Cdecl, &fn}
+// --- безопасные варианты *_s: (dst, размер в символах, src[, count]) -> errno ---
+
+template <int W>
+uint32_t ReadCh(cpu::IGuestMemory& m, uint32_t p, uint32_t i) { return W == 1 ? m.Read8(p + i) : m.Read16(p + i * 2); }
+template <int W>
+void WriteCh(cpu::IGuestMemory& m, uint32_t p, uint32_t i, uint32_t v) {
+    if (W == 1) m.Write8(p + i, static_cast<uint8_t>(v)); else m.Write16(p + i * 2, static_cast<uint16_t>(v));
+}
+// Дописывает src (не больше count символов) к dst начиная с позиции start
+template <int W>
+HostCallOutcome SecureAppend(cpu::IGuestMemory& m, uint32_t dst, uint32_t size, uint32_t start, uint32_t src, uint32_t count) {
+    if (!dst || !size) return Ret(22); // EINVAL
+    if (!src) { WriteCh<W>(m, dst, 0, 0); return Ret(22); }
+    uint32_t i = 0;
+    for (; i < count; ++i) {
+        uint32_t ch = ReadCh<W>(m, src, i);
+        if (!ch) break;
+        if (start + i + 1 >= size) { WriteCh<W>(m, dst, 0, 0); return Ret(34); } // ERANGE
+        WriteCh<W>(m, dst, start + i, ch);
+    }
+    WriteCh<W>(m, dst, start + i, 0);
+    return Ret(0);
+}
+template <int W>
+uint32_t Len(cpu::IGuestMemory& m, uint32_t p, uint32_t max) {
+    uint32_t n = 0;
+    while (n < max && ReadCh<W>(m, p, n)) ++n;
+    return n;
+}
+template <int W>
+HostCallOutcome C_cpy_s(cpu::CpuState& c, cpu::IGuestMemory& m) { return SecureAppend<W>(m, Arg(c, m, 0), Arg(c, m, 1), 0, Arg(c, m, 2), 0xFFFFFFFFu); }
+template <int W>
+HostCallOutcome C_ncpy_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t n = Arg(c, m, 3);
+    if (n == 0xFFFFFFFFu) n = Arg(c, m, 1) - 1; // _TRUNCATE
+    return SecureAppend<W>(m, Arg(c, m, 0), Arg(c, m, 1), 0, Arg(c, m, 2), n);
+}
+template <int W>
+HostCallOutcome C_cat_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t dst = Arg(c, m, 0), size = Arg(c, m, 1);
+    if (!dst || !size) return Ret(22);
+    uint32_t len = Len<W>(m, dst, size);
+    if (len >= size) return Ret(22);
+    return SecureAppend<W>(m, dst, size, len, Arg(c, m, 2), 0xFFFFFFFFu);
+}
+template <int W>
+HostCallOutcome C_ncat_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t dst = Arg(c, m, 0), size = Arg(c, m, 1), n = Arg(c, m, 3);
+    if (!dst || !size) return Ret(22);
+    uint32_t len = Len<W>(m, dst, size);
+    if (len >= size) return Ret(22);
+    if (n == 0xFFFFFFFFu) n = size - 1 - len;
+    return SecureAppend<W>(m, dst, size, len, Arg(c, m, 2), n);
+}
+// memcpy_s/memmove_s(dst, dstSize, src, count)
+HostCallOutcome C_memcpy_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    uint32_t dst = Arg(c, m, 0), size = Arg(c, m, 1), src = Arg(c, m, 2), n = Arg(c, m, 3);
+    if (!n) return Ret(0);
+    if (!dst || !src) return Ret(22);
+    if (n > size) return Ret(34);
+    Copy(m, dst, src, n);
+    return Ret(0);
+}
+
 const HostFunctionEntry kEntries[] = {
     CDECL_ENTRY("memcpy", C_memcpy), CDECL_ENTRY("memmove", C_memcpy), CDECL_ENTRY("memset", C_memset),
     CDECL_ENTRY("memcmp", C_memcmp), CDECL_ENTRY("_memicmp", C_memicmp), CDECL_ENTRY("memchr", C_memchr),
@@ -371,6 +435,10 @@ const HostFunctionEntry kEntries[] = {
     CDECL_ENTRY("wcsrchr", C_wcsrchr), CDECL_ENTRY("wcsstr", C_wcsstr), CDECL_ENTRY("_wcsdup", C_wcsdup),
     CDECL_ENTRY("_wcsupr", C_wcsupr), CDECL_ENTRY("_wcslwr", C_wcslwr), CDECL_ENTRY("wcsspn", C_wcsspn),
     CDECL_ENTRY("wcscspn", C_wcscspn),
+    CDECL_ENTRY("strcpy_s", C_cpy_s<1>), CDECL_ENTRY("wcscpy_s", C_cpy_s<2>), CDECL_ENTRY("strncpy_s", C_ncpy_s<1>),
+    CDECL_ENTRY("wcsncpy_s", C_ncpy_s<2>), CDECL_ENTRY("strcat_s", C_cat_s<1>), CDECL_ENTRY("wcscat_s", C_cat_s<2>),
+    CDECL_ENTRY("strncat_s", C_ncat_s<1>), CDECL_ENTRY("wcsncat_s", C_ncat_s<2>), CDECL_ENTRY("memcpy_s", C_memcpy_s),
+    CDECL_ENTRY("memmove_s", C_memcpy_s),
     CDECL_ENTRY("mbstowcs", C_mbstowcs), CDECL_ENTRY("wcstombs", C_wcstombs), CDECL_ENTRY("mbtowc", C_mbtowc),
     CDECL_ENTRY("wctomb", C_wctomb),
     CDECL_ENTRY("isalpha", Ctype<IsAlpha>), CDECL_ENTRY("isdigit", Ctype<IsDigit>), CDECL_ENTRY("isalnum", Ctype<IsAlnum>),

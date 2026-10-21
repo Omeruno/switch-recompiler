@@ -576,6 +576,17 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
         for (uint32_t i = 0; i < 40; i += 4) m.Write32(mmi.addr() + i, 0);
         SendMsg(hwnd, WM_GETMINMAXINFO, 0, mmi.addr(), w->unicode);
     }
+    {
+        // WH_CBT, HCBT_CREATEWND: CBT_CREATEWND { CREATESTRUCT*, hwndInsertAfter }
+        StackBuffer cbt(8);
+        m.Write32(cbt.addr(), cs);
+        m.Write32(cbt.addr() + 4, 0);
+        if (CallHooks(5, 3, hwnd, cbt.addr())) {
+            DestroyWindowInternal(hwnd);
+            return 0;
+        }
+        if (!(w = Win(hwnd))) return 0;
+    }
     if (!SendMsg(hwnd, WM_NCCREATE, 0, cs, w->unicode)) {
         DestroyWindowInternal(hwnd);
         return 0;
@@ -605,6 +616,8 @@ bool DestroyWindowInternal(uint32_t hwnd) {
     if (!w || hwnd == S().desktop) return false;
     if (w->destroying) return true;
     w->destroying = true;
+    CallHooks(5, 4, hwnd, 0); // WH_CBT, HCBT_DESTROYWND
+    if (!(w = Win(hwnd))) return true;
     // принадлежащие окна — раньше владельца
     std::vector<uint32_t> owned;
     for (auto& kv : S().windows)

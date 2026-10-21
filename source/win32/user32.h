@@ -232,6 +232,9 @@ uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
 uint32_t DefDlgProcAddress(bool unicode);
 bool DialogMessage(uint32_t dlg, Msg& msg);
 
+// Хуки: вызов цепочки типа id (WH_CBT = 5, WH_MSGFILTER = -1); 0, если хуков нет
+uint32_t CallHooks(int id, int code, uint32_t wp, uint32_t lp);
+
 // Системная иконка (IDI_APPLICATION 32512, IDI_HAND 32513, ...)
 uint32_t SystemIconHandle(uint32_t id);
 
