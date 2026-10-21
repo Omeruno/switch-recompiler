@@ -94,5 +94,22 @@ int main() {
     peer.yieldRequested=false;
     assert(!peer.yieldRequested);
     rt::Clock::SetFastForward(false);
+    rt::Clock::SetFastForward(true);
+    rt::GuestScheduler timed;
+    rt::GuestThread timeoutThread,signaledThread;
+    timeoutThread.id=211;signaledThread.id=212;
+    timeoutThread.status=signaledThread.status=rt::GuestThreadStatus::Runnable;
+    assert(timed.Add(timeoutThread) && timed.Add(signaledThread));
+    assert(timed.WaitFor(timeoutThread,0xaaaau,25));
+    assert(timed.WaitFor(signaledThread,0xbbbbu,100));
+    assert(timed.Next()==nullptr && timed.HasPendingTimers());
+    rt::Clock::Sleep(26);
+    assert(timed.Next()==&timeoutThread);
+    assert(timeoutThread.timedOutHandle==0xaaaau);
+    assert(!signaledThread.IsRunnable());
+    assert(timed.Signal(0xbbbbu,true)==1);
+    assert(signaledThread.waitDeadlineUs==0 && signaledThread.timedOutHandle==0);
+    assert(timed.Next()==&signaledThread);
+    rt::Clock::SetFastForward(false);
     puts("PASSED: round-robin, suspend, wait, wake and exit");
 }
