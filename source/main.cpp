@@ -5,6 +5,7 @@
 #include <malloc.h>
 #include <cstdarg>
 #include <vector>
+#include <memory>
 #include <string>
 #include <algorithm>
 #include <dirent.h>
@@ -303,7 +304,9 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         return;
     }
 
-    cpu::Interpreter interp(mem, proc.TebAddress(), proc.TebAddress());
+    rt::GuestThread* runningThread = nullptr;
+    std::unique_ptr<cpu::Interpreter> runningInterpreter;
+    unsigned quantumLeft = 0;
 
     SafePrint("\n[+] Executing from entry point 0x%x:\n", cpuState.eip);
     SafeConsoleUpdate(); // показываем прогресс сразу, на случай если что-то пойдёт не так дальше
@@ -315,14 +318,25 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 
     while (steps < maxSteps)
     {
-        if (cpuState.eip == 0)
+        if (!runningThread || !runningThread->IsRunnable() || quantumLeft == 0) {
+            runningThread = proc.Scheduler().Next();
+            if (!runningThread) {
+                stopReason = "no runnable guest threads";
+                break;
+            }
+            runningInterpreter.reset(new cpu::Interpreter(mem, runningThread->teb, runningThread->teb));
+            quantumLeft = 256;
+        }
+        --quantumLeft;
+        cpu::CpuState& activeCpu = runningThread->cpu;
+        if (activeCpu.eip == 0)
         {
             stopReason = "called unimplemented import (address 0)";
             break;
         }
 
         win32::HostCallOutcome outcome;
-        if (win32::TryHandleHostCall(cpuState, mem, outcome))
+        if (win32::TryHandleHostCall(activeCpu, mem, outcome))
         {
             if (shown < maxLinesToShow)
             {
@@ -341,13 +355,13 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         }
 
         cpu::Instruction instr;
-        uint32_t eipBefore = cpuState.eip;
+        uint32_t eipBefore = activeCpu.eip;
         cpu::g_lastKnownEip = eipBefore; // НАЙДЕНО ЭТИМ СИСТЕМНЫМ ПРОСМОТРОМ: раньше
                                           // обновлялось только во вложенном цикле
                                           // (message_loop.cpp) — краши в ОСНОВНОМ
                                           // цикле на реальном Switch показывали бы
                                           // устаревший/нулевой EIP в диагностике.
-        auto result = interp.Step(cpuState, &instr);
+        auto result = runningInterpreter->Step(activeCpu, &instr);
 
         if (shown < maxLinesToShow)
         {
@@ -356,16 +370,23 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
             SafeConsoleUpdate(); // печатаем прогресс "в реальном времени"
         }
 
-        if (result == cpu::StepResult::Halted) { stopReason = "HLT"; break; }
+        if (result == cpu::StepResult::Halted) {
+            if (runningThread != &proc.MainThread()) {
+                proc.Scheduler().Exit(*runningThread, activeCpu.Get(cpu::Reg32::EAX));
+                ++steps;
+                continue;
+            }
+            stopReason = "HLT"; break;
+        }
         if ((result == cpu::StepResult::UnknownOpcode || result == cpu::StepResult::Exception) &&
-            win32::seh::DispatchCpuFault(cpuState, mem, proc.TebAddress(), interp.LastException()) == win32::seh::DispatchResult::Handled) {
+            win32::seh::DispatchCpuFault(activeCpu, mem, runningThread->teb, runningInterpreter->LastException()) == win32::seh::DispatchResult::Handled) {
             ++steps;
             continue;
         }
         if (result == cpu::StepResult::UnknownOpcode) { stopReason = "unknown opcode"; break; }
         if (result == cpu::StepResult::Exception)
         {
-            const cpu::CpuException& e = interp.LastException();
+            const cpu::CpuException& e = runningInterpreter->LastException();
             stopException = &e;
             SafePrint("[!] Guest exception 0x%08x at EIP=0x%x (address 0x%x)\n", e.code, e.eip, e.faultAddress);
             stopReason = "guest exception";
@@ -375,7 +396,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     }
 
     if (strcmp(stopReason, "guest called exit()") != 0 && strcmp(stopReason, "max steps reached") != 0)
-        SaveGuestStopReport(stopReason, path, cpuState, proc, stopException);
+        SaveGuestStopReport(stopReason, path, runningThread ? runningThread->cpu : cpuState, proc, stopException);
 
     if (!g_graphicsInitialized) {
         SafePrint("\n[+] Execution stopped: %s\n", stopReason);
