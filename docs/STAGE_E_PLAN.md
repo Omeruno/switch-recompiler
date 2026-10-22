@@ -107,8 +107,10 @@ GPU API не выбирается по предположению о налич�
 | --- | --- | --- |
 | E0–E2 | Геометрия и непрерывное рисование подтверждены пользователем; замечание меню включено в E3 | После 01f36b6 пользователь подтвердил синхронный штрих и остальную работу; новый сводный renderer-журнал не получен, измеренный Paint baseline ещё не заявлен |
 | E3 | Принят, Stage E: 50% | Пользователь подтвердил отсутствие оставшихся дефектов после c5e1871; все пять CI jobs 39847105724 успешны. Функциональная приёмка, без новых измерений FPS/latency |
-| E4 | В работе | Идентичность ресурсов, восстановление после частичного отказа, cleanup после остановки гостя: STAGE_E_RESOURCE_LIFECYCLE.md. Полные 60% пока не заявлены |
-| E5–E9 | Запланированы | GPU/composition/performance gates ещё не пройдены |
+| E4 | Принят, Stage E: 60% | Exact-SHA CI 2f60dac: 6/6 success; ограниченная память/lifetime: STAGE_E_RESOURCE_LIFECYCLE.md и STAGE_E_GPU_OUTPUT.md |
+| E5 | GPU работает; финальная приёмка Paint открыта | ChooseColor подтверждён на Switch; проверка остальных диалогов после исправления dispatch ожидается |
+| E6 | Эталон и исправление exposure; оконные GPU-слои ещё не реализованы | 28 реальных x86 сцен, CPU/software/GL oracle, два воспроизведённых дефекта: STAGE_E_COMPOSITION.md |
+| E7–E9 | Частичная подготовка, критерии ещё открыты | Ограниченные uploads/cache подключены; реальные Switch performance/финальный acceptance не приняты |
 
 Требование пользователя: учитывать всю ширину Switch Lite. Новый UI использует
 1280x720 desktop/output; фиксированные окна не растягиваются, другие форматы
@@ -200,3 +202,14 @@ handlers. Lifecycle cancellation and dialog metadata cleanup are covered too.
 Physical acceptance of the affected Paint dialogs remains open; Stage E stays
 at the accepted 60% until its application gates are complete. See
 [PAINT_DIALOG_DISPATCH.md](PAINT_DIALOG_DISPATCH.md).
+
+## E6: composition reference checkpoint
+
+Added 28 unattended real x86 window scenes with independent full-frame CPU and
+output validation at 1280x720 and 800x600, triple preserved software outputs and
+production EGL/GL replay in CI. The scenes reproduce stale foreground pixels
+after activation and stale exposed child siblings under WS_CLIPCHILDREN; both
+production invalidation paths are repaired. This is a prerequisite for retained
+window layers, not completion of E6. Accepted Stage E stays at 60% while current
+Paint hardware gates and the remaining E6 implementation are open. Scope,
+reproduction and next architectural boundary: [STAGE_E_COMPOSITION.md](STAGE_E_COMPOSITION.md).

@@ -780,7 +780,9 @@ bool SetWindowPosInternal(uint32_t hwnd, uint32_t after, int x, int y, int cx, i
             if (p == Desktop()) InvalidateScreen(oldScreen);
             else if (p) {
                 Rect pc = ScreenClientRect(p);
-                InvalidateClient(p, Region(oldScreen.Intersect(pc).Offset(-pc.left, -pc.top)), true, false);
+                // The vacated area may expose siblings even when the parent
+                // has WS_CLIPCHILDREN. Repaint those children as well.
+                InvalidateClient(p, Region(oldScreen.Intersect(pc).Offset(-pc.left, -pc.top)), true, true);
             }
         }
         if (nowVisible) {
@@ -884,7 +886,16 @@ void SetActive(uint32_t hwnd,bool foreground) {
     if(!valid() || !hwnd)return;
     if(!oldForeground) {SendMsg(hwnd,WM_ACTIVATEAPP,1,0);if(!valid())return;}
     target=Win(hwnd);
-    if(S().foreground==hwnd) {InsertZ(target,0);ui::g_gdi.InvalidateLayout();}
+    if(S().foreground==hwnd) {
+        Window* parent=ParentWin(target);
+        const auto previous=parent?parent->children:std::vector<uint32_t>();
+        const Rect footprint=ScreenRect(target);
+        const bool visible=IsVisibleChain(target);
+        InsertZ(target,0);ui::g_gdi.InvalidateLayout();
+        // Activation changes visible pixels just like explicit SetWindowPos.
+        // Mark damage before activation callbacks may request a synchronous paint.
+        if(visible && parent && previous!=parent->children)InvalidateScreen(footprint);
+    }
     SendMsg(hwnd,WM_NCACTIVATE,S().foreground==hwnd?1:0,0);
     if(valid())SendMsg(hwnd,WM_ACTIVATE,1,old);
 }

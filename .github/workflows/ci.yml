@@ -23,9 +23,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: mingw-w64 (тестовые программы Windows)
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686 g++-mingw-w64-i686
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
-        run: sh tools/run_host_tests.sh
+        run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-e-composition-exe
+          path: build-host/guest-run.*/gui_composition.exe
 
   gpu-reference:
     name: OpenGL pixels and fallback (EGL/Mesa)

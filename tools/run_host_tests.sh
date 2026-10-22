@@ -179,6 +179,37 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 20 "$out/test_presentation_classic.log" 2>/dev/null || true
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_composition_guest.cpp" $src -o "$out/test_composition_guest" &&
+       "$out/test_composition_guest" "$guestRoot/gui_composition.exe" > "$out/composition_native.log" 2>&1 &&
+       "$out/test_composition_guest" "$guestRoot/gui_composition.exe" --classic > "$out/composition_classic.log" 2>&1; then
+        tail -n 1 "$out/composition_native.log"
+        tail -n 1 "$out/composition_classic.log"
+    else
+        echo "   WINDOW COMPOSITION REGRESSION FAILED"
+        tail -n 20 "$out/composition_native.log" 2>/dev/null || true
+        tail -n 20 "$out/composition_classic.log" 2>/dev/null || true
+        failed=1
+    fi
+    # Optional locally, mandatory in CI: replay the same live x86 window scenes
+    # through the production GL renderer, not a second synthetic implementation.
+    if [ "${COMPOSITION_GL_TEST:-0}" = 1 ]; then
+        glsrc=""
+        for obj in $src; do
+            case "$obj" in */opengl_presentation.o) ;; *) glsrc="$glsrc $obj" ;; esac
+        done
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_composition_guest.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $glsrc -lEGL -lGL -o "$out/test_composition_gl" &&
+           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_composition_gl" "$guestRoot/gui_composition.exe" > "$out/composition_gl_native.log" 2>&1 &&
+           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_composition_gl" "$guestRoot/gui_composition.exe" --classic > "$out/composition_gl_classic.log" 2>&1; then
+            tail -n 2 "$out/composition_gl_native.log"
+            tail -n 2 "$out/composition_gl_classic.log"
+        else
+            echo "   OPENGL WINDOW COMPOSITION REGRESSION FAILED"
+            tail -n 20 "$out/composition_gl_native.log" 2>/dev/null || true
+            tail -n 20 "$out/composition_gl_classic.log" 2>/dev/null || true
+            failed=1
+        fi
+    fi
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
     if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then
