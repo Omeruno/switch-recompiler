@@ -186,8 +186,20 @@ Global отдельно; это разделение имён внутри ед�
 Ограничения: нет межпроцессного DuplicateHandle/named namespace, передачи
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
 полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
-сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
-загрузки, полных startup SEH/NT failure semantics и TerminateThread.
+сохраняется и доступен через HandleInformation. Нет полного rollback отображений неудачной загрузки, полных startup SEH/NT
+failure semantics и TerminateThread. DLL unload реализован для обычных
+исполняемых модулей: LoadLibrary/GetModuleHandleEx держат явные ссылки,
+EXE, PIN и HLE образуют постоянные корни, граф import/forwarder dependencies
+сохраняет общие зависимости и позволяет освобождать недостижимые циклы.
+FreeLibrary сериализован loader lock: TLS/DllMain PROCESS_DETACH (reserved=0)
+идут в обратном initialization order, вся retiring-группа остаётся отображена
+до возврата последнего callback. Затем освобождаются PE-образы и host-owned
+static TLS mappings всех живых потоков, очищаются TLS slots, индексы могут
+использоваться следующей загрузкой. Метаданные остаются tombstones, поэтому
+снимки notification order безопасно пропускают уже выгруженные модули.
+Повторная загрузка retiring-модуля отклоняется; полный контракт повторного
+входа в loader из DllMain, datafile/image LoadLibraryEx, FreeLibraryAndExitThread
+и очистка failed/uninitialized images остаются отдельными задачами.
 Standalone InitializeModules вне executor остаётся синхронным; основной
 Switch/winrun путь использует startup на main fiber. Бесконечное ожидание
 created child внутри DllMain может deadlock из-за loader serialization, как

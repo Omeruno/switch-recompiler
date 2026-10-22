@@ -48,6 +48,7 @@ B4. Отделить HWND/очередь сообщений/таймеры от 
 
 ## Этап D — loader и системные Win32 API
 - PE32 ABI (stdcall/cdecl/thiscall), экспорт по имени/ordinal, forwarded exports, delay-load, DLL refcount and attach/detach.
+- DLL unload: явные ссылки LoadLibrary/GetModuleHandleEx, PIN/UNCHANGED_REFCOUNT/FROM_ADDRESS; достижимость от EXE/закреплённых модулей/явных ссылок удерживает общие и циклические зависимости. FreeLibrary вызывает TLS/DllMain PROCESS_DETACH с reserved=0 в обратном initialization order, затем освобождает образы и host-owned static TLS у живых потоков (включая suspended), переиспользует TLS-индексы. HLE-модули закреплены. Метаданные выгруженных модулей сохраняются для безопасности snapshots. Полный rollback неудачной загрузки, LoadLibraryEx datafile/image flags, FreeLibraryAndExitThread и полный NT loader contract ещё впереди.
 - VirtualAlloc/Protect/Query/Free, page faults and stack growth, файловые пути, кодировки, реестр, загрузка ресурсов, COM/Shell.
 - Полные необработанные исключения, unwind, x87 precision limitations, FPU/SSE; тесты MSVC-подобного поведения.
 Критерий: реальные приложения без адресных hardcodes и чистое завершение.

@@ -33,6 +33,9 @@ $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/lifecycle_startup.c" \
     "$out/lifecycle_dep.dll" -o "$out/lifecycle_startup.dll" -lkernel32
 $cc -O1 -nostdlib -e _start@0 "$here/gui_startup_lifecycle.c" "$out/lifecycle_startup.dll" \
     "$out/lifecycle_dep.dll" -o "$out/gui_startup_lifecycle.exe" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/unload_module.c" -o "$out/unload_dep.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DUNLOAD_ID=2 "$here/unload_module.c" "$out/unload_dep.dll" -o "$out/unload_top.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DUNLOAD_ID=3 "$here/unload_module.c" "$out/unload_dep.dll" -o "$out/unload_side.dll" -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)

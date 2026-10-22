@@ -1251,3 +1251,55 @@ DLL unload/refcounts and full failed-image/dependency rollback remain the
 next substantial foundation packet. Startup CPU fault/SEH failure policy and
 physical Switch acceptance remain explicit gaps. Keep the same branch and
 JIT/GPU/shell gates; do not create or extend any automation.
+
+## DLL reference ownership and normal unload (2026-10-22)
+
+Incoming HEAD ef3aec8528a8de0b6155bfe74b2541af9f12c146 verified against
+remote branch and green five-job Actions run 39744624441. Work remains only
+on claude/wonderful-hawking-10mpr0; no automation or proprietary binaries used.
+
+- Replaced the unconditional FreeLibrary success stub with explicit dynamic
+  LoadLibrary references, GetModuleHandleEx reference/PIN/UNCHANGED_REFCOUNT/
+  FROM_ADDRESS handling and invalid-flag/output validation. Ordinary module
+  lookup adds no reference. EXE and HLE modules remain permanent roots.
+- Live-root graph traversal retains import/forwarder dependencies, handles
+  shared children and collects unreachable import cycles. Forwarder lookup
+  records a dependency instead of accumulating a dynamic reference per query.
+  Dynamic lazy-forwarder initialization still deserves its own focused audit;
+  this package does not assert complete NT loader semantics.
+- Under cooperative loader lock, unload freezes the retiring batch and calls
+  TLS/DllMain PROCESS_DETACH once, reserved=0, reverse initialization order.
+  All images/TLS stay mapped until the entire batch returns. Reentrant loads
+  of retiring modules and new imports from them fail rather than resurrecting
+  an image that is about to disappear. Unsupported DllMain loader recursion
+  is not advertised as a complete Windows contract.
+- Unmap images and host-owned per-thread static TLS regions, including live
+  suspended peers; clear guest slots and reuse vacant TLS indices. Never infer
+  mapping ownership from guest-writable TLS values. Retain Module tombstones
+  for callback snapshots; lookup and future notifications skip unloaded state.
+  Host metadata can grow with repeated loads; compaction is not implemented.
+- New CRT-free source-only unload_dep/top/side DLLs and gui_dll_unload exercise
+  80 load/free cycles, two explicit loads plus GetModuleHandleEx ownership,
+  detach order/TLS/reserved, common dependency lifetime, invalid/stale handle,
+  A/W/address/unchanged/PIN flags, and a worker loading while another thread
+  sleeps in detach. The worker receives a fresh load after loader serialization.
+- New mandatory native inspector test_dll_unload runs 80 unload cycles with a
+  deliberate cyclic dependency and suspended peer. Verifies image and every
+  static TLS mapping is reclaimed, memory-region counts stay constant, TLS
+  slots clear, corrupt guest TLS pointers cannot unmap the PEB, and main/worker
+  TEB/PEB survive. Guest and native tests run through tools/run_host_tests.sh.
+- Final full local suite PASSED, including all old/new Win32/CRT/C++ fixtures,
+  startup/shutdown inspectors, native tests and Open/Save. Used relocated
+  MinGW win32 toolchain and host g++ -fno-exceptions -fno-rtti. Initial local
+  attempts had a POSIX-toolchain mismatch and a non-executable winrun output;
+  neither is counted as green. Final log /tmp/loader-verified.log is transient.
+  Exact published SHA still requires CPU oracle, ARM64/QEMU and Switch CI.
+
+References: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary
+and https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandleexa.
+Next bounded packet: failed-load image/TLS/dependency rollback and clean retry.
+Failed/uninitialized mappings and their reference roots are deliberately not
+collected here, preserving existing failure-inspection behavior. Also pending:
+FreeLibraryAndExitThread, LoadLibraryEx datafile/image flags, full startup
+fault/SEH policy and physical Switch acceptance. Stage C remains ~90%; normal
+DLL unload belongs to the overlapping D work. JIT/GPU/shell gates unchanged.

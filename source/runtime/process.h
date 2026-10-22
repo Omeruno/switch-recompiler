@@ -42,6 +42,10 @@ struct Module {
     bool initializationFailed = false;
     bool threadCallsDisabled = false;
     bool processDetached = false;
+    bool unloaded = false; // retain metadata for snapshots across guest callbacks
+    bool unloading = false;
+    bool pinned = false;
+    uint32_t loadReferences = 0; // explicit LoadLibrary/GetModuleHandleEx roots
 
     // Разложенный образ (копия того, что в памяти гостя на момент загрузки) —
     // для ресурсов и разбора каталогов.
@@ -81,7 +85,9 @@ public:
 
     // LoadLibrary: находит уже загруженный модуль или грузит новый (с
     // зависимостями). initialize — вызвать DllMain/TLS сразу (нужен cpu).
-    Module* LoadLibrary(const std::string& name, std::string& error);
+    Module* LoadLibrary(const std::string& name, std::string& error, bool reference=true);
+    bool ReferenceModule(Module* module, bool pin=false);
+    bool FreeLibrary(cpu::CpuState& state, uint32_t handle);
 
     Module* MainModule() { return main_; }
     Module* FindByHandle(uint32_t handle);
@@ -174,6 +180,9 @@ private:
     void ParseTls(Module* m, const pe::PEParser& parser);
     bool InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error, uint32_t reserved=0);
     bool SetupStaticTls(Module* m, std::string& error);
+    bool CollectUnusedModules(cpu::CpuState& state);
+    void ReleaseModuleMemory(Module& module);
+    bool collectingModules_ = false;
 
     cpu::PagedGuestMemory& mem_;
     std::vector<std::unique_ptr<Module>> modules_;
@@ -186,7 +195,6 @@ private:
     std::string exeDir_;
     std::string commandLine_;
     uint32_t tlsArray_ = 0;
-    uint32_t nextTlsIndex_ = 0;
     uint32_t crtGlobals_ = 0;
     bool threadReady_ = false;
     bool shuttingDown_ = false;

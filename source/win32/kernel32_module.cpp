@@ -75,7 +75,13 @@ HostCallOutcome K32_LoadLibraryW(cpu::CpuState& c, cpu::IGuestMemory& m) { retur
 HostCallOutcome K32_LoadLibraryExA(cpu::CpuState& c, cpu::IGuestMemory& m) { return LoadLibraryCommon(c, m, ReadAnsi(m, Arg(c, m, 0))); }
 HostCallOutcome K32_LoadLibraryExW(cpu::CpuState& c, cpu::IGuestMemory& m) { return LoadLibraryCommon(c, m, WideToUtf8(ReadWide(m, Arg(c, m, 0)))); }
 
-HostCallOutcome K32_FreeLibrary(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(1); } // модули не выгружаем
+HostCallOutcome K32_FreeLibrary(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    if (!rt::g_process) return Ret(1);
+    if (!rt::g_process->FreeLibrary(c,Arg(c,m,0))) {
+        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
+    }
+    return Ret(1);
+}
 
 HostCallOutcome GetModuleHandleCommon(cpu::IGuestMemory& m, uint32_t namePtr, const std::string& name) {
     if (!rt::g_process) return Ret(g_imageBase);
@@ -89,7 +95,7 @@ HostCallOutcome GetModuleHandleCommon(cpu::IGuestMemory& m, uint32_t namePtr, co
         std::string n = rt::Process::NormalizeName(name);
         if (rt::g_process->IsAlwaysHle(n)) {
             std::string err;
-            mod = rt::g_process->LoadLibrary(n, err);
+            mod = rt::g_process->LoadLibrary(n, err, false);
         }
     }
     if (!mod) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
@@ -106,6 +112,14 @@ HostCallOutcome K32_GetModuleHandleW(cpu::CpuState& c, cpu::IGuestMemory& m) {
 // BOOL GetModuleHandleEx(DWORD flags, LPCSTR name, HMODULE* out)
 HostCallOutcome GetModuleHandleExCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     uint32_t flags = Arg(c, m, 0), name = Arg(c, m, 1), out = Arg(c, m, 2);
+    if (!out || (flags & ~7u) || ((flags & 1u) && (flags & 2u))) {
+        SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0);
+    }
+    std::unique_ptr<rt::Process::LoaderLock> lock;
+    if (rt::g_process) {
+        lock.reset(new rt::Process::LoaderLock(*rt::g_process));
+        if (!*lock) return Ret(0);
+    }
     uint32_t h = 0;
     if (flags & 4) { // GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
         rt::Module* mod = rt::g_process ? rt::g_process->FindByAddress(name) : nullptr;
@@ -113,7 +127,9 @@ HostCallOutcome GetModuleHandleExCommon(cpu::CpuState& c, cpu::IGuestMemory& m, 
     } else {
         h = GetModuleHandleCommon(m, name, wide ? WideToUtf8(ReadWide(m, name)) : ReadAnsi(m, name)).returnValue;
     }
-    if (out) m.Write32(out, h);
+    if (h && rt::g_process && !(flags & 2u) &&
+        !rt::g_process->ReferenceModule(rt::g_process->FindByHandle(h),(flags & 1u)!=0)) h=0;
+    m.Write32(out,h);
     if (!h) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
     return Ret(1);
 }

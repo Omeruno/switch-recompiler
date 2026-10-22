@@ -185,18 +185,18 @@ std::string Process::FindFile(const std::string& lowerName) const {
 }
 
 Module* Process::FindByHandle(uint32_t handle) {
-    for (auto& m : modules_) if (m->base == handle) return m.get();
+    for (auto& m : modules_) if (!m->unloaded && m->base == handle) return m.get();
     return nullptr;
 }
 
 Module* Process::FindByName(const std::string& name) {
     std::string n = NormalizeName(name);
-    for (auto& m : modules_) if (m->name == n) return m.get();
+    for (auto& m : modules_) if (!m->unloaded && m->name == n) return m.get();
     return nullptr;
 }
 
 Module* Process::FindByAddress(uint32_t addr) {
-    for (auto& m : modules_) if (addr >= m->base && addr < m->base + m->size) return m.get();
+    for (auto& m : modules_) if (!m->unloaded && addr >= m->base && addr < m->base + m->size) return m.get();
     return nullptr;
 }
 
@@ -204,6 +204,7 @@ Module* Process::CreateHleModule(const std::string& lowerName) {
     auto m = std::make_unique<Module>();
     m->name = lowerName;
     m->hle = true;
+    m->pinned = true;
     m->isDll = true;
     m->initialized = true;
     // Уникальный HMODULE: маленький регион с заголовком "MZ" (некоторые
@@ -232,20 +233,104 @@ Module* Process::LoadMainExe(const std::string& path, std::string& error) {
     return m;
 }
 
-Module* Process::LoadLibrary(const std::string& name, std::string& error) {
+Module* Process::LoadLibrary(const std::string& name, std::string& error, bool reference) {
     LoaderLock lock(*this);
     if (!lock) { error="loader operation interrupted"; return nullptr; }
     std::string n = NormalizeName(name);
     if (Module* m = FindByName(n)) {
-        if (m->initializationFailed) { error=n+": previous load/initialization failed"; return nullptr; }
+        if (m->unloading || m->initializationFailed) { error=n+": previous load/initialization failed"; return nullptr; }
+        if (reference) ReferenceModule(m);
         return m;
     }
     if (shuttingDown_) { error="new module load during process shutdown"; return nullptr; }
     if (!IsAlwaysHle(n)) {
         std::string path = FindFile(n);
-        if (!path.empty()) return LoadModuleFile(path, n, error);
+        if (!path.empty()) {
+            Module* module=LoadModuleFile(path,n,error);
+            if (module && reference) ReferenceModule(module);
+            return module;
+        }
     }
-    return CreateHleModule(n);
+    Module* module=CreateHleModule(n);
+    if (reference) ReferenceModule(module);
+    return module;
+}
+
+bool Process::ReferenceModule(Module* module, bool pin) {
+    if (!module || module->unloaded || module->unloading || module->initializationFailed) return false;
+    if (pin) module->pinned=true;
+    else if (module->loadReferences!=0xffffffffu) ++module->loadReferences;
+    return true;
+}
+
+void Process::ReleaseModuleMemory(Module& module) {
+    const auto release=[&](GuestThread& thread) {
+        auto it=thread.staticTlsRegions.find(module.tlsIndex);
+        if (it==thread.staticTlsRegions.end()) return;
+        const auto region=it->second;
+        if (!thread.memoryReleased) {
+            if (thread.tlsArray) mem_.Write32(thread.tlsArray+module.tlsIndex*4,0);
+            mem_.Unmap(region.first,region.second);
+            auto& regions=thread.memoryRegions;
+            regions.erase(std::remove(regions.begin(),regions.end(),region),regions.end());
+        }
+        thread.staticTlsRegions.erase(it);
+    };
+    release(mainThread_);
+    for (auto& thread:workerThreads_) release(*thread);
+    mem_.Unmap(module.base,module.size);
+    module.unloaded=true;
+    module.unloading=false;
+    module.initialized=false;
+    module.dependencies.clear();
+    std::vector<uint8_t>().swap(module.image);
+}
+
+bool Process::CollectUnusedModules(cpu::CpuState& state) {
+    if (collectingModules_ || shuttingDown_) return true;
+    collectingModules_=true;
+    struct Reset { bool& flag; ~Reset(){flag=false;} } reset{collectingModules_};
+    for (;;) {
+        // Reachability, rather than edge refcounts, also collects import cycles.
+        std::vector<Module*> reachable;
+        for (const auto& module:modules_)
+            if (!module->unloaded && (module.get()==main_ || module->pinned ||
+                module->loadReferences || module->initializing)) reachable.push_back(module.get());
+        for (size_t i=0;i<reachable.size();++i)
+            for (Module* dep:reachable[i]->dependencies)
+                if (!dep->unloaded && std::find(reachable.begin(),reachable.end(),dep)==reachable.end())
+                    reachable.push_back(dep);
+        std::vector<Module*> pending;
+        for (auto it=initializationOrder_.rbegin();it!=initializationOrder_.rend();++it)
+            if (!(*it)->unloaded && !(*it)->processDetached &&
+                std::find(reachable.begin(),reachable.end(),*it)==reachable.end()) pending.push_back(*it);
+        if (pending.empty()) return true;
+        // Freeze this batch across reentrant callbacks; metadata remains stable.
+        for (auto* module:pending) module->unloading=true;
+        for (auto* module:pending) {
+            module->processDetached=true;
+            if (!CallTls(state,*module,0,0)) return false;
+            if (module->isDll && module->entryRva) {
+                cpu::CpuState local=state;
+                uint32_t teb=CurrentTebAddress();
+                win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+                    {module->base,0,0},teb,teb);
+                if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+            }
+        }
+        // All detach callbacks retain access to the entire retiring graph.
+        for (auto* module:pending) ReleaseModuleMemory(*module);
+    }
+}
+
+bool Process::FreeLibrary(cpu::CpuState& state, uint32_t handle) {
+    LoaderLock lock(*this);
+    if (!lock) return false;
+    Module* module=FindByHandle(handle);
+    if (!module || module->initializationFailed || module->initializing || module->unloading) return false;
+    if (module->pinned || module==main_) return true;
+    if (module->loadReferences) --module->loadReferences;
+    return CollectUnusedModules(state);
 }
 
 Module* Process::LoadModuleFile(const std::string& path, const std::string& lowerName, std::string& error) {
@@ -354,12 +439,18 @@ void Process::ParseTls(Module* m, const pe::PEParser& parser) {
     uint32_t indexVa = Read32(m->image, dir.virtualAddress + 8);
     m->tlsCallbacks = Read32(m->image, dir.virtualAddress + 12);
     m->tlsZeroFill = Read32(m->image, dir.virtualAddress + 16);
-    m->tlsIndex = nextTlsIndex_++;
+    m->tlsIndex=0;
+    for (;m->tlsIndex<kTlsSlots;++m->tlsIndex) {
+        bool used=false;
+        for (const auto& other:modules_)
+            if (other.get()!=m && !other->unloaded && other->tlsIndex==m->tlsIndex) used=true;
+        if (!used) break;
+    }
     if (indexVa >= m->base && indexVa < m->base + m->size) Write32(m->image, indexVa - m->base, m->tlsIndex);
 }
 
 uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ordinal, int depth) {
-    if (!m || depth > 8) return 0;
+    if (!m || m->unloaded || depth > 8) return 0;
     if (m->hle) {
         pe::ImportedFunction f;
         f.name = name;
@@ -388,7 +479,9 @@ uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ord
         size_t dot = fwd.find('.');
         if (dot == std::string::npos) return 0;
         std::string err;
-        Module* target = LoadLibrary(fwd.substr(0, dot), err);
+        Module* target = LoadLibrary(fwd.substr(0, dot), err, false);
+        if (target && std::find(m->dependencies.begin(),m->dependencies.end(),target)==m->dependencies.end())
+            m->dependencies.push_back(target);
         std::string fn = fwd.substr(dot + 1);
         if (!fn.empty() && fn[0] == '#') return ResolveExport(target, "", static_cast<uint16_t>(std::atoi(fn.c_str() + 1)), depth + 1);
         return ResolveExport(target, fn, 0, depth + 1);
@@ -398,7 +491,7 @@ uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ord
 
 uint32_t Process::GetProcAddress(Module* m, const std::string& name, uint16_t ordinal) {
     LoaderLock lock(*this);
-    if (!lock || !m || m->initializationFailed) return 0;
+    if (!lock || !m || m->unloaded || m->unloading || m->initializationFailed) return 0;
     return ResolveExport(m, name, ordinal, 0);
 }
 
@@ -417,6 +510,7 @@ bool Process::BindImports(Module* m, const pe::PEParser& parser, std::string& er
             }
             if (dep && dep->hle) dep = nullptr;
         }
+        if (dep && dep->unloading) { error=lower+": dependency is unloading"; return false; }
         if (dep) {
             if (std::find(m->dependencies.begin(), m->dependencies.end(), dep) == m->dependencies.end())
                 m->dependencies.push_back(dep);
@@ -446,7 +540,7 @@ bool Process::BindImports(Module* m, const pe::PEParser& parser, std::string& er
 }
 
 bool Process::SetupStaticTls(Module* m, std::string& error) {
-    if (m->tlsIndex==0xffffffffu) return true;
+    if (m->unloaded || m->tlsIndex==0xffffffffu) return true;
     if (m->tlsIndex>=kTlsSlots) { error="static TLS index limit exceeded"; return false; }
     uint32_t tmplSize = m->tlsTemplateEnd > m->tlsTemplateStart ? m->tlsTemplateEnd - m->tlsTemplateStart : 0;
     if (tmplSize>0x1000000u || m->tlsZeroFill>0x1000000u-tmplSize) {
@@ -458,6 +552,7 @@ bool Process::SetupStaticTls(Module* m, std::string& error) {
         uint32_t block=mem_.Allocate(total,cpu::kProtRW);
         if (!block) { error="cannot allocate static TLS block"; return false; }
         thread.memoryRegions.emplace_back(block,total);
+        thread.staticTlsRegions[m->tlsIndex]={block,total};
         for (uint32_t i=0;i<tmplSize;++i) mem_.Write8(block+i,mem_.Read8(m->tlsTemplateStart+i));
         mem_.Write32(thread.tlsArray+m->tlsIndex*4,block);
         return true;
@@ -504,7 +599,7 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     // при загрузке ещё не было: перепривязываем все HLE-импорты.
     for (auto& mp : modules_) {
         Module* m = mp.get();
-        if (m->hle || m->path.empty()) continue;
+        if (m->unloaded || m->hle || m->path.empty()) continue;
         pe::PEParser p2;
         if (p2.LoadFromFile(m->path) != pe::LoadResult::Ok) continue;
         for (const auto& imp : p2.GetImports()) {
@@ -645,7 +740,7 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
         mem_.Unmap(teb,0x1000u);
     };
     for (const auto& mod : modules_) {
-        if (mod->tlsIndex==0xffffffffu || mod->tlsIndex>=kTlsSlots) continue;
+        if (mod->unloaded || mod->tlsIndex==0xffffffffu || mod->tlsIndex>=kTlsSlots) continue;
         const uint32_t templateSize=mod->tlsTemplateEnd>mod->tlsTemplateStart
             ? mod->tlsTemplateEnd-mod->tlsTemplateStart:0u;
         if (templateSize > 0x1000000u ||
@@ -662,6 +757,7 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
             return nullptr;
         }
         tlsBlocks.emplace_back(block,templateSize+mod->tlsZeroFill?templateSize+mod->tlsZeroFill:4u);
+        worker->staticTlsRegions[mod->tlsIndex]=tlsBlocks.back();
         for(uint32_t i=0;i<templateSize;++i)
             mem_.Write8(block+i,mem_.Read8(mod->tlsTemplateStart+i));
         mem_.Write32(tls+mod->tlsIndex*4u,block);
@@ -692,6 +788,7 @@ void Process::ReleaseThreadMemory(GuestThread& thread) {
     if (thread.status!=GuestThreadStatus::Exited || thread.memoryReleased) return;
     for (const auto& region:thread.memoryRegions) mem_.Unmap(region.first,region.second);
     thread.memoryRegions.clear();
+    thread.staticTlsRegions.clear();
     thread.memoryReleased=true;
 }
 
@@ -709,6 +806,7 @@ bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason, uin
 }
 
 bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string& error, uint32_t reserved) {
+    if (module->unloaded) return true;
     if (module->initializationFailed) { error=module->name+": initialization failed"; return false; }
     if (module->initialized || module->initializing) return true;
     module->initializing=true;
@@ -776,7 +874,7 @@ bool Process::NotifyProcessExit(GuestThread& thread) {
     auto order=initializationOrder_;
     std::reverse(order.begin(),order.end());
     for (Module* module:order) {
-        if (module->processDetached) continue;
+        if (module->unloaded || module->processDetached) continue;
         // Mark before entering guest code: a recursive exit must not repeat it.
         module->processDetached=true;
         if (!CallTls(thread.cpu,*module,0,1)) return false;
@@ -801,7 +899,7 @@ bool Process::NotifyThread(GuestThread& thread, uint32_t reason) {
     auto order=initializationOrder_;
     if (reason==3) std::reverse(order.begin(),order.end());
     for (Module* module:order) {
-        if (module->threadCallsDisabled) continue;
+        if (module->unloaded || module->unloading || module->processDetached || module->threadCallsDisabled) continue;
         if (!CallTls(thread.cpu,*module,reason)) return false;
         if (module->isDll && module->entryRva) {
             cpu::CpuState local=thread.cpu;

@@ -5,6 +5,7 @@
 #include <vector>
 #include <utility>
 #include <deque>
+#include <map>
 #include <memory>
 #include "../cpu/cpu_state.h"
 
@@ -21,6 +22,7 @@ struct GuestThread {
     // Host-owned mappings, independent of guest-writable TEB/TLS pointers.
     // Metadata survives exit for HANDLE queries; mappings do not.
     std::vector<std::pair<uint32_t,uint32_t>> memoryRegions;
+    std::map<uint32_t,std::pair<uint32_t,uint32_t>> staticTlsRegions;
     bool memoryReleased = false;
     bool needsThreadAttach = false;
     bool exitRequested = false;
