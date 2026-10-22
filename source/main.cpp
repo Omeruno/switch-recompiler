@@ -30,6 +30,7 @@
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
 #include "runtime/guest_execution_log.h"
+#include "ui/presentation.h"
 #include "win32/user32.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
@@ -68,6 +69,8 @@ static bool g_useNewUi = false;
 namespace newui {
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
+void BeginPresentation();
+void EndPresentation();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
 static std::string g_selectedExePath = "romfs:/winmine.exe"; // безопасный дефолт, если пикер не понадобится/не сработает
@@ -287,14 +290,22 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
     rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
+    struct PresentationScope {
+        bool enabled;
+        win32::user::Platform previous=win32::user::g_platform;
+        ~PresentationScope() {
+            if(enabled) {newui::EndPresentation();win32::user::g_platform=previous;}
+        }
+    } presentationScope{g_useNewUi};
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
     if (g_useNewUi) {
+        newui::BeginPresentation();
         win32::user::g_platform.wait = &newui::Wait;
         win32::user::g_platform.present = &newui::Present;
         win32::user::g_platform.textInput = &newui::TextInput;
-        win32::user::EnableUi(800, 600);
+        win32::user::EnableUi(ui::kHandheldWidth,ui::kHandheldHeight);
     }
 
     static cpu::PagedGuestMemory mem;
@@ -1539,66 +1550,44 @@ static win32::HostFrameResult PumpHostFrame()
 // ввода открывают экранную клавиатуру.
 namespace newui {
 
-constexpr int kOutW = 1280, kOutH = 720;
-const ui::Surface* g_screen = nullptr;
-float g_cx = 400.0f, g_cy = 300.0f;
-bool g_touching = false;
-int g_lastTouchX = 0, g_lastTouchY = 0;
+constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
+ui::SoftwarePresentation g_software;
+ui::Presentation g_presentation;
+float g_cx=kOutW/2.0f,g_cy=kOutH/2.0f;
+bool g_touching=false;
+int g_lastTouchX=0,g_lastTouchY=0;
 
-void Geometry(const ui::Surface& s, int& outW, int& offX) {
-    outW = s.width * kOutH / s.height;
-    if (outW > kOutW) outW = kOutW;
-    offX = (kOutW - outW) / 2;
+void BeginPresentation() {
+    g_presentation.Detach();g_presentation.ResetStats();g_presentation.Attach(&g_software);
+    g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
 }
-
-void Blit() {
-    if (!g_screen || !g_screen->Valid()) return;
-    const ui::Surface& s = *g_screen;
-    int outW, offX;
-    Geometry(s, outW, offX);
-    u32 stride;
-    u32* fb = static_cast<u32*>(framebufferBegin(&g_fb, &stride));
-    u32 pitch = stride / sizeof(u32);
-    static std::vector<int> colMap;
-    colMap.resize(static_cast<size_t>(outW));
-    for (int x = 0; x < outW; ++x) colMap[static_cast<size_t>(x)] = x * s.width / outW;
-    for (int y = 0; y < kOutH; ++y) {
-        u32* row = fb + static_cast<size_t>(y) * pitch;
-        int sy = y * s.height / kOutH;
-        for (int x = 0; x < offX; ++x) row[x] = 0xFF000000u;
-        for (int x = offX + outW; x < kOutW; ++x) row[x] = 0xFF000000u;
-        if (s.bpp == 32) {
-            const uint32_t* src = reinterpret_cast<const uint32_t*>(s.Row(sy));
-            for (int x = 0; x < outW; ++x) {
-                uint32_t c = src[colMap[static_cast<size_t>(x)]];
-                row[offX + x] = 0xFF000000u | ((c >> 16) & 0xFF) | (c & 0xFF00) | ((c & 0xFF) << 16);
-            }
-        } else {
-            for (int x = 0; x < outW; ++x) {
-                uint32_t c = s.Get(colMap[static_cast<size_t>(x)], sy);
-                row[offX + x] = 0xFF000000u | ((c >> 16) & 0xFF) | (c & 0xFF00) | ((c & 0xFF) << 16);
-            }
-        }
+void EndPresentation() {
+    // One summary per session; never log each frame to SD or closed console.
+    const auto& s=g_presentation.Stats();
+    FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
+    if(log) {
+        fprintf(log,"Software presentation v1\nBuild: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+            SR_BUILD_REVISION,g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
+        fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
+            (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
+            (unsigned long long)s.rejected,g_presentation.FrameBytes());
+        fprintf(log,"Snapshot bytes: %llu\nOutput bytes: %llu\nSnapshot ns: %llu\nRender ns: %llu\n",
+            (unsigned long long)s.snapshotBytes,(unsigned long long)s.outputBytes,
+            (unsigned long long)s.snapshotNs,(unsigned long long)s.renderNs);
+        fclose(log);
     }
-    // курсор-стрелка (как в Windows), в координатах экрана Switch
-    static const char* const kArrow[] = {
-        "X", "XX", "X.X", "X..X", "X...X", "X....X", "X.....X", "X......X", "X.......X", "X........X",
-        "X.....XXXXX", "X..X..X", "X.X X..X", "XX  X..X", "X    X..X", "     X..X", "      X..X", "      X..X", "       XX"};
-    int px = offX + static_cast<int>(g_cx) * outW / s.width, py = static_cast<int>(g_cy) * kOutH / s.height;
-    for (int r = 0; r < 19; ++r)
-        for (int c = 0; kArrow[r][c]; ++c) {
-            char ch = kArrow[r][c];
-            if (ch == ' ') continue;
-            int x = px + c, y = py + r;
-            if (x < 0 || y < 0 || x >= kOutW || y >= kOutH) continue;
-            fb[static_cast<size_t>(y) * pitch + x] = ch == 'X' ? 0xFF000000u : 0xFFFFFFFFu;
-        }
+    g_presentation.Detach();
+}
+void Blit() {
+    if(!g_presentation.SourceWidth())return;
+    u32 stride=0;
+    u32* fb=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
+    ui::OutputBuffer target{fb,kOutW,kOutH,stride/sizeof(u32),size_t(stride/sizeof(u32))*kOutH};
+    g_presentation.Render(target,{static_cast<int>(g_cx),static_cast<int>(g_cy),true});
     framebufferEnd(&g_fb);
 }
-
 void Present(const ui::Surface& s) {
-    g_screen = &s;
-    Blit();
+    if(g_presentation.Submit(s))Blit();
 }
 
 void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk) {
@@ -1624,8 +1613,8 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         if (!appletMainLoop()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
         padUpdate(&g_pad);
         u64 down = padGetButtonsDown(&g_pad), up = padGetButtonsUp(&g_pad);
-        int sw = g_screen ? g_screen->width : win32::user::S().screenW;
-        int sh = g_screen ? g_screen->height : win32::user::S().screenH;
+        const int sw=g_presentation.SourceWidth()?g_presentation.SourceWidth():win32::user::S().screenW;
+        const int sh=g_presentation.SourceHeight()?g_presentation.SourceHeight():win32::user::S().screenH;
         bool moved = false;
         // стик
         HidAnalogStickState stick = padGetStickPos(&g_pad, 0);
@@ -1643,15 +1632,16 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         }
         // тач
         HidTouchScreenState ts = {0};
-        bool touching = hidGetTouchScreenStates(&ts, 1) && ts.count > 0;
+        bool touching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
+        const auto viewport=ui::FitViewport(sw,sh,kOutW,kOutH);
+        if(touching) {
+            const int tx=static_cast<int>(ts.touches[0].x),ty=static_cast<int>(ts.touches[0].y);
+            // A new press in letterbox is not a click on the image edge.
+            if(!g_touching && !viewport.Contains(tx,ty))touching=false;
+        }
         if (touching) {
-            int outW, offX;
-            if (g_screen) Geometry(*g_screen, outW, offX); else { outW = sw * kOutH / sh; offX = (kOutW - outW) / 2; }
-            int tx = static_cast<int>(ts.touches[0].x), ty = static_cast<int>(ts.touches[0].y);
-            float vx = static_cast<float>((tx - offX) * sw) / static_cast<float>(outW);
-            float vy = static_cast<float>(ty * sh) / static_cast<float>(kOutH);
-            g_cx = std::max(0.0f, std::min(vx, static_cast<float>(sw - 1)));
-            g_cy = std::max(0.0f, std::min(vy, static_cast<float>(sh - 1)));
+            int tx=static_cast<int>(ts.touches[0].x),ty=static_cast<int>(ts.touches[0].y);
+            viewport.ToSource(tx,ty,sw,sh,g_cx,g_cy);
             if (!g_touching || tx != g_lastTouchX || ty != g_lastTouchY) moved = true;
             g_lastTouchX = tx;
             g_lastTouchY = ty;

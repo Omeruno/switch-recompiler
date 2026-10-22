@@ -2,6 +2,7 @@
 #include "source/runtime/clock.h"
 #include "source/cpu/interpreter.h"
 #include "source/win32/user32.h"
+#include "source/ui/presentation.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -11,6 +12,10 @@ static cpu::PagedGuestMemory* probeMemory;
 static rt::Process* probeProcess;
 static uint32_t probeStage,previousStage;
 static unsigned injected,presented;
+static ui::SoftwarePresentation renderer;
+static ui::Presentation presentation(&renderer);
+static std::vector<uint32_t> display(1280*720);
+static bool pacedOutput;
 static void AbortInput(bool guestExit) {
     cpu::PagedGuestMemory memory;rt::Process process(memory);rt::g_process=&process;
     assert(memory.Map(0x10000,0x10000,cpu::kProtRWX));
@@ -52,15 +57,18 @@ int main(int argc,char** argv) {
     assert(argc==2 || (argc==3 && std::strcmp(argv[2],"--paced")==0));
     const bool paced=argc==3;rt::Clock::SetFastForward(!paced);
     AbortInput(false);AbortInput(true);
-    user::EnableUi(800,600);
+    user::EnableUi(paced?1280:800,paced?720:600);
     cpu::PagedGuestMemory memory;rt::Process process(memory);rt::g_process=&process;
     std::string error;assert(process.LoadMainExe(argv[1],error));
     assert(process.PrepareMainThread(process.MainThread().cpu,error));
     uint32_t enabled=process.GetProcAddress(process.MainModule(),"InputTestProbe");
     uint32_t stage=process.GetProcAddress(process.MainModule(),"InputTestStage");assert(enabled&&stage);
     memory.Write32(enabled,1);probeMemory=&memory;probeProcess=&process;probeStage=stage;
-    if(paced)user::g_platform.present=[](const ui::Surface& surface) {
-        assert(surface.Valid());++presented;rt::Clock::Sleep(16);
+    pacedOutput=paced;
+    user::g_platform.present=[](const ui::Surface& surface) {
+        assert(presentation.Submit(surface));
+        assert(presentation.Render({display.data(),1280,720,1280,display.size()}));
+        ++presented;if(pacedOutput)rt::Clock::Sleep(16);
     };
     user::g_platform.wait=[](int,std::vector<user::InputEvent>& events) {
         uint32_t current=probeMemory->Read32(probeStage);
@@ -104,8 +112,11 @@ int main(int argc,char** argv) {
     assert(stopped && injected==5 && !user::S().foreground && !user::S().capture);
     for(const auto& item:user::S().queues)assert(!item.second.active && !item.second.focus);
     for(const auto& item:user::S().windows)assert(item.first==user::S().desktop);
-    if(paced)assert(presented>0);
+    assert(presented>0 && presentation.SourceWidth()==(paced?1280:800));
+    // Redraw remains usable after guest shutdown; source is an owned snapshot.
+    assert(presentation.Render({display.data(),1280,720,1280,display.size()},{0,0,true}));
+    presentation.Detach();assert(!presentation.FrameBytes());
     user::g_platform.wait={};user::g_platform.present=nullptr;rt::g_process=nullptr;
-    if(paced)puts("PASSED: real-clock GUI callbacks with paced presentation");
+    if(paced)puts("PASSED: 1280x720 real-clock GUI callbacks through software backend with paced presentation");
     puts("PASSED: foreground input routing from peer poll, capture drag/hover ownership, nested callbacks and host-abort/ExitProcess GUI cleanup");
 }

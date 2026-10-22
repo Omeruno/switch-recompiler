@@ -1623,3 +1623,35 @@ window composition, measured caches/batching, performance and hardware gate.
 No engineering percentage is credited merely for this plan. No JIT/shell/
 DirectX scope expansion hidden in E. Basic JIT 42 result remains user-reported
 confirmed; original codes/mode not recovered. No need to repeat that tiny probe.
+
+
+## 2026-10-22 Stage E0–E2 software implementation; Lite full width
+
+User asked to start and explicitly account for Switch Lite screen width.
+New UI desktop and physical output use 1280x720, not stretched 800x600. Legacy
+Paint path unchanged; Paint new UI still selected with L, other EXEs without L.
+Software backend extracted into ui/presentation.{h,cpp}, existing GDI/USER32
+semantics retained. Frontend acquires/releases framebuffer only. Shared fit
+preserves both axes, matches touch, fixes ultrawide distortion; letterbox new
+press rejected while drags clamp. Presentation stores one owned latest frame
+instead of keeping borrowed UI/guest pointer for cursor redraw. Detach and
+ordinary frontend exit release it and restore platform callbacks.
+One exit-only SD renderer summary records actual build/dimensions/bytes/times;
+no per-frame SD trace. Snapshot budget native 3,686,400 bytes, max 16 MiB; column
+map bounded. This is still full-frame CPU presentation, not dirty/GPU work.
+See docs/STAGE_E_RENDERER_AUDIT.md for producer/consumer audit, legacy/DIB
+boundaries, precise timing scope and hardware instructions. Tests include
+frozen legacy pixel/cursor comparison, formats/palette/negative pitch, input
+geometry, lifetime/failure/padding, real x86 four-corner GDI probe at both
+resolutions, and wide paced native GUI input. Final full-suite and exact-SHA
+CI results must be checked below/at branch before recommending NRO. Software
+readiness alone is not 35% acceptance: hardware corner/border report and short
+new-UI Paint smoke/readability/timing remain. User has Lite for this check.
+
+Validation: complete final sh tools/run_host_tests.sh PASSED with actual MinGW
+guest builds and g++ -fno-exceptions -fno-rtti (log /tmp/stage-e012-final.log).
+Includes both 800x600/1280x720 real-x86 GDI output probes, wide paced GUI input
+and all eight Stage C suites. Standalone ASan+UBSan passed with detect_leaks=0
+(LSan cannot inspect traced process here). Timing sample preserved under
+docs/evidence/stage-e012-host-presentation.txt; host-only, not Switch FPS.
+Exact-SHA Switch/CPU oracle/QEMU/host/probe CI still required after publication.

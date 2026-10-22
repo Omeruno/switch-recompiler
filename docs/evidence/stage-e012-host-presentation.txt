@@ -1,0 +1,3 @@
+BENCH host-only 800x600 ->1280x720 rounds=12 legacy_ns=16594213 snapshot_ns=911824 render_ns=15288983 frame_bytes=1920000 output_bytes=44236800
+BENCH host-only 1280x720 ->1280x720 rounds=12 legacy_ns=21073629 snapshot_ns=1856967 render_ns=16597736 frame_bytes=3686400 output_bytes=44236800
+PASSED: old-output pixel equivalence, Lite full width, aspect/input mapping, DIB formats, padding, owned redraw, detach/resize/failure and bounded metrics
