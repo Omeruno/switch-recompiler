@@ -58,3 +58,13 @@ actual output API supports cancellation; libnx framebufferEnd queues the buffer,
 so an invented abort operation would not satisfy that criterion. GPU uploads and
 fences belong with the real E5 backend. This package does not close E4 by volume
 of code or claim hardware GPU acceleration.
+
+
+## Follow-up: large E4–E7 work block
+
+Presentation-local vector allocations have now been replaced with fallible exact-
+capacity buffers and fixed damage storage. Deterministic fault injection covers
+the formerly pending allocation gate. Actual EGL/GL ownership, failure recovery,
+cache limits, remaining E6 constraints and combined hardware acceptance are in
+[STAGE_E_GPU_OUTPUT.md](STAGE_E_GPU_OUTPUT.md). The earlier remaining-work section
+describes the first E4 commit; it is superseded by this implementation and its CI.

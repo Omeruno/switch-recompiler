@@ -33,6 +33,8 @@
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
+#include "ui/opengl_presentation.h"
+#include "ui/switch_gpu_output.h"
 #include "win32/user32.h"
 #include "win32/presentation_session.h"
 #include "win32/host_functions.h"
@@ -60,6 +62,7 @@ namespace win32 {
 // своими финальными диагностическими printf: если мы уже в графике
 // (консоль закрыта), печатать туда больше нельзя.
 static bool g_graphicsInitialized = false;
+static bool g_framebufferReady = false;
 
 // Путь к выбранному исполняемому файлу — заполняется PickExecutableFile()
 // в main() (см. ниже) ДО создания игрового потока; объявлена здесь так рано
@@ -75,6 +78,8 @@ void Present(const ui::Surface& s);
 void BeginPresentation(const char* guestPath);
 void EndPresentation();
 void InvalidateOutput();
+bool InitializeOutput(bool gpuRequested);
+void CloseOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
 static std::string g_selectedExePath = "romfs:/winmine.exe"; // безопасный дефолт, если пикер не понадобится/не сработает
@@ -1128,6 +1133,7 @@ static bool HandleAboutBoxClick(int realX, int realY) {
 
 static void DrawGdiScreenIntoFramebuffer(Framebuffer& fb, int cursorX, int cursorY)
 {
+    if(!g_framebufferReady)return;
     // Берём уменьшенное "виртуальное" разрешение (640x360)
     uint32_t screenDc = gdi::g_gdi.GetOrCreateScreenDC(640, 360);
     const gdi::Bitmap* screen = gdi::g_gdi.GetBitmapForDC(screenDc);
@@ -1551,6 +1557,11 @@ namespace newui {
 
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
 ui::SoftwarePresentation g_software;
+ui::OpenGlPresentation g_gpu;
+ui::SwitchGpuOutput g_gpuOutput;
+bool g_gpuActive=false;
+uint64_t g_gpuFallbacks=0;
+std::string g_gpuError="none";
 ui::Presentation g_presentation;
 float g_cx=kOutW/2.0f,g_cy=kOutH/2.0f;
 bool g_touching=false;
@@ -1562,7 +1573,7 @@ bool g_startupTouch=false;
 std::string g_presentationGuest;
 struct FramebufferStats {
     uint64_t frames=0,beginNs=0,endNs=0,maxBeginNs=0,maxEndNs=0,deferredDragFrames=0;
-    uint64_t skippedUnchanged=0;
+    uint64_t skippedUnchanged=0,gpuFrames=0,gpuSwapNs=0,maxGpuSwapNs=0;
 } g_framebufferStats;
 bool g_havePresented=false;
 uint64_t g_presentedSerial=0,g_presentedGeneration=0;
@@ -1573,8 +1584,42 @@ uint64_t PresentationElapsed(PresentationClock::time_point start) {
 }
 void InvalidateOutput() {g_havePresented=false;g_software.Reset();}
 
+bool CreateSoftwareOutput() {
+    if(g_framebufferReady)return true;
+    Result rc=framebufferCreate(&g_fb,nwindowGetDefault(),kOutW,kOutH,PIXEL_FORMAT_RGBA_8888,2);
+    if(R_FAILED(rc))return false;
+    rc=framebufferMakeLinear(&g_fb);
+    if(R_FAILED(rc)) {framebufferClose(&g_fb);return false;}
+    g_framebufferReady=true;return true;
+}
+bool InitializeOutput(bool gpuRequested) {
+    g_gpuFallbacks=0;g_gpuError="none";
+    if(gpuRequested) {
+        g_gpuActive=g_gpuOutput.Initialize();
+        if(g_gpuActive)return true;
+        ++g_gpuFallbacks;g_gpuError=g_gpuOutput.Error();
+    }
+    return CreateSoftwareOutput();
+}
+void CloseOutput() {
+    g_gpuOutput.Shutdown();g_gpuActive=false;
+    if(g_framebufferReady) {framebufferClose(&g_fb);g_framebufferReady=false;}
+}
+bool FallBackToSoftware(const char* error) {
+    g_gpuError=error;++g_gpuFallbacks;
+    g_presentation.Attach(&g_software); // retain the owned CPU snapshot
+    g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;g_havePresented=false;
+    return CreateSoftwareOutput();
+}
 void BeginPresentation(const char* guestPath) {
-    g_presentation.Detach();g_presentation.ResetStats();g_presentation.Attach(&g_software);
+    g_presentation.Detach();g_presentation.ResetStats();
+    if(g_gpuActive) {
+        if(!g_gpuOutput.MakeCurrent()) {
+            g_gpuError=g_gpuOutput.Error();++g_gpuFallbacks;
+            g_gpuOutput.Shutdown();g_gpuActive=false;CreateSoftwareOutput();
+        } else if(!g_gpu.Initialize())FallBackToSoftware(g_gpu.Error());
+    }
+    g_presentation.Attach(g_gpuActive?static_cast<ui::PresentationBackend*>(&g_gpu):&g_software);
     g_presentationGuest=guestPath;g_framebufferStats={};
     g_havePresented=false;
     g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
@@ -1590,7 +1635,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Software presentation v3\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v4\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1608,9 +1653,16 @@ void EndPresentation() {
             g_presentation.TrackingBytes(),g_software.CacheBytes());
         fprintf(log,"Startup held buttons: 0x%llx\nStartup touch: %u\nStick source pixels/s limit: %.0f\n",
             (unsigned long long)g_startupHeldButtons,unsigned(g_startupTouch),ui::StickPointerMotion::MaxPixelsPerSecond);
+        fprintf(log,"Backend: %s\nGPU uploaded bytes: %llu\nGPU upload calls: %llu\nGPU fallbacks: %llu\nGPU error: %s\n",
+            g_gpuActive?"OpenGL":"software",(unsigned long long)g_gpu.UploadedBytes(),
+            (unsigned long long)g_gpu.UploadCalls(),(unsigned long long)g_gpuFallbacks,g_gpuError.c_str());
+        fprintf(log,"GPU frames: %llu\nGPU swap ns: %llu\nMax GPU swap ns: %llu\n",
+            (unsigned long long)g_framebufferStats.gpuFrames,(unsigned long long)g_framebufferStats.gpuSwapNs,
+            (unsigned long long)g_framebufferStats.maxGpuSwapNs);
         fclose(log);
     }
     g_presentation.Detach();
+    if(g_gpuActive) {g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;}
 }
 void Blit() {
     if(!g_presentation.SourceWidth())return;
@@ -1623,6 +1675,22 @@ void Blit() {
        g_presentedCursor.x==cursor.x && g_presentedCursor.y==cursor.y) {
         ++g_framebufferStats.skippedUnchanged;return;
     }
+    if(g_gpuActive) {
+        const bool rendered=g_presentation.Render({nullptr,kOutW,kOutH,0,0},cursor);
+        const auto swapStart=PresentationClock::now();
+        const bool swapped=rendered && g_gpuOutput.Swap();
+        const uint64_t swapNs=PresentationElapsed(swapStart);
+        if(swapped) {
+            ++g_framebufferStats.gpuFrames;g_framebufferStats.gpuSwapNs+=swapNs;
+            g_framebufferStats.maxGpuSwapNs=std::max(g_framebufferStats.maxGpuSwapNs,swapNs);
+            g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
+            g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
+            return;
+        }
+        const char* error=rendered?g_gpuOutput.Error():g_gpu.Error();
+        if(!FallBackToSoftware(error))return;
+    }
+    if(!g_framebufferReady)return;
     u32 stride=0;
     auto start=PresentationClock::now();
     u32* fb=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
@@ -1978,10 +2046,9 @@ int main(int argc, char* argv[])
     consoleUpdate(NULL);
     consoleExit(NULL);
     cpu::g_consoleAvailable = false;
-    Result graphicsRc=framebufferCreate(&g_fb, nwindowGetDefault(), 1280, 720, PIXEL_FORMAT_RGBA_8888, 2);
-    if(R_FAILED(graphicsRc)) {romfsExit();return 1;}
-    graphicsRc=framebufferMakeLinear(&g_fb);
-    if(R_FAILED(graphicsRc)) {framebufferClose(&g_fb);romfsExit();return 1;}
+    // ZL at launch forces the software reference for recovery/comparison.
+    const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
+    if(!newui::InitializeOutput(requestGpu)) {romfsExit();return 1;}
     g_graphicsInitialized = true;
 
     // Запускаем всю игровую логику на отдельном потоке с большим стеком
@@ -1993,21 +2060,21 @@ int main(int argc, char* argv[])
     if (R_FAILED(threadRc))
     {
         // Тут консоль уже закрыта — просто закрываем framebuffer и выходим
-        framebufferClose(&g_fb);
+        newui::CloseOutput();
         romfsExit();
         return 1;
     }
 
     threadRc=threadStart(&gameThread);
     if(R_FAILED(threadRc)) {
-        threadClose(&gameThread);framebufferClose(&g_fb);
+        threadClose(&gameThread);newui::CloseOutput();
         g_graphicsInitialized=false;romfsExit();return 1;
     }
     threadWaitForExit(&gameThread);
     threadClose(&gameThread);
 
     romfsExit();
-    framebufferClose(&g_fb);
+    newui::CloseOutput();
     if (win32::g_playAudioImpl) audoutExit();
     return 0;
 }

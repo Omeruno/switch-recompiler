@@ -27,6 +27,18 @@ jobs:
       - name: Регрессия Сапёра и гостевые программы
         run: sh tools/run_host_tests.sh
 
+  gpu-reference:
+    name: OpenGL pixels and fallback (EGL/Mesa)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mesa development libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1-mesa-dev libgl-dev
+      - name: Actual GL output versus software reference
+        run: |
+          g++ -std=c++17 -O2 -Wall -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_presentation_gpu.cpp source/ui/presentation.cpp source/ui/opengl_presentation.cpp -lEGL -lGL -o /tmp/test_presentation_gpu
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_presentation_gpu
+
   cpu-oracle:
     name: Сверка CPU с железом
     runs-on: ubuntu-latest
@@ -43,6 +55,8 @@ jobs:
     container: devkitpro/devkita64:latest
     steps:
       - uses: actions/checkout@v4
+      - name: OpenGL/EGL dependencies
+        run: pacman -S --noconfirm --needed switch-mesa switch-glad
       - name: make
         run: make -j"$(nproc)" BUILD_REVISION="$GITHUB_SHA"
       - uses: actions/upload-artifact@v4

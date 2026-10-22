@@ -1,4 +1,5 @@
 #include "presentation.h"
+#include "presentation_cursor.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -45,9 +46,10 @@ bool OutputBuffer::Valid() const {
     if(rows && stridePixels>(std::numeric_limits<size_t>::max()-size_t(width))/rows)return false;
     return capacityPixels>=rows*stridePixels+static_cast<size_t>(width);
 }
+SoftwarePresentation::SoftwarePresentation(PresentationAllocator* allocator):columns_(allocator),allocator_(allocator) {}
 void SoftwarePresentation::Reset() {
-    for(auto& buffer:buffers_)buffer=BufferState{};
-    std::vector<int>().swap(columns_);sourceWidth_=outputWidth_=0;
+    for(auto& buffer:buffers_) {buffer=BufferState{};buffer.versions=PresentationBuffer<uint64_t>(allocator_);}
+    columns_.Clear();sourceWidth_=outputWidth_=0;
     nextBuffer_=0;writtenBytes_=0;
 }
 size_t SoftwarePresentation::CacheBytes() const {
@@ -61,7 +63,7 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
     if(!ValidSource(s) || !out.Valid() || !v.Valid() || v.x<0 || v.y<0 ||
        int64_t(v.x)+v.width>out.width || int64_t(v.y)+v.height>out.height)return false;
     if(sourceWidth_!=s.width || outputWidth_!=v.width) {
-        columns_.resize(static_cast<size_t>(v.width));
+        if(!columns_.Resize(static_cast<size_t>(v.width)))return false;
         for(int x=0;x<v.width;++x)columns_[x]=int(int64_t(x)*s.width/v.width);
         sourceWidth_=s.width;outputWidth_=v.width;
     }
@@ -86,7 +88,7 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
         const int px=v.x+int(int64_t(cx)*v.width/s.width),py=v.y+int(int64_t(cy)*v.height/s.height);
         cursor=Rect(px,py,std::min(px+11,out.width),std::min(py+19,out.height));
     }
-    std::vector<Rect> damage;damage.reserve(MaxDamageRects+2);
+    std::array<Rect,MaxDamageRects+3> damage{};size_t damageCount=0;
     uint64_t dirtyArea=0;
     if(!full) {
         auto edge=[](int pixel,int output,int source) {return int((int64_t(pixel)*output+source-1)/source);};
@@ -100,18 +102,19 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
                    v.y+edge(std::min((ty+1)*TileSize,s.height),v.height,s.height));
             if(r.Empty())continue;
             dirtyArea+=uint64_t(r.Width())*r.Height();
-            if(!damage.empty() && damage.back().left==r.left && damage.back().right==r.right && damage.back().bottom==r.top)
-                damage.back().bottom=r.bottom;
-            else damage.push_back(r);
-            if(damage.size()>MaxDamageRects || dirtyArea>uint64_t(out.width)*out.height/2) {full=true;break;}
+            if(damageCount!=0 && damage[damageCount-1].left==r.left && damage[damageCount-1].right==r.right && damage[damageCount-1].bottom==r.top)
+                damage[damageCount-1].bottom=r.bottom;
+            else damage[damageCount++]=r;
+            if(damageCount>MaxDamageRects || dirtyArea>uint64_t(out.width)*out.height/2) {full=true;break;}
         }
     }
-    if(full) {damage.clear();damage.emplace_back(0,0,out.width,out.height);}
+    if(full) {damageCount=1;damage[0]=Rect(0,0,out.width,out.height);}
     else if(cursor!=state->cursor) {
-        if(!state->cursor.Empty())damage.push_back(state->cursor);
-        if(!cursor.Empty())damage.push_back(cursor);
+        if(!state->cursor.Empty())damage[damageCount++]=state->cursor;
+        if(!cursor.Empty())damage[damageCount++]=cursor;
     }
-    for(const Rect& r:damage) {
+    for(size_t n=0;n<damageCount;++n) {
+        const Rect& r=damage[n];
         writtenBytes_+=uint64_t(r.Width())*r.Height()*4;
         for(int y=r.top;y<r.bottom;++y) {
             uint32_t* row=out.pixels+size_t(y)*out.stridePixels;
@@ -130,28 +133,29 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
     }
     // Restore old/new cursor backgrounds per output buffer, then overlay the
     // original arrow. No guest pointer or borrowed output is retained.
-    static const char* const arrow[]={"X","XX","X.X","X..X","X...X","X....X","X.....X","X......X","X.......X","X........X",
-        "X.....XXXXX","X..X..X","X.X X..X","XX  X..X","X    X..X","     X..X","      X..X","      X..X","       XX"};
-    if(!damage.empty() && !cursor.Empty()) {
-        for(int y=0;y<19 && cursor.top+y<out.height;++y)for(int x=0;arrow[y][x];++x) {
-            const char ch=arrow[y][x];if(ch==' ' || cursor.left+x>=out.width)continue;
-            out.pixels[size_t(cursor.top+y)*out.stridePixels+cursor.left+x]=ch=='X'?0xFF000000u:0xFFFFFFFFu;
-            writtenBytes_+=4;
-        }
+    if(damageCount!=0 && !cursor.Empty()) {
+        for(int y=0;y<kCursorHeight && cursor.top+y<out.height;++y)
+            for(int x=0;x<kCursorWidth && cursor.left+x<out.width;++x) {
+                const uint32_t pixel=CursorRgba(x,y);if(!pixel)continue;
+                out.pixels[size_t(cursor.top+y)*out.stridePixels+cursor.left+x]=pixel;writtenBytes_+=4;
+            }
     }
     if(tracked) {
-        if(!state) {state=&buffers_[nextBuffer_];nextBuffer_=(nextBuffer_+1)%MaxBuffers;*state=BufferState{};}
+        if(!state) {state=&buffers_[nextBuffer_];nextBuffer_=(nextBuffer_+1)%MaxBuffers;*state=BufferState{};state->versions=PresentationBuffer<uint64_t>(allocator_);}
         state->pixels=out.pixels;state->owner=frame.owner;state->width=out.width;state->height=out.height;
         state->stride=out.stridePixels;state->generation=out.generation;state->sourceW=s.width;state->sourceH=s.height;
         state->resourceId=frame.resourceId;state->resourceGeneration=frame.resourceGeneration;
-        state->viewport=v;state->cursor=cursor;state->versions=*frame.tileVersions;
+        state->viewport=v;state->cursor=cursor;
+        if(state->versions.Resize(frame.tileVersions->size()))
+            std::memcpy(state->versions.data(),frame.tileVersions->data(),frame.tileVersions->size()*sizeof(uint64_t));
+        else *state=BufferState{}; // optional cache: correct full output on next call
     } else {
         // Unpreserved/raw rendering may overwrite an address tracked earlier.
         for(auto& buffer:buffers_)if(buffer.pixels==out.pixels)buffer=BufferState{};
     }
     return true;
 }
-Presentation::Presentation(PresentationBackend* backend):resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)) {
+Presentation::Presentation(PresentationBackend* backend,PresentationAllocator* allocator):allocator_(allocator),pixels_(allocator),resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)),tileVersions_(allocator) {
     Attach(backend);
 }
 void Presentation::Attach(PresentationBackend* backend) {
@@ -160,8 +164,8 @@ void Presentation::Attach(PresentationBackend* backend) {
     if(backend_)backend_->Reset();
 }
 void Presentation::ClearFrame() {
-    snapshot_.s=Surface{};std::vector<uint8_t>().swap(snapshot_.storage);
-    std::vector<uint64_t>().swap(tileVersions_);serial_=lastRenderedSerial_=0;
+    snapshot_=Surface{};pixels_.Clear();
+    tileVersions_.Clear();serial_=lastRenderedSerial_=0;
     ++generation_;
     if(backend_)backend_->Reset();
 }
@@ -171,11 +175,20 @@ bool Presentation::Submit(const Surface& s) {
         ++stats_.rejected;ClearFrame();return false;
     }
     const auto start=Steady::now();
-    bool fresh=snapshot_.s.width!=s.width || snapshot_.s.height!=s.height;
+    bool fresh=snapshot_.width!=s.width || snapshot_.height!=s.height;
     const int tile=kPresentationTileSize,cols=(s.width+tile-1)/tile,rows=(s.height+tile-1)/tile;
     if(fresh) {
+        // Prepare both allocations before changing the current renderable frame.
+        PresentationBuffer<uint8_t> pixels(allocator_);
+        PresentationBuffer<uint64_t> versions(allocator_);
+        if(!pixels.Resize(size_t(s.width)*s.height*4) || !versions.Resize(size_t(cols)*rows)) {
+            ++stats_.rejected;return false;
+        }
+        pixels_.Swap(pixels);tileVersions_.Swap(versions);
+        std::memset(tileVersions_.data(),0,tileVersions_.size()*sizeof(uint64_t));
+        snapshot_=Surface{};snapshot_.width=s.width;snapshot_.height=s.height;
+        snapshot_.pitch=s.width*4;snapshot_.bits=pixels_.data();
         ++generation_;
-        snapshot_.Allocate(s.width,s.height);tileVersions_.assign(size_t(cols)*rows,0);
         if(backend_)backend_->Reset();
     }
     if(serial_==std::numeric_limits<uint64_t>::max()) {
@@ -187,7 +200,7 @@ bool Presentation::Submit(const Surface& s) {
         bool changed=fresh;
         const int x0=tx*tile,x1=std::min(x0+tile,s.width),y1=std::min((ty+1)*tile,s.height);
         for(int y=ty*tile;y<y1;++y) {
-            auto* dst=snapshot_.s.Row(y)+size_t(x0)*4;
+            auto* dst=snapshot_.Row(y)+size_t(x0)*4;
             if(s.bpp==32) {
                 const auto* src=s.Row(y)+size_t(x0)*4;const size_t bytes=size_t(x1-x0)*4;
                 if(fresh || std::memcmp(dst,src,bytes)!=0) {
@@ -208,9 +221,9 @@ bool Presentation::Submit(const Surface& s) {
     return true;
 }
 bool Presentation::Render(const OutputBuffer& out,PresentationCursor cursor) {
-    if(!backend_ || !snapshot_.s.Valid() || !out.Valid()) {++stats_.rejected;return false;}
+    if(!backend_ || !snapshot_.Valid() || (backend_->RequiresCpuOutput()?!out.Valid():!Dimensions(out.width,out.height))) {++stats_.rejected;return false;}
     const auto start=Steady::now();
-    PresentationFrame frame{snapshot_.s,FitViewport(snapshot_.s.width,snapshot_.s.height,out.width,out.height),cursor,serial_,this,&tileVersions_,resourceId_,generation_};
+    PresentationFrame frame{snapshot_,FitViewport(snapshot_.width,snapshot_.height,out.width,out.height),cursor,serial_,this,&tileVersions_,resourceId_,generation_};
     const bool ok=backend_->Render(frame,out);stats_.renderNs+=Elapsed(start);
     if(!ok) {
         // A failed backend may already have changed output bytes or its cache.

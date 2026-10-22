@@ -1,5 +1,6 @@
 #pragma once
 #include "surface.h"
+#include "presentation_memory.h"
 #include <cstddef>
 #include <array>
 #include "region.h"
@@ -36,7 +37,7 @@ struct PresentationFrame {
     const void* owner=nullptr;
     // Row-major source tile revisions, at kPresentationTileSize. A null map
     // requests conservative full output; views are valid only during Render.
-    const std::vector<uint64_t>* tileVersions=nullptr;
+    const PresentationBuffer<uint64_t>* tileVersions=nullptr;
     // Stable across address reuse; revision scope changes on resize/reset/rebind.
     uint64_t resourceId=0,resourceGeneration=0;
 };
@@ -48,11 +49,13 @@ public:
     virtual ~PresentationBackend()=default;
     virtual bool Render(const PresentationFrame&,const OutputBuffer&)=0;
     virtual void Reset() {}
+    virtual bool RequiresCpuOutput() const {return true;}
     // Unknown work is conservatively counted as a full output frame.
     virtual uint64_t LastWrittenBytes() const {return uint64_t(-1);}
 };
 class SoftwarePresentation final:public PresentationBackend {
 public:
+    explicit SoftwarePresentation(PresentationAllocator* allocator=nullptr);
     bool Render(const PresentationFrame&,const OutputBuffer&) override;
     void Reset() override;
     uint64_t LastWrittenBytes() const override {return writtenBytes_;}
@@ -68,12 +71,13 @@ private:
         uint64_t generation=0,resourceId=0,resourceGeneration=0;
         Viewport viewport;
         Rect cursor;
-        std::vector<uint64_t> versions;
+        PresentationBuffer<uint64_t> versions;
     };
     std::array<BufferState,MaxBuffers> buffers_;
     size_t nextBuffer_=0;
     uint64_t writtenBytes_=0;
-    std::vector<int> columns_;
+    PresentationBuffer<int> columns_;
+    PresentationAllocator* allocator_;
     int sourceWidth_=0,outputWidth_=0;
 };
 struct PresentationStats {
@@ -85,7 +89,7 @@ struct PresentationStats {
 // Backend is borrowed and must outlive calls. Detach releases frame memory.
 class Presentation {
 public:
-    explicit Presentation(PresentationBackend* backend=nullptr);
+    explicit Presentation(PresentationBackend* backend=nullptr,PresentationAllocator* allocator=nullptr);
     Presentation(const Presentation&)=delete;
     Presentation& operator=(const Presentation&)=delete;
     void Attach(PresentationBackend* backend);
@@ -94,9 +98,9 @@ public:
     void ResetStats() {stats_={};}
     bool Submit(const Surface&);
     bool Render(const OutputBuffer&,PresentationCursor cursor={});
-    int SourceWidth() const {return snapshot_.s.width;}
-    int SourceHeight() const {return snapshot_.s.height;}
-    size_t FrameBytes() const {return snapshot_.storage.size();}
+    int SourceWidth() const {return snapshot_.width;}
+    int SourceHeight() const {return snapshot_.height;}
+    size_t FrameBytes() const {return pixels_.size();}
     size_t TrackingBytes() const {return tileVersions_.capacity()*sizeof(uint64_t);}
     uint64_t ContentSerial() const {return serial_;}
     uint64_t ContentGeneration() const {return generation_;}
@@ -104,11 +108,13 @@ public:
     static constexpr size_t MaxFrameBytes=16*1024*1024;
 private:
     PresentationBackend* backend_=nullptr;
-    OwnedSurface snapshot_;
+    PresentationAllocator* allocator_;
+    Surface snapshot_;
+    PresentationBuffer<uint8_t> pixels_;
     PresentationStats stats_;
     uint64_t serial_=0,lastRenderedSerial_=0;
     const uint64_t resourceId_;
     uint64_t generation_=0;
-    std::vector<uint64_t> tileVersions_;
+    PresentationBuffer<uint64_t> tileVersions_;
 };
 } // namespace ui

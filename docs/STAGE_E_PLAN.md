@@ -165,3 +165,16 @@ E4 до 60% и E5 с реальным GPU present до 75%. До проверк�
 Stage E принят до 50%; следующий пакет E4 описан в
 [STAGE_E_RESOURCE_LIFECYCLE.md](STAGE_E_RESOURCE_LIFECYCLE.md). Старые pending
 заметки выше отражают последовательность проверок, а не текущий статус.
+
+
+## Крупный блок E4–E7 по запросу пользователя
+
+Взята цель 50% → 90% одним циклом. Реализованы fallible memory/transactional
+resize, EGL/OpenGL native output, независимый курсор, dirty texture uploads,
+software fallback и ограниченный texture/history cache. Добавлено побитовое
+сравнение реального GL/EGL вывода с software reference, включая GL error/retry
+и software rebind. Карта не переписывается задним числом: E5 требует Switch,
+E6 требует самостоятельных оконных слоёв и screen-DC reconciliation; одна
+текстура готового CPU screen за E6 не засчитывается. Детали, бюджеты и общий
+аппаратный checkpoint: [STAGE_E_GPU_OUTPUT.md](STAGE_E_GPU_OUTPUT.md).
+До exact-SHA CI и аппаратных gates принятая отметка остаётся 50%.

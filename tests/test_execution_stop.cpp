@@ -52,10 +52,14 @@ static void Scenario(bool guestExit) {
     assert(presentation.Submit(source.s));
     assert(presentation.Render({output.data(),64,64,64,output.size(),true,1}));
     livePresentation=&presentation;const auto cleanupBefore=presentationCleanup;
-    const auto oldPresent=win32::user::g_platform.present;
+    const auto previousPlatform=win32::user::g_platform;
+    win32::user::g_platform.present=+[](const ui::Surface&) {};
+    win32::user::g_platform.wait=+[](int,std::vector<win32::user::InputEvent>&) {return false;};
+    win32::user::g_platform.textInput=+[](const std::u16string&,bool,bool,std::u16string&) {return false;};
+    const auto oldPlatform=win32::user::g_platform;
     {
         win32::user::PresentationSession session(true,&FinishPresentation);
-        win32::user::g_platform.present=nullptr;
+        win32::user::g_platform={};
         rt::GuestExecution execution(process,[&](rt::GuestThread& thread) {
             StopGuard guard{memory,thread,cleaned};
             process.Scheduler().Wait(thread,0xabcdef);
@@ -84,7 +88,9 @@ static void Scenario(bool guestExit) {
     }
     assert(presentationCleanup==cleanupBefore+1);
     assert(!presentation.FrameBytes() && !presentation.TrackingBytes() && !software.CacheBytes());
-    assert(win32::user::g_platform.present==oldPresent);
+    assert(win32::user::g_platform.present==oldPlatform.present &&
+        win32::user::g_platform.wait==oldPlatform.wait && win32::user::g_platform.textInput==oldPlatform.textInput);
+    win32::user::g_platform=previousPlatform;
     livePresentation=nullptr;
     assert(cleaned==1);
     assert(!process.Scheduler().HasLiveThreads());

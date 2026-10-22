@@ -23,7 +23,59 @@ struct Backend:PresentationBackend {
     void Reset() override {++resets;software.Reset();}
     uint64_t LastWrittenBytes() const override {return software.LastWrittenBytes();}
 };
+struct FaultAllocator:PresentationAllocator {
+    int failAfter=-1;size_t live=0,peak=0;
+    void* Allocate(size_t bytes) override {
+        if(failAfter==0)return nullptr;
+        if(failAfter>0)--failAfter;
+        auto* p=static_cast<size_t*>(std::malloc(bytes+sizeof(size_t)));
+        if(!p)return nullptr;
+        *p=bytes;live+=bytes;peak=std::max(peak,live);return p+1;
+    }
+    void Free(void* pointer) override {
+        if(!pointer)return;
+        auto* p=static_cast<size_t*>(pointer)-1;live-=*p;std::free(p);
+    }
+};
+static void AllocationFailures() {
+    FaultAllocator heap;
+    {
+        SoftwarePresentation software(&heap);Presentation p(&software,&heap);
+        OwnedSurface source;source.Allocate(64,64);
+        source.s.Set(0,0,0x123456);
+        std::vector<uint32_t> output(64*64);
+        OutputBuffer out{output.data(),64,64,64,output.size(),true,1};
+        heap.failAfter=0;assert(!p.Submit(source.s) && !p.FrameBytes() && !heap.live);
+        heap.failAfter=1;assert(!p.Submit(source.s) && !p.FrameBytes() && !heap.live);
+        heap.failAfter=-1;assert(p.Submit(source.s) && p.Render(out));
+        const auto expected=output;const auto epoch=p.ContentGeneration();
+        source.Allocate(37,45);source.s.Set(0,0,0xABCDEF);
+        // Both snapshot allocation failure points preserve the old usable frame.
+        for(int n:{0,1}) {
+            heap.failAfter=n;assert(!p.Submit(source.s));
+            assert(p.ContentGeneration()==epoch && p.SourceWidth()==64);
+            assert(p.Render(out) && output==expected);
+        }
+        heap.failAfter=-1;assert(p.Submit(source.s));
+        // Column map is required; retry it without terminating the process.
+        heap.failAfter=0;assert(!p.Render(out));
+        heap.failAfter=-1;assert(p.Render(out));
+        const auto resized=output;
+        software.Reset();
+        // The optional history cache can fail after a successful conversion.
+        heap.failAfter=1;assert(p.Render(out) && output==resized);
+        heap.failAfter=-1;assert(p.Render(out) && output==resized);
+        for(int i=0;i<100;++i) {
+            source.Allocate(17+i%41,19+i%43);
+            heap.failAfter=i%3;const bool submitted=p.Submit(source.s);
+            heap.failAfter=-1;if(submitted)assert(p.Render(out));
+        }
+        p.Detach();assert(!heap.live);
+    }
+    assert(!heap.live && heap.peak<128*1024);
+}
 int main() {
+    AllocationFailures();
     Backend backend,other;
     OwnedSurface source;source.Allocate(64,64);
     for(int y=0;y<source.s.height;++y)for(int x=0;x<source.s.width;++x)source.s.Set(x,y,0x123456);
