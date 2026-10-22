@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **2a7346c1339f2852913da039af84c0e02f756f20**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39737128019](https://github.com/Omeruno/switch-recompiler/actions/runs/39737128019), including all ten process-detach/last-thread inspector modes. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified implementation GitHub state: **b0db92313bc5e91d5ebc50c08ea1bdf1299e1b88**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39744115873](https://github.com/Omeruno/switch-recompiler/actions/runs/39744115873), including six cooperative-startup and ten process-shutdown inspector modes. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1231,3 +1231,23 @@ only DLL6/kind2/reserved0, retaining the prohibition on all final process
 callbacks before resume; final scan still requires exactly one failed detach
 and the exact final process callback sequence. No production change required.
 This first attempt is not green; verify the corrected exact SHA separately.
+
+
+### Verified cooperative startup and attach-failure CI
+Implementation/fix state **b0db92313bc5e91d5ebc50c08ea1bdf1299e1b88**: all five
+jobs PASSED in [39744115873](https://github.com/Omeruno/switch-recompiler/actions/runs/39744115873).
+Fetched host logs explicitly confirm six cooperative-startup modes PASSED,
+all ten prior exit/last-thread modes PASSED, the new raw-entry startup EXE
+PASSED through ordinary winrun, and the entire previous native/x86/MinGW
+suite PASSED. This verifies both production-style startup and corrected
+failed-load vs process-detach assertions. CPU oracle: three 50,000-case runs,
+zero differences. ARM64 native ABI/QEMU, Switch NRO and existing separate
+probe NRO builds all passed. The earlier red attempt is superseded and is
+not reported as green. No physical Switch testing is inferred.
+A following documentation-only commit still needs its own exact-SHA CI.
+
+Stage C remains ~90%. Startup false/exit/abort paths are now covered, while
+DLL unload/refcounts and full failed-image/dependency rollback remain the
+next substantial foundation packet. Startup CPU fault/SEH failure policy and
+physical Switch acceptance remain explicit gaps. Keep the same branch and
+JIT/GPU/shell gates; do not create or extend any automation.
