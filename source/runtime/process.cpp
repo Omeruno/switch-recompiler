@@ -250,10 +250,115 @@ Module* Process::LoadLibrary(const std::string& name, std::string& error, bool r
             if (module && reference) ReferenceModule(module);
             return module;
         }
+        // A real image still takes precedence for optional native CRT DLLs.
+        // Without one, only a DLL with registered HLE exports may fall back;
+        // an arbitrary missing DLL must not turn into a successful stub.
+        for(size_t i=0;i<win32::HostFunctionCount();++i) {
+            const auto& entry=win32::GetHostFunction(i);
+            if(entry.dllName && NormalizeName(entry.dllName)==n) {
+                Module* module=CreateHleModule(n);
+                if(reference) ReferenceModule(module);
+                return module;
+            }
+        }
+        loadFailureCode_=126;
+        error=n+": module not found";
+        return nullptr;
     }
     Module* module=CreateHleModule(n);
     if (reference) ReferenceModule(module);
     return module;
+}
+
+Module* Process::LoadLibraryInitialized(cpu::CpuState& state, const std::string& name,
+                                        std::string& error, uint32_t& failureCode) {
+    LoaderLock lock(*this);
+    failureCode=126;
+    if (!lock) { error="loader operation interrupted"; return nullptr; }
+    const size_t first=modules_.size();
+    loadFailureCode_=126;
+    Module* module=LoadLibrary(name,error,false);
+    if (!module) {
+        failureCode=loadFailureCode_;
+        RollbackNewModules(state,first);
+        return nullptr;
+    }
+    bool initialized;
+    {
+        ++module->pendingLoads;
+        struct Pending { Module& module; ~Pending(){--module.pendingLoads;} } pending{*module};
+        initialized=InitializeModule(state,module,error);
+        if (initialized) ReferenceModule(module);
+    }
+    if (!initialized) {
+        failureCode=1114; // ERROR_DLL_INIT_FAILED
+        RollbackNewModules(state,first);
+        return nullptr;
+    }
+    failureCode=0;
+    return module;
+}
+
+std::vector<Module*> Process::ReachableModules() const {
+    std::vector<Module*> reachable;
+    for (const auto& module:modules_)
+        if (!module->unloaded &&
+            ((!module->initializationFailed && (module.get()==main_ || module->pinned || module->loadReferences)) ||
+             module->initializing || module->pendingLoads)) reachable.push_back(module.get());
+    for (size_t i=0;i<reachable.size();++i)
+        for (Module* dep:reachable[i]->dependencies)
+            if (!dep->unloaded && !dep->initializationFailed &&
+                std::find(reachable.begin(),reachable.end(),dep)==reachable.end()) reachable.push_back(dep);
+    return reachable;
+}
+
+bool Process::RollbackNewModules(cpu::CpuState& state, size_t first) {
+    // Abort/ExitProcess unwinds the original native stack and keeps its own
+    // shutdown policy. Never start extra guest callbacks from that unwind.
+    if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+    // A nested successful load can depend on the still-attaching outer DLL.
+    // If the outer attach fails, that nested image cannot remain executable,
+    // even if its provisional LoadLibrary call returned a handle.
+    bool changed;
+    do {
+        changed=false;
+        for(size_t i=first;i<modules_.size();++i) {
+            Module& module=*modules_[i];
+            if(module.unloaded || module.hle || module.initializationFailed ||
+               module.initializing || module.pendingLoads) continue;
+            for(Module* dependency:module.dependencies) if(dependency->initializationFailed) {
+                module.initializationFailed=true;changed=true;break;
+            }
+        }
+    } while(changed);
+    auto reachable=ReachableModules();
+    std::vector<Module*> discard;
+    for (size_t i=first;i<modules_.size();++i) {
+        Module* module=modules_[i].get();
+        if (!module->unloaded && !module->hle && !module->initializing && !module->pendingLoads &&
+            std::find(reachable.begin(),reachable.end(),module)==reachable.end()) discard.push_back(module);
+    }
+    const bool previous=collectingModules_;
+    collectingModules_=true;
+    struct Reset { bool& flag; bool previous; ~Reset(){flag=previous;} } reset{collectingModules_,previous};
+    for (auto* module:discard) module->unloading=true;
+    // Snapshot before calling guest code: callbacks may add modules/order entries.
+    auto order=initializationOrder_;
+    for (auto it=order.rbegin();it!=order.rend();++it) {
+        Module* module=*it;
+        if (module->processDetached || std::find(discard.begin(),discard.end(),module)==discard.end()) continue;
+        module->processDetached=true;
+        if (!CallTls(state,*module,0,0)) return false;
+        if (module->isDll && module->entryRva) {
+            cpu::CpuState local=state;
+            uint32_t teb=CurrentTebAddress();
+            win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+                {module->base,0,0},teb,teb);
+            if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+        }
+    }
+    for (auto* module:discard) ReleaseModuleMemory(*module);
+    return true;
 }
 
 bool Process::ReferenceModule(Module* module, bool pin) {
@@ -292,14 +397,7 @@ bool Process::CollectUnusedModules(cpu::CpuState& state) {
     struct Reset { bool& flag; ~Reset(){flag=false;} } reset{collectingModules_};
     for (;;) {
         // Reachability, rather than edge refcounts, also collects import cycles.
-        std::vector<Module*> reachable;
-        for (const auto& module:modules_)
-            if (!module->unloaded && (module.get()==main_ || module->pinned ||
-                module->loadReferences || module->initializing)) reachable.push_back(module.get());
-        for (size_t i=0;i<reachable.size();++i)
-            for (Module* dep:reachable[i]->dependencies)
-                if (!dep->unloaded && std::find(reachable.begin(),reachable.end(),dep)==reachable.end())
-                    reachable.push_back(dep);
+        auto reachable=ReachableModules();
         std::vector<Module*> pending;
         for (auto it=initializationOrder_.rbegin();it!=initializationOrder_.rend();++it)
             if (!(*it)->unloaded && !(*it)->processDetached &&
@@ -337,6 +435,7 @@ Module* Process::LoadModuleFile(const std::string& path, const std::string& lowe
     pe::PEParser parser;
     pe::LoadResult lr = parser.LoadFromFile(path);
     if (lr != pe::LoadResult::Ok) {
+        loadFailureCode_=193; // ERROR_BAD_EXE_FORMAT
         error = path + ": " + pe::ToString(lr);
         return nullptr;
     }
@@ -358,6 +457,7 @@ Module* Process::LoadModuleFile(const std::string& path, const std::string& lowe
         base = mem_.Allocate(m->size, cpu::kProtRWX, 0x00400000u, 0x7F000000u);
     }
     if (!base) {
+        loadFailureCode_=8; // ERROR_NOT_ENOUGH_MEMORY
         error = path + ": нельзя разместить по 0x" + std::to_string(preferred) +
                 (hasRelocs ? " (нет места)" : " (адрес занят, а релокаций нет)");
         return nullptr;
@@ -380,7 +480,7 @@ Module* Process::LoadModuleFile(const std::string& path, const std::string& lowe
                     base != preferred ? " с релокацией" : "");
     }
     // Если поток уже работает (LoadLibrary во время исполнения) — TLS сразу
-    if (threadReady_ && !SetupStaticTls(m,error)) { m->initializationFailed=true; return nullptr; }
+    if (threadReady_ && !SetupStaticTls(m,error)) { loadFailureCode_=8; m->initializationFailed=true; return nullptr; }
     return m;
 }
 
@@ -449,7 +549,8 @@ void Process::ParseTls(Module* m, const pe::PEParser& parser) {
     if (indexVa >= m->base && indexVa < m->base + m->size) Write32(m->image, indexVa - m->base, m->tlsIndex);
 }
 
-uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ordinal, int depth) {
+uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ordinal, int depth,
+                                std::vector<std::pair<Module*,Module*>>* edges) {
     if (!m || m->unloaded || depth > 8) return 0;
     if (m->hle) {
         pe::ImportedFunction f;
@@ -480,19 +581,42 @@ uint32_t Process::ResolveExport(Module* m, const std::string& name, uint16_t ord
         if (dot == std::string::npos) return 0;
         std::string err;
         Module* target = LoadLibrary(fwd.substr(0, dot), err, false);
-        if (target && std::find(m->dependencies.begin(),m->dependencies.end(),target)==m->dependencies.end())
+        if (target && std::find(m->dependencies.begin(),m->dependencies.end(),target)==m->dependencies.end()) {
             m->dependencies.push_back(target);
+            if (edges) edges->emplace_back(m,target);
+        }
         std::string fn = fwd.substr(dot + 1);
-        if (!fn.empty() && fn[0] == '#') return ResolveExport(target, "", static_cast<uint16_t>(std::atoi(fn.c_str() + 1)), depth + 1);
-        return ResolveExport(target, fn, 0, depth + 1);
+        if (!fn.empty() && fn[0] == '#') return ResolveExport(target, "", static_cast<uint16_t>(std::atoi(fn.c_str() + 1)), depth + 1, edges);
+        return ResolveExport(target, fn, 0, depth + 1, edges);
     }
     return m->base + rva;
 }
 
-uint32_t Process::GetProcAddress(Module* m, const std::string& name, uint16_t ordinal) {
+uint32_t Process::GetProcAddress(Module* m, const std::string& name, uint16_t ordinal, cpu::CpuState* state) {
     LoaderLock lock(*this);
     if (!lock || !m || m->unloaded || m->unloading || m->initializationFailed) return 0;
-    return ResolveExport(m, name, ordinal, 0);
+    const size_t first=modules_.size();
+    std::vector<std::pair<Module*,Module*>> edges;
+    uint32_t address=ResolveExport(m,name,ordinal,0,state?&edges:nullptr);
+    if (!state) return address; // resolve-only contract for native/startup callers
+    bool initialized=false;
+    if (address) {
+        ++m->pendingLoads;
+        struct Pending { Module& module; ~Pending(){--module.pendingLoads;} } pending{*m};
+        std::string error;
+        initialized=true;
+        for(size_t i=first;i<modules_.size() && initialized;++i)
+            if(!modules_[i]->unloaded) initialized=InitializeModule(*state,modules_[i].get(),error);
+        if(initialized) initialized=InitializeModule(*state,m,error);
+    }
+    if (!initialized) {
+        for(auto edge:edges) {
+            auto& dependencies=edge.first->dependencies;
+            dependencies.erase(std::remove(dependencies.begin(),dependencies.end(),edge.second),dependencies.end());
+        }
+        RollbackNewModules(*state,first); return 0;
+    }
+    return address;
 }
 
 bool Process::BindImports(Module* m, const pe::PEParser& parser, std::string& error) {
@@ -808,14 +932,16 @@ bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason, uin
 bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string& error, uint32_t reserved) {
     if (module->unloaded) return true;
     if (module->initializationFailed) { error=module->name+": initialization failed"; return false; }
-    if (module->initialized || module->initializing) return true;
+    if (module->initializing) return true;
     module->initializing=true;
     struct Reset { bool& flag; ~Reset() { flag=false; } } reset{module->initializing};
-    for (Module* dependency:module->dependencies)
+    auto dependencies=module->dependencies;
+    for (Module* dependency:dependencies)
         if (!InitializeModule(state,dependency,error,reserved)) {
-            module->initializationFailed=dependency->initializationFailed;
+            if (!module->initialized) module->initializationFailed=dependency->initializationFailed;
             return false;
         }
+    if (module->initialized) return true;
     if (!CallTls(state,*module,1)) { error="TLS initialization interrupted"; return false; }
     if (module->isDll && module->entryRva) {
         cpu::CpuState local=state;
@@ -830,7 +956,8 @@ bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string
             error=module->name+": DllMain returned FALSE";
             // Balance a rejected PROCESS_ATTACH once, while TLS/TEB and the
             // loader lock are still live. Failed-load detach has reserved=0;
-            // image/TLS unmapping and dependency refcounts remain separate.
+            // Dynamic callers own image/TLS/dependency rollback after this
+            // returns; startup cancellation retains its process-level policy.
             module->processDetached=true;
             if (CallTls(state,*module,0)) {
                 local=state;

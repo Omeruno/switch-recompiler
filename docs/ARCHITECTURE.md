@@ -186,8 +186,7 @@ Global отдельно; это разделение имён внутри ед�
 Ограничения: нет межпроцессного DuplicateHandle/named namespace, передачи
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
 полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
-сохраняется и доступен через HandleInformation. Нет полного rollback отображений неудачной загрузки, полных startup SEH/NT
-failure semantics и TerminateThread. DLL unload реализован для обычных
+сохраняется и доступен через HandleInformation. Нет полного startup/SEH failure rollback, NT failure semantics и TerminateThread. DLL unload реализован для обычных
 исполняемых модулей: LoadLibrary/GetModuleHandleEx держат явные ссылки,
 EXE, PIN и HLE образуют постоянные корни, граф import/forwarder dependencies
 сохраняет общие зависимости и позволяет освобождать недостижимые циклы.
@@ -197,9 +196,22 @@ FreeLibrary сериализован loader lock: TLS/DllMain PROCESS_DETACH (re
 static TLS mappings всех живых потоков, очищаются TLS slots, индексы могут
 использоваться следующей загрузкой. Метаданные остаются tombstones, поэтому
 снимки notification order безопасно пропускают уже выгруженные модули.
-Повторная загрузка retiring-модуля отклоняется; полный контракт повторного
-входа в loader из DllMain, datafile/image LoadLibraryEx, FreeLibraryAndExitThread
-и очистка failed/uninitialized images остаются отдельными задачами.
+Повторная загрузка retiring-модуля отклоняется. LoadLibraryInitialized удерживает
+временный корень до окончания attach и добавляет явную ссылку только при успехе.
+При обычном динамическом отказе откатываются только новые недостижимые образы:
+инициализированные зависимости получают PROCESS_DETACH с reserved=0, отклонённая
+DLL не получает повторный detach, неинициализированные образы снимаются без
+callbacks. Существующие корни и независимые вложенные LoadLibrary сохраняются;
+новые модули, зависящие от отказавшего attach (включая цикл), признаются
+неуспешными и также откатываются. TLS ownership остаётся хостовым.
+Guest GetProcAddress передаёт CPU, инициализирует новые forwarded targets,
+журналирует новые dependency edges и удаляет их при отказе. Native-вариант
+без CPU сохраняет resolve-only контракт для загрузки и инспекторов.
+FreeLibraryAndExitThread сначала освобождает DLL, затем запрашивает завершение
+потока без гостевого RET. ExitProcess/host abort внутри loader callbacks
+сохраняют собственную политику завершения, не запускают новый rollback из unwind.
+Полный контракт повторного входа в DllMain, startup/SEH rollback и
+LoadLibraryEx datafile/image mappings остаются отдельными задачами.
 Standalone InitializeModules вне executor остаётся синхронным; основной
 Switch/winrun путь использует startup на main fiber. Бесконечное ожидание
 created child внутри DllMain может deadlock из-за loader serialization, как

@@ -18,6 +18,10 @@ __declspec(dllexport) void UnloadDependencyProbe(void) { if (logbuf && tls()[0]!
 #endif
 __declspec(dllexport) void ConfigureUnload(DWORD* buffer) { logbuf=buffer; }
 __declspec(dllexport) DWORD* UnloadTls(void) { return tls(); }
+__declspec(dllexport) DWORD WINAPI UnloadSelf(LPVOID module) {
+    FreeLibraryAndExitThread((HMODULE)module,77);
+    return 999; // must never execute from this unmapped image
+}
 static void NTAPI callback(PVOID m,DWORD reason,PVOID reserved) { (void)m; if(reason==DLL_PROCESS_DETACH) record(1,reserved); }
 static PIMAGE_TLS_CALLBACK callbacks[]={callback,0};
 const IMAGE_TLS_DIRECTORY32 _tls_used __attribute__((used,section(".rdata$T")))={

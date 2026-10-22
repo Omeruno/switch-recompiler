@@ -45,6 +45,7 @@ struct Module {
     bool unloaded = false; // retain metadata for snapshots across guest callbacks
     bool unloading = false;
     bool pinned = false;
+    uint32_t pendingLoads = 0; // roots held across cooperative loader transactions
     uint32_t loadReferences = 0; // explicit LoadLibrary/GetModuleHandleEx roots
 
     // Разложенный образ (копия того, что в памяти гостя на момент загрузки) —
@@ -86,6 +87,8 @@ public:
     // LoadLibrary: находит уже загруженный модуль или грузит новый (с
     // зависимостями). initialize — вызвать DllMain/TLS сразу (нужен cpu).
     Module* LoadLibrary(const std::string& name, std::string& error, bool reference=true);
+    Module* LoadLibraryInitialized(cpu::CpuState& state, const std::string& name,
+                                   std::string& error, uint32_t& failureCode);
     bool ReferenceModule(Module* module, bool pin=false);
     bool FreeLibrary(cpu::CpuState& state, uint32_t handle);
 
@@ -96,7 +99,7 @@ public:
     const std::vector<std::unique_ptr<Module>>& Modules() const { return modules_; }
 
     // GetProcAddress: имя или ординал (если name пусто). 0 — нет такой функции.
-    uint32_t GetProcAddress(Module* m, const std::string& name, uint16_t ordinal = 0);
+    uint32_t GetProcAddress(Module* m, const std::string& name, uint16_t ordinal = 0, cpu::CpuState* state=nullptr);
 
     // Готовит главный поток: стек, TEB/PEB, область CRT/MFC/кучи для
     // старых HLE-функций, статический TLS. Заполняет cpu (EIP = точка
@@ -174,13 +177,17 @@ private:
     Module* CreateHleModule(const std::string& lowerName);
     std::string FindFile(const std::string& lowerName) const;
     bool BindImports(Module* m, const pe::PEParser& parser, std::string& error);
-    uint32_t ResolveExport(Module* m, const std::string& name, uint16_t ordinal, int depth);
+    uint32_t ResolveExport(Module* m, const std::string& name, uint16_t ordinal, int depth,
+                           std::vector<std::pair<Module*,Module*>>* edges=nullptr);
     void ParseExports(Module* m);
     void ApplyRelocations(Module* m, const pe::PEParser& parser, uint32_t delta);
     void ParseTls(Module* m, const pe::PEParser& parser);
     bool InitializeModule(cpu::CpuState& cpu, Module* m, std::string& error, uint32_t reserved=0);
     bool SetupStaticTls(Module* m, std::string& error);
     bool CollectUnusedModules(cpu::CpuState& state);
+    std::vector<Module*> ReachableModules() const;
+    bool RollbackNewModules(cpu::CpuState& state, size_t first);
+    uint32_t loadFailureCode_ = 126;
     void ReleaseModuleMemory(Module& module);
     bool collectingModules_ = false;
 

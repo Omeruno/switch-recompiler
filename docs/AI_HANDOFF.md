@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **b0db92313bc5e91d5ebc50c08ea1bdf1299e1b88**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39744115873](https://github.com/Omeruno/switch-recompiler/actions/runs/39744115873), including six cooperative-startup and ten process-shutdown inspector modes. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified implementation GitHub state: **8b0ad70ad104a6a0226c62d2b63f2d1a37a12453**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39766611875](https://github.com/Omeruno/switch-recompiler/actions/runs/39766611875), including normal unload/refcount/TLS reclamation tests. The new dynamic rollback package below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1303,3 +1303,95 @@ collected here, preserving existing failure-inspection behavior. Also pending:
 FreeLibraryAndExitThread, LoadLibraryEx datafile/image flags, full startup
 fault/SEH policy and physical Switch acceptance. Stage C remains ~90%; normal
 DLL unload belongs to the overlapping D work. JIT/GPU/shell gates unchanged.
+
+
+## Dynamic loader rollback, forwarded attach and self-unload (2026-10-22)
+
+Incoming HEAD **8b0ad70ad104a6a0226c62d2b63f2d1a37a12453** checked against
+remote ref, all five jobs green in run 39766611875. Work remains on the agreed
+branch. No automation, proprietary binaries or physical Switch were used.
+User authorized publication to this repository/branch and offered hardware
+testing; a concrete Paint baseline scenario and previous green NRO were sent.
+No new hardware result has yet been received.
+
+- New LoadLibraryInitialized owns dynamic map/attach transactions under the
+  recursive cooperative loader lock. Temporary pendingLoads roots survive
+  callback yields; an explicit reference is committed only after successful
+  initialization. Failure releases only new unreachable native modules.
+- Rejected DllMain already receives its immediate TLS/DllMain detach once;
+  rollback avoids repeating it. Successfully initialized abandoned dependencies
+  receive reserved=0 process detach in reverse order. All retiring batch
+  images/TLS stay mapped until callbacks return; uninitialized maps never get
+  callbacks. Normal image/TLS ownership cleanup also covers parser/bind and
+  TLS setup failure, clears slots and permits clean repeat LoadLibrary.
+- Existing dependencies/explicit references and independent nested successful
+  loads are preserved. A new nested module depending on the rejected outer
+  DLL is marked failed transitively (including cycles), detached if initialized
+  and discarded despite its provisional returned handle. A new real-PE cycle
+  regression failed on the previous implementation and passes after this fix.
+- Reachability protects pending/initializing roots even during failed-load
+  detach callbacks, while inactive failed roots cannot retain dead images.
+  Dependency initialization uses a snapshot across nested callbacks.
+- Actual guest GetProcAddress passes CPU, journals forwarder edges, initializes
+  newly resolved targets before exposing callable code, and removes new edges
+  plus unused images on missing export or attach failure. An initialized source
+  module stays valid after a failed forwarded target and can retry. Native
+  resolve-only calls without CPU retain their old loader/inspector contract.
+- FreeLibraryAndExitThread caches its arguments, releases the DLL and requests
+  thread exit without guest RET into the just-unmapped caller. An earlier
+  callback exit/abort keeps its own requested code. A real stdcall DLL worker
+  self-unloads and exits with 77; its HWND/normal thread cleanup uses existing
+  execution lifecycle code. Export test uses actual PE name UnloadSelf@4.
+- Missing explicit DLL returns 126; bad PE 193; rejected attach 1114; memory/TLS
+  setup failure 8. Optional native CRT still takes precedence if present; a
+  missing registered HLE library (e.g. msvcrt) retains fallback. Arbitrary missing
+  explicit libraries no longer create success stubs. Legacy static unknown
+  import/HLE placeholder policy is unchanged: full strict import resolution
+  and complete NT status mapping are not claimed.
+- New source-only controller/dep/top/baddep/parent/keeper/cycle/forwarder and
+  malformed-PE/TLS fixtures exercise 80 failed loads plus a successful retry,
+  exact TLS/DllMain detach ordering/reserved/TID, pre-existing/shared and
+  independent nested roots, failed dependent parent, two racing failed loaders
+  with a suspended peer, failed bind/TLS setup, forwarder missing export,
+  attach failure/retry and repeated export lookup without extra attachments.
+- New mandatory native test_loader_rollback captures mapped images and TLS
+  while callbacks are parked, then checks every page is unmapped after failure,
+  both threads' region counts stay constant, slots clear, corrupt suspended
+  peer slots cannot unmap PEB/TEBs, and subsequent good load/unload works.
+  Existing lifecycle fixture now expects three real failed attach attempts
+  instead of a permanently cached failure; prior process-exit/startup contracts
+  and inspectors are preserved. Extended normal-unload guest checks self exit.
+- Final complete local suite PASSED, using host g++ -fno-exceptions -fno-rtti
+  and relocated MinGW win32 toolchain: all native, x86, CRT/C++, loader,
+  startup/process-exit, USER32 and Open/Save fixtures. Final transient log:
+  /tmp/rollback-publish-host.log. CPU oracle/ARM64/Switch still require exact
+  published-SHA CI; do not infer results or hardware acceptance from local green.
+
+References: https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain
+and https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibraryandexitthread.
+Boundaries: rollback of arbitrary DLL side effects is not possible or claimed;
+DllMain owns application resources/created threads. Explicit ExitProcess,
+ExitThread and host abort during callbacks keep the existing shutdown/unwind
+policy instead of starting new rollback callbacks. Startup/SEH fault rollback,
+full NT loader/LoadLibraryEx datafile/image semantics, strict unknown imports,
+security, metadata compaction and physical Switch acceptance remain open.
+Stage C stays ~90%; this substantial packet advances overlapping D. Next:
+startup CPU-fault/SEH policy and remaining loader/termination cancellation edges,
+then hardware acceptance/input ownership and the renderer boundary. Preserve
+JIT/GPU/shell gates, same branch and no new/extended automation.
+
+
+### Publication authorization and Switch feedback (2026-10-22)
+User explicitly authorized this and future project packages to be published to
+Omeruno/switch-recompiler on claude/wonderful-hawking-10mpr0 without repeated
+permission questions. Continue normal local validation, no force-push and
+exact-SHA CI verification. This authorization does not broaden repository or
+branch scope. The prior automatic publication rejection is superseded by this
+explicit continuing authorization; no credential/login handoff is needed for
+the connected GitHub tools.
+
+User hardware report: Paint works without changes/regression on the provided
+8b0ad70 NRO (Actions 39766611875). This confirms that Paint hardware baseline,
+not every concurrency/loader edge or the new rollback code. Preserve existing
+known-good 2c9a1fa and this newer verified Paint baseline separately. The new
+rollback package still requires its own CI and hardware validation as applicable.

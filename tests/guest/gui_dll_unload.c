@@ -50,6 +50,16 @@ int main(void) {
             CHECK(CloseHandle(worker) && FreeLibrary(workerModule));
         }
         a=LoadLibraryA("unload_top.dll"); CHECK(a);
+        {
+            LPTHREAD_START_ROUTINE fn=(LPTHREAD_START_ROUTINE)GetProcAddress(a,"UnloadSelf@4");
+            HANDLE worker; DWORD code;
+            CHECK(fn); worker=CreateThread(NULL,0,fn,a,0,NULL); CHECK(worker);
+            CHECK(WaitForSingleObject(worker,5000)==WAIT_OBJECT_0);
+            CHECK(GetExitCodeThread(worker,&code) && code==77);
+            CHECK(!GetModuleHandleA("unload_top.dll") && !GetModuleHandleA("unload_dep.dll"));
+            CHECK(CloseHandle(worker));
+        }
+        a=LoadLibraryA("unload_top.dll"); CHECK(a);
         CHECK(!GetModuleHandleExA(3,"unload_top.dll",&ref));
         CHECK(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN,"unload_top.dll",&ref));
         CHECK(FreeLibrary(a) && FreeLibrary(ref) && GetModuleHandleA("unload_top.dll"));

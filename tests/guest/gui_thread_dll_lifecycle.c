@@ -106,7 +106,7 @@ static int Run(void) {
         if ((e->module==1 || e->module==2) && e->kind==2 && e->reason==1 && !e->reserved) return 27;
         if (e->module==3 && e->reason==1 && e->reserved) return 28;
     }
-    if (failedCalls!=1) return 29;
+    if (failedCalls!=3) return 29;
     if (DisableThreadLibraryCalls(NULL) || DisableThreadLibraryCalls(GetModuleHandleA("lifecycle_dep.dll"))) return 2;
     go=CreateEventA(NULL,TRUE,FALSE,NULL);
     before=state->count;

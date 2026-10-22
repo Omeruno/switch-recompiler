@@ -36,6 +36,20 @@ $cc -O1 -nostdlib -e _start@0 "$here/gui_startup_lifecycle.c" "$out/lifecycle_st
 $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/unload_module.c" -o "$out/unload_dep.dll" -lkernel32
 $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DUNLOAD_ID=2 "$here/unload_module.c" "$out/unload_dep.dll" -o "$out/unload_top.dll" -lkernel32
 $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DUNLOAD_ID=3 "$here/unload_module.c" "$out/unload_dep.dll" -o "$out/unload_side.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/rollback_control.c" -o "$out/rollback_control.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/rollback_module.c" "$out/rollback_control.dll" -o "$out/rollback_dep.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=2 "$here/rollback_module.c" "$out/rollback_dep.dll" "$out/rollback_control.dll" -o "$out/rollback_top.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=8 "$here/rollback_module.c" "$out/rollback_top.dll" "$out/rollback_control.dll" -o "$out/rollback_cycle.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=3 "$here/rollback_module.c" "$out/rollback_control.dll" -o "$out/rollback_baddep.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=4 "$here/rollback_module.c" "$out/rollback_baddep.dll" "$out/rollback_control.dll" -o "$out/rollback_parent.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=5 "$here/rollback_module.c" "$here/rollback_forward.def" "$out/rollback_control.dll" -o "$out/rollback_forward.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=6 "$here/rollback_module.c" "$out/rollback_dep.dll" "$out/rollback_control.dll" -o "$out/rollback_keeper.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/rollback_invalid_child.c" -o "$out/rollback_invalid_child.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/rollback_invalid_parent.c" "$out/rollback_invalid_child.dll" -o "$out/rollback_invalid_parent.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=7 -DROLLBACK_TLS_OVERFLOW "$here/rollback_module.c" "$out/rollback_control.dll" -o "$out/rollback_invalid_tls.dll" -lkernel32
+# Intentionally malformed dependency: parent mapping must be rolled back too.
+printf 'this is deliberately not a PE image' > "$out/rollback_invalid_child.dll"
+$cc -O1 "$here/gui_loader_rollback.c" "$out/rollback_control.dll" -o "$out/gui_loader_rollback.exe" -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
@@ -48,6 +62,7 @@ for t in "$here"/gui_*.c; do
     [ "$name" = "gui_process_detach" ] && continue
     [ "$name" = "gui_last_thread_exit" ] && continue
     [ "$name" = "gui_startup_lifecycle" ] && continue
+    [ "$name" = "gui_loader_rollback" ] && continue
     res=""
     if [ -e "$here/$name.rc" ]; then
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"

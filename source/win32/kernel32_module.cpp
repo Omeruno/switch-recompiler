@@ -56,15 +56,11 @@ HostCallOutcome LoadLibraryCommon(cpu::CpuState& c, cpu::IGuestMemory& m, const 
     rt::Process::LoaderLock lock(*rt::g_process);
     if (!lock) return Ret(0);
     std::string err;
-    rt::Module* mod = rt::g_process->LoadLibrary(name, err);
+    uint32_t failureCode=0;
+    rt::Module* mod=rt::g_process->LoadLibraryInitialized(c,name,err,failureCode);
     if (!mod) {
-        if (cpu::g_consoleAvailable) std::printf("[LoadLibrary] %s: %s\n", name.c_str(), err.c_str());
-        SetLastError(m, ERROR_MOD_NOT_FOUND);
-        return Ret(0);
-    }
-    if (!rt::g_process->InitializeNewModules(c, err)) {
-        if (cpu::g_consoleAvailable) std::printf("[LoadLibrary] %s: %s\n", name.c_str(), err.c_str());
-        SetLastError(m, 1114); // ERROR_DLL_INIT_FAILED
+        if (cpu::g_consoleAvailable) std::printf("[LoadLibrary] %s: %s\n",name.c_str(),err.c_str());
+        SetLastError(m,failureCode);
         return Ret(0);
     }
     return Ret(mod->base);
@@ -156,8 +152,8 @@ HostCallOutcome K32_GetProcAddress(cpu::CpuState& c, cpu::IGuestMemory& m) {
         return Ret(0);
     }
     std::string procName = p < 0x10000 ? "#" + std::to_string(static_cast<uint16_t>(p)) : ReadAnsi(m, p);
-    uint32_t addr = p < 0x10000 ? rt::g_process->GetProcAddress(mod, "", static_cast<uint16_t>(p))
-                                : rt::g_process->GetProcAddress(mod, procName);
+    uint32_t addr = p < 0x10000 ? rt::g_process->GetProcAddress(mod, "", static_cast<uint16_t>(p), &c)
+                                : rt::g_process->GetProcAddress(mod, procName, 0, &c);
     cpu::RecordDynamicImport(mod->name.c_str(), procName.c_str(), addr);
     if (!addr) {
         if (cpu::g_consoleAvailable && p >= 0x10000)
@@ -280,6 +276,18 @@ HostCallOutcome K32_ExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
     HostCallOutcome out;
     out.customReturn=true; // nonreturning; outer loop sees Exited state
     return out;
+}
+
+HostCallOutcome K32_FreeLibraryAndExitThread(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    const uint32_t module=Arg(c,m,0), code=Arg(c,m,1);
+    auto* thread=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
+    if (!thread) cpu::FatalError("FreeLibraryAndExitThread outside scheduled guest thread");
+    // Cache arguments before the callback; the module containing the caller's
+    // RET address is unmapped, so this HLE must never return to guest code.
+    rt::g_process->FreeLibrary(c,module);
+    if (!win32::g_guestExitRequested && !thread->ShouldUnwind())
+        rt::g_process->RequestThreadExit(*thread,code);
+    HostCallOutcome out; out.customReturn=true; return out;
 }
 
 // --- Консоль ---
@@ -474,6 +482,7 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "LoadLibraryExA", 12, CallConv::Stdcall, &K32_LoadLibraryExA},
     {"KERNEL32.dll", "LoadLibraryExW", 12, CallConv::Stdcall, &K32_LoadLibraryExW},
     {"KERNEL32.dll", "FreeLibrary", 4, CallConv::Stdcall, &K32_FreeLibrary},
+    {"KERNEL32.dll", "FreeLibraryAndExitThread", 8, CallConv::Stdcall, &K32_FreeLibraryAndExitThread},
     {"KERNEL32.dll", "GetModuleHandleA", 4, CallConv::Stdcall, &K32_GetModuleHandleA},
     {"KERNEL32.dll", "GetModuleHandleW", 4, CallConv::Stdcall, &K32_GetModuleHandleW},
     {"KERNEL32.dll", "GetModuleHandleExA", 12, CallConv::Stdcall, &K32_GetModuleHandleExA},
