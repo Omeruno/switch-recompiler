@@ -1,14 +1,24 @@
 #include "source/runtime/guest_execution.h"
 #include "source/runtime/waitable_timer.h"
 #include "source/win32/host_functions.h"
+#include "source/ui/presentation.h"
+#include "source/win32/presentation_session.h"
 #include <cassert>
 #include <cstdio>
+
+static ui::Presentation* livePresentation=nullptr;
+static unsigned presentationCleanup=0;
+static void FinishPresentation() {
+    assert(livePresentation && livePresentation->FrameBytes());
+    livePresentation->Detach();++presentationCleanup;
+}
 
 struct StopGuard {
     cpu::PagedGuestMemory& memory;
     rt::GuestThread& thread;
     unsigned& cleaned;
     ~StopGuard() {
+        if(livePresentation)assert(livePresentation->FrameBytes());
         assert(memory.IsMapped(thread.teb));
         assert(!thread.memoryReleased);
         ++cleaned;
@@ -35,7 +45,17 @@ static void Scenario(bool guestExit) {
     auto callback=std::make_shared<rt::TimerObject>();
     process.Handles().Add(plain); process.Handles().Add(callback);
     unsigned cleaned=0;
+    ui::SoftwarePresentation software;
+    ui::Presentation presentation(&software);
+    ui::OwnedSurface source;source.Allocate(64,64);
+    std::vector<uint32_t> output(64*64);
+    assert(presentation.Submit(source.s));
+    assert(presentation.Render({output.data(),64,64,64,output.size(),true,1}));
+    livePresentation=&presentation;const auto cleanupBefore=presentationCleanup;
+    const auto oldPresent=win32::user::g_platform.present;
     {
+        win32::user::PresentationSession session(true,&FinishPresentation);
+        win32::user::g_platform.present=nullptr;
         rt::GuestExecution execution(process,[&](rt::GuestThread& thread) {
             StopGuard guard{memory,thread,cleaned};
             process.Scheduler().Wait(thread,0xabcdef);
@@ -62,6 +82,10 @@ static void Scenario(bool guestExit) {
             assert(win32::g_guestExitRequested && win32::g_guestExitCode==42);
         }
     }
+    assert(presentationCleanup==cleanupBefore+1);
+    assert(!presentation.FrameBytes() && !presentation.TrackingBytes() && !software.CacheBytes());
+    assert(win32::user::g_platform.present==oldPresent);
+    livePresentation=nullptr;
     assert(cleaned==1);
     assert(!process.Scheduler().HasLiveThreads());
     assert(main.exitCode==(guestExit?42u:0xc0000001u));

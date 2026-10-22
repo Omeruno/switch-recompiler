@@ -34,6 +34,7 @@
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
 #include "win32/user32.h"
+#include "win32/presentation_session.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
 #include "win32/bitmap_font.h"
@@ -293,13 +294,7 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
     rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
-    struct PresentationScope {
-        bool enabled;
-        win32::user::Platform previous=win32::user::g_platform;
-        ~PresentationScope() {
-            if(enabled) {newui::EndPresentation();win32::user::g_platform=previous;}
-        }
-    } presentationScope{g_useNewUi};
+    win32::user::PresentationSession presentationScope(g_useNewUi,&newui::EndPresentation);
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
@@ -1641,6 +1636,7 @@ void Blit() {
     ++g_framebufferStats.frames;g_framebufferStats.beginNs+=beginNs;g_framebufferStats.endNs+=endNs;
     g_framebufferStats.maxBeginNs=std::max(g_framebufferStats.maxBeginNs,beginNs);
     g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);
+    if(!rendered)g_havePresented=false;
     if(rendered) {
         g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
         g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
@@ -1982,8 +1978,10 @@ int main(int argc, char* argv[])
     consoleUpdate(NULL);
     consoleExit(NULL);
     cpu::g_consoleAvailable = false;
-    framebufferCreate(&g_fb, nwindowGetDefault(), 1280, 720, PIXEL_FORMAT_RGBA_8888, 2);
-    framebufferMakeLinear(&g_fb);
+    Result graphicsRc=framebufferCreate(&g_fb, nwindowGetDefault(), 1280, 720, PIXEL_FORMAT_RGBA_8888, 2);
+    if(R_FAILED(graphicsRc)) {romfsExit();return 1;}
+    graphicsRc=framebufferMakeLinear(&g_fb);
+    if(R_FAILED(graphicsRc)) {framebufferClose(&g_fb);romfsExit();return 1;}
     g_graphicsInitialized = true;
 
     // Запускаем всю игровую логику на отдельном потоке с большим стеком
@@ -2000,7 +1998,11 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    threadStart(&gameThread);
+    threadRc=threadStart(&gameThread);
+    if(R_FAILED(threadRc)) {
+        threadClose(&gameThread);framebufferClose(&g_fb);
+        g_graphicsInitialized=false;romfsExit();return 1;
+    }
     threadWaitForExit(&gameThread);
     threadClose(&gameThread);
 

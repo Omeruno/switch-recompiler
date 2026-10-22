@@ -56,3 +56,10 @@ without A and with A held, and verify a fresh L press/release still opens the
 menu intentionally. Finish with a short stroke and normal exit; preserve the
 renderer report before another EXE. E3's hardware milestone remains pending
 these newly reported input/startup regressions and the updated summary.
+
+
+Acceptance update, 2026-10-22: the user confirmed no remaining problems after
+c5e1871, including the launch/menu/toolbar and drag-speed follow-up. All five
+jobs in exact-SHA run 39847105724 succeeded. This closes the functional E3
+hardware gate at 50% Stage E. No fresh renderer timing report was supplied;
+this acceptance does not establish a measured FPS or input-latency result.

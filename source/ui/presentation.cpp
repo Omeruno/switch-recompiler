@@ -1,11 +1,15 @@
 #include "presentation.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <limits>
 
 namespace ui {
 namespace {
+// Process-wide identities prevent placement-new / allocator address reuse from
+// making a new source match an old output history. No pointer is dereferenced.
+std::atomic<uint64_t> nextResourceId{1};
 using Steady=std::chrono::steady_clock;
 uint64_t Elapsed(Steady::time_point start) {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(Steady::now()-start).count());
@@ -66,7 +70,9 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
         frame.tileVersions->size()==size_t(cols)*rows;
     BufferState* state=nullptr;
     if(tracked)for(auto& buffer:buffers_) {
-        if(buffer.pixels==out.pixels && buffer.owner==frame.owner && buffer.width==out.width &&
+        if(buffer.pixels==out.pixels && buffer.owner==frame.owner &&
+           buffer.resourceId==frame.resourceId && buffer.resourceGeneration==frame.resourceGeneration &&
+           buffer.width==out.width &&
            buffer.height==out.height && buffer.stride==out.stridePixels && buffer.generation==out.generation &&
            buffer.sourceW==s.width && buffer.sourceH==s.height &&
            buffer.viewport.x==v.x && buffer.viewport.y==v.y && buffer.viewport.width==v.width &&
@@ -137,6 +143,7 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
         if(!state) {state=&buffers_[nextBuffer_];nextBuffer_=(nextBuffer_+1)%MaxBuffers;*state=BufferState{};}
         state->pixels=out.pixels;state->owner=frame.owner;state->width=out.width;state->height=out.height;
         state->stride=out.stridePixels;state->generation=out.generation;state->sourceW=s.width;state->sourceH=s.height;
+        state->resourceId=frame.resourceId;state->resourceGeneration=frame.resourceGeneration;
         state->viewport=v;state->cursor=cursor;state->versions=*frame.tileVersions;
     } else {
         // Unpreserved/raw rendering may overwrite an address tracked earlier.
@@ -144,9 +151,12 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
     }
     return true;
 }
+Presentation::Presentation(PresentationBackend* backend):resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)) {
+    Attach(backend);
+}
 void Presentation::Attach(PresentationBackend* backend) {
     if(backend_ && backend_!=backend)backend_->Reset();
-    backend_=backend;++generation_;
+    backend_=backend;++generation_;lastRenderedSerial_=0;
     if(backend_)backend_->Reset();
 }
 void Presentation::ClearFrame() {
@@ -200,9 +210,13 @@ bool Presentation::Submit(const Surface& s) {
 bool Presentation::Render(const OutputBuffer& out,PresentationCursor cursor) {
     if(!backend_ || !snapshot_.s.Valid() || !out.Valid()) {++stats_.rejected;return false;}
     const auto start=Steady::now();
-    PresentationFrame frame{snapshot_.s,FitViewport(snapshot_.s.width,snapshot_.s.height,out.width,out.height),cursor,serial_,this,&tileVersions_};
+    PresentationFrame frame{snapshot_.s,FitViewport(snapshot_.s.width,snapshot_.s.height,out.width,out.height),cursor,serial_,this,&tileVersions_,resourceId_,generation_};
     const bool ok=backend_->Render(frame,out);stats_.renderNs+=Elapsed(start);
-    if(!ok) {++stats_.rejected;return false;}
+    if(!ok) {
+        // A failed backend may already have changed output bytes or its cache.
+        // Retry the retained CPU snapshot with a fresh epoch and full damage.
+        ++stats_.rejected;++generation_;backend_->Reset();return false;
+    }
     ++stats_.rendered;if(lastRenderedSerial_==serial_)++stats_.redraws;
     lastRenderedSerial_=serial_;auto bytes=backend_->LastWrittenBytes();
     if(bytes==uint64_t(-1))bytes=uint64_t(out.width)*out.height*4;

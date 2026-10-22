@@ -37,6 +37,8 @@ struct PresentationFrame {
     // Row-major source tile revisions, at kPresentationTileSize. A null map
     // requests conservative full output; views are valid only during Render.
     const std::vector<uint64_t>* tileVersions=nullptr;
+    // Stable across address reuse; revision scope changes on resize/reset/rebind.
+    uint64_t resourceId=0,resourceGeneration=0;
 };
 // Synchronous: implementations may borrow these views only until Render returns.
 // No guest callbacks, framebuffer acquisition, or guest/Win32 state here.
@@ -63,7 +65,7 @@ private:
         const void* owner=nullptr;
         int width=0,height=0,sourceW=0,sourceH=0;
         size_t stride=0;
-        uint64_t generation=0;
+        uint64_t generation=0,resourceId=0,resourceGeneration=0;
         Viewport viewport;
         Rect cursor;
         std::vector<uint64_t> versions;
@@ -83,7 +85,7 @@ struct PresentationStats {
 // Backend is borrowed and must outlive calls. Detach releases frame memory.
 class Presentation {
 public:
-    explicit Presentation(PresentationBackend* backend=nullptr) {Attach(backend);}
+    explicit Presentation(PresentationBackend* backend=nullptr);
     Presentation(const Presentation&)=delete;
     Presentation& operator=(const Presentation&)=delete;
     void Attach(PresentationBackend* backend);
@@ -105,6 +107,7 @@ private:
     OwnedSurface snapshot_;
     PresentationStats stats_;
     uint64_t serial_=0,lastRenderedSerial_=0;
+    const uint64_t resourceId_;
     uint64_t generation_=0;
     std::vector<uint64_t> tileVersions_;
 };
