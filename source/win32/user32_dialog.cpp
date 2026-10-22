@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "../runtime/process.h"
+#include "../runtime/guest_execution.h"
 #include "../runtime/resources.h"
 #include "user32.h"
 
@@ -17,6 +18,7 @@ namespace user {
 using namespace hle;
 
 struct DialogInfo {
+    uint32_t creationHwnd = 0;
     uint32_t dlgProc = 0;
     bool unicode = false;
     bool ended = false;
@@ -226,16 +228,19 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
     info.baseX = bx;
     info.baseY = by;
     // DialogInfo нужна уже при WM_NCCREATE/WM_CREATE, а хендла ещё нет
-    g_pendingInfo = &info;
-    uint32_t hwnd = CreateWindowInternal(exStyle, cls, t.clsOrd, t.title, style, x, y, w, h, owner, hMenu, hInst, param, unicode, 0, 0);
-    g_pendingInfo = nullptr;
-    if (!hwnd) return 0;
-    Dialogs()[hwnd] = info;
-    Window* dw = Win(hwnd);
-    if (dw && cls == u"#32770") {
-        dw->wndProc = DefDlgProcAddress(unicode);
-        dw->unicode = unicode;
+    uint32_t hwnd=0;
+    {
+        struct PendingScope {
+            DialogInfo* previous;
+            PendingScope(DialogInfo* info):previous(g_pendingInfo){g_pendingInfo=info;}
+            ~PendingScope(){g_pendingInfo=previous;}
+        } pending(&info);
+        hwnd=CreateWindowInternal(exStyle,cls,t.clsOrd,t.title,style,x,y,w,h,owner,hMenu,hInst,param,unicode,0,0);
     }
+    if(!hwnd) {Dialogs().erase(info.creationHwnd);return 0;}
+    Window* dw=Win(hwnd);
+    if(!dw || !Dlg(hwnd))return 0;
+    // A CBT hook may have installed a framework subclass. Preserve it.
     if (t.style & DS_SETFONT) SendMsg(hwnd, WM_SETFONT, font, 0);
     // элементы управления
     for (const DlgItem& it : t.items) {
@@ -258,7 +263,7 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
     if ((dw = Win(hwnd)))
         for (uint32_t ch : dw->children) // z-порядок детей = порядок создания
             if (Window* cw2 = Win(ch)) if ((cw2->style & WS_TABSTOP) && (cw2->style & WS_VISIBLE) && !(cw2->style & 0x08000000)) { first = ch; break; }
-    uint32_t r = CallProc(dlgProc, unicode, hwnd, WM_INITDIALOG, first, param, unicode);
+    uint32_t r = SendMsg(hwnd, WM_INITDIALOG, first, param, unicode);
     if (!Win(hwnd)) return 0;
     if (r && first) SetFocusInternal(first);
     if (t.style & WS_VISIBLE) ShowWindowInternal(hwnd, 5);
@@ -266,6 +271,22 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
 }
 
 } // namespace
+
+void InitializeDialogWindow(uint32_t hwnd) {
+    if(!g_pendingInfo || g_pendingInfo->creationHwnd)return;
+    auto* window=Win(hwnd);if(!window)return;
+    g_pendingInfo->creationHwnd=hwnd;
+    Dialogs()[hwnd]=*g_pendingInfo;
+    if(window->extra.size()>=8)std::memcpy(window->extra.data()+4,&g_pendingInfo->dlgProc,4);
+    if(window->cls && window->cls->name==u"#32770") {
+        window->wndProc=DefDlgProcAddress(g_pendingInfo->unicode);
+        window->unicode=g_pendingInfo->unicode;
+    }
+}
+void ForgetDialogWindow(uint32_t hwnd) {Dialogs().erase(hwnd);}
+void SetDialogProcEncoding(uint32_t hwnd,bool unicode) {
+    if(auto* info=Dlg(hwnd))info->unicode=unicode;
+}
 
 uint32_t LoadMenuForDialog(uint32_t hInst, const std::u16string& name, uint16_t ord) {
     if (!rt::g_process) return 0;
@@ -337,12 +358,16 @@ void Command(uint32_t dlg, uint32_t id, uint32_t ctl, uint32_t code = 0) {
 // DefDlgProc: сначала процедура программы, затем поведение по умолчанию
 uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode) {
     DialogInfo* di = Dlg(hwnd);
-    if (!di && g_pendingInfo) di = g_pendingInfo; // создание: WM_NCCREATE, WM_CREATE
     Window* w = Win(hwnd);
     if (!w) return 0;
-    if (di && di->dlgProc) {
-        uint32_t proc = di->dlgProc;
+    uint32_t dialogProc=di?di->dlgProc:0;
+    if(di && w->extra.size()>=8)std::memcpy(&dialogProc,w->extra.data()+4,4);
+    if (di && dialogProc) {
+        uint32_t proc = dialogProc;
         bool pu = di->unicode;
+        // Each message starts with a fresh DWL_MSGRESULT. A callback which
+        // handles it sets the result immediately before returning TRUE.
+        if(w->extra.size()>=4) {uint32_t zero=0;std::memcpy(w->extra.data(),&zero,4);}
         uint32_t r = CallProc(proc, pu, hwnd, msg, wp, lp, unicode);
         if (!(w = Win(hwnd))) return r;
         switch (msg) {
@@ -524,9 +549,9 @@ uint32_t RunModal(uint32_t dlg, uint32_t owner) {
         if (di && !di->ended) ShowWindowInternal(dlg, 5);
     }
     while (DialogInfo* di = Dlg(dlg)) {
-        if (di->ended || g_guestExitRequested) break;
+        if (di->ended || g_guestExitRequested || !rt::GuestExecution::Checkpoint()) break;
         Msg msg;
-        FetchMessage(msg, 0, 0, 0, true, true);
+        if(!FetchMessage(msg, 0, 0, 0, true, true))break;
         if (msg.message == WM_QUIT) { PostQuit(msg.wParam); break; }
         if (DialogMessage(dlg, msg)) continue;
         if (msg.message == WM_TIMER && msg.lParam) { CallStdcall(*G().c, *G().m, msg.lParam, {msg.hwnd, WM_TIMER, msg.wParam, NowMs()}); continue; }
@@ -534,9 +559,14 @@ uint32_t RunModal(uint32_t dlg, uint32_t owner) {
         if (msg.hwnd) SendMsg(msg.hwnd, msg.message, msg.wParam, msg.lParam);
     }
     uint32_t result = Dlg(dlg) ? Dlg(dlg)->result : 0;
-    if ((ow = Win(owner)) && ownerWasEnabled) { ow->style &= ~WS_DISABLED; SendMsg(owner, WM_ENABLE, 1, 0); }
-    DestroyWindowInternal(dlg);
-    if (Win(owner) && !(Win(owner)->style & WS_CHILD)) SetActive(owner);
+    if ((ow = Win(owner)) && ownerWasEnabled) {
+        ow->style &= ~WS_DISABLED;
+        if(rt::GuestExecution::Checkpoint())SendMsg(owner,WM_ENABLE,1,0);
+    }
+    if(rt::GuestExecution::Checkpoint()) {
+        DestroyWindowInternal(dlg);
+        if(Win(owner) && !(Win(owner)->style&WS_CHILD))SetActive(owner);
+    }
     return result;
 }
 

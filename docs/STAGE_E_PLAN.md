@@ -189,3 +189,14 @@ cleanup on guest exit/host abort. E5's final application acceptance remains open
 until Paint's color selection path is verified. Details and regression coverage:
 [PAINT_CHOOSE_COLOR.md](PAINT_CHOOSE_COLOR.md). Original uploaded diagnostics are
 not included in the repository.
+
+
+## Standard dialogs follow-up
+
+Color selection is confirmed on hardware after 1b4c43d. Other Paint dialogs
+exposed a general CBT-subclass/DWL_DLGPROC dispatch gap. The defect is reproduced
+by real x86 modal/modeless tests and repaired without application-specific
+handlers. Lifecycle cancellation and dialog metadata cleanup are covered too.
+Physical acceptance of the affected Paint dialogs remains open; Stage E stays
+at the accepted 60% until its application gates are complete. See
+[PAINT_DIALOG_DISPATCH.md](PAINT_DIALOG_DISPATCH.md).

@@ -98,6 +98,16 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 20 "$out/choose_color_exit.log" 2>/dev/null || true
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_dialog_lifecycle.cpp" $src -o "$out/test_dialog_lifecycle" &&
+       "$out/test_dialog_lifecycle" "$guestRoot/gui_dialog_subclass.exe" > "$out/dialog_abort.log" 2>&1 &&
+       "$out/test_dialog_lifecycle" "$guestRoot/gui_dialog_subclass.exe" --exit > "$out/dialog_exit.log" 2>&1; then
+        tail -n 1 "$out/dialog_abort.log"
+    else
+        echo "   STANDARD DIALOG LIFETIME FAILED"
+        tail -n 20 "$out/dialog_abort.log" 2>/dev/null || true
+        tail -n 20 "$out/dialog_exit.log" 2>/dev/null || true
+        failed=1
+    fi
     # Real Process allocation/reclamation, including static TLS from MinGW PE.
     if $cxx $flags "$root/tests/test_thread_resources.cpp" $src -o "$out/test_thread_resources" &&
        "$out/test_thread_resources" "$guestRoot/gui_seh.exe" > "$out/test_thread_resources.log" 2>&1; then

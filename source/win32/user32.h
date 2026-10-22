@@ -286,6 +286,10 @@ uint32_t LoadMenuForDialog(uint32_t hInst, const std::u16string& name, uint16_t 
 // Диалоги
 uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);
 uint32_t DefDlgProcAddress(bool unicode);
+// Dialog state must exist before CBT hooks/subclassing run.
+void InitializeDialogWindow(uint32_t hwnd);
+void ForgetDialogWindow(uint32_t hwnd);
+void SetDialogProcEncoding(uint32_t hwnd,bool unicode);
 bool DialogMessage(uint32_t dlg, Msg& msg);
 
 // Хуки: вызов цепочки типа id (WH_CBT = 5, WH_MSGFILTER = -1); 0, если хуков нет

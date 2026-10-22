@@ -313,7 +313,10 @@ uint32_t WindowLong(Window* w, int idx, bool set, uint32_t value, bool unicode) 
     if (idx >= 0 && static_cast<size_t>(idx) + 4 <= w->extra.size()) {
         uint32_t old;
         std::memcpy(&old, &w->extra[static_cast<size_t>(idx)], 4);
-        if (set) std::memcpy(&w->extra[static_cast<size_t>(idx)], &value, 4);
+        if (set) {
+            std::memcpy(&w->extra[static_cast<size_t>(idx)], &value, 4);
+            if(idx==4)SetDialogProcEncoding(w->hwnd,unicode); // 32-bit DWL_DLGPROC
+        }
         return old;
     }
     return 0;
