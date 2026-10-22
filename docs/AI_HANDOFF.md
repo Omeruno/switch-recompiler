@@ -827,3 +827,61 @@ physical Switch acceptance separately. Input/focus/hooks and full process/DLL
 shutdown remain separate contracts. Stage C approximately 90% by functional
 blocks after the timer block, with hardware acceptance still open. Do not
 advance JIT/GPU/shell gates or create/extend scheduled runs.
+
+
+## 2026-10-22 current package: wait retry isolation and timer contention/APC edges
+
+Incoming exact HEAD `b96061e6f69cb059145f9e1bc909a0474dcb1d37` was clean and
+matched remote; [CI 39708466163](https://github.com/Omeruno/switch-recompiler/actions/runs/39708466163)
+passed all five jobs. No active workflow, competing compiler/test process or
+unfinished edits were found; no additional AGENTS.md/CLAUDE.md exists in checkout.
+
+- Reproduced a correctness bug in terminal object-wait cleanup BEFORE patching:
+  main parks wait-all([auto event A, event B], finite); peer closes B, waking
+  caller; retry fails validation with ERROR_INVALID_HANDLE, but old retry token
+  A/deadline survives. After that deadline expires, a NEW infinite single wait
+  on an already signaled A incorrectly returns WAIT_TIMEOUT instead of success.
+  Native baseline log: /tmp/switch-retry-before.log (transient). This is a
+  runtime defensive-close policy regression; closing an active Windows wait
+  HANDLE/altering a pending wait array is not claimed as defined NT behavior.
+- Introduced common ClearWaitRetry/FinishObjectWait in kernel32_sync.cpp.
+  Single/multiple normal completions and errors clear retry token, original
+  deadline AND timeout marker. Multiple preflight failures, scheduler park
+  failures and Ex preflight failures use the same terminal path. A genuine
+  pending customReturn preserves scheduler state until its original call retries.
+  Alertable continuation cleanup shares the helper. Successful/timeout resource
+  consumption and timeout ordering are otherwise unchanged.
+- New test_wait_retry_state native HLE ABI regression first fails on b96061e
+  with fresh infinite wait result 0x102, then passes with this fix. It covers
+  ordinary/Ex multiple waits, duplicate-array validation failure on resume,
+  independent new single wait deadline/token consumption and failed timed-out
+  single wait cleanup. Registered in mandatory host suite.
+- New gui_thread_timer_contention Win32 guest: three threads waiting through
+  shared auto-timer aliases consume exactly one expiration each; manual timer
+  wakes all three. Periodic wakeups do not renew wait-all's original deadline
+  or consume timer/semaphore tokens before an unsignaled gate is ready. Tests
+  both ordinary/Ex calls and a subsequent successful all-object acquisition.
+  Also checks actual guest closed-wait failure followed by a fresh infinite
+  single wait on the same now-ready first object.
+- New gui_thread_timer_reentrant guest: timer APC cancels its own periodic
+  source, rearms itself, closes its last named handle and creates a different
+  object under that name BEFORE callback return (proves no retained source
+  shared_ptr). Timer callback ownership can move from a nonalertable worker
+  with a pending old APC to main; old notification is removed, old setter exit
+  cannot cancel replacement, and callback checks main thread/TLS. Callback
+  rearm test allows dispatch to drain both expirations in one alertable call,
+  as well as separate calls. Finite callback waits bound regression failures.
+- Mandatory local native/x86 suite passed with -fno-rtti/-fno-exceptions,
+  including the original timer/SignalObjectAndWait/SEH/lifecycle regressions and
+  new retry-isolation test. Log: /tmp/switch-contention-host.log (transient).
+  MinGW and 32-bit libc headers remain absent locally, so guest tests and CPU
+  oracle require exact new-SHA CI, together with Switch and ARM64 ABI jobs.
+  Check that run before calling this package green; no physical Switch test.
+
+Stage C remains approximately 90%: this closes a bug and extends acceptance
+coverage, not a new large functional block. Remaining gates include physical
+Switch acceptance and further targeted stress of mixed message/object/APC
+waits, timer callback blocking/ExitThread and teardown boundaries. I/O completion
+APCs, IPC/token/DACL/child inheritance, input/focus/hooks ownership and full
+process/DLL shutdown remain separate; do not drift into JIT/GPU/shell or imply
+hardware validation. Do not create/extend automation or change branches.

@@ -276,6 +276,15 @@ bool WaitHandleReady(uint32_t h) {
 uint32_t AcquireWaitHandle(uint32_t h) {
     return HleThreadFromHandle(h) ? 0 : TryAcquire(h);
 }
+void ClearWaitRetry(rt::GuestThread* current) {
+    if(!current) return;
+    current->retryWaitToken=current->timedOutHandle=0;
+    current->retryWaitDeadlineUs=0;
+}
+HostCallOutcome FinishObjectWait(rt::GuestThread* current,uint32_t result) {
+    ClearWaitRetry(current);
+    return Ret(result);
+}
 // An unfinished finite wait is parked in the scheduler, then the guest
 // retries the same HLE import upon signal or timeout. This avoids blocking
 // the host/render thread and keeps the x86 stack unchanged until completion.
@@ -286,11 +295,7 @@ HostCallOutcome WaitSingle(cpu::CpuState& c, cpu::IGuestMemory& m,
     rt::GuestThread* current=rt::g_process ?
         rt::g_process->Scheduler().Current() : nullptr;
     auto finish=[&](uint32_t result) -> HostCallOutcome {
-        if (current) {
-            current->retryWaitToken=0;
-            current->retryWaitDeadlineUs=0;
-        }
-        return Ret(result);
+        return FinishObjectWait(current,result);
     };
     if (!ValidateWaitObjects(m,{handle},false)) return finish(kWaitFailed);
     if (current && (current->timedOutHandle==handle ||
@@ -321,38 +326,22 @@ HostCallOutcome WaitMultiple(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t n = Arg(c,m,0), arr = Arg(c,m,1);
     const bool all = Arg(c,m,2) != 0;
     const uint32_t ms = Arg(c,m,3);
-    std::vector<uint32_t> handles;
-    if (!ReadWaitObjects(m,n,arr,all,64,false,handles)) return Ret(kWaitFailed);
     rt::GuestThread* current=rt::g_process ?
         rt::g_process->Scheduler().Current() : nullptr;
+    const auto finish=[&](uint32_t result) { return FinishObjectWait(current,result); };
+    std::vector<uint32_t> handles;
+    // Every terminal result, including preflight failure AFTER a wake, ends
+    // this wait transaction. Only a parked customReturn may retain retry state.
+    if (!ReadWaitObjects(m,n,arr,all,64,false,handles)) return finish(kWaitFailed);
     const uint32_t token=handles.front();
-    // After a finite timeout, retry this HLE once to deliver WAIT_TIMEOUT,
-    // rather than resetting the deadline indefinitely.
-    if (current && current->timedOutHandle == token) {
-        current->timedOutHandle=0;
-        current->retryWaitDeadlineUs=0;
-        current->retryWaitToken=0;
-        return Ret(kWaitTimeout);
-    }
-    if (current && current->retryWaitToken == token &&
-        current->retryWaitDeadlineUs &&
-        rt::Clock::NowUs() >= current->retryWaitDeadlineUs) {
-        current->retryWaitToken=0;
-        current->retryWaitDeadlineUs=0;
-        return Ret(kWaitTimeout);
-    }
-    auto finish=[&](uint32_t result) -> HostCallOutcome {
-        if (current) {
-            current->retryWaitToken=0;
-            current->retryWaitDeadlineUs=0;
-        }
-        return Ret(result);
-    };
+    if (current && (current->timedOutHandle==token ||
+        (current->retryWaitToken==token && current->retryWaitDeadlineUs &&
+         rt::Clock::NowUs()>=current->retryWaitDeadlineUs))) return finish(kWaitTimeout);
     const uint32_t result=PollWaitObjects(handles,all);
     if (result!=kWaitTimeout) return finish(result);
     if (ms==0 || !current || !rt::g_process) return finish(kWaitTimeout);
     if (!rt::g_process->Scheduler().WaitForMultiple(*current,handles,all,ms))
-        return Ret(kWaitFailed);
+        return finish(kWaitFailed);
     HostCallOutcome pending;
     pending.customReturn=true;
     return pending;
@@ -364,7 +353,8 @@ HostCallOutcome K32_WaitForMultipleObjectsEx(cpu::CpuState& c,cpu::IGuestMemory&
     if (!Arg(c,m,4)) return WaitMultiple(c,m);
     std::vector<uint32_t> handles;
     const bool all=Arg(c,m,2)!=0;
-    if (!ReadWaitObjects(m,Arg(c,m,0),Arg(c,m,1),all,64,false,handles)) return Ret(0xffffffffu);
+    if (!ReadWaitObjects(m,Arg(c,m,0),Arg(c,m,1),all,64,false,handles))
+        return FinishObjectWait(rt::g_process ? rt::g_process->Scheduler().Current() : nullptr,0xffffffffu);
     return Ret(AlertableObjectWait(c,m,handles,all,Arg(c,m,3)));
 }
 
@@ -466,10 +456,7 @@ uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
     auto* current=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     struct ClearRetry {
         rt::GuestThread* thread;
-        ~ClearRetry() { if (thread) {
-            thread->retryWaitToken=thread->timedOutHandle=0;
-            thread->retryWaitDeadlineUs=0;
-        } }
+        ~ClearRetry() { ClearWaitRetry(thread); }
     } cleanup{current};
     const bool finite=milliseconds!=0xffffffffu;
     const uint64_t deadline=finite ? rt::Clock::NowUs()+uint64_t(milliseconds)*1000 : 0;

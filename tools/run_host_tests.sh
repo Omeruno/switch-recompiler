@@ -61,7 +61,7 @@ for cpp in $src; do
 done
 src="$objects"
 
-for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer; do
+for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
