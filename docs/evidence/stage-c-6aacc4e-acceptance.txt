@@ -1,0 +1,19 @@
+Stage C acceptance v2
+RUNNING: incomplete report is not a pass
+BEGIN 1: mutex/semaphore producer-consumer
+PASS 1: mutex/semaphore producer-consumer
+BEGIN 2: multiple waits
+PASS 2: multiple waits
+BEGIN 3: named objects and handle access
+PASS 3: named objects and handle access
+BEGIN 4: SignalObjectAndWait/APC
+PASS 4: SignalObjectAndWait/APC
+BEGIN 5: timer contention and wait-all
+PASS 5: timer contention and wait-all
+BEGIN 6: mixed MsgWait/timer/user APC
+PASS 6: mixed MsgWait/timer/user APC
+BEGIN 7: GUI input ownership and callback exit
+PASS 7: GUI input ownership and callback exit
+BEGIN 8: ExitThread inside timer APC
+PASS 8: ExitThread inside timer APC
+PASS: ALL 8 SUITES

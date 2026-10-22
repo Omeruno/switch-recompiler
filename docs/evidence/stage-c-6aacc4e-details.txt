@@ -1,0 +1,35 @@
+Stage C details v2: combined acceptance
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99944092 error=126: mutex/semaphore producer-consumer
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99944653 error=298: multiple waits
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99945307 error=6: named objects and handle access
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:18 thread=4100 tick=99946169 error=6: named begin
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:51 thread=4100 tick=99946628 error=87: named ANSI and UTF-16 identity
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:58 thread=4100 tick=99947279 error=0: named mutex worker
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:67 thread=4100 tick=99947748 error=288: named restricted wait-all and MsgWait
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:80 thread=4100 tick=99948297 error=5: named final handle lifetime
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_named.c:88 thread=4100 tick=99948676 error=0: named passed
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99949030 error=0: SignalObjectAndWait/APC
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99949420 error=6: timer contention and wait-all
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99949906 error=6: mixed MsgWait/timer/user APC
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99950376 error=0: GUI input ownership and callback exit
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:84 thread=4100 tick=99950782 error=0: input begin
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:93 thread=4100 tick=99951125 error=0: main windows created
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:95 thread=4100 tick=99951499 error=0: create first worker
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:62 thread=4212 tick=99951860 error=0: worker begin
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:65 thread=4212 tick=99952206 error=0: worker windows created
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:71 thread=4212 tick=99952570 error=87: worker ready
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:97 thread=4100 tick=99952969 error=0: cross-thread snapshot
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:99 thread=4100 tick=99953447 error=0: GUIThreadInfo and foreign queues
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:106 thread=4100 tick=99953980 error=87: nested focus redirection
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:108 thread=4100 tick=99954522 error=0: destroy focus target in callback
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:110 thread=4100 tick=99955070 error=0: nested capture redirection
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:112 thread=4100 tick=99955633 error=0: cross-thread capture transfer
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:133 thread=4100 tick=99956200 error=0: ExitThread from WM_SETFOCUS
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:138 thread=4100 tick=99956724 error=1444: create second worker
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:62 thread=4216 tick=99957099 error=0: worker begin
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:65 thread=4216 tick=99957446 error=0: worker windows created
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:71 thread=4216 tick=99957817 error=87: worker ready
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:140 thread=4100 tick=99958174 error=0: ExitThread from WM_CAPTURECHANGED
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:144 thread=4100 tick=99958715 error=1444: disable and destroy main window
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/gui_thread_input.c:148 thread=4100 tick=99959120 error=0: input passed
+STEP /workspace/scratch/08cf7dfc4fad/switch-recompiler/tests/guest/stage_c_acceptance.c:32 thread=4100 tick=99959473 error=0: ExitThread inside timer APC

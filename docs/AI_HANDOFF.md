@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **1aa471f1d0e995a736fd71dc36f8cd59611ebdac**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39781689322](https://github.com/Omeruno/switch-recompiler/actions/runs/39781689322). Hardware acceptance is incomplete: the normal v1 run passed 1–6 and stopped inside block 7. The diagnostic v2 changes below need their own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
+Last verified implementation GitHub state: **6aacc4e013e55be84a6f7860dfb34e810c6fbda0**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Bounded Stage C hardware acceptance PASSED: user-supplied combined v2 report has PASS 1–8 and PASS: ALL 8 SUITES. Next implementation package is E1 renderer boundary/software reference, with the existing isolated JIT permission probe as a separate hardware gate. This summary supersedes older pending-C notes below; it does not claim full NT/Win32, GPU, shell or dynarec completion.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1565,3 +1565,29 @@ with `g++ -fno-exceptions -fno-rtti` and actual MinGW guest builds, including
 new FILE regression, bounded log test, fast + real-clock paced GUI inspector,
 all prior native/PE fixtures and `Stage C acceptance v2, ALL 8 SUITES`.
 Transient log: /tmp/acceptance-v2-fixed-full.log. Hardware cause remains pending.
+
+
+## 2026-10-22 Hardware acceptance passed; next package E1
+
+- User ran both v2 EXEs on Switch, observed input windows and automatic exit,
+  then uploaded stage-c-acceptance.txt and stage-c-details.txt. Reports checked
+  directly: all eight PASS entries plus PASS: ALL 8 SUITES; combined details
+  include input passed and suite 8, no FAIL. Evidence preserved under
+  docs/evidence/stage-c-6aacc4e-*.txt. Bounded Stage C gate is now accepted;
+  replace former ~95%/hardware-blocked status, not the stated scope limits.
+- User followed the supplied v2 package; no execution log/installed NRO hash
+  supplied, so do not claim independent Build/UI attestation. Separate first
+  input details were overwritten by combined run, as designed. Neither this
+  nor the initial RUNNING header invalidates the completed combined report.
+- Exact implementation CI 6aacc4e: five successful jobs in run 39810630356,
+  rechecked before this documentation update. These are documentation/evidence
+  changes only; do not attribute that run to a later docs commit.
+- ROADMAP next: E1 audit and renderer boundary around existing software GDI,
+  explicit surfaces/lifetime/clip/dirty/present, measurements and pixel/lifecycle
+  regressions. Keep interpreter/software reference and working Paint behavior.
+  Existing standalone JIT probe still needs actual hardware Result codes/42
+  before any dynarec integration; E1 need not wait for that experiment.
+- D loader/API work remains targeted compatibility expansion. Full foreground
+  policy/hooks/menu, cross-process/security, TerminateThread, GPU, shell and
+  DirectDraw/D3D are not implicitly complete. No new percentage for the whole
+  project. Latest Paint hardware baseline remains 8b0ad70, not this C report.
