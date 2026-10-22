@@ -284,6 +284,11 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
             out=Msg(); out.message=WM_QUIT;
             return true;
         }
+        // Present drawing from the previous dispatch even while messages keep
+        // arriving. Early returns for input/posted/paint/timer messages must
+        // not starve output until the pointer stops and the queue goes idle.
+        // Keep the normal change-counter and 16 ms throttle; no guest callback.
+        PresentIfNeeded(false);
         // ввод с платформы — не чаще раза в несколько мс (PeekMessage в цикле игры)
         uint32_t now = NowMs();
         if (now - g_lastPollMs >= 4) {

@@ -145,3 +145,30 @@ Added byte-aligned/padded/bottom-up native-width RGB/alpha/output-padding
 coverage; existing full-image pixel equivalence remains unchanged. Switch
 adapter compilation and exact-SHA CI are checked on the published commit;
 hardware latency comparison remains pending regardless of CI result.
+
+## Continuous-input presentation starvation
+
+The user clarified that the stroke appears only after the pointer stops,
+with both touch and stick input. This is stronger than a small frame delay.
+Inspection found `FetchMessage` returning posted/input/paint/timer messages
+before reaching either presentation call at the idle end of the loop.
+Consequently continuous message traffic can indefinitely hide GDI updates;
+the native adapter can still move the cursor over its last accepted snapshot.
+The earlier drag-redraw fix alone does not address this scheduling defect.
+
+Changed frames are now offered to the backend at the beginning of each
+message-fetch iteration, after sent-message pumping and the execution-stop
+checkpoint, before polling/returning the next event. The existing GDI change
+counter and 16 ms throttle remain in force; message priority, filtering,
+remove/no-remove behavior and forced idle presentation are unchanged. The
+platform present callback must remain synchronous and must not dispatch guest
+callbacks, as required by the presentation contract.
+
+`test_present_progress` keeps input or posted queues nonempty while drawing
+new screen pixels through real GDI, then verifies those pixels reach the
+shared software backend before the queue becomes idle. It covers Get/Peek,
+remove/no-remove, no-op traffic and throttling. It fails at `frames>before`
+against the pre-fix runtime (`9428a1b`) and passes with the scheduling fix.
+This specifically tests visibility progress under load, rather than checking
+only the final image after input stops. Hardware drawing/open/save acceptance
+is still pending the new NRO.
