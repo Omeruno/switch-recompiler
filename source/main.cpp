@@ -32,6 +32,7 @@
 #include "runtime/guest_execution.h"
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
+#include "ui/pointer_input.h"
 #include "win32/user32.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
@@ -1559,6 +1560,10 @@ ui::Presentation g_presentation;
 float g_cx=kOutW/2.0f,g_cy=kOutH/2.0f;
 bool g_touching=false;
 int g_lastTouchX=0,g_lastTouchY=0;
+ui::PointerInputGate g_pointerInputGate;
+ui::StickPointerMotion g_pointerMotion;
+u64 g_startupHeldButtons=0;
+bool g_startupTouch=false;
 std::string g_presentationGuest;
 struct FramebufferStats {
     uint64_t frames=0,beginNs=0,endNs=0,maxBeginNs=0,maxEndNs=0,deferredDragFrames=0;
@@ -1578,6 +1583,12 @@ void BeginPresentation(const char* guestPath) {
     g_presentationGuest=guestPath;g_framebufferStats={};
     g_havePresented=false;
     g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
+    padUpdate(&g_pad);
+    HidTouchScreenState touch={0};
+    const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+    g_startupHeldButtons=padGetButtons(&g_pad);g_startupTouch=touching;
+    g_pointerInputGate.Reset(g_startupHeldButtons,touching);
+    g_pointerMotion.ResetTime(rt::Clock::NowUs());
 }
 void EndPresentation() {
     // One summary per session; never log each frame to SD or closed console.
@@ -1600,6 +1611,8 @@ void EndPresentation() {
             (unsigned long long)s.comparedBytes,(unsigned long long)s.noOpSubmissions,
             (unsigned long long)s.noOpRenders,(unsigned long long)g_framebufferStats.skippedUnchanged,
             g_presentation.TrackingBytes(),g_software.CacheBytes());
+        fprintf(log,"Startup held buttons: 0x%llx\nStartup touch: %u\nStick source pixels/s limit: %.0f\n",
+            (unsigned long long)g_startupHeldButtons,unsigned(g_startupTouch),ui::StickPointerMotion::MaxPixelsPerSecond);
         fclose(log);
     }
     g_presentation.Detach();
@@ -1659,27 +1672,17 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     for (;;) {
         if (!appletMainLoop()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
         padUpdate(&g_pad);
-        u64 down = padGetButtonsDown(&g_pad), up = padGetButtonsUp(&g_pad);
+        HidTouchScreenState ts = {0};
+        const bool rawTouching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
+        const auto edges=g_pointerInputGate.Update(padGetButtons(&g_pad),rawTouching);
+        const u64 down=edges.down,up=edges.up;
         const int sw=g_presentation.SourceWidth()?g_presentation.SourceWidth():win32::user::S().screenW;
         const int sh=g_presentation.SourceHeight()?g_presentation.SourceHeight():win32::user::S().screenH;
-        bool moved = false;
-        // стик
+        // Stick speed is in pixels/second; rendering frequency is not a speed multiplier.
         HidAnalogStickState stick = padGetStickPos(&g_pad, 0);
-        auto speed = [](int32_t v) -> float {
-            int32_t a = v >= 0 ? v : -v;
-            if (a <= 4000) return 0.0f;
-            float t = static_cast<float>(a - 4000) / static_cast<float>(32767 - 4000);
-            return (v > 0 ? 1.0f : -1.0f) * t * t * 9.0f;
-        };
-        float dx = speed(stick.x), dy = -speed(stick.y);
-        if (dx != 0.0f || dy != 0.0f) {
-            g_cx = std::max(0.0f, std::min(g_cx + dx, static_cast<float>(sw - 1)));
-            g_cy = std::max(0.0f, std::min(g_cy + dy, static_cast<float>(sh - 1)));
-            moved = true;
-        }
+        bool moved=g_pointerMotion.Advance(g_cx,g_cy,stick.x,stick.y,rt::Clock::NowUs(),sw,sh);
         // тач
-        HidTouchScreenState ts = {0};
-        bool touching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
+        bool touching=edges.touching;
         const auto viewport=ui::FitViewport(sw,sh,kOutW,kOutH);
         if(touching) {
             const int tx=static_cast<int>(ts.touches[0].x),ty=static_cast<int>(ts.touches[0].y);
@@ -1715,7 +1718,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
             // Deliver drag input to the guest before presenting its old pixels.
             // Otherwise a cursor-only frame can block on scanout while Paint
             // still has not received this movement. Hover keeps immediate redraw.
-            if(touching || (padGetButtons(&g_pad)&(HidNpadButton_A|HidNpadButton_ZR)))
+            if(touching || (edges.held&(HidNpadButton_A|HidNpadButton_ZR)))
                 ++g_framebufferStats.deferredDragFrames;
             else Blit();
         }
@@ -1752,6 +1755,7 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     char buf[2048] = {0};
     Result rc = swkbdShow(&kbd, buf, sizeof(buf));
     swkbdClose(&kbd);
+    g_pointerMotion.ResetTime(rt::Clock::NowUs());
     if (R_FAILED(rc)) return false;
     out = FromUtf8(buf);
     InvalidateOutput();
