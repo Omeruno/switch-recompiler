@@ -72,6 +72,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
 void BeginPresentation(const char* guestPath);
 void EndPresentation();
+void InvalidateOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
 static std::string g_selectedExePath = "romfs:/winmine.exe"; // безопасный дефолт, если пикер не понадобится/не сработает
@@ -1205,6 +1206,7 @@ static void DrawGdiScreenIntoFramebuffer(Framebuffer& fb, int cursorX, int curso
     g_contentBaseY = contentY;
 
     u32 stride;
+    if(g_useNewUi)newui::InvalidateOutput();
     u32* framebuf = static_cast<u32*>(framebufferBegin(&fb, &stride));
     u32 strideInPixels = stride / sizeof(u32);
 
@@ -1560,15 +1562,21 @@ int g_lastTouchX=0,g_lastTouchY=0;
 std::string g_presentationGuest;
 struct FramebufferStats {
     uint64_t frames=0,beginNs=0,endNs=0,maxBeginNs=0,maxEndNs=0,deferredDragFrames=0;
+    uint64_t skippedUnchanged=0;
 } g_framebufferStats;
+bool g_havePresented=false;
+uint64_t g_presentedSerial=0,g_presentedGeneration=0;
+ui::PresentationCursor g_presentedCursor;
 using PresentationClock=std::chrono::steady_clock;
 uint64_t PresentationElapsed(PresentationClock::time_point start) {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(PresentationClock::now()-start).count());
 }
+void InvalidateOutput() {g_havePresented=false;g_software.Reset();}
 
 void BeginPresentation(const char* guestPath) {
     g_presentation.Detach();g_presentation.ResetStats();g_presentation.Attach(&g_software);
     g_presentationGuest=guestPath;g_framebufferStats={};
+    g_havePresented=false;
     g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
 }
 void EndPresentation() {
@@ -1576,7 +1584,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Software presentation v2\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Software presentation v3\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1588,24 +1596,42 @@ void EndPresentation() {
             (unsigned long long)g_framebufferStats.frames,(unsigned long long)g_framebufferStats.beginNs,
             (unsigned long long)g_framebufferStats.endNs,(unsigned long long)g_framebufferStats.maxBeginNs,
             (unsigned long long)g_framebufferStats.maxEndNs,(unsigned long long)g_framebufferStats.deferredDragFrames);
+        fprintf(log,"Compared normalized bytes: %llu\nUnchanged submissions: %llu\nNo-write renders: %llu\nSkipped unchanged scanouts: %llu\nTracking bytes: %zu\nBackend cache bytes: %zu\n",
+            (unsigned long long)s.comparedBytes,(unsigned long long)s.noOpSubmissions,
+            (unsigned long long)s.noOpRenders,(unsigned long long)g_framebufferStats.skippedUnchanged,
+            g_presentation.TrackingBytes(),g_software.CacheBytes());
         fclose(log);
     }
     g_presentation.Detach();
 }
 void Blit() {
     if(!g_presentation.SourceWidth())return;
+    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),true};
+    // libnx linear mode preserves one CPU staging buffer; framebufferEnd
+    // copies that staging image into the dequeued display slot. Skip unchanged
+    // staging images before acquisition, swizzle and queueing a duplicate.
+    if(g_havePresented && g_presentedSerial==g_presentation.ContentSerial() &&
+       g_presentedGeneration==g_presentation.ContentGeneration() &&
+       g_presentedCursor.x==cursor.x && g_presentedCursor.y==cursor.y) {
+        ++g_framebufferStats.skippedUnchanged;return;
+    }
     u32 stride=0;
     auto start=PresentationClock::now();
     u32* fb=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
     const auto beginNs=PresentationElapsed(start);
     ui::OutputBuffer target{fb,kOutW,kOutH,stride/sizeof(u32),size_t(stride/sizeof(u32))*kOutH};
-    g_presentation.Render(target,{static_cast<int>(g_cx),static_cast<int>(g_cy),true});
+    target.preserved=true;
+    const bool rendered=g_presentation.Render(target,cursor);
     start=PresentationClock::now();
     framebufferEnd(&g_fb);
     const auto endNs=PresentationElapsed(start);
     ++g_framebufferStats.frames;g_framebufferStats.beginNs+=beginNs;g_framebufferStats.endNs+=endNs;
     g_framebufferStats.maxBeginNs=std::max(g_framebufferStats.maxBeginNs,beginNs);
     g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);
+    if(rendered) {
+        g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
+        g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
+    }
 }
 void Present(const ui::Surface& s) {
     if(g_presentation.Submit(s))Blit();
@@ -1728,6 +1754,7 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     swkbdClose(&kbd);
     if (R_FAILED(rc)) return false;
     out = FromUtf8(buf);
+    InvalidateOutput();
     Blit();
     return true;
 }

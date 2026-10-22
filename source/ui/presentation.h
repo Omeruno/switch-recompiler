@@ -1,11 +1,14 @@
 #pragma once
 #include "surface.h"
 #include <cstddef>
+#include <array>
+#include "region.h"
 
 namespace ui {
 
 // Host output dimensions; also the native panel size of Switch Lite.
 constexpr int kHandheldWidth=1280, kHandheldHeight=720;
+constexpr int kPresentationTileSize=32;
 struct Viewport {
     int x=0,y=0,width=0,height=0;
     bool Valid() const {return width>0 && height>0;}
@@ -19,6 +22,10 @@ struct OutputBuffer {
     uint32_t* pixels=nullptr;
     int width=0,height=0;
     size_t stridePixels=0,capacityPixels=0;
+    // Opt in only when contents survive between calls. Increment generation
+    // after external writes/reallocation, even if the address stays the same.
+    bool preserved=false;
+    uint64_t generation=0;
     bool Valid() const;
 };
 struct PresentationFrame {
@@ -26,6 +33,10 @@ struct PresentationFrame {
     Viewport viewport;
     PresentationCursor cursor;
     uint64_t serial=0;
+    const void* owner=nullptr;
+    // Row-major source tile revisions, at kPresentationTileSize. A null map
+    // requests conservative full output; views are valid only during Render.
+    const std::vector<uint64_t>* tileVersions=nullptr;
 };
 // Synchronous: implementations may borrow these views only until Render returns.
 // No guest callbacks, framebuffer acquisition, or guest/Win32 state here.
@@ -34,26 +45,48 @@ class PresentationBackend {
 public:
     virtual ~PresentationBackend()=default;
     virtual bool Render(const PresentationFrame&,const OutputBuffer&)=0;
+    virtual void Reset() {}
+    // Unknown work is conservatively counted as a full output frame.
+    virtual uint64_t LastWrittenBytes() const {return uint64_t(-1);}
 };
 class SoftwarePresentation final:public PresentationBackend {
 public:
     bool Render(const PresentationFrame&,const OutputBuffer&) override;
+    void Reset() override;
+    uint64_t LastWrittenBytes() const override {return writtenBytes_;}
+    size_t CacheBytes() const;
+    static constexpr int TileSize=kPresentationTileSize;
+    static constexpr size_t MaxBuffers=3,MaxDamageRects=128;
 private:
+    struct BufferState {
+        const uint32_t* pixels=nullptr;
+        const void* owner=nullptr;
+        int width=0,height=0,sourceW=0,sourceH=0;
+        size_t stride=0;
+        uint64_t generation=0;
+        Viewport viewport;
+        Rect cursor;
+        std::vector<uint64_t> versions;
+    };
+    std::array<BufferState,MaxBuffers> buffers_;
+    size_t nextBuffer_=0;
+    uint64_t writtenBytes_=0;
     std::vector<int> columns_;
     int sourceWidth_=0,outputWidth_=0;
 };
 struct PresentationStats {
     uint64_t submitted=0,rendered=0,rejected=0,redraws=0;
     uint64_t snapshotBytes=0,outputBytes=0,snapshotNs=0,renderNs=0;
+    uint64_t comparedBytes=0,noOpSubmissions=0,noOpRenders=0;
 };
 // Owns one latest CPU frame: cursor-only redraw never keeps a guest/GUI pointer.
 // Backend is borrowed and must outlive calls. Detach releases frame memory.
 class Presentation {
 public:
-    explicit Presentation(PresentationBackend* backend=nullptr):backend_(backend){}
+    explicit Presentation(PresentationBackend* backend=nullptr) {Attach(backend);}
     Presentation(const Presentation&)=delete;
     Presentation& operator=(const Presentation&)=delete;
-    void Attach(PresentationBackend* backend) {backend_=backend;}
+    void Attach(PresentationBackend* backend);
     void Detach();
     void ClearFrame();
     void ResetStats() {stats_={};}
@@ -62,6 +95,9 @@ public:
     int SourceWidth() const {return snapshot_.s.width;}
     int SourceHeight() const {return snapshot_.s.height;}
     size_t FrameBytes() const {return snapshot_.storage.size();}
+    size_t TrackingBytes() const {return tileVersions_.capacity()*sizeof(uint64_t);}
+    uint64_t ContentSerial() const {return serial_;}
+    uint64_t ContentGeneration() const {return generation_;}
     const PresentationStats& Stats() const {return stats_;}
     static constexpr size_t MaxFrameBytes=16*1024*1024;
 private:
@@ -69,5 +105,7 @@ private:
     OwnedSurface snapshot_;
     PresentationStats stats_;
     uint64_t serial_=0,lastRenderedSerial_=0;
+    uint64_t generation_=0;
+    std::vector<uint64_t> tileVersions_;
 };
 } // namespace ui

@@ -8,6 +8,7 @@
 
 #include "../runtime/process.h"
 #include "../runtime/resources.h"
+#include "../runtime/guest_execution.h"
 #include "user32.h"
 
 namespace win32 {
@@ -346,11 +347,22 @@ uint32_t PopupClassAtom() {
 }
 
 void ClosePopupsFrom(size_t level) {
+    Rect exposed;
     while (g_popups.size() > level) {
         uint32_t h = g_popups.back().hwnd;
+        if(auto* w=Win(h)) {
+            const auto r=ScreenRect(w);
+            if(exposed.Empty())exposed=r;
+            else exposed=Rect(std::min(exposed.left,r.left),std::min(exposed.top,r.top),
+                              std::max(exposed.right,r.right),std::max(exposed.bottom,r.bottom));
+        }
         g_popups.pop_back();
         DestroyWindowInternal(h);
     }
+    // Modal menu input can keep WM_PAINT queued indefinitely. Restore exposed
+    // windows now, using their real paint procedures rather than stale savebits.
+    UpdateExposedWindows(exposed);
+    if(g_menuOwner && !Win(g_menuOwner))g_menuDone=true;
 }
 
 void OpenPopup(uint32_t hmenu, int x, int y, int alignRightX = -1) {
@@ -402,6 +414,9 @@ void SelectBarItem(int i, bool open) {
     Menu* bar = M(g_menuBar);
     if (!w || !bar) return;
     ClosePopupsFrom(0);
+    // Exposed-window painting can invoke guest code and destroy the owner/menu.
+    w=Win(g_menuOwner);bar=M(g_menuBar);
+    if(!rt::GuestExecution::Checkpoint() || !w || !bar)return;
     g_barSelected = i;
     RedrawBar();
     if (open && i >= 0 && static_cast<size_t>(i) < bar->items.size()) {
@@ -445,29 +460,35 @@ int HitBar(int x, int y) {
 }
 
 void ActivateItem(size_t level, int index) {
+    if(level>=g_popups.size())return;
     Menu* m = M(g_popups[level].hmenu);
     if (!m || index < 0 || static_cast<size_t>(index) >= m->items.size()) return;
     MenuItem& it = m->items[static_cast<size_t>(index)];
     if (it.flags & (MF_SEPARATOR | MF_GRAYED | MF_DISABLED)) return;
     if (it.flags & MF_POPUP) {
+        const uint32_t subMenu=it.subMenu;
         ClosePopupsFrom(level + 1);
+        if(!rt::GuestExecution::Checkpoint() || level>=g_popups.size())return;
         Window* pw = Win(g_popups[level].hwnd);
+        if(!pw)return;
         Rect sr = ScreenRect(pw);
         Rect ir = it.rect.Offset(sr.left + kPopupBorder, sr.top + kPopupBorder);
-        OpenPopup(it.subMenu, sr.right - 3, ir.top - kPopupBorder, sr.left + 3);
+        OpenPopup(subMenu, sr.right - 3, ir.top - kPopupBorder, sr.left + 3);
         return;
     }
     FinishMenu(it.id, false);
 }
 
 void HoverPopup(size_t level, int index) {
+    if(level>=g_popups.size())return;
     if (g_popups[level].selected == index) return;
     g_popups[level].selected = index;
     ClosePopupsFrom(level + 1);
+    if(!rt::GuestExecution::Checkpoint() || level>=g_popups.size())return;
     RedrawPopup(level);
     if (Window* w = Win(g_menuOwner)) {
         Menu* m = M(g_popups[level].hmenu);
-        uint32_t id = (index >= 0 && m) ? m->items[static_cast<size_t>(index)].id : 0;
+        uint32_t id = (index >= 0 && m && static_cast<size_t>(index)<m->items.size()) ? m->items[static_cast<size_t>(index)].id : 0;
         SendMsg(w->hwnd, WM_MENUSELECT, (id & 0xFFFF), g_popups[level].hmenu);
     }
 }
@@ -494,8 +515,11 @@ uint32_t MenuLoop() {
             int index;
             if (HitPopup(x, y, level, index)) {
                 HoverPopup(level, index);
+                if(!rt::GuestExecution::Checkpoint() || g_menuDone || level>=g_popups.size())continue;
+                Menu* hovered=M(g_popups[level].hmenu);
+                const bool validItem=hovered && index>=0 && static_cast<size_t>(index)<hovered->items.size();
                 if (up || (down && !buttonWasDown)) {
-                    if (up && buttonWasDown && index >= 0 && (M(g_popups[level].hmenu)->items[static_cast<size_t>(index)].flags & MF_POPUP)) {
+                    if (up && buttonWasDown && validItem && (hovered->items[static_cast<size_t>(index)].flags & MF_POPUP)) {
                         // отпускание над пунктом-подменю: просто держим открытым
                     } else if (up || down) {
                         ActivateItem(level, index);

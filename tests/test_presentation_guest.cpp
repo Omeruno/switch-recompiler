@@ -18,7 +18,7 @@ int main(int argc,char** argv) {
     rt::Clock::SetFastForward(true);user::EnableUi(width,height);
     user::g_platform.present=[](const ui::Surface& surface) {
         assert(presentation.Submit(surface));
-        assert(presentation.Render({pixels.data(),1280,720,1280,pixels.size()}));++frames;
+        assert(presentation.Render({pixels.data(),1280,720,1280,pixels.size(),true}));++frames;
         auto v=ui::FitViewport(surface.width,surface.height,1280,720);
         auto sample=[&](int x,int y) {return pixels[size_t(v.y+y*v.height/surface.height)*1280+v.x+x*v.width/surface.width];};
         if(sample(20,20)==0xFF0000FFu && sample(surface.width-20,20)==0xFF00FF00u &&

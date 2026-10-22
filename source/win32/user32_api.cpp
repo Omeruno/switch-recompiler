@@ -941,13 +941,7 @@ FN(ValidateRgn) {
     return Ret(1);
 }
 void UpdateNow(uint32_t hwnd, bool children) {
-    Window* w = Win(hwnd);
-    if (!w || !IsVisibleChain(w)) return;
-    if (w->ncDirty && w->update.Empty()) { SendMsg(hwnd, WM_NCPAINT, 1, 0); if ((w = Win(hwnd))) w->ncDirty = false; }
-    if ((w = Win(hwnd)) && (!w->update.Empty() || w->internalPaint)) SendMsg(hwnd, WM_PAINT, 0, 0);
-    if (!children || !(w = Win(hwnd))) return;
-    std::vector<uint32_t> list = w->children;
-    for (uint32_t ch : list) UpdateNow(ch, true);
+    UpdateWindowNow(hwnd,children);
 }
 FN(UpdateWindow) { ENTER; UpdateNow(A(c, m, 0), false); return Ret(Win(A(c, m, 0)) ? 1 : 0); }
 FN(RedrawWindow) {

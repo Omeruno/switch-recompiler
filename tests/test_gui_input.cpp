@@ -67,7 +67,7 @@ int main(int argc,char** argv) {
     pacedOutput=paced;
     user::g_platform.present=[](const ui::Surface& surface) {
         assert(presentation.Submit(surface));
-        assert(presentation.Render({display.data(),1280,720,1280,display.size()}));
+        assert(presentation.Render({display.data(),1280,720,1280,display.size(),true}));
         ++presented;if(pacedOutput)rt::Clock::Sleep(16);
     };
     user::g_platform.wait=[](int,std::vector<user::InputEvent>& events) {
@@ -114,7 +114,7 @@ int main(int argc,char** argv) {
     for(const auto& item:user::S().windows)assert(item.first==user::S().desktop);
     assert(presented>0 && presentation.SourceWidth()==(paced?1280:800));
     // Redraw remains usable after guest shutdown; source is an owned snapshot.
-    assert(presentation.Render({display.data(),1280,720,1280,display.size()},{0,0,true}));
+    assert(presentation.Render({display.data(),1280,720,1280,display.size(),true},{0,0,true}));
     presentation.Detach();assert(!presentation.FrameBytes());
     user::g_platform.wait={};user::g_platform.present=nullptr;rt::g_process=nullptr;
     if(paced)puts("PASSED: 1280x720 real-clock GUI callbacks through software backend with paced presentation");

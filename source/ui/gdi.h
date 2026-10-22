@@ -121,6 +121,7 @@ public:
     void InvalidateLayout() { ++layoutGeneration_; }
     // Заметка «экран изменился» для вывода на дисплей
     uint64_t ScreenChangeCounter() const { return screenChanges_; }
+    void MarkScreenChanged() {++screenChanges_;}
 
     // --- объекты ---
     ObjType TypeOf(uint32_t h) const;

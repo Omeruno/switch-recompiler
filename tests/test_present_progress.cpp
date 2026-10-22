@@ -56,7 +56,7 @@ int main() {
     user::g_platform.present=[](const ui::Surface& surface) {
         assert(surface.Get(expectedX,expectedY)==expectedRgb);
         assert(presentation.Submit(surface));
-        assert(presentation.Render({pixels.data(),1280,720,1280,pixels.size()}));
+        assert(presentation.Render({pixels.data(),1280,720,1280,pixels.size(),true}));
         const auto rgb=expectedRgb;
         const uint32_t rgba=0xFF000000u|((rgb>>16)&255)|(rgb&0xFF00)|((rgb&255)<<16);
         assert(pixels[size_t(expectedY)*1280+expectedX]==rgba);++frames;

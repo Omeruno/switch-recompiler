@@ -395,6 +395,7 @@ void RepaintDesktop(const Region& screenRgn) {
     }
     uint32_t rgb = ui::ColorrefToRgb(ui::SysColor(1));
     for (const Rect& q : r.Rects()) ui::FillSurface(S().screen.s, Region(q), q, rgb);
+    if(!r.Empty())ui::g_gdi.MarkScreenChanged();
 }
 
 void InvalidateScreen(const Rect& sr) {
@@ -415,6 +416,31 @@ void InvalidateScreen(const Rect& sr) {
 
 bool NeedsPaint(Window* w) {
     return w && (w->style & WS_VISIBLE) && (w->ncDirty || !w->update.Empty() || w->internalPaint) && IsVisibleChain(w);
+}
+
+void UpdateWindowNow(uint32_t hwnd,bool children,bool ownThreadOnly) {
+    Window* w=Win(hwnd);
+    if(!rt::GuestExecution::Checkpoint() || !w || (ownThreadOnly && w->threadId!=CurrentGuiThread()) || !IsVisibleChain(w))return;
+    if(w->ncDirty && w->update.Empty()) {
+        SendMsg(hwnd,WM_NCPAINT,1,0);
+        if((w=Win(hwnd)))w->ncDirty=false;
+    }
+    if(!rt::GuestExecution::Checkpoint())return;
+    if((w=Win(hwnd)) && (!w->update.Empty() || w->internalPaint))SendMsg(hwnd,WM_PAINT,0,0);
+    if(!children || !rt::GuestExecution::Checkpoint() || !(w=Win(hwnd)))return;
+    const auto list=w->children;
+    for(uint32_t child:list)UpdateWindowNow(child,true,ownThreadOnly);
+}
+
+void UpdateExposedWindows(const Rect& screenRect) {
+    Window* desktop=Desktop();if(!desktop || screenRect.Empty())return;
+    const auto list=desktop->children;
+    for(uint32_t hwnd:list) {
+        if(!rt::GuestExecution::Checkpoint())return;
+        auto* w=Win(hwnd);
+        if(w && w->threadId==CurrentGuiThread() && IsVisibleChain(w) && !ScreenRect(w).Intersect(screenRect).Empty())
+            UpdateWindowNow(hwnd,true,true);
+    }
 }
 
 void DrawNonClient(Window* w) {

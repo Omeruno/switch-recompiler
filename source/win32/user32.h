@@ -241,6 +241,8 @@ void InvalidateScreen(const Rect& screenRect);   // открылась обла�
 void RepaintDesktop(const Region& screenRgn);
 void DrawNonClient(Window* w);
 bool NeedsPaint(Window* w);
+void UpdateWindowNow(uint32_t hwnd,bool children,bool ownThreadOnly=false);
+void UpdateExposedWindows(const Rect& screenRect);
 
 // Сообщения
 uint32_t SendMsg(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool fromUnicode = true);
