@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **6dcc8c42c3e5106339c848cd394853cc6e4582b5**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39730636783](https://github.com/Omeruno/switch-recompiler/actions/runs/39730636783), including the four-scenario post-exit DLL/TLS inspector. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified implementation GitHub state: **2a7346c1339f2852913da039af84c0e02f756f20**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39737128019](https://github.com/Omeruno/switch-recompiler/actions/runs/39737128019), including all ten process-detach/last-thread inspector modes. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1137,3 +1137,24 @@ in live worker memory and assert previous count=1 plus runnable state. Added
 scenario/state diagnostics for any remaining incomplete inspection. No runtime
 assertion was removed and the production last-thread fix was unchanged.
 Inspector compilation passes locally; complete exact-SHA CI rerun is required.
+
+
+### Verified last-thread bridge and corrected inspector
+Implementation/fix state **2a7346c1339f2852913da039af84c0e02f756f20**: all five
+jobs PASSED in [39737128019](https://github.com/Omeruno/switch-recompiler/actions/runs/39737128019).
+Fetched host-job logs confirm: `process detach (4 exit/abort + 6 last-thread
+cases), loader-lock recheck, suspended-peer lifetime, TLS/order/codes/APC/timer/
+mutex cleanup` PASSED. This verifies the corrected ResumeThread HLE path and
+all assertions, including observed loader-token parking, no final-owner thread
+detach, exactly one process sequence, old main/finished code 73 and final code 55.
+Expanded native execution-stop regression, real thread reclamation and all
+prior native/x86/MinGW guests passed. CPU oracle: 3 x 50,000, no differences.
+ARM64 native continuation ABI/QEMU, Switch NRO and existing separate probe NRO
+builds passed. The earlier red attempt is superseded, not described as green.
+No physical Switch testing is claimed. A following documentation-only SHA
+still needs its own Actions verification before reporting final completion.
+
+Stage C remains ~90%. Next concrete packet: startup failure/partial initialization
+shutdown, then DLL unload/refcounts/rollback. Startup blocking waits and full
+NT failure semantics remain explicit limitations. Preserve interpreter and
+hardware gates; do not advance JIT/GPU/shell, change branch, or extend automation.
