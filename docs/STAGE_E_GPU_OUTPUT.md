@@ -81,16 +81,21 @@ this pass has no measured glyph-upload bottleneck to justify another cache.
 Host tests check actual upload work and exact pixels, rather than claiming the
 GL upload counters are Switch frame-time measurements.
 
-## E6 constraint and remaining work
+## E6 initial constraint and connected implementation
 
 Current Win32 windows paint into State.screen; GetDC(0), destination ROPs and
 screen-to-bitmap copies read that shared CPU image. The GPU path preserves those
 semantics by using the completed image. This is screen+cursor GPU composition,
-not independent per-window GPU composition. Per-window retained surfaces,
-reconciliation of screen-DC writes/readback and invalidation across overlapping
-windows remain required before E6's 10% can be accepted. Duplicating screen regions
-into nominal window textures would not satisfy that gate or provide an evidenced
-benefit. Existing popup exposure/GUI lifetime tests remain mandatory throughout.
+not independent per-window GPU composition at that initial checkpoint.
+
+The subsequent E6 block records individual GDI writes into bounded window-owned
+surfaces, reconciles screen-DC writes/readback with an ownership plane, and feeds
+independent window textures to the GPU. The base pass masks owned pixels, and a
+poisoned-base regression proves that layer textures supply them. This extends
+the original memory bounds with window/ownership storage; current bounds,
+fallback and tests: [STAGE_E_COMPOSITION.md](STAGE_E_COMPOSITION.md).
+The 28 live x86 scenes pass both backends. E6's 10% still requires the deferred
+combined hardware check; no measured Switch benefit is claimed.
 
 ## Validation and one Switch check
 

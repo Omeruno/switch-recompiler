@@ -384,7 +384,8 @@ int Gdi::ScaleY(const DcObj& dc, int len) const {
     return static_cast<int>(std::lround(std::fabs(static_cast<double>(len) * dc.st.viewportExt.y / dc.st.windowExt.y)));
 }
 
-bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip) {
+bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip,const SurfaceWriteCapture** capture) {
+    if(capture)*capture=nullptr;
     DcObj* dc = Dc(hdc);
     if (!dc) return false;
     ox = oy = 0;
@@ -400,7 +401,9 @@ bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip) {
         s = screen_;
         if (dc->kind == DcKind::Window) {
             WindowDcInfo info;
+            info.captureWrites=capture!=nullptr;
             if (!provider_ || !provider_(dc->hwnd, dc->wholeWindow, info)) return false;
+            if(capture)*capture=info.capture;
             ox = info.originX;
             oy = info.originY;
             clip = info.visible;
@@ -442,15 +445,18 @@ struct Gdi::Ctx {
     bool simple = true;
     int rop2 = 13;
     bool onScreen = false;
+    Surface rasterView;
 };
 
 bool Gdi::MakeCtx(uint32_t hdc, Ctx& c) {
+    const SurfaceWriteCapture* capture=nullptr;
     c.dc = Dc(hdc);
-    if (!c.dc || !Target(hdc, c.s, c.ox, c.oy, c.clip)) return false;
+    if (!c.dc || !Target(hdc, c.s, c.ox, c.oy, c.clip,&capture)) return false;
     c.bounds = c.clip.Bounds();
     c.simple = c.clip.Rects().size() <= 1;
     c.rop2 = c.dc->st.rop2;
     c.onScreen = c.s == screen_;
+    if(capture && c.onScreen) {c.rasterView=*c.s;c.rasterView.writeCapture=capture;c.s=&c.rasterView;}
     if (c.onScreen) ++screenChanges_;
     return !c.clip.Empty();
 }

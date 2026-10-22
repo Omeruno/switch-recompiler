@@ -122,6 +122,7 @@ bool SendMsgTimeout(uint32_t hwnd,uint32_t msg,uint32_t wp,uint32_t lp,bool unic
     return true;
 }
 void RetireWindow(uint32_t hwnd) {
+    S().windowLayers.Forget(hwnd);
     auto it=S().windows.find(hwnd);
     if (it==S().windows.end()) return;
     for (auto& item:S().queues) {

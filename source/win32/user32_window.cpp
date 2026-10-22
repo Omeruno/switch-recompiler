@@ -89,6 +89,10 @@ bool DcProvider(uint32_t hwnd, bool wholeWindow, ui::WindowDcInfo& out) {
     }
     vis.IntersectRect(Rect(0, 0, S().screenW, S().screenH));
     out.visible = vis;
+    if(out.captureWrites && w!=desk && !vis.Empty() && S().windowLayers.Enabled()) {
+        const Rect frame=ScreenRect(w);
+        out.capture=S().windowLayers.Capture(hwnd,frame.left,frame.top,frame.Width(),frame.Height());
+    }
     return true;
 }
 
@@ -391,6 +395,13 @@ void InvalidateClient(Window* w, const Region& rgn, bool erase, bool forceChildr
         part.Offset(-(c->rect.left + c->client.left), -(c->rect.top + c->client.top));
         InvalidateClient(c, part, true, forceChildren);
     }
+}
+
+bool EnableWindowLayers(bool enabled) {
+    auto& state=S();state.screen.s.writeCapture=nullptr;
+    if(!enabled){state.windowLayers.Clear();return true;}
+    const bool ok=state.windowLayers.Enable(state.screenW,state.screenH);
+    state.screen.s.writeCapture=state.windowLayers.ScreenCapture();return ok;
 }
 
 void RepaintDesktop(const Region& screenRgn) {

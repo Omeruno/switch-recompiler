@@ -155,7 +155,7 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
     }
     return true;
 }
-Presentation::Presentation(PresentationBackend* backend,PresentationAllocator* allocator):allocator_(allocator),pixels_(allocator),resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)),tileVersions_(allocator) {
+Presentation::Presentation(PresentationBackend* backend,PresentationAllocator* allocator):allocator_(allocator),pixels_(allocator),resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)),tileVersions_(allocator),layers_(allocator) {
     Attach(backend);
 }
 void Presentation::Attach(PresentationBackend* backend) {
@@ -164,13 +164,22 @@ void Presentation::Attach(PresentationBackend* backend) {
     if(backend_)backend_->Reset();
 }
 void Presentation::ClearFrame() {
+    layers_.Clear();
     snapshot_=Surface{};pixels_.Clear();
     tileVersions_.Clear();serial_=lastRenderedSerial_=0;
     ++generation_;
     if(backend_)backend_->Reset();
 }
 void Presentation::Detach() {ClearFrame();backend_=nullptr;}
-bool Presentation::Submit(const Surface& s) {
+bool Presentation::Submit(const Surface& s) {layers_.Clear();return SubmitPixels(s);}
+bool Presentation::Submit(const Surface& s,const WindowSceneView& scene) {
+    if(!SubmitPixels(s))return false;
+    const auto start=Steady::now();
+    if(layers_.Submit(snapshot_,scene,&tileVersions_))++stats_.layeredSubmissions;else ++stats_.layerFallbacks;
+    const auto elapsed=Elapsed(start);stats_.snapshotNs+=elapsed;stats_.layerSnapshotNs+=elapsed;
+    return true; // an optional layer allocation failure retains correct flat output
+}
+bool Presentation::SubmitPixels(const Surface& s) {
     if(!ValidSource(s) || uint64_t(s.width)*s.height*4>MaxFrameBytes) {
         ++stats_.rejected;ClearFrame();return false;
     }
@@ -224,6 +233,7 @@ bool Presentation::Render(const OutputBuffer& out,PresentationCursor cursor) {
     if(!backend_ || !snapshot_.Valid() || (backend_->RequiresCpuOutput()?!out.Valid():!Dimensions(out.width,out.height))) {++stats_.rejected;return false;}
     const auto start=Steady::now();
     PresentationFrame frame{snapshot_,FitViewport(snapshot_.width,snapshot_.height,out.width,out.height),cursor,serial_,this,&tileVersions_,resourceId_,generation_};
+    frame.scene=layers_.Frame();
     const bool ok=backend_->Render(frame,out);stats_.renderNs+=Elapsed(start);
     if(!ok) {
         // A failed backend may already have changed output bytes or its cache.

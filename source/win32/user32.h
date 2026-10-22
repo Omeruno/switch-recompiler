@@ -20,6 +20,7 @@
 #include "../cpu/guest_memory.h"
 #include "../ui/gdi.h"
 #include "../ui/region.h"
+#include "../ui/window_layers.h"
 #include "hle_util.h"
 
 namespace win32 {
@@ -158,6 +159,7 @@ struct State {
     bool initialized = false;
     int screenW = 800, screenH = 600;
     ui::OwnedSurface screen;
+    ui::WindowLayers windowLayers;
     std::map<uint32_t, std::unique_ptr<Window>> windows;
     std::vector<std::unique_ptr<Window>> retiredWindows;
     uint32_t nativeCalls=0;
@@ -346,6 +348,7 @@ extern Platform g_platform;
 
 // Включает слой "ui2" (вызывать до загрузки EXE). screenW/H — размер экрана.
 void EnableUi(int screenW = 800, int screenH = 600);
+bool EnableWindowLayers(bool enabled);
 
 } // namespace user
 } // namespace win32

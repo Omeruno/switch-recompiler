@@ -10,6 +10,23 @@
 #endif
 
 namespace ui {
+OpenGlPresentation::OpenGlPresentation(PresentationAllocator* allocator) {
+    screen_.versions=PresentationBuffer<uint64_t>(allocator);
+    ownership_.versions=PresentationBuffer<uint64_t>(allocator);
+    for(auto& layer:layers_)layer.versions=PresentationBuffer<uint64_t>(allocator);
+}
+void OpenGlPresentation::ResetTexture(Texture& texture) {
+    texture.width=texture.height=0;texture.id=texture.generation=0;texture.versions.Clear();
+}
+void OpenGlPresentation::Reset() {
+    ResetTexture(screen_);ResetTexture(ownership_);for(auto& layer:layers_)ResetTexture(layer);
+    uploadedBytes_=0;sceneEpoch_=frameId_=frameGeneration_=0;
+}
+size_t OpenGlPresentation::CacheBytes() const {
+    size_t bytes=screen_.versions.size()*8+ownership_.versions.size()*8;
+    for(const auto& layer:layers_)bytes+=layer.versions.size()*8;
+    return bytes;
+}
 #if defined(__SWITCH__) || defined(SR_OPENGL_TEST)
 namespace {
 const char* vertex=R"GLSL(#version 330 core
@@ -20,6 +37,10 @@ void main() {
 const char* fragment=R"GLSL(#version 330 core
 uniform sampler2D screenImage;
 uniform sampler2D cursorImage;
+uniform usampler2D ownershipImage;
+uniform int compositionMode;
+uniform ivec4 layerRect;
+uniform uint layerToken;
 uniform ivec4 imageRect;
 uniform ivec2 sourceSize;
 uniform ivec3 cursorState;
@@ -34,7 +55,17 @@ void main() {
     }
     ivec2 q=p-imageRect.xy;
     if(q.x<0 || q.y<0 || q.x>=imageRect.z || q.y>=imageRect.w) {color=vec4(0,0,0,1);return;}
-    color=vec4(texelFetch(screenImage,(q*sourceSize)/imageRect.zw,0).rgb,1);
+    ivec2 source=(q*sourceSize)/imageRect.zw;
+    if(compositionMode!=0) {
+        uint owner=texelFetch(ownershipImage,source,0).r;
+        if(compositionMode==1 && owner!=0u) {color=vec4(0,0,0,1);return;}
+        if(compositionMode==2) {
+            if(owner!=layerToken)discard;
+            source-=layerRect.xy;
+            if(any(lessThan(source,ivec2(0))) || any(greaterThanEqual(source,layerRect.zw)))discard;
+        }
+    }
+    color=vec4(texelFetch(screenImage,source,0).rgb,1);
 })GLSL";
 GLuint Compile(GLenum type,const char* text) {
     GLuint shader=glCreateShader(type);if(!shader)return 0;
@@ -57,7 +88,11 @@ bool OpenGlPresentation::Initialize() {
     sizeUniform_=glGetUniformLocation(program_,"sourceSize");
     heightUniform_=glGetUniformLocation(program_,"outputHeight");
     cursorStateUniform_=glGetUniformLocation(program_,"cursorState");
-    glGenVertexArrays(1,&vao_);glGenTextures(1,&texture_);glGenTextures(1,&cursorTexture_);
+    ownershipUniform_=glGetUniformLocation(program_,"ownershipImage");
+    modeUniform_=glGetUniformLocation(program_,"compositionMode");
+    layerRectUniform_=glGetUniformLocation(program_,"layerRect");
+    layerTokenUniform_=glGetUniformLocation(program_,"layerToken");
+    glGenVertexArrays(1,&vao_);glGenTextures(1,&cursorTexture_);
     glBindTexture(GL_TEXTURE_2D,cursorTexture_);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
@@ -66,69 +101,114 @@ bool OpenGlPresentation::Initialize() {
     for(int y=0;y<kCursorHeight;++y)for(int x=0;x<kCursorWidth;++x)cursor[y*kCursorWidth+x]=CursorRgba(x,y);
     glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,kCursorWidth,kCursorHeight,0,GL_RGBA,GL_UNSIGNED_BYTE,cursor);
-    if(!vao_ || !texture_ || !cursorTexture_ || glGetError()!=GL_NO_ERROR) {
+    if(!vao_ || !cursorTexture_ || glGetError()!=GL_NO_ERROR) {
         Shutdown();error_="GL resource allocation failed";return false;
     }
-    totalUploaded_=uploadCalls_=0;error_="none";return true;
+    totalUploaded_=uploadCalls_=layerDraws_=0;error_="none";return true;
 }
 void OpenGlPresentation::Shutdown() {
-    if(texture_)glDeleteTextures(1,&texture_);
+    auto destroy=[](Texture& texture){if(texture.handle)glDeleteTextures(1,&texture.handle);texture.handle=0;};
+    destroy(screen_);destroy(ownership_);for(auto& layer:layers_)destroy(layer);
     if(cursorTexture_)glDeleteTextures(1,&cursorTexture_);
     if(vao_)glDeleteVertexArrays(1,&vao_);
     if(program_)glDeleteProgram(program_);
-    texture_=cursorTexture_=program_=vao_=0;Reset();
+    cursorTexture_=program_=vao_=0;Reset();
 }
-void OpenGlPresentation::Reset() {width_=height_=0;id_=generation_=0;versions_.Clear();uploadedBytes_=0;}
-bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffer& out) {
-    uploadedBytes_=0;
-    const auto& s=frame.surface;const auto& v=frame.viewport;
-    if(!program_ || !s.Valid() || s.width>8192 || s.height>8192 || s.bpp!=32 || s.pitch<s.width*4 || s.pitch%4 ||
-       uint64_t(s.width)*s.height*4>Presentation::MaxFrameBytes || !v.Valid() ||
-       out.width<=0 || out.height<=0 || out.width>8192 || out.height>8192 || v.x<0 || v.y<0 ||
-       int64_t(v.x)+v.width>out.width || int64_t(v.y)+v.height>out.height) {
-        error_="invalid GPU frame";return false;
-    }
-    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture_);
+bool OpenGlPresentation::Upload(Texture& texture,const Surface& s,uint64_t id,uint64_t generation,
+    const PresentationBuffer<uint64_t>* versions,bool integer) {
+    if(!texture.handle)glGenTextures(1,&texture.handle);
+    if(!texture.handle)return false;
+    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture.handle);
     glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,s.pitch/4);
-    const int cols=(s.width+31)/32,rows=(s.height+31)/32;
-    const size_t count=size_t(cols)*rows;
-    const bool tracked=frame.owner && frame.serial && frame.resourceId && frame.tileVersions && frame.tileVersions->size()==count;
-    bool full=width_!=s.width || height_!=s.height || id_!=frame.resourceId ||
-              generation_!=frame.resourceGeneration || versions_.size()!=count || !tracked;
-    if(width_!=s.width || height_!=s.height) {
-        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,s.width,s.height,0,GL_BGRA,GL_UNSIGNED_BYTE,nullptr);
-        // Bind one complete mip level; sampling is texelFetch with exact integer coordinates.
+    const int cols=(s.width+31)/32,rows=(s.height+31)/32;const size_t count=size_t(cols)*rows;
+    const bool tracked=versions && versions->size()==count;
+    bool full=texture.width!=s.width || texture.height!=s.height || texture.id!=id ||
+        texture.generation!=generation || texture.versions.size()!=count || !tracked;
+    if(texture.width!=s.width || texture.height!=s.height) {
+        glTexImage2D(GL_TEXTURE_2D,0,integer?GL_R32UI:GL_RGBA8,s.width,s.height,0,
+            integer?GL_RED_INTEGER:GL_BGRA,integer?GL_UNSIGNED_INT:GL_UNSIGNED_BYTE,nullptr);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
     }
     auto upload=[&](int x,int y,int w,int h) {
-        glTexSubImage2D(GL_TEXTURE_2D,0,x,y,w,h,GL_BGRA,GL_UNSIGNED_BYTE,s.Row(y)+size_t(x)*4);
+        glTexSubImage2D(GL_TEXTURE_2D,0,x,y,w,h,integer?GL_RED_INTEGER:GL_BGRA,
+            integer?GL_UNSIGNED_INT:GL_UNSIGNED_BYTE,s.Row(y)+size_t(x)*4);
         uploadedBytes_+=uint64_t(w)*h*4;++uploadCalls_;
     };
     std::array<Rect,129> updates{};size_t updateCount=0;uint64_t area=0;
     if(!full)for(int ty=0;ty<rows && !full;++ty)for(int tx=0;tx<cols;) {
-        if(versions_[size_t(ty)*cols+tx]==(*frame.tileVersions)[size_t(ty)*cols+tx]) {++tx;continue;}
+        if(texture.versions[size_t(ty)*cols+tx]==(*versions)[size_t(ty)*cols+tx]){++tx;continue;}
         const int first=tx++;
-        while(tx<cols && versions_[size_t(ty)*cols+tx]!=(*frame.tileVersions)[size_t(ty)*cols+tx])++tx;
+        while(tx<cols && texture.versions[size_t(ty)*cols+tx]!=(*versions)[size_t(ty)*cols+tx])++tx;
         Rect r(first*32,ty*32,std::min(tx*32,s.width),std::min((ty+1)*32,s.height));
         area+=uint64_t(r.Width())*r.Height();
-        if(updateCount && updates[updateCount-1].left==r.left && updates[updateCount-1].right==r.right &&
-           updates[updateCount-1].bottom==r.top)updates[updateCount-1].bottom=r.bottom;
+        if(updateCount && updates[updateCount-1].left==r.left && updates[updateCount-1].right==r.right && updates[updateCount-1].bottom==r.top)
+            updates[updateCount-1].bottom=r.bottom;
         else updates[updateCount++]=r;
-        if(updateCount>128 || area>uint64_t(s.width)*s.height/2) {full=true;break;}
+        if(updateCount>128 || area>uint64_t(s.width)*s.height/2){full=true;break;}
     }
     if(full)upload(0,0,s.width,s.height);
-    else for(size_t i=0;i<updateCount;++i) {
-        const auto& r=updates[i];upload(r.left,r.top,r.Width(),r.Height());
-    }
+    else for(size_t n=0;n<updateCount;++n){const auto& r=updates[n];upload(r.left,r.top,r.Width(),r.Height());}
     glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
+    texture.width=s.width;texture.height=s.height;texture.id=id;texture.generation=generation;
+    if(tracked && texture.versions.Resize(count))std::memcpy(texture.versions.data(),versions->data(),count*8);
+    else texture.versions.Clear();
+    return true;
+}
+bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffer& out) {
+    uploadedBytes_=0;const auto& s=frame.surface;const auto& v=frame.viewport;
+    if(!program_ || !s.Valid() || s.width>8192 || s.height>8192 || s.bpp!=32 || s.pitch<int64_t(s.width)*4 || s.pitch%4 ||
+       uint64_t(s.width)*s.height*4>Presentation::MaxFrameBytes || !v.Valid() ||
+       out.width<=0 || out.height<=0 || out.width>8192 || out.height>8192 || v.x<0 || v.y<0 ||
+       int64_t(v.x)+v.width>out.width || int64_t(v.y)+v.height>out.height) {
+        error_="invalid GPU frame";return false;
+    }
+    const auto* scene=frame.scene;
+    if(scene) {
+        if(!scene->owners || scene->width!=s.width || scene->height!=s.height || scene->count>layers_.size() ||
+           (scene->count && !scene->layers)){error_="invalid GPU scene";return false;}
+        size_t bytes=0;
+        for(size_t n=0;n<scene->count;++n) {
+            const auto& layer=scene->layers[n];const auto* image=layer.surface;
+            if(!image || !image->Valid() || image->bpp!=32 || image->width>8192 || image->height>8192 ||
+               image->pitch<int64_t(image->width)*4 || image->pitch%4 || !layer.token ||
+               layer.left < -16384 || layer.top < -16384 || layer.left>16384 || layer.top>16384 ||
+               uint64_t(image->width)*image->height*4>WindowLayers::MaxPixelBytes-bytes) {
+                error_="invalid GPU window layer";return false;
+            }
+            bytes+=size_t(image->width)*image->height*4;
+            for(size_t i=0;i<n;++i)if(scene->layers[i].token==layer.token){error_="duplicate GPU layer token";return false;}
+        }
+    }
+    if(frameId_!=frame.resourceId || frameGeneration_!=frame.resourceGeneration) {
+        ResetTexture(ownership_);for(auto& layer:layers_)ResetTexture(layer);
+    }
+    const bool tracked=frame.owner && frame.serial && frame.resourceId;
+    bool ok=Upload(screen_,s,frame.resourceId,frame.resourceGeneration,tracked?frame.tileVersions:nullptr);
+    if(scene && ok) {
+        if(sceneEpoch_!=scene->generation)ResetTexture(ownership_);
+        Surface owners;owners.width=s.width;owners.height=s.height;owners.pitch=s.width*4;
+        owners.bits=reinterpret_cast<uint8_t*>(const_cast<uint32_t*>(scene->owners));
+        ok=Upload(ownership_,owners,frame.resourceId,scene->generation,scene->versions,true);
+        for(size_t n=0;n<scene->count && ok;++n) {
+            const auto& layer=scene->layers[n];
+            ok=Upload(layers_[n],*layer.surface,layer.token,layer.generation,layer.versions);
+        }
+    }
+    for(size_t n=scene?scene->count:0;n<layers_.size();++n) {
+        if(layers_[n].handle)glDeleteTextures(1,&layers_[n].handle);
+        layers_[n].handle=0;ResetTexture(layers_[n]);
+    }
+    if(!scene && ownership_.handle){glDeleteTextures(1,&ownership_.handle);ownership_.handle=0;ResetTexture(ownership_);}
+    if(!ok){Reset();error_="GPU scene allocation failed";return false;}
     glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,out.width,out.height);
     glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_SCISSOR_TEST);glDisable(GL_DITHER);
     glDisable(GL_FRAMEBUFFER_SRGB);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
     glUseProgram(program_);glBindVertexArray(vao_);
     glUniform1i(screenUniform_,0);
-    glUniform1i(cursorUniform_,1);
+    glUniform1i(cursorUniform_,1);glUniform1i(ownershipUniform_,2);
+    glUniform1i(modeUniform_,scene?1:0);
     glUniform4i(rectUniform_,v.x,v.y,v.width,v.height);
     glUniform2i(sizeUniform_,s.width,s.height);
     glUniform1i(heightUniform_,out.height);
@@ -136,17 +216,32 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
     glUniform3i(cursorStateUniform_,v.x+int(int64_t(cx)*v.width/s.width),
         v.y+int(int64_t(cy)*v.height/s.height),int(frame.cursor.visible));
     glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,cursorTexture_);
+    glActiveTexture(GL_TEXTURE2);glBindTexture(GL_TEXTURE_2D,scene?ownership_.handle:0);
+    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,screen_.handle);
     glDrawArrays(GL_TRIANGLES,0,3);
+    if(scene) {
+        glUniform1i(modeUniform_,2);glEnable(GL_SCISSOR_TEST);
+        auto edge=[](int64_t value,int source,int output){value=std::max<int64_t>(0,std::min<int64_t>(value,source));return int((value*output+source-1)/source);};
+        for(size_t n=0;n<scene->count;++n) {
+            const auto& layer=scene->layers[n];
+            const int left=v.x+edge(layer.left,s.width,v.width),top=v.y+edge(layer.top,s.height,v.height);
+            const int right=v.x+edge(int64_t(layer.left)+layer.surface->width,s.width,v.width);
+            const int bottom=v.y+edge(int64_t(layer.top)+layer.surface->height,s.height,v.height);
+            if(left>=right || top>=bottom)continue;
+            glScissor(left,out.height-bottom,right-left,bottom-top);
+            glBindTexture(GL_TEXTURE_2D,layers_[n].handle);
+            glUniform4i(layerRectUniform_,layer.left,layer.top,layer.surface->width,layer.surface->height);
+            glUniform1ui(layerTokenUniform_,layer.token);glDrawArrays(GL_TRIANGLES,0,3);++layerDraws_;
+        }
+        glDisable(GL_SCISSOR_TEST);
+    }
     if(glGetError()!=GL_NO_ERROR) {Reset();error_="GPU upload/draw failed";return false;}
-    width_=s.width;height_=s.height;id_=frame.resourceId;generation_=frame.resourceGeneration;
-    if(tracked && versions_.Resize(count))std::memcpy(versions_.data(),frame.tileVersions->data(),count*sizeof(uint64_t));
-    else versions_.Clear();
+    frameId_=frame.resourceId;frameGeneration_=frame.resourceGeneration;sceneEpoch_=scene?scene->generation:0;
     totalUploaded_+=uploadedBytes_;error_="none";return true;
 }
 #else
 bool OpenGlPresentation::Initialize() {error_="OpenGL unavailable in this build";return false;}
 void OpenGlPresentation::Shutdown() {Reset();}
-void OpenGlPresentation::Reset() {versions_.Clear();uploadedBytes_=0;}
 bool OpenGlPresentation::Render(const PresentationFrame&,const OutputBuffer&) {return false;}
 #endif
 } // namespace ui

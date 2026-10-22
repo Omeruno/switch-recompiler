@@ -1,6 +1,7 @@
 #pragma once
 #include "surface.h"
 #include "presentation_memory.h"
+#include "presentation_layers.h"
 #include <cstddef>
 #include <array>
 #include "region.h"
@@ -40,6 +41,7 @@ struct PresentationFrame {
     const PresentationBuffer<uint64_t>* tileVersions=nullptr;
     // Stable across address reuse; revision scope changes on resize/reset/rebind.
     uint64_t resourceId=0,resourceGeneration=0;
+    const PresentationSceneFrame* scene=nullptr;
 };
 // Synchronous: implementations may borrow these views only until Render returns.
 // No guest callbacks, framebuffer acquisition, or guest/Win32 state here.
@@ -84,6 +86,7 @@ struct PresentationStats {
     uint64_t submitted=0,rendered=0,rejected=0,redraws=0;
     uint64_t snapshotBytes=0,outputBytes=0,snapshotNs=0,renderNs=0;
     uint64_t comparedBytes=0,noOpSubmissions=0,noOpRenders=0;
+    uint64_t layeredSubmissions=0,layerFallbacks=0,layerSnapshotNs=0;
 };
 // Owns one latest CPU frame: cursor-only redraw never keeps a guest/GUI pointer.
 // Backend is borrowed and must outlive calls. Detach releases frame memory.
@@ -95,8 +98,13 @@ public:
     void Attach(PresentationBackend* backend);
     void Detach();
     void ClearFrame();
-    void ResetStats() {stats_={};}
+    void ResetStats() {stats_={};layers_.ResetStats();}
     bool Submit(const Surface&);
+    bool Submit(const Surface&,const WindowSceneView&);
+    void ClearLayers() {layers_.Clear();}
+    size_t LayerBytes() const {return layers_.Bytes();}
+    size_t LayerCount() const {return layers_.Frame()?layers_.Frame()->count:0;}
+    uint64_t ReconciledPixels() const {return layers_.ReconciledPixels();}
     bool Render(const OutputBuffer&,PresentationCursor cursor={});
     int SourceWidth() const {return snapshot_.width;}
     int SourceHeight() const {return snapshot_.height;}
@@ -107,6 +115,7 @@ public:
     const PresentationStats& Stats() const {return stats_;}
     static constexpr size_t MaxFrameBytes=16*1024*1024;
 private:
+    bool SubmitPixels(const Surface&);
     PresentationBackend* backend_=nullptr;
     PresentationAllocator* allocator_;
     Surface snapshot_;
@@ -116,5 +125,6 @@ private:
     const uint64_t resourceId_;
     uint64_t generation_=0;
     PresentationBuffer<uint64_t> tileVersions_;
+    PresentationLayers layers_;
 };
 } // namespace ui

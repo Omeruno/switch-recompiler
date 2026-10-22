@@ -40,7 +40,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libegl1-mesa-dev libgl-dev
       - name: Actual GL output versus software reference
         run: |
-          g++ -std=c++17 -O2 -Wall -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_presentation_gpu.cpp source/ui/presentation.cpp source/ui/opengl_presentation.cpp -lEGL -lGL -o /tmp/test_presentation_gpu
+          g++ -std=c++17 -O2 -Wall -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_presentation_gpu.cpp source/ui/presentation.cpp source/ui/presentation_layers.cpp source/ui/window_layers.cpp source/ui/opengl_presentation.cpp -lEGL -lGL -o /tmp/test_presentation_gpu
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_presentation_gpu
 
   cpu-oracle:

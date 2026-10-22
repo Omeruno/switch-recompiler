@@ -44,13 +44,14 @@ public:
         assert(eglDestroySurface(display_,surface_) && eglDestroyContext(display_,context_) && eglTerminate(display_));
     }
     void Check(const ui::Surface& screen,const std::vector<uint32_t>& expected,size_t stride,unsigned stage) {
-        assert(presentation_.Submit(screen) && presentation_.Render({nullptr,1280,720,0,0}));
+        assert(presentation_.Submit(screen,user::S().windowLayers.Scene()) && presentation_.Render({nullptr,1280,720,0,0}));
         glReadPixels(0,0,1280,720,GL_RGBA,GL_UNSIGNED_BYTE,pixels_.data());assert(glGetError()==GL_NO_ERROR);
         for(int y=0;y<720;++y)for(int x=0;x<1280;++x) {
             if(pixels_[size_t(719-y)*1280+x]!=expected[size_t(y)*stride+x]) {
                 std::fprintf(stderr,"Composition stage %u actual GL (%d,%d) mismatch\n",stage,x,y);assert(false);
             }
         }
+        assert(backend_.LayerDraws()>0);
         // Simulate a backend recreation in the middle of the live window scene.
         if(stage==14)presentation_.Attach(&backend_);
     }
@@ -98,7 +99,8 @@ static void Check(unsigned stage,const ui::Surface& screen,ui::Presentation& pre
             assert(false);
         }
     }
-    assert(presentation.Submit(screen));
+    assert(user::S().windowLayers.PixelBytes()<=ui::WindowLayers::MaxPixelBytes);
+    assert(presentation.Submit(screen,user::S().windowLayers.Scene()));
     // Three retained outputs exercise independent history and poisoned padding.
     constexpr size_t stride=1287;
     static std::vector<uint32_t> output[3]={std::vector<uint32_t>(stride*720,0x12345678),
@@ -126,6 +128,7 @@ int main(int argc,char** argv) {
     assert(argc==2 || (argc==3 && std::strcmp(argv[2],"--classic")==0));
     int width=argc==2?1280:800,height=argc==2?720:600;
     rt::Clock::SetFastForward(true);user::EnableUi(width,height);
+    assert(user::EnableWindowLayers(true));
 #ifdef SR_OPENGL_TEST
     GpuCheck gpu;gpuCheck=&gpu;
 #endif
@@ -155,7 +158,8 @@ int main(int argc,char** argv) {
     }
     assert(stopped && !win32::g_guestExitCode && checked==28);
     for(const auto& entry:user::S().windows)assert(entry.first==user::S().desktop);
-    presentation.Detach();rt::g_process=nullptr;
+    assert(!user::S().windowLayers.PixelBytes());
+    presentation.Detach();user::EnableWindowLayers(false);rt::g_process=nullptr;
     std::printf("PASSED: 28 real x86 composition scenes %dx%d; independent full-frame CPU/output oracle, triple output history/padding, screen ROP/readback and raw DIB\n",width,height);
 #ifdef SR_OPENGL_TEST
     std::puts("PASSED: every composition scene matches actual OpenGL/EGL output, including backend reset while windows remain alive");

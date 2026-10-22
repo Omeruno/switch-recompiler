@@ -76,6 +76,7 @@ namespace newui {
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
 void BeginPresentation(const char* guestPath);
+extern bool g_gpuActive;
 void EndPresentation();
 void InvalidateOutput();
 bool InitializeOutput(bool gpuRequested);
@@ -309,6 +310,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         win32::user::g_platform.present = &newui::Present;
         win32::user::g_platform.textInput = &newui::TextInput;
         win32::user::EnableUi(ui::kHandheldWidth,ui::kHandheldHeight);
+        win32::user::EnableWindowLayers(newui::g_gpuActive);
     }
 
     static cpu::PagedGuestMemory mem;
@@ -1608,6 +1610,7 @@ void CloseOutput() {
 bool FallBackToSoftware(const char* error) {
     g_gpuError=error;++g_gpuFallbacks;
     g_presentation.Attach(&g_software); // retain the owned CPU snapshot
+    g_presentation.ClearLayers();win32::user::EnableWindowLayers(false);
     g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;g_havePresented=false;
     return CreateSoftwareOutput();
 }
@@ -1635,7 +1638,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v4\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v5\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1659,9 +1662,16 @@ void EndPresentation() {
         fprintf(log,"GPU frames: %llu\nGPU swap ns: %llu\nMax GPU swap ns: %llu\n",
             (unsigned long long)g_framebufferStats.gpuFrames,(unsigned long long)g_framebufferStats.gpuSwapNs,
             (unsigned long long)g_framebufferStats.maxGpuSwapNs);
+        fprintf(log,"Window capture enabled: %u\nWindow raster bytes: %zu\nWindow ownership bytes: %zu\nLayer snapshot bytes: %zu\nRetained layers: %zu\nLayered submissions: %llu\nLayer fallbacks: %llu\nReconciled pixels: %llu\nGPU layer draws: %llu\n",
+            unsigned(win32::user::S().windowLayers.Enabled()),win32::user::S().windowLayers.PixelBytes(),
+            win32::user::S().windowLayers.OwnershipBytes(),g_presentation.LayerBytes(),g_presentation.LayerCount(),
+            (unsigned long long)s.layeredSubmissions,(unsigned long long)s.layerFallbacks,
+            (unsigned long long)g_presentation.ReconciledPixels(),(unsigned long long)g_gpu.LayerDraws());
+        fprintf(log,"Layer snapshot ns: %llu\n",(unsigned long long)s.layerSnapshotNs);
         fclose(log);
     }
     g_presentation.Detach();
+    win32::user::EnableWindowLayers(false);
     if(g_gpuActive) {g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;}
 }
 void Blit() {
@@ -1711,7 +1721,9 @@ void Blit() {
     }
 }
 void Present(const ui::Surface& s) {
-    if(g_presentation.Submit(s))Blit();
+    const bool submitted=g_gpuActive && win32::user::S().windowLayers.Enabled()
+        ?g_presentation.Submit(s,win32::user::S().windowLayers.Scene()):g_presentation.Submit(s);
+    if(submitted)Blit();
 }
 
 void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk) {

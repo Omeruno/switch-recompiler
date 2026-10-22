@@ -106,6 +106,8 @@ struct DcObj {
 struct WindowDcInfo {
     int originX = 0, originY = 0;   // координаты устройства (0,0) на экране
     Region visible;                 // видимая часть в координатах экрана
+    bool captureWrites=false;
+    const SurfaceWriteCapture* capture=nullptr;
 };
 using WindowDcProvider = bool (*)(uint32_t hwnd, bool wholeWindow, WindowDcInfo& out);
 
@@ -162,7 +164,7 @@ public:
     int ScaleY(const DcObj& dc, int len) const;
     // Поверхность, смещение устройства на ней и область отсечения (в
     // координатах поверхности). false — рисовать некуда.
-    bool Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip);
+    bool Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip,const SurfaceWriteCapture** capture=nullptr);
     // Размер поверхности контекста (GetDeviceCaps HORZRES и т.п.)
     void DeviceSize(uint32_t hdc, int& w, int& h);
 

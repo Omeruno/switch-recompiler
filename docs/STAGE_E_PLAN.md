@@ -109,7 +109,7 @@ GPU API не выбирается по предположению о налич�
 | E3 | Принят, Stage E: 50% | Пользователь подтвердил отсутствие оставшихся дефектов после c5e1871; все пять CI jobs 39847105724 успешны. Функциональная приёмка, без новых измерений FPS/latency |
 | E4 | Принят, Stage E: 60% | Exact-SHA CI 2f60dac: 6/6 success; ограниченная память/lifetime: STAGE_E_RESOURCE_LIFECYCLE.md и STAGE_E_GPU_OUTPUT.md |
 | E5 | GPU работает; финальная приёмка Paint открыта | ChooseColor подтверждён на Switch; проверка остальных диалогов после исправления dispatch ожидается |
-| E6 | Эталон и исправление exposure; оконные GPU-слои ещё не реализованы | 28 реальных x86 сцен, CPU/software/GL oracle, два воспроизведённых дефекта: STAGE_E_COMPOSITION.md |
+| E6 | Реализованы оконные поверхности и GPU-композиция; аппаратная приёмка отложена | GDI пишет в собственные поверхности, screen DC/readback сохраняют CPU-семантику; 28 x86 сцен и poisoned-base GL oracle: STAGE_E_COMPOSITION.md |
 | E7–E9 | Частичная подготовка, критерии ещё открыты | Ограниченные uploads/cache подключены; реальные Switch performance/финальный acceptance не приняты |
 
 Требование пользователя: учитывать всю ширину Switch Lite. Новый UI использует
@@ -213,3 +213,16 @@ production invalidation paths are repaired. This is a prerequisite for retained
 window layers, not completion of E6. Accepted Stage E stays at 60% while current
 Paint hardware gates and the remaining E6 implementation are open. Scope,
 reproduction and next architectural boundary: [STAGE_E_COMPOSITION.md](STAGE_E_COMPOSITION.md).
+
+## E6: retained window layers connected
+
+Per user instruction, implementation continues while a combined hardware check
+is deferred. GDI writes through to bounded window-owned surfaces; an ownership
+plane reconciles window draws and direct screen DC writes. Owned snapshots feed
+independent GPU textures: masked base pixels must be supplied by those textures.
+CPU ROP/readback remains authoritative, optional allocation failures retain
+complete output and GL failures retain software fallback. Both live x86 sizes
+and actual GL/lifetime/fault tests pass locally. Report v5 includes layer memory,
+work and CPU timing. E6 implementation is ready for exact-SHA CI and the later
+Switch check; accepted Stage E stays at 60% until hardware gates are complete.
+Next is E7/E8 batching/measurement: [STAGE_E_COMPOSITION.md](STAGE_E_COMPOSITION.md).

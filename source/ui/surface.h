@@ -19,6 +19,25 @@ inline uint32_t ColorrefToRgb(uint32_t c) {
 }
 inline uint32_t RgbToColorref(uint32_t c) { return ColorrefToRgb(c); }
 
+// Optional write-through target for window rasterization. Destination reads
+// remain on the authoritative CPU screen (including screen-DC ROP writes).
+// Captured pixels come from individual raster writes, never screen extraction.
+struct SurfaceWriteCapture {
+    uint32_t* owners=nullptr;
+    int screenWidth=0,screenHeight=0;
+    uint32_t token=0;
+    uint32_t* pixels=nullptr;
+    int left=0,top=0,width=0,height=0;
+    void Write(int x,int y,uint32_t rgb) const {
+        if(!owners || x<0 || y<0 || x>=screenWidth || y>=screenHeight)return;
+        const int64_t lx=int64_t(x)-left,ly=int64_t(y)-top;
+        if(pixels && lx>=0 && ly>=0 && lx<width && ly<height) {
+            pixels[size_t(ly)*width+size_t(lx)]=rgb&0xFFFFFFu;
+            owners[size_t(y)*screenWidth+x]=token;
+        } else owners[size_t(y)*screenWidth+x]=0; // direct/fallback screen write
+    }
+};
+
 struct Surface {
     int width = 0, height = 0;
     int bpp = 32;
@@ -26,6 +45,7 @@ struct Surface {
     uint8_t* bits = nullptr;  // начало строки 0 (верхней)
     bool rgb565 = false;      // 16 бит: 5-6-5 вместо 5-5-5
     std::vector<uint32_t> palette; // 0x00RRGGBB для 1/4/8 бит
+    const SurfaceWriteCapture* writeCapture=nullptr; // synchronous raster call only
 
     bool Valid() const { return bits && width > 0 && height > 0; }
 
@@ -55,7 +75,10 @@ struct Surface {
     void Set(int x, int y, uint32_t rgb) {
         uint8_t* row = Row(y);
         switch (bpp) {
-        case 32: reinterpret_cast<uint32_t*>(row)[x] = rgb & 0xFFFFFFu; return;
+        case 32:
+            reinterpret_cast<uint32_t*>(row)[x]=rgb&0xFFFFFFu;
+            if(writeCapture)writeCapture->Write(x,y,rgb);
+            return;
         case 24: { uint8_t* p = row + x * 3; p[0] = rgb & 0xFF; p[1] = (rgb >> 8) & 0xFF; p[2] = (rgb >> 16) & 0xFF; return; }
         case 16: {
             uint32_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;

@@ -59,20 +59,76 @@ References: Microsoft Learn [SetForegroundWindow](https://learn.microsoft.com/en
 [Window Regions](https://learn.microsoft.com/en-us/windows/win32/gdi/window-regions)
 and [Window Features](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features).
 
-## What is still required for E6
+## Retained raster and GPU integration
 
-This checkpoint fixes the CPU reference that GPU composition must match. It does
-**not** turn State.screen into independent retained window surfaces. E6's 10%
-remains open, and no new FPS or Switch performance result is claimed.
+The follow-on implementation connects independent window storage to actual GDI
+rasterization. WindowDcInfo supplies an optional SurfaceWriteCapture for a window
+DC. Each drawn pixel writes through to that window's own buffer and the canonical
+CPU screen; no finished screen rectangle populates a window image. Coordinates,
+BeginPaint, ancestor/sibling clipping, pattern origin and CPU ROP destination
+reads retain the existing path. Hidden/occluded pixels are not invented: classic
+repaint/invalidation semantics still determine visible writes.
 
-The next implementation boundary is Gdi::Target/WindowDcInfo: separate window
-storage and its origin from the current composed screen, while preserving
-BeginPaint/update/ancestor/sibling clipping and a correct CPU destination for ROP.
-Direct screen DC writes and screen readback need explicit reconciliation before
-using retained layers. Only then can independent GPU textures consume those
-window-owned pixels. Copying completed screen rectangles into textures is not
-accepted as per-window composition. The 28-scene oracle must continue to pass
-through both output backends during that transition.
+A screen ownership plane records the last window which actually drew each pixel.
+Z-order and clipping are resolved by USER32's existing DC provider; ownership
+preserves that visible image, including intervals before exposure is repainted.
+Screen DC/desktop writes select the canonical fallback plane. Submission checks
+retained pixels against canonical RGB: unobserved direct CPU writes or invalid
+ownership reconcile to fallback rather than showing stale window pixels.
+Write-through submissions skip per-pixel checks for tiles whose canonical
+revisions and ownership bytes are unchanged. Arbitrary scene views always get
+full reconciliation.
+
+Presentation owns copies of window pixels and ownership after Submit. Cursor
+redraw, backend reset and host/guest exit never retain Window*, DC*, guest memory
+or borrowed raster buffers. Destroy/eviction/move/resize invalidate source
+ownership before freeing storage; key reuse receives fresh tokens/generations.
+Renderer cleanup follows guest continuation draining as before.
+
+OpenGL uploads independent window textures and an R32UI ownership texture. The
+base pass explicitly masks window-owned pixels black; window passes must supply
+them from their own textures. A poisoned-base GL regression proves the flattened
+image cannot accidentally satisfy the test. Window scissor bounds preserve exact
+nearest-neighbour scaling/letterbox at negative origins. The independent cursor
+remains shared with the reference. Each texture reuses the bounded tile/coalescing
+upload plan; cursor-only frames upload zero pixels. The CPU snapshot remains
+available for Win32 readback and software fallback.
+
+Failures are scoped: window allocation/budget eviction selects canonical pixels
+for that window; layer-snapshot allocation failure displays the complete flat CPU
+frame; GL allocation/upload/draw/swap failure uses existing software fallback.
+New UI enables capture after desktop initialization only when GPU output is
+active; software/legacy output avoids capture work. Renderer report v5 records
+capture/layer memory, submissions/fallbacks, reconciliation, layer draws and layer
+snapshot CPU time.
+
+## Bounds and validation
+
+There are at most 48 raster layers and 48 renderer/GPU layer slots. Aggregate
+window pixels are limited to 16 MiB separately in the raster store and owned
+snapshot. Each ownership plane is bounded by the source image (16 MiB;
+3,686,400 bytes at 1280x720). Canonical CPU snapshot and screen texture remain.
+At native Lite size, maximum accounted screen/snapshot/window/ownership CPU pixels
+total about 46.1 MiB including State.screen, plus tracking; GPU logical pixel
+textures total about 23.1 MiB. Transactional snapshot resize may temporarily
+retain another 16 MiB. Guest DIB/GDI objects and EGL/driver/window buffers are
+additional resources, not claimed as part of those bounds.
+
+The 28 live x86 scenes now use capture and independent GPU composition at both
+sizes. Dedicated tests cover destroyed-source cursor replay, key/geometry reuse,
+unobserved screen writes, duplicate/invalid scene fallback, initial required
+allocation failures, optional tracking failure, bounded eviction and release.
+Actual EGL/GL tests cover poisoned base pixels, overlap ownership, negative
+origins, cursor-only zero uploads, destroyed input storage, GL error/retry/reset.
+
+The complete local suite and actual GL tests pass. ASan+UBSan pass the allocation/
+lifetime/budget tests with leak detection disabled: LeakSanitizer cannot inspect
+tasks in this execution environment. The injected allocator also asserts zero
+live allocations after every fault case. No loader change belongs to this block.
+Hardware acceptance is deferred per the user's request; E6's 10% is not awarded
+on host tests alone, and no Switch FPS/latency improvement is claimed. E7/E8 can
+now measure/optimize the real layer path; the canonical base texture still
+receives its normal dirty updates as a conservative fallback.
 
 Reproduce locally:
 

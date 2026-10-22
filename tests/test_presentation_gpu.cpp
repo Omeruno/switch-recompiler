@@ -84,6 +84,68 @@ static void Scenario(EGLDisplay display,EGLConfig config,EGLContext context,int 
     assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
     assert(eglDestroySurface(display,surface));
 }
+static void IndependentLayers(EGLDisplay display,EGLConfig config,EGLContext context,int sw,int sh,int w,int h) {
+    EGLint attrs[]={EGL_WIDTH,w,EGL_HEIGHT,h,EGL_NONE};
+    auto surface=eglCreatePbufferSurface(display,config,attrs);assert(surface!=EGL_NO_SURFACE);
+    assert(eglMakeCurrent(display,surface,surface,context));
+    OpenGlPresentation gpu;assert(gpu.Initialize());
+    OwnedSurface base,lower,upper,expected;base.Allocate(sw,sh);expected.Allocate(sw,sh);
+    lower.Allocate(15,11);upper.Allocate(18,9);
+    for(int y=0;y<11;++y)for(int x=0;x<15;++x)lower.s.Set(x,y,0xD31A48);
+    for(int y=0;y<9;++y)for(int x=0;x<18;++x)upper.s.Set(x,y,0x1BCC73);
+    std::vector<uint32_t> owners(size_t(sw)*sh),actual(size_t(w)*h),reference(actual.size());
+    PresentationLayerFrame layers[]={{&lower.s,101,-3,4,1,1,nullptr},{&upper.s,202,9,7,1,1,nullptr}};
+    PresentationSceneFrame scene{owners.data(),sw,sh,1,1,nullptr,layers,2};
+    const auto viewport=FitViewport(sw,sh,w,h);SoftwarePresentation software;
+    // The base image deliberately lacks ALL window pixels. A renderer which
+    // ignores the independent textures or shows the flattened base must fail.
+    for(int pass=0;pass<4;++pass) {
+        for(int y=0;y<sh;++y)for(int x=0;x<sw;++x) {
+            uint32_t token=0,rgb=0x182030;
+            if(x<12 && y>=4 && y<15){token=101;rgb=0xD31A48;}
+            if(x>=9 && x<27 && y>=7 && y<16 && (pass!=1 || token==0)){token=202;rgb=0x1BCC73;}
+            owners[size_t(y)*sw+x]=token;base.s.Set(x,y,token?0xA010E0:rgb);expected.s.Set(x,y,rgb);
+        }
+        PresentationCursor cursor{11,8,pass!=0};
+        PresentationFrame frame{base.s,viewport,cursor,1,nullptr,nullptr,42,1,&scene};
+        assert(gpu.Render(frame,{nullptr,w,h,0,0}));
+        assert(software.Render({expected.s,viewport,cursor,1},{reference.data(),w,h,size_t(w),reference.size()}));
+        glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());assert(glGetError()==GL_NO_ERROR);
+        for(int y=0;y<h;++y)for(int x=0;x<w;++x)assert(actual[size_t(h-1-y)*w+x]==reference[size_t(y)*w+x]);
+        assert(gpu.LayerDraws()>0);
+        if(pass==1) {
+            glEnable(0xFFFFFFFFu);assert(!gpu.Render(frame,{nullptr,w,h,0,0}));
+            assert(gpu.Render(frame,{nullptr,w,h,0,0}));
+        }
+        if(pass==2)gpu.Reset();
+    }
+    // Geometry/token/budget validation happens before a texture reads the view.
+    PresentationFrame frame{base.s,viewport,{},1,nullptr,nullptr,42,1,&scene};
+    layers[0].token=0;assert(!gpu.Render(frame,{nullptr,w,h,0,0}));layers[0].token=101;
+    layers[0].left=0x7FFFFFFF;assert(!gpu.Render(frame,{nullptr,w,h,0,0}));layers[0].left=-3;
+    // Presentation, not the guest/window store, owns data for later redraw.
+    WindowLayers raster;assert(raster.Enable(sw,sh));OwnedSurface canvas;canvas.Allocate(sw,sh);
+    canvas.s.writeCapture=raster.ScreenCapture();
+    for(int y=0;y<sh;++y)for(int x=0;x<sw;++x)canvas.s.Set(x,y,0x182030);
+    Surface draw=canvas.s;draw.writeCapture=raster.Capture(9,2,3,10,9);
+    for(int y=3;y<12;++y)for(int x=2;x<12;++x)draw.Set(x,y,0xAA7711);
+    for(int y=0;y<sh;++y)for(int x=0;x<sw;++x)expected.s.Set(x,y,canvas.s.Get(x,y));
+    Presentation retained(&gpu);assert(retained.Submit(canvas.s,raster.Scene()));
+    raster.Clear();canvas.storage.clear();canvas.s={}; // all borrowed inputs gone
+    for(int pass=0;pass<3;++pass) {
+        PresentationCursor cursor{11,8,pass!=0};const auto before=gpu.UploadedBytes();
+        assert(retained.Render({nullptr,w,h,0,0},cursor));
+        if(pass)assert(gpu.UploadedBytes()==before);
+        assert(software.Render({expected.s,viewport,cursor,1},{reference.data(),w,h,size_t(w),reference.size()}));
+        glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());assert(glGetError()==GL_NO_ERROR);
+        for(int y=0;y<h;++y)for(int x=0;x<w;++x)assert(actual[size_t(h-1-y)*w+x]==reference[size_t(y)*w+x]);
+    }
+    glEnable(0xFFFFFFFFu);assert(!retained.Render({nullptr,w,h,0,0}));assert(retained.Render({nullptr,w,h,0,0}));
+    retained.Detach();assert(!retained.LayerBytes());
+    gpu.Shutdown();assert(!gpu.CacheBytes());
+    assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
+    assert(eglDestroySurface(display,surface));
+}
 int main() {
     EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);assert(display!=EGL_NO_DISPLAY);
     assert(eglInitialize(display,nullptr,nullptr) && eglBindAPI(EGL_OPENGL_API));
@@ -98,6 +160,10 @@ int main() {
     Scenario(display,config,context,1280,720,1280,720,32);
     Scenario(display,config,context,37,9,131,97,32);
     Scenario(display,config,context,9,37,131,97,32);
+    IndependentLayers(display,config,context,37,29,131,97);
+    IndependentLayers(display,config,context,800,600,1280,720);
+    IndependentLayers(display,config,context,1280,720,1280,720);
     assert(eglDestroyContext(display,context) && eglTerminate(display));
     puts("PASSED: actual OpenGL/EGL pixels match software, Lite/native/scaled/letterbox, formats/palettes/negative pitch, dirty uploads, independent cursor, reset and cleanup");
+    puts("PASSED: independent window textures replace poisoned base pixels, overlap ownership, negative origins, cursor, GL failure/retry and reset");
 }
