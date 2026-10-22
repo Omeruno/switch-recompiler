@@ -10,7 +10,7 @@
 - Производительность: сначала эталонный интерпретатор, затем опциональный dynarec, GPU backend. Ускорение НЕ должно менять семантику приложений.
 
 ## Подтверждённые факты / текущая точка
-- **Мы здесь: ограниченный этап C принят на физическом Switch; следующий крупный блок — E1, графическая граница и software backend.**
+- **Мы здесь: ограниченный этап C принят на физическом Switch; базовый ARM64 JIT probe вернул 42 по сообщению пользователя; следующий крупный блок — E1, графическая граница и software backend.**
 - Принятая реализация: `6aacc4e013e55be84a6f7860dfb34e810c6fbda0`; все пять CI jobs прошли в [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Пользователь запустил standalone input и combined acceptance v2 на Switch и прислал отчёты: PASS 1–8, `PASS: ALL 8 SUITES`, `input passed`, без FAIL. [Запись приёмки](STAGE_C_ACCEPTANCE.md#результат-приёмки-2026-10-22).
 - Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
 - Дополнительная аппаратная проверка пользователем: Paint на NRO `8b0ad70` работает без изменений/регрессии (2026-10-22). Это проверка Paint, а не всех новых loader/concurrency-сценариев.
@@ -91,9 +91,9 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 ## Ближайшая очередь работ
 1. **Зафиксировать базу:** Stage C принят на `6aacc4e`; сохранить рабочую NRO. Paint hardware baseline остаётся `8b0ad70`: приёмка C сама по себе не доказывает Paint open/save на новом SHA. Host/MinGW, CPU oracle, ARM64/QEMU и Switch build остаются обязательными регрессиями.
 2. **Следующий пакет E1:** проследить Surface/GDI → композицию окон → platform present; ввести явный renderer-backend interface с правилами ownership/lifetime, формата пикселей, clip, dirty rects и resize. Вынести существующий software путь за интерфейс, сохранив CPU GDI эталоном. Добавить измерения времени/числа present и объёма обновлений. Приёмка: детерминированное сравнение пикселей до/после, teardown/resize/clip, существующие GUI/input tests и Paint smoke. Это ещё не GPU backend.
-3. **Отдельный аппаратный JIT gate:** запустить уже существующий `jit-permission-probe-nro` в фактическом режиме запуска пользователя, записать Result-коды, возврат 42 и освобождение code memory. Сборка probe в CI не является доказательством исполняемой памяти на Switch. Этот эксперимент может идти одновременно с E1, но dynarec начинается после подтверждения gate.
+3. **Базовый аппаратный JIT probe уже выполнен:** 2026-10-22 пользователь подтвердил, что в прежней переписке до переноса проекта запускал probe на Switch и получал 42. Повторный запуск минимального probe не является текущей блокирующей задачей. Старое фото/точный SHA, режим запуска, Result-коды и результат cleanup в репозитории не найдены; их не выдумывать. Это подтверждение исполнения минимальной ARM64-функции со слов пользователя, а не приёмка dynarec. При интеграции проверить реальный code-cache: rewrite/invalidation, icache, lifetime и безопасный fallback; окружение при следующем таком тесте записать.
 4. **После E1:** выбирать E2/E3 по измерениям и доступному Switch API: dirty uploads и композиция с сохранением software fallback; доказать пиксельную эквивалентность и реальное улучшение на консоли. D дорабатывать по конкретным несовместимостям и минимальным воспроизводящим тестам, не ждать абстрактной полной Win32-совместимости.
-5. **Следующие вехи:** F — минимальный host-shell в модели одного Process (запуск Paint, окна, файлы, ввод); G — профилирование и первый ограниченный x86→ARM64 backend с oracle/fallback после JIT gate. Не запускать полную оболочку, GPU и dynarec одной неделимой переделкой. H DirectDraw/D3D — самостоятельный последующий блок.
+5. **Следующие вехи:** F — минимальный host-shell в модели одного Process (запуск Paint, окна, файлы, ввод); G — профилирование и первый ограниченный x86→ARM64 backend с oracle/fallback, используя подтверждённую базовую JIT-возможность и отдельные проверки code-cache при интеграции. Не запускать полную оболочку, GPU и dynarec одной неделимой переделкой. H DirectDraw/D3D — самостоятельный последующий блок.
 
 Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.
 
@@ -104,3 +104,13 @@ Independent review found four actionable risks; refined against existing design:
 3. GDI remains synchronous CPU rasterizer and pixel-correct reference; GPU used for dirty-rect upload, batching and desktop composition; DirectDraw/D3D translator is a separate backend. Never force every GDI call through GPU.
 4. Expand old-compiler SEH ABI tests (MSVC/Delphi/CRT) with nested, collided unwinds, register/flags/FP restoration. Apply targeted compatibility matrix, not unbounded demand for "100% Win32".
 Acceptance gates: a native spin-lock guest test completes under scheduler quanta; no host API call starves render loop; JIT probe works on user's actual Switch before dynarec milestone is scheduled; GDI image comparison passes software vs composited output.
+
+
+## Уточнение аппаратного JIT результата (2026-10-22)
+Пользователь сообщил: probe уже проверяли в другой переписке до переноса,
+сгенерированный ARM64-код возвращал `42`. Прежняя запись «нет физической
+проверки» устарела. Найдены коммиты реализации `bb33f1e`, перехода на Pad API
+`904347f` и изоляции CI `3d7081e`; отдельного прежнего коммита с аппаратным
+результатом при просмотре истории/документов не обнаружено. Эта запись
+сохраняет текущее подтверждение пользователя, не подменяет отсутствующие
+Result-коды/фото и не обещает JIT в любом режиме запуска.

@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **6aacc4e013e55be84a6f7860dfb34e810c6fbda0**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Bounded Stage C hardware acceptance PASSED: user-supplied combined v2 report has PASS 1–8 and PASS: ALL 8 SUITES. Next implementation package is E1 renderer boundary/software reference, with the existing isolated JIT permission probe as a separate hardware gate. This summary supersedes older pending-C notes below; it does not claim full NT/Win32, GPU, shell or dynarec completion.
+Last verified implementation GitHub state: **6aacc4e013e55be84a6f7860dfb34e810c6fbda0**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Bounded Stage C hardware acceptance PASSED: user-supplied combined v2 report has PASS 1–8 and PASS: ALL 8 SUITES. Next implementation package is E1 renderer boundary/software reference, with baseline isolated ARM64 probe execution (return 42) now reported by the user as already tested on Switch. This summary supersedes older pending-C notes below; it does not claim full NT/Win32, GPU, shell or dynarec completion.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1591,3 +1591,20 @@ Transient log: /tmp/acceptance-v2-fixed-full.log. Hardware cause remains pending
   policy/hooks/menu, cross-process/security, TerminateThread, GPU, shell and
   DirectDraw/D3D are not implicitly complete. No new percentage for the whole
   project. Latest Paint hardware baseline remains 8b0ad70, not this C report.
+
+
+## 2026-10-22 Correction: JIT probe already returned 42 on Switch
+
+User clarified that before moving this work into the current chat he had
+already run the standalone ARM64 JIT probe on physical Switch and it returned
+42. Treat this as user-reported basic executable-memory/function execution
+confirmation. Do not keep requesting the same minimal 42 test as a prerequisite.
+Earlier pending-physical-probe notes, including the preceding E1 handoff, are
+superseded on this specific point. No original screenshot, exact tested SHA,
+launch mode, Result codes or cleanup result were recovered; do not invent them
+or mark all JIT/code-cache lifecycle cases verified. Known implementation
+commits: bb33f1e (probe), 904347f (Pad API), 3d7081e (isolated CI). No separate
+historical hardware-result commit was found in the inspected history/docs.
+Next package remains E1. Experimental dynarec may use this basic feasibility
+result, with code-cache rewrite/invalidation/icache/lifetime and fallback
+validated during actual integration and its next meaningful hardware test.
