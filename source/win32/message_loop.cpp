@@ -3,6 +3,7 @@
 #include "host_functions.h" // TryHandleHostCall, HostCallOutcome
 #include "../cpu/interpreter.h"
 #include "../runtime/process.h"
+#include "../runtime/guest_fault.h"
 #include "../runtime/guest_execution.h"
 #include "../decoder/x86_decoder.h"
 #include <cstdio>
@@ -123,7 +124,7 @@ void* g_threadStackBase = nullptr;
 uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
                                    uint32_t functionAddr, const std::vector<uint32_t>& args,
                                    uint32_t fsBase, uint32_t gsBase, int maxSteps) {
-    if (!rt::GuestExecution::Checkpoint()) return 0;
+    if (rt::GuestFaultPending() || !rt::GuestExecution::Checkpoint()) return 0;
     rt::GuestThread* owner=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     uint32_t fallbackDepth=0;
     // Unscheduled v1 callbacks retain their existing recursion accounting.
@@ -160,7 +161,7 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
     uint32_t lastEip = functionAddr;
     while (cpu.eip != SENTINEL) {
         if (g_guestExitRequested) break; // процесс завершается: разматываемся
-        if (!rt::GuestExecution::Checkpoint()) break;
+        if (rt::GuestFaultPending() || !rt::GuestExecution::Checkpoint()) break;
         if (steps >= maxSteps) {
             cpu::FatalError(
                 "Вложенный вызов гостевой функции не вернулся (превышен лимит "
@@ -172,6 +173,16 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
         // без этой проверки Step() попытается читать память по адресу 0 и
         // упадёт с гораздо менее информативным сообщением об ошибке.
         if (cpu.eip == 0) {
+            // A null transfer is still an access violation inside a protected
+            // loader callback, not an unconditional host-process termination.
+            if(rt::GuestFaultBoundaryActive()) {
+                cpu::CpuException fault{};
+                fault.code=cpu::EXC_ACCESS_VIOLATION;fault.eip=0;fault.faultAddress=0;
+                if(seh::DispatchCpuFault(cpu,mem,fsBase,fault)==seh::DispatchResult::Handled &&
+                   !rt::GuestFaultPending()) {++steps;continue;}
+                if(g_guestExitRequested || !rt::GuestExecution::Checkpoint())break;
+                if(rt::CaptureGuestFault(fault.code,0,0))break;
+            }
             // Preserve the *last executed instruction*, not the zero target.
             // This is essential to distinguish a missing import from an
             // invalid function pointer or a broken x86 indirect call.
@@ -230,10 +241,14 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
 
         if (result == cpu::StepResult::UnknownOpcode || result == cpu::StepResult::Exception) {
             const cpu::CpuException& fault = nestedInterp.LastException();
-            if (seh::DispatchCpuFault(cpu, mem, fsBase, fault) == seh::DispatchResult::Handled) {
+            if (seh::DispatchCpuFault(cpu, mem, fsBase, fault) == seh::DispatchResult::Handled &&
+                !rt::GuestFaultPending()) {
                 ++steps;
                 continue;
             }
+            if(g_guestExitRequested || !rt::GuestExecution::Checkpoint())break;
+            const uint32_t code=fault.code?fault.code:cpu::EXC_ILLEGAL_INSTRUCTION;
+            if(rt::CaptureGuestFault(code,fault.eip?fault.eip:lastEip,fault.faultAddress))break;
         }
         if (result == cpu::StepResult::UnknownOpcode) {
             if (cpu::g_consoleAvailable) {

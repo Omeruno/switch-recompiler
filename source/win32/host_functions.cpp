@@ -1,3 +1,4 @@
+#include "../runtime/guest_fault.h"
 #include <strings.h>
 #include "mfc42u_abi_table.h"
 #include "win32_api_abi_table.h"
@@ -1771,19 +1772,21 @@ HostCallOutcome Impl_GetLastError(cpu::CpuState&, cpu::IGuestMemory&) {
 // Win32 RaiseException is noreturn unless a real SEH handler processes it.
 // Silently returning was incorrect: the MSVC delay-load helper then attempts
 // to jump through unresolved pointers (often jmp eax with EAX==0).
-// Until guest SEH dispatch is implemented, fail explicitly with exception
-// metadata instead of disguising a missing import as a CPU instruction bug.
+// Dispatch to real guest SEH first. A loader boundary can contain a rejected
+// initializer exception; other unhandled exceptions keep fatal diagnostics.
 HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMemory& mem) {
     cpu::g_sehRaised = true;
-    cpu::g_sehExceptionCode = ReadArg(c, mem, 0);
-    cpu::g_sehExceptionFlags = ReadArg(c, mem, 1);
+    const uint32_t exceptionCode=ReadArg(c,mem,0), exceptionFlags=ReadArg(c,mem,1);
+    cpu::g_sehExceptionCode = exceptionCode;
+    cpu::g_sehExceptionFlags = exceptionFlags;
     uint32_t count = ReadArg(c, mem, 2);
     uint32_t args = ReadArg(c, mem, 3);
     cpu::g_sehExceptionArgumentCount = count;
-    for (unsigned i = 0; i < 15; ++i)
-        cpu::g_sehExceptionArguments[i] =
-            i < count && args && mem.IsRangeMapped(args + i * 4, 4) ?
-            mem.Read32(args + i * 4) : 0;
+    uint32_t parameters[15]={};
+    for (unsigned i = 0; i < 15; ++i) {
+        parameters[i]=i<count && args && mem.IsRangeMapped(args+i*4,4)?mem.Read32(args+i*4):0;
+        cpu::g_sehExceptionArguments[i]=parameters[i];
+    }
     // RaiseException is a stdcall function with 16 bytes of arguments.
     // The saved guest CONTEXT describes the point to resume if a registered
     // handler returns ExceptionContinueExecution.
@@ -1793,14 +1796,22 @@ HostCallOutcome Impl_RaiseException_Experimental(cpu::CpuState& c, cpu::IGuestMe
     resume.ESP() = c.ESP() + 20;
     const uint32_t paramCount = count < 15 ? count : 15;
     win32::seh::DispatchResult result = win32::seh::Dispatch(
-        resume, mem, g_tebAddr, cpu::g_sehExceptionCode,
-        cpu::g_sehExceptionFlags, callerEip,
-        cpu::g_sehExceptionArguments, paramCount);
+        resume, mem, g_tebAddr, exceptionCode,
+        exceptionFlags, callerEip, parameters, paramCount);
+    // A handler can exit the thread/process or be canceled while parked.
+    // That is native-frame unwind, not a new unhandled initializer fault.
+    if(g_guestExitRequested || !rt::GuestExecution::Checkpoint()) {
+        HostCallOutcome out;out.customReturn=true;return out;
+    }
     if (result == win32::seh::DispatchResult::Handled) {
         c = resume;
         HostCallOutcome r;
         r.customReturn = true;
         return r;
+    }
+    const uint32_t faultCode=result==win32::seh::DispatchResult::Noncontinuable?0xC0000025u:exceptionCode;
+    if(rt::CaptureGuestFault(faultCode,callerEip,callerEip,exceptionFlags)) {
+        HostCallOutcome out;out.customReturn=true;return out;
     }
     cpu::g_lastKnownEip = callerEip;
     cpu::FatalError(result == win32::seh::DispatchResult::Unhandled

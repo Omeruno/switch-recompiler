@@ -1,6 +1,7 @@
 // SEH registration-chain dispatcher (single guest thread, 32-bit x86).
 // Calls actual guest handlers, never host C++ exception handlers.
 #include "seh_dispatch.h"
+#include "../runtime/guest_fault.h"
 #include "seh_abi.h"
 #include "message_loop.h"
 #include "../runtime/process.h"
@@ -243,6 +244,7 @@ DispatchResult Dispatch(cpu::CpuState& state, cpu::IGuestMemory& mem,
         ActiveHandlerScope scope(thread,frame);
         uint32_t disposition=CallGuestFunctionStdcall(handlerCpu,mem,handler,
             {exceptionPtr,frame,contextPtr,0},teb,teb);
+        if(rt::GuestFaultPending())return DispatchResult::Unhandled;
         if(disposition==static_cast<uint32_t>(Disposition::ContinueExecution)){
             if(flags&kExceptionNoncontinuable)return DispatchResult::Noncontinuable;
             RestoreContext(mem,contextPtr,state);
@@ -320,6 +322,7 @@ UnwindResult UnwindToFrame(cpu::CpuState& state, cpu::IGuestMemory& mem,
         handlerState.ESP()=record-64;
         uint32_t disposition=CallGuestFunctionStdcall(handlerState,mem,handlers[i],
             {record,frames[i],context,dispatcherContext},teb,teb);
+        if(rt::GuestFaultPending())return UnwindResult::UnsupportedDisposition;
         if(disposition==static_cast<uint32_t>(Disposition::CollidedUnwind)) {
             uint32_t replacement=mem.Read32(dispatcherContext);
             // Only frames already validated in our current unwind chain

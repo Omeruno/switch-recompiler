@@ -2,6 +2,7 @@
 
 #include "process.h"
 #include "guest_execution.h"
+#include "guest_fault.h"
 #include "waitable_timer.h"
 
 #include <algorithm>
@@ -924,7 +925,7 @@ bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason, uin
         if (!callback) break;
         cpu::CpuState local=state;
         win32::CallGuestFunctionStdcall(local,mem_,callback,{module.base,reason,reserved},teb,teb);
-        if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+        if (win32::g_guestExitRequested || GuestFaultPending() || !GuestExecution::Checkpoint()) return false;
     }
     return true;
 }
@@ -942,12 +943,27 @@ bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string
             return false;
         }
     if (module->initialized) return true;
-    if (!CallTls(state,*module,1)) { error="TLS initialization interrupted"; return false; }
+    GuestFaultBoundary boundary(scheduler_.Current()?*scheduler_.Current():mainThread_,mem_);
+    const auto faulted=[&]() {
+        if(!boundary.Failed())return false;
+        const auto& fault=boundary.Fault();
+        module->initializationFailed=true;
+        module->initializationExceptionCode=fault.code;
+        module->initializationExceptionAddress=fault.eip;
+        char description[144];
+        std::snprintf(description,sizeof(description),": initialization exception 0x%08x at 0x%08x (fault address 0x%08x)",fault.code,fault.eip,fault.address);
+        error=module->name+description;
+        return true;
+    };
+    const bool tlsOk=CallTls(state,*module,1);
+    if(faulted())return false;
+    if (!tlsOk) { error="TLS initialization interrupted"; return false; }
     if (module->isDll && module->entryRva) {
         cpu::CpuState local=state;
         const uint32_t teb=CurrentTebAddress();
         const uint32_t ok=win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
             {module->base,1,reserved},teb,teb);
+        if(faulted())return false;
         if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) {
             error="DLL initialization interrupted"; return false;
         }
@@ -964,6 +980,7 @@ bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string
                 win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
                     {module->base,0,0},teb,teb);
             }
+            faulted();
             return false;
         }
     }

@@ -40,6 +40,7 @@ struct Module {
     bool initialized = false;
     bool initializing = false;
     bool initializationFailed = false;
+    uint32_t initializationExceptionCode = 0, initializationExceptionAddress = 0;
     bool threadCallsDisabled = false;
     bool processDetached = false;
     bool unloaded = false; // retain metadata for snapshots across guest callbacks

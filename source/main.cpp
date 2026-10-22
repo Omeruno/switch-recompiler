@@ -245,7 +245,7 @@ static void PrintDisassembly(const char* path, int maxLinesToShow)
 // Не пишем трассу каждого кадра на SD (это быстро убьёт карту и FPS).
 static void SaveGuestStopReport(const char* reason, const char* exeName,
                                 const cpu::CpuState& state, rt::Process& proc,
-                                const cpu::CpuException* exception)
+                                const cpu::CpuException* exception, bool initializationFailure=false)
 {
     // Главный файл — корень SD: отдельный каталог создавать не требуется.
     FILE* log = fopen("sdmc:/switch-recompiler-crash.txt", "w");
@@ -260,6 +260,16 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
         fprintf(log, "Fault address: 0x%08x\n", exception->faultAddress);
     }
     uint32_t where = exception ? exception->eip : state.eip;
+    if(initializationFailure) {
+        fprintf(log,"Phase: DLL/TLS initialization\n");
+        for(const auto& module:proc.Modules()) {
+            if(module->unloaded || !module->initializationExceptionCode)continue;
+            fprintf(log,"Initializer: %s\n",module->name.c_str());
+            fprintf(log,"Initialization exception: 0x%08x\n",module->initializationExceptionCode);
+            where=module->initializationExceptionAddress;
+            break;
+        }
+    }
     fprintf(log, "Fault EIP: 0x%08x\n", where);
     if (rt::Module* mod = proc.FindByAddress(where)) {
         fprintf(log, "Module: %s\n", mod->name.c_str());
@@ -359,6 +369,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     }
 
     if (execution.InitializationFailed()) {
+        SaveGuestStopReport(execution.InitializationError().c_str(),path,cpuState,proc,nullptr,true);
         SafePrint("[!] DLL initialization failed: %s\n",execution.InitializationError().c_str());
         SafeConsoleUpdate();
         return;

@@ -73,8 +73,8 @@
   calls не отключают process callbacks, partial attach не включены; отказавший DllMain получает отдельный failed-load detach.
   Только после уведомлений сигналится requester HANDLE и освобождается память.
   Loader lock рекурсивен, Sleep/finite waits могут отдавать квант, existing
-  module queries разрешены. Новые DLL/потоки при shutdown отвергаются; unload
-  и rollback не реализованы. Повторный exit/ExitThread из detach обрывает
+  module queries разрешены. Новые DLL/потоки при shutdown отвергаются; обычные unload
+  и dynamic rollback описаны ниже и не запускаются заново из shutdown unwind. Повторный exit/ExitThread из detach обрывает
   оставшиеся callbacks без повтора, сохраняется первый process exit code.
   Вложенный executor передаёт identity requester внешнему владельцу сессии.
   Host abort/destructor не инициирует эту фазу. Последний ExitThread/worker
@@ -210,8 +210,24 @@ Guest GetProcAddress передаёт CPU, инициализирует новы
 FreeLibraryAndExitThread сначала освобождает DLL, затем запрашивает завершение
 потока без гостевого RET. ExitProcess/host abort внутри loader callbacks
 сохраняют собственную политику завершения, не запускают новый rollback из unwind.
-Полный контракт повторного входа в DllMain, startup/SEH rollback и
-LoadLibraryEx datafile/image mappings остаются отдельными задачами.
+InitializeModule устанавливает GuestFaultBoundary на native stack текущего
+потока (main для standalone). Guest SEH получает первую попытку обработать
+RaiseException/CPU fault; отказавшее исключение фиксируется в ближайшей
+границе и прерывает вложенные callbacks через обычный возврат native frames.
+C++ exceptions/longjmp не используются. Граница переживает cooperative yield,
+хранит собственные code/EIP/address и восстанавливает входной FS:[0] после
+аварийного attach. Handler fault сохраняется первым; параметры RaiseException
+локальны для callback, другая guest thread не подменяет исходную диагностику.
+Dynamic LoadLibrary получает 1114 и обычный rollback; startup получает
+C0000142 без user entry. Аварийный TLS/DllMain attach не получает PROCESS_DETACH;
+FALSE-return сохраняет прежний отдельный cleanup. Явный ExitThread/ExitProcess
+и host abort сохраняют свою политику и не становятся initializer exception.
+Switch пишет существующий SD crash report также при startup failure, включая
+имя initializer, code и EIP, когда доступен fault record. Это ограниченная
+граница: host/HLE fatal validation не перехватывается, полного guest finally
+unwind и точного NT status mapping нет. Полный контракт повторного входа в
+DllMain, startup image rollback и LoadLibraryEx datafile/image mappings
+остаются отдельными задачами.
 Standalone InitializeModules вне executor остаётся синхронным; основной
 Switch/winrun путь использует startup на main fiber. Бесконечное ожидание
 created child внутри DllMain может deadlock из-за loader serialization, как

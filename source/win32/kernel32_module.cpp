@@ -11,6 +11,8 @@
 #include "seh_dispatch.h"
 #include "../runtime/files.h"
 #include "../runtime/process.h"
+#include "../runtime/guest_fault.h"
+#include "../runtime/guest_execution.h"
 #include "../runtime/resources.h"
 
 namespace win32 {
@@ -454,6 +456,7 @@ HostCallOutcome K32_RtlUnwind(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const uint32_t value=Arg(c,m,3);
     seh::UnwindResult result=seh::UnwindToFrame(
         c,m,g_tebAddr,targetFrame,targetIp,record,value);
+    if(rt::GuestFaultPending() || g_guestExitRequested || !rt::GuestExecution::Checkpoint()) {HostCallOutcome out;out.customReturn=true;return out;}
     if(result!=seh::UnwindResult::Completed) {
         cpu::g_lastKnownEip=c.eip;
         cpu::FatalError(result==seh::UnwindResult::InvalidTarget ?

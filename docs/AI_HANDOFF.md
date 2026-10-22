@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **8b0ad70ad104a6a0226c62d2b63f2d1a37a12453**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39766611875](https://github.com/Omeruno/switch-recompiler/actions/runs/39766611875), including normal unload/refcount/TLS reclamation tests. The new dynamic rollback package below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
+Last verified implementation GitHub state: **a0d816a72c7c9aab8708fd0643b64a2bf4c74619**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39770705669](https://github.com/Omeruno/switch-recompiler/actions/runs/39770705669), including dynamic rollback/forwarder/self-unload. The initializer fault packet below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1395,3 +1395,61 @@ User hardware report: Paint works without changes/regression on the provided
 not every concurrency/loader edge or the new rollback code. Preserve existing
 known-good 2c9a1fa and this newer verified Paint baseline separately. The new
 rollback package still requires its own CI and hardware validation as applicable.
+
+
+## Bounded loader initializer exception containment (2026-10-22)
+Incoming HEAD a0d816a72c7c9aab8708fd0643b64a2bf4c74619 is exact-SHA CI green
+(all five jobs, run 39770705669). User requested another substantial packet;
+standing same-repository/branch publication permission above still applies.
+Paint hardware baseline remains 8b0ad70; no newer hardware result is claimed.
+
+- GuestFaultBoundary is a thread-owned linked native-frame record inside
+  InitializeModule after dependency initialization. It survives fiber yields,
+  uses normal returns/destructors (no C++ exceptions/longjmp), restores saved
+  FS:[0] after an unhandled callback and pops before thread memory reclamation.
+- Real guest SEH gets first refusal for RaiseException and interpreter faults,
+  including null transfer and illegal opcode. An unhandled initializer fault
+  stops nested guest callbacks and becomes ERROR_DLL_INIT_FAILED (1114) for
+  dynamic loads or STATUS_DLL_INIT_FAILED (C0000142) at startup. Existing dynamic
+  transactions reclaim rejected maps/TLS; startup preserves process shutdown.
+- Faulted attach receives no PROCESS_DETACH. Ordinary DllMain FALSE retains its
+  established immediate cleanup, including containment if that cleanup faults.
+  Initialized dependencies still receive their normal detach. Nearest nested
+  boundary contains a failed child load so a parent can continue successfully.
+- Nested handler faults retain the first actual inner fault. RaiseException
+  parameters/code/flags are local across handler yields; another running thread
+  raising its own handled exception cannot overwrite the initializer record.
+  SEH dispatcher/unwind stop when fault is pending rather than using a stale
+  handler disposition/context. ExitThread/ExitProcess or host abort inside the
+  handler preserve original exit/cancellation semantics, with no false fault.
+- Module tombstones retain initializer exception code/EIP for inspectors.
+  InitializationError includes code/EIP/fault address. Switch startup failures
+  now write the existing SD crash report, including initializer/code/EIP if a
+  module fault record is present; normal FALSE failure still gets phase/reason.
+- Source-only PE fixtures and mandatory test_initfault cover 36 startup
+  DLL/TLS/EXE-TLS cases, two parked loader/handler aborts, seven standalone
+  failure scopes and a dynamic recovery sequence. Includes handled Raise/int3,
+  unhandled Raise/AV/null/UD2, corrupt FS registration, handler Raise/AV,
+  noncontinuable continuation, FALSE cleanup exception, nested LoadLibrary,
+  yield with another raising thread, handler ExitThread/Process, live/suspended
+  worker cleanup, exact FS restoration, unmapped images, retry and fault codes.
+  All code builds with -fno-exceptions -fno-rtti. A pre-fix cancellation probe
+  reproduced false exception diagnostics for handler ExitThread; guards fix it.
+
+Boundaries: this is not a complete NT loader SEH frame/finally-unwind policy.
+Host/HLE fatal validation and unsupported operations remain fatal; arbitrary
+DLL resource/created-thread side effects are application responsibilities.
+Full startup image rollback, exact NT failure mapping, termination/security,
+LoadLibraryEx flags and metadata compaction remain future work. Stage C stays
+~90%; this packet advances overlapping D and adds shutdown acceptance coverage.
+Do not claim physical Switch verification from CI or the prior Paint result.
+
+Validation for this packet: complete local sh tools/run_host_tests.sh PASSED,
+using relocated MinGW and host CXX='g++ -fno-exceptions -fno-rtti'. Log:
+/tmp/initfault-full-clean.log. All old native/PE/CRT/GUI/dialog regressions and
+new inspector/dynamic guest passed. Earlier stale malformed-fixture failure
+was isolated: fresh build retained its deliberate 35-byte invalid PE and all
+rollback tests passed without changing their expected behavior. Exact-SHA
+CPU oracle/AArch64/Switch CI remains a publication gate; inspect its actual
+result before claiming green. Next bounded work: remaining shutdown/input
+ownership boundaries, then renderer boundary; preserve existing roadmap gates.

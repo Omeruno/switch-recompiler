@@ -50,6 +50,11 @@ $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DROLLBACK_ID=7 -DROLLBACK_TL
 # Intentionally malformed dependency: parent mapping must be rolled back too.
 printf 'this is deliberately not a PE image' > "$out/rollback_invalid_child.dll"
 $cc -O1 "$here/gui_loader_rollback.c" "$out/rollback_control.dll" -o "$out/gui_loader_rollback.exe" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/initfault_control.c" -o "$out/initfault_control.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/initfault_module.c" "$out/initfault_control.dll" -o "$out/initfault_module.dll" -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DINITFAULT_ID=2 "$here/initfault_module.c" "$out/initfault_control.dll" -o "$out/initfault_child.dll" -lkernel32
+$cc -O1 "$here/gui_initfault_dynamic.c" "$out/initfault_control.dll" -o "$out/gui_initfault_dynamic.exe" -lkernel32
+$cc -O1 -nostdlib -e _start@0 "$here/gui_initfault_startup.c" "$out/initfault_module.dll" "$out/initfault_control.dll" -o "$out/gui_initfault_startup.exe" -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
@@ -63,6 +68,8 @@ for t in "$here"/gui_*.c; do
     [ "$name" = "gui_last_thread_exit" ] && continue
     [ "$name" = "gui_startup_lifecycle" ] && continue
     [ "$name" = "gui_loader_rollback" ] && continue
+    [ "$name" = "gui_initfault_dynamic" ] && continue
+    [ "$name" = "gui_initfault_startup" ] && continue
     res=""
     if [ -e "$here/$name.rc" ]; then
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"

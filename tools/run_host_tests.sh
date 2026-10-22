@@ -129,6 +129,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 30 "$out/test_loader_rollback.log"
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_initfault.cpp" $src -o "$out/test_initfault" &&
+       "$out/test_initfault" "$guestRoot/gui_initfault_startup.exe" "$guestRoot/gui_initfault_dynamic.exe" > "$out/test_initfault.log" 2>&1; then
+        tail -n 1 "$out/test_initfault.log"
+    else
+        echo "   INITIALIZER EXCEPTION REGRESSION FAILED"
+        tail -n 35 "$out/test_initfault.log"
+        failed=1
+    fi
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
     if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then

@@ -11,6 +11,14 @@
 
 namespace rt {
 struct TimerObject;
+struct GuestCallbackFault {
+    bool pending=false;
+    uint32_t code=0,eip=0,address=0,flags=0;
+};
+struct GuestFaultRecord {
+    GuestFaultRecord* previous=nullptr;
+    GuestCallbackFault fault{};
+};
 enum class GuestThreadStatus : uint8_t { Created, Runnable, Waiting, Suspended, Exited };
 
 struct GuestThread {
@@ -65,8 +73,14 @@ struct GuestThread {
     bool IsRunnable() const {
         return status == GuestThreadStatus::Runnable && suspendCount == 0;
     }
+    GuestFaultRecord* guestFaultBoundary=nullptr; // owned by current native fiber frames
+    bool HasGuestFault() const {
+        for(auto* record=guestFaultBoundary;record;record=record->previous)
+            if(record->fault.pending)return true;
+        return false;
+    }
     bool ShouldUnwind() const {
-        return status==GuestThreadStatus::Exited ||
+        return HasGuestFault() || status==GuestThreadStatus::Exited ||
             (exitRequested && (!detaching || detachAborted));
     }
 };
