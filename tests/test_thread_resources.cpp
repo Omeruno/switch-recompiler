@@ -29,7 +29,9 @@ int main(int argc,char** argv) {
     main.suspendCount=1;
     unsigned cleaned=0;
     bool park=false;
-    rt::GuestExecution execution(process,[&](rt::GuestThread& thread) {
+    rt::GuestThread *stopParked=nullptr,*stopSuspended=nullptr;
+    std::vector<std::pair<uint32_t,uint32_t>> stopRegions;
+    auto execution=std::make_unique<rt::GuestExecution>(process,[&](rt::GuestThread& thread) {
         MappingGuard guard{memory,thread,cleaned};
         if (park) {
             process.Scheduler().Wait(thread,0x1234);
@@ -68,7 +70,7 @@ int main(int argc,char** argv) {
         uint32_t handle=process.Handles().Add(std::make_shared<rt::ThreadObject>(worker->id));
         auto alias=process.Handles().Get(handle);
         uint32_t duplicate=process.Handles().Add(alias);
-        assert(execution.RunOne()==rt::GuestExecution::Result::Ran);
+        assert(execution->RunOne()==rt::GuestExecution::Result::Ran);
         assert(worker->memoryReleased && worker->memoryRegions.empty());
         assert(cleaned==n+1 && worker->exitCode==73);
         unmapped(regions);
@@ -82,10 +84,10 @@ int main(int argc,char** argv) {
     auto* parked=process.CreateGuestThread(start,0,0x10000,false,error);
     assert(parked);
     const auto parkedRegions=parked->memoryRegions;
-    assert(execution.RunOne()==rt::GuestExecution::Result::Ran);
+    assert(execution->RunOne()==rt::GuestExecution::Result::Ran);
     assert(cleaned==256 && !parked->memoryReleased);
     process.Scheduler().Exit(*parked,91);
-    assert(execution.RunOne()==rt::GuestExecution::Result::Idle);
+    assert(execution->RunOne()==rt::GuestExecution::Result::Idle);
     assert(cleaned==257 && parked->memoryReleased && parked->exitCode==91);
     unmapped(parkedRegions);
     // Never started / CREATE_SUSPENDED has no native continuation to drain.
@@ -93,7 +95,7 @@ int main(int argc,char** argv) {
     assert(unstarted);
     const auto unstartedRegions=unstarted->memoryRegions;
     process.Scheduler().Exit(*unstarted,92);
-    assert(execution.RunOne()==rt::GuestExecution::Result::Idle);
+    assert(execution->RunOne()==rt::GuestExecution::Result::Idle);
     assert(unstarted->memoryReleased && cleaned==257);
     unmapped(unstartedRegions);
     // Session destruction must drain an exited parked continuation too.
@@ -116,11 +118,27 @@ int main(int argc,char** argv) {
     // Initial thread's TEB shares an allocation with PEB. Keep PEB alive.
     const auto mainRegions=main.memoryRegions;
     process.Scheduler().Exit(main,93);
-    assert(execution.RunOne()==rt::GuestExecution::Result::Idle);
+    assert(execution->RunOne()==rt::GuestExecution::Result::Idle);
     assert(main.memoryReleased && main.exitCode==93);
     unmapped(mainRegions);
     assert(memory.IsMapped(process.PebAddress()));
     assert(memory.Read32(process.PebAddress()+8)==process.MainModule()->base);
+    // Stop a live parked worker and a never-started worker, rather than
+    // pre-marking them Exited. The outer session owns final cancellation.
+    stopParked=process.CreateGuestThread(start,0,0x10000,false,error);
+    assert(stopParked && execution->RunOne()==rt::GuestExecution::Result::Ran);
+    stopSuspended=process.CreateGuestThread(start,0,0x10000,true,error);
+    assert(stopSuspended && cleaned==258 && main.memoryRegions.empty());
+    stopRegions=stopParked->memoryRegions;
+    stopRegions.insert(stopRegions.end(),stopSuspended->memoryRegions.begin(),stopSuspended->memoryRegions.end());
+    execution.reset();
+    assert(cleaned==259 && main.exitCode==93);
+    assert(stopParked->memoryReleased && stopSuspended->memoryReleased);
+    assert(stopParked->exitCode==0xc0000001u && stopSuspended->exitCode==0xc0000001u);
+    for (const auto& region:stopRegions)
+        for (uint32_t offset=0;offset<region.second;offset+=0x1000)
+            assert(!memory.IsMapped(region.first+offset));
+    assert(!process.Scheduler().HasLiveThreads() && memory.IsMapped(process.PebAddress()));
     rt::g_process=nullptr;
-    puts("PASSED: 256 thread reclamations, TLS blocks, native cleanup, HANDLE tombstones and PEB lifetime");
+    puts("PASSED: 256 thread reclamations, TLS, nested executor isolation, live stop cleanup, HANDLE tombstones and PEB lifetime");
 }

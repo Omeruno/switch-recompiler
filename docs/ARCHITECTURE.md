@@ -57,6 +57,15 @@
   выполняются TLS/DLL detach callbacks. При остановке всей сессии pending
   continuations дренируются с флагом выхода, чтобы выполнились деструкторы.
   Завершённый нативный стек освобождается после возврата на стек scheduler.
+- Последний GuestExecution данного Process после дренирования завершает все
+  живые потоки, включая suspended без native stack, отменяет все waitable
+  timers/APC, снимает waits, закрывает native USER32 queues/windows, abandon
+  mutex и освобождает stack/TEB/TLS. Вложенный executor того же Process
+  оставляет эту работу внешнему владельцу. ExitProcess/RET сохраняют код
+  процесса; остановка хостом помечает оставшиеся потоки STATUS_UNSUCCESSFUL
+  (0xC0000001). Ранее завершённые потоки сохраняют свои коды. HANDLE и PEB
+  остаются до уничтожения Process. Это аварийная очистка исполнения без
+  новых guest callbacks; полноценный DLL_PROCESS_DETACH остаётся отдельным.
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
   MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.

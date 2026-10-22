@@ -679,6 +679,13 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     return result;
 }
 
+void Process::StopThreads(uint32_t code) {
+    // Abort cleanup runs only after saved native stacks have unwound. Do not
+    // call guest DLL/WndProc detach code here. Keep HANDLE/exit tombstones.
+    for (auto& timer:handles_.Timers()) CancelTimer(*timer,&scheduler_);
+    scheduler_.ExitAll(code);
+}
+
 void Process::ReleaseThreadMemory(GuestThread& thread) {
     if (thread.status!=GuestThreadStatus::Exited || thread.memoryReleased) return;
     for (const auto& region:thread.memoryRegions) mem_.Unmap(region.first,region.second);

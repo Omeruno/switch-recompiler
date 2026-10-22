@@ -258,6 +258,10 @@ public:
         if (onExit_) onExit_(thread);
     }
 
+    void ExitAll(uint32_t code) {
+        for (GuestThread* thread:threads_) Exit(*thread,code);
+    }
+
     size_t Size() const { return threads_.size(); }
     bool HasLiveThreads() const {
         for (const GuestThread* thread : threads_)

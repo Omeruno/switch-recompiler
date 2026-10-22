@@ -157,6 +157,7 @@ private:
     friend class GuestExecution;
     // Only after all native frames of this thread have returned to scheduler.
     void ReleaseThreadMemory(GuestThread& thread);
+    void StopThreads(uint32_t code);
     bool NotifyThread(GuestThread& thread, uint32_t reason);
     bool AcquireLoaderLock();
     void ReleaseLoaderLock();

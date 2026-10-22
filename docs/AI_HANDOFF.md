@@ -946,3 +946,47 @@ contracts are still concrete next roadmap foundation work; input/focus/hooks,
 I/O completion APCs and real IPC/token/DACL/child inheritance remain separate.
 Do not advance JIT/GPU/shell before their acceptance gates, change branches,
 create automation or extend the existing run series.
+
+
+## Execution stop / process-exit cancellation boundary (2026-10-22)
+
+Incoming HEAD 4e0335dad38f3f95e79049cc9b910f5e65b55fc0 verified with
+all five jobs green in [39718964033](https://github.com/Omeruno/switch-recompiler/actions/runs/39718964033).
+Remote ref matched local HEAD immediately before changes; no competing diff or
+active incoming CI was present. Work stays on the agreed branch.
+
+- Confirmed defect: destroying GuestExecution unwound parked native frames but
+  left waiting/suspended threads live, with APC queues and timers still armed.
+  New mandatory test_execution_stop failed on old code at HasLiveThreads.
+- Last executor for a Process now drains native stacks first, cancels every
+  waitable timer (including callback-free periodic timers), then exits all
+  registered live threads through the common scheduler/USER32 exit contract.
+  This clears waits/retry/deadline/APC state, retires native windows/queues,
+  abandons mutexes and releases owned stack/TEB/TLS after native RAII returns.
+  Thread HANDLE metadata, PEB and already-final exit codes remain available.
+  Explicit ExitProcess/entry RET uses the requested code; host stop marks
+  remaining threads STATUS_UNSUCCESSFUL (0xC0000001). Existing exit codes stay.
+- Nested executors of the same Process only drain their own continuations;
+  the outer owner still controls session lifetime. Real-allocation regression
+  preserves this isolation and adds live parked plus never-started worker
+  reclamation, checking every page and existing PEB/exit-code lifetime.
+- New native test covers host stop and actual ExitProcess HLE request, RAII
+  before unmap, parked/suspended/already-exited thread states, timer cancellation
+  with retained signals, queued APC drop, mutex abandonment and HANDLE retention.
+- New gui_thread_process_stop Win32 guest requests ExitProcess from a user APC
+  while a timer callback is parked in a normal wait, another APC is pending,
+  a plain periodic timer is active and a CREATE_SUSPENDED worker never started.
+  No guest instruction after the exit/wait may run; native tests inspect final
+  cleanup directly (a guest cannot inspect itself after process exit).
+- Full local mandatory host/native/x86 suite passed with -fno-rtti and
+  -fno-exceptions; targeted test rerun and resource-harness compile passed.
+  Log: /tmp/switch-execution-stop-host.log (transient). Local MinGW and 32-bit
+  libc remain unavailable. Win32 guest/resource execution, CPU oracle, ARM64
+  ABI and Switch builds require exact new-SHA Actions verification.
+
+This is bounded execution-session cancellation, not orderly DLL_PROCESS_DETACH,
+FreeLibrary unload/refcounts or TerminateThread semantics. Those remain explicit
+loader work. Stage C remains ~90%; additional boundary correctness is not a new
+large feature block. Physical Switch acceptance remains unperformed. Continue
+with concrete shutdown/input ownership gaps and loader foundations, without
+advancing JIT/GPU/shell gates or committing proprietary Microsoft binaries.

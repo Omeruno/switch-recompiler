@@ -19,6 +19,13 @@ GuestExecution::~GuestExecution() {
     for (auto& item:continuations_)
         if (item.second && item.second->fiber.Started() && !item.second->fiber.Finished())
             Resume(*item.second);
+    // A nested executor may temporarily borrow the same Process. Its owner
+    // still has live native stacks; only the last executor ends the session.
+    bool ownsSession=true;
+    for (auto* owner=previous_;owner;owner=owner->previous_)
+        if (&owner->process_==&process_) { ownsSession=false; break; }
+    if (ownsSession)
+        process_.StopThreads(exitRequested ? uint32_t(exitCode) : 0xc0000001u);
     ReapExited();
     win32::g_guestExitRequested=exitRequested;
     win32::g_guestExitCode=exitCode;
