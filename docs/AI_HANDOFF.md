@@ -1122,3 +1122,18 @@ startup blocking waits, DLL unload/refcounts/rollback. No claim of full NT
 shutdown, TerminateThread or physical Switch verification. Stage C stays ~90%;
 functional boundary closure does not remove its hardware acceptance gate.
 Keep all changes on the agreed branch and do not extend/create automation.
+
+
+### Last-thread first CI attempt and harness correction
+Commit 19cf5bb0fdcef6f848dcc9eca78675ee8bff744f / run
+[39736596521](https://github.com/Omeruno/switch-recompiler/actions/runs/39736596521):
+host job failed on incomplete post-exit inspection, while native regression,
+existing Win32 suite, CPU oracle and Switch/probe builds passed. Do not cite
+this attempt as green. Source audit found the new suspended-peer harness
+called Scheduler::Resume directly: that primitive only decrements suspendCount;
+K32 ResumeThread additionally changes Suspended status to Runnable. Corrected
+the inspector to invoke the actual Win32 ResumeThread HLE on a scratch frame
+in live worker memory and assert previous count=1 plus runnable state. Added
+scenario/state diagnostics for any remaining incomplete inspection. No runtime
+assertion was removed and the production last-thread fix was unchanged.
+Inspector compilation passes locally; complete exact-SHA CI rerun is required.

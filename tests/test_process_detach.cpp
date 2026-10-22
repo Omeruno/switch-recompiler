@@ -24,6 +24,7 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
     auto* dep=process.FindByName("lifecycle_dep.dll"); assert(dep);
     uint32_t state=process.GetProcAddress(dep,"state"); assert(state);
     memory.Write32(state+offsetof(LifeState32,exitMode),mode);
+    fprintf(stderr,"INSPECT begin last=%d mode=%u\n",lastThread,mode);
     bool completed=false,resumed=false,loaderParked=false;
     {
         rt::GuestExecution execution(process,[&](rt::GuestThread& thread) {
@@ -52,7 +53,22 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
                     assert(memory.Read32(state+offsetof(LifeState32,events)+i*24+8)!=0);
                 auto* worker=process.FindThread(memory.Read32(state+offsetof(LifeState32,exitOwner)));
                 assert(worker && worker->status==rt::GuestThreadStatus::Suspended && !worker->memoryReleased);
-                assert(process.Scheduler().Resume(*worker)==1);resumed=true;
+                // Use the actual Win32 wrapper: scheduler Resume only changes
+                // the count; ResumeThread also makes CREATE_SUSPENDED runnable.
+                uint32_t handle=0;
+                for(auto& object:process.Handles().Objects())
+                    if(object->type==rt::ObjectKind::Thread &&
+                       static_cast<rt::ThreadObject&>(*object).threadId==worker->id)
+                        handle=process.Handles().Aliases(object.get()).front();
+                assert(handle);
+                cpu::CpuState local=worker->cpu;local.ESP()=worker->stackBase-0x100;
+                memory.Write32(local.ESP(),0x1234);memory.Write32(local.ESP()+4,handle);
+                local.eip=win32::IndexToHostAddress(win32::FindHostFunction("KERNEL32.dll","ResumeThread"));
+                auto* saved=process.Scheduler().Current();process.Scheduler().SetCurrent(worker);
+                win32::HostCallOutcome outcome;
+                assert(win32::TryHandleHostCall(local,memory,outcome) && outcome.returnValue==1);
+                process.Scheduler().SetCurrent(saved);
+                assert(worker->IsRunnable());resumed=true;
             }
             if(!lastThread && mode==3 && memory.Read32(state+offsetof(LifeState32,exitTest))) {
                 completed=true; break; // abort without any guest process detach
@@ -64,6 +80,15 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
             if(result==rt::GuestExecution::Result::Idle) {
                 assert(process.Scheduler().HasPendingTimers()); rt::Clock::Sleep(1);
             }
+        }
+        if(!completed) {
+            fprintf(stderr,"INSPECT incomplete last=%d mode=%u owner=%x flags=%x events=%u loaderParked=%d\n",
+                lastThread,mode,memory.Read32(state+offsetof(LifeState32,exitOwner)),
+                memory.Read32(state+offsetof(LifeState32,failure)),memory.Read32(state),loaderParked);
+            for(uint32_t id=0x1004;id<0x1040;id+=4) if(auto* thread=process.FindThread(id))
+                fprintf(stderr,"thread=%x status=%u eip=%x wait=%x sleep=%d exitReq=%d detaching=%d detachAborted=%d\n",
+                    id,unsigned(thread->status),thread->cpu.eip,thread->waitObject,thread->sleeping,
+                    thread->exitRequested,thread->detaching,thread->detachAborted);
         }
     }
     assert(completed && !process.Scheduler().HasLiveThreads());
