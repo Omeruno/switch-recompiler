@@ -6,6 +6,11 @@
 #include <cstdio>
 #include <vector>
 using namespace ui;
+struct CacheAllocator:PresentationAllocator {
+    bool fail=false;
+    void* Allocate(size_t n) override {return fail?nullptr:std::malloc(n);}
+    void Free(void* p) override {std::free(p);}
+};
 static void Compare(OpenGlPresentation& gpu,Presentation& p,const Surface& source,int w,int h,PresentationCursor cursor) {
     assert(p.Render({nullptr,w,h,0,0},cursor));
     std::vector<uint32_t> actual(size_t(w)*h),expected(actual.size());
@@ -24,7 +29,7 @@ static void Scenario(EGLDisplay display,EGLConfig config,EGLContext context,int 
     EGLint attrs[]={EGL_WIDTH,w,EGL_HEIGHT,h,EGL_NONE};
     EGLSurface surface=eglCreatePbufferSurface(display,config,attrs);assert(surface!=EGL_NO_SURFACE);
     assert(eglMakeCurrent(display,surface,surface,context));
-    OpenGlPresentation gpu;assert(gpu.Initialize());Presentation p(&gpu);
+    CacheAllocator cache;OpenGlPresentation gpu(&cache);assert(gpu.Initialize());Presentation p(&gpu);
     OwnedSurface source;source.Allocate(sw,sh,bpp);
     if(bpp<=8) {source.s.palette.resize(1u<<bpp);for(size_t i=0;i<source.s.palette.size();++i)source.s.palette[i]=uint32_t(i*0x030507);}
     if(bpp!=32) {source.s.bits+=source.s.pitch*(sh-1);source.s.pitch=-source.s.pitch;}
@@ -40,6 +45,27 @@ static void Scenario(EGLDisplay display,EGLConfig config,EGLContext context,int 
     }
     assert(p.Submit(source.s));const auto bytes=gpu.UploadedBytes();Compare(gpu,p,source.s,w,h,{});
     assert(gpu.UploadedBytes()==bytes);
+    if(bpp==32 && sw==1280 && sh==720) {
+        source.s.Set(63,63,0x13579B);assert(p.Submit(source.s));
+        auto before=gpu.UploadedBytes();Compare(gpu,p,source.s,w,h,{});
+        assert(gpu.UploadedBytes()-before==4096);
+        auto calls=gpu.UploadCalls();
+        for(int y=0;y<sh;y+=32)for(int x=0;x<sw;x+=32)source.s.Set(x,y,0xABCDEF);
+        assert(p.Submit(source.s));before=gpu.UploadedBytes();Compare(gpu,p,source.s,w,h,{});
+        assert(gpu.UploadedBytes()-before==size_t(sw)*sh*4 && gpu.UploadCalls()==calls+1);
+    }
+    // Optional texture metadata can fail without making the output unusable.
+    gpu.Reset();cache.fail=true;
+    Compare(gpu,p,source.s,w,h,{});assert(!gpu.CacheBytes());
+    Compare(gpu,p,source.s,w,h,{0,0,true});assert(!gpu.CacheBytes());
+    cache.fail=false;Compare(gpu,p,source.s,w,h,{});
+    const auto cached=gpu.UploadedBytes();Compare(gpu,p,source.s,w,h,{1,1,true});
+    assert(gpu.UploadedBytes()==cached);
+    // Invalid direct backend views are rejected before pointer arithmetic/GL writes.
+    Surface bad=source.s;bad.width=0x7FFFFFFF;bad.bpp=32;
+    assert(!gpu.Render({bad,{0,0,w,h},{},1},{nullptr,w,h,0,0}));
+    assert(!gpu.Render({source.s,{-1,0,w,h},{},1},{nullptr,w,h,0,0}));
+    Compare(gpu,p,source.s,w,h,{});
     // A generation reset rebuilds a texture without losing the retained source.
     p.Attach(&gpu);Compare(gpu,p,source.s,w,h,{});
     // A real GL error must reject the frame, then permit a complete retry.

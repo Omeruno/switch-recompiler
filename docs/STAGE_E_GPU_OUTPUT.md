@@ -110,3 +110,14 @@ preserve switch-recompiler-renderer.txt. One comparison session with L+ZL should
 identify software in the report and retain geometry/input behavior. If GPU startup
 fails automatically, preserve the fallback reason in that report. This is a single
 combined checkpoint; E5 remains pending actual Switch output until it arrives.
+
+
+Validation follow-up: optimized actual EGL/GL tests and ASan+UBSan dirty/lifecycle
+tests pass locally. The first full local suite reported failures in the unchanged
+loader rollback tests; ten targeted repeats with the same generated fixtures and
+the complete second suite passed without a loader-code change. Retain that fact
+when interpreting validation; no loader fix or root cause is claimed. The native
+CI dependency step was corrected to dkp-pacman, matching the official container.
+GL tests additionally enforce 4 KiB single-tile upload, zero cursor-only uploads,
+one full upload for widespread damage, recovery without optional texture metadata
+and rejection of invalid dimensions/viewports before GL writes.

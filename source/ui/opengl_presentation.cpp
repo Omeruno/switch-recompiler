@@ -82,16 +82,17 @@ void OpenGlPresentation::Reset() {width_=height_=0;id_=generation_=0;versions_.C
 bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffer& out) {
     uploadedBytes_=0;
     const auto& s=frame.surface;const auto& v=frame.viewport;
-    if(!program_ || !s.Valid() || s.bpp!=32 || s.pitch<s.width*4 || s.pitch%4 ||
+    if(!program_ || !s.Valid() || s.width>8192 || s.height>8192 || s.bpp!=32 || s.pitch<s.width*4 || s.pitch%4 ||
        uint64_t(s.width)*s.height*4>Presentation::MaxFrameBytes || !v.Valid() ||
-       out.width<=0 || out.height<=0 || out.width>8192 || out.height>8192) {
+       out.width<=0 || out.height<=0 || out.width>8192 || out.height>8192 || v.x<0 || v.y<0 ||
+       int64_t(v.x)+v.width>out.width || int64_t(v.y)+v.height>out.height) {
         error_="invalid GPU frame";return false;
     }
     glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture_);
     glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,s.pitch/4);
     const int cols=(s.width+31)/32,rows=(s.height+31)/32;
     const size_t count=size_t(cols)*rows;
-    const bool tracked=frame.tileVersions && frame.tileVersions->size()==count;
+    const bool tracked=frame.owner && frame.serial && frame.resourceId && frame.tileVersions && frame.tileVersions->size()==count;
     bool full=width_!=s.width || height_!=s.height || id_!=frame.resourceId ||
               generation_!=frame.resourceGeneration || versions_.size()!=count || !tracked;
     if(width_!=s.width || height_!=s.height) {
