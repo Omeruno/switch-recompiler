@@ -304,6 +304,7 @@ bool TranslateKey(const Msg& m);
 
 // Время и вывод на экран
 uint32_t NowMs();
+uint32_t RegisterMessage(std::u16string name);
 void PresentIfNeeded(bool force = false);
 
 // Строки гостя по флагу кодировки

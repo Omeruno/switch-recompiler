@@ -88,6 +88,16 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    if $cxx $flags "$root/tests/test_choose_color.cpp" $src -o "$out/test_choose_color" &&
+       "$out/test_choose_color" "$guestRoot/gui_choosecolor.exe" > "$out/choose_color_abort.log" 2>&1 &&
+       "$out/test_choose_color" "$guestRoot/gui_choosecolor.exe" --exit > "$out/choose_color_exit.log" 2>&1; then
+        tail -n 1 "$out/choose_color_abort.log"
+    else
+        echo "   COLOR DIALOG LIFETIME FAILED"
+        tail -n 20 "$out/choose_color_abort.log" 2>/dev/null || true
+        tail -n 20 "$out/choose_color_exit.log" 2>/dev/null || true
+        failed=1
+    fi
     # Real Process allocation/reclamation, including static TLS from MinGW PE.
     if $cxx $flags "$root/tests/test_thread_resources.cpp" $src -o "$out/test_thread_resources" &&
        "$out/test_thread_resources" "$guestRoot/gui_seh.exe" > "$out/test_thread_resources.log" 2>&1; then
@@ -209,6 +219,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 30 "$out/comdlg_open.log" 2>/dev/null || true
         tail -n 30 "$out/comdlg_list.log" 2>/dev/null || true
         tail -n 30 "$out/comdlg_save.log" 2>/dev/null || true
+        failed=1
+    fi
+    # ChooseColor without a guest hook: actual palette and OK mouse input.
+    if (cd "$guestRoot" && "$out/winrun" --new-ui -f 60 -c 8:138:192 -c 16:485:477 gui_choosecolor.exe interactive > "$out/choose_color_interactive.log" 2>&1) &&
+       grep -q "PASSED" "$out/choose_color_interactive.log"; then
+        echo "ChooseColor mouse palette/accept: PASSED"
+    else
+        echo "   COLOR DIALOG INPUT FAILED"
+        tail -n 20 "$out/choose_color_interactive.log"
         failed=1
     fi
     # Run the special-folder test AFTER file-dialog scenarios: it creates

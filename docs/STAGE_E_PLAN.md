@@ -178,3 +178,14 @@ E6 требует самостоятельных оконных слоёв и sc
 текстура готового CPU screen за E6 не засчитывается. Детали, бюджеты и общий
 аппаратный checkpoint: [STAGE_E_GPU_OUTPUT.md](STAGE_E_GPU_OUTPUT.md).
 До exact-SHA CI и аппаратных gates принятая отметка остаётся 50%.
+
+
+## Common color dialog follow-up (2026-10-23)
+
+Exact-SHA CI 2f60dac, run 39853177426: all 6 jobs succeeded. E4 memory/lifetime
+criteria are accepted; Stage E is at 60%. ChooseColorA/W exports and a standard
+modal palette/RGB/custom-color picker are now implemented, including hooks and
+cleanup on guest exit/host abort. E5's final application acceptance remains open
+until Paint's color selection path is verified. Details and regression coverage:
+[PAINT_CHOOSE_COLOR.md](PAINT_CHOOSE_COLOR.md). Original uploaded diagnostics are
+not included in the repository.

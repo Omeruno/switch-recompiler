@@ -394,16 +394,17 @@ const HostFunctionEntry kEntries[] = {
     {"COMDLG32.dll","GetOpenFileNameW",4,CallConv::Stdcall,&GetOpenFileNameW},
     {"COMDLG32.dll","GetSaveFileNameA",4,CallConv::Stdcall,&GetSaveFileNameA},
     {"COMDLG32.dll","GetSaveFileNameW",4,CallConv::Stdcall,&GetSaveFileNameW},
-    {"COMDLG32.dll","CommDlgExtendedError",0,CallConv::Stdcall,&CommDlgExtendedError},
     {"COMDLG32.dll","__FileDialogWndProc",16,CallConv::Stdcall,&HostDialogProc},
 };
 // These exports are part of COMDLG32 regardless of which file-dialog UI is active.
 // MSVC/MFC resolves them dynamically via GetProcAddress (delay-load).
 const HostFunctionEntry kCoreEntries[] = {
+    {"COMDLG32.dll","CommDlgExtendedError",0,CallConv::Stdcall,&CommDlgExtendedError},
     {"COMDLG32.dll","GetFileTitleA",12,CallConv::Stdcall,&GetFileTitleA},
     {"COMDLG32.dll","GetFileTitleW",12,CallConv::Stdcall,&GetFileTitleW},
 };
 const bool kRegisteredCore = RegisterHostFunctions(kCoreEntries, sizeof(kCoreEntries)/sizeof(kCoreEntries[0]));
 const bool kRegistered = RegisterHostFunctionsLayer(kEntries, sizeof(kEntries)/sizeof(kEntries[0]), kUiLayer);
 } // namespace
+void SetCommonDialogError(uint32_t error) {g_extendedError=error;}
 } // namespace win32

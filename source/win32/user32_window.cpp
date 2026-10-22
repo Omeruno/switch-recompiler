@@ -26,6 +26,15 @@ GuestCtx& G() {
     return g;
 }
 
+uint32_t RegisterMessage(std::u16string name) {
+    static std::map<std::u16string,uint32_t> messages;
+    for(char16_t& c:name)if(c>=u'a' && c<=u'z')c=static_cast<char16_t>(c-32);
+    auto it=messages.find(name);if(it!=messages.end())return it->second;
+    const uint32_t id=0xC100+static_cast<uint32_t>(messages.size());
+    if(id>0xFFFF)return 0;
+    messages.emplace(std::move(name),id);return id;
+}
+
 uint32_t NowMs() { return rt::Clock::NowMs(); }
 
 namespace {

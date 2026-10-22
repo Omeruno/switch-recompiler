@@ -800,14 +800,7 @@ FN(InSendMessage) { ENTER; return Ret(SendMessageState() ? 1 : 0); }
 FN(InSendMessageEx) { ENTER; return Ret(SendMessageState()); }
 FN(ReplyMessage) { ENTER; return Ret(ReplyToSender(A(c,m,0)) ? 1 : 0); }
 HostCallOutcome RegisterWindowMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    static std::map<std::u16string, uint32_t> msgs;
-    std::u16string name = ReadText(A(c, m, 0), unicode);
-    for (char16_t& ch : name) if (ch >= 'a' && ch <= 'z') ch = static_cast<char16_t>(ch - 32);
-    auto it = msgs.find(name);
-    if (it != msgs.end()) return Ret(it->second);
-    uint32_t id = 0xC000 + static_cast<uint32_t>(msgs.size()) + 0x100;
-    msgs[name] = id;
-    return Ret(id);
+    return Ret(RegisterMessage(ReadText(A(c,m,0),unicode)));
 }
 AW(RegisterWindowMessage)
 
