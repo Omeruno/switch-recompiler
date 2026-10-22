@@ -103,6 +103,11 @@ GuestExecution разворачивает его оставшиеся натив
   очищает retry token/deadline/timeout marker общим FinishObjectWait. Только
   настоящий pending customReturn сохраняет состояние. Это исключает перенос
   старого deadline ошибочного wait-all в следующий независимый single wait.
+- После APC dispatcher, даже если ни один callback не доставлен, alertable
+  object wait повторно проверяет lifecycle и HANDLE set до consume/park.
+  Dispatcher мог отдать квант, а peer — отменить pending timer APC и закрыть
+  объект. Использовать preflight до такого yield уже нельзя. USER32 MsgWait
+  повторяет preflight после своего platform/checkpoint участка.
 - `runtime/handle_table.*`: единое пространство файлов, потоков, событий,
   мьютексов, семафоров и waitable timers. Числовой HANDLE — отдельная ссылка на общий объект,
   дубликат получает новое значение. В пределах Process номера не повторяются.

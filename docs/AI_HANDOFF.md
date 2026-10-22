@@ -885,3 +885,64 @@ waits, timer callback blocking/ExitThread and teardown boundaries. I/O completio
 APCs, IPC/token/DACL/child inheritance, input/focus/hooks ownership and full
 process/DLL shutdown remain separate; do not drift into JIT/GPU/shell or imply
 hardware validation. Do not create/extend automation or change branches.
+
+
+## 2026-10-22 current package: post-APC wait revalidation and mixed/exit boundaries
+
+Incoming HEAD `0a09a4358c25053dd77b48d5550032e92b240967` was clean and matched
+remote. Exact [CI 39713383159](https://github.com/Omeruno/switch-recompiler/actions/runs/39713383159)
+passed all five jobs. No active workflow, competing compiler/test process or
+unfinished local edits; no extra AGENTS.md/CLAUDE.md in this checkout.
+
+- Reproduced BEFORE patch: alertable wait validates [HANDLE A, ready auto-event
+  B]; its pending timer-APC dispatcher yields at a quantum checkpoint. A peer
+  cancels that queued APC and closes A. Dispatch returns false (no callback),
+  then the old code directly polls the previously validated set. Wait-any
+  returned index 1 and consumed B despite invalid A; all/single could instead
+  time out or park on a HANDLE already closed, losing its close wakeup.
+  Native baseline log: /tmp/switch-apc-validation-before.log (transient),
+  mode 0 returned 0x1/error 0. Closed-active-HANDLE behavior remains runtime's
+  defensive policy, not a claim that Windows defines this action.
+- AlertableObjectWait now checks thread/process continuation state AND validates
+  all object HANDLEs again after DispatchUserApcs returns without delivery,
+  before token acquisition or parking. Applies to Ex single/multiple and
+  SignalObjectAndWait through the common loop. Sleep-only has no HANDLE set.
+  USER32 MsgWait already validated again after its platform-processing checkpoint;
+  it does not need a duplicate change. APC-delivered WAIT_IO_COMPLETION behavior
+  and one-shot signal semantics are unchanged.
+- New mandatory test_alertable_revalidation uses real saved native continuations
+  and HLE stdcall entry points, forcing precisely the 256-operation checkpoint
+  between initial validation and APC pop. Covers wait-any/all/single/combined,
+  canceled callback with closed HANDLE, WAIT_FAILED/6 and preservation of ready
+  auto-event tokens; combined signal still occurs once. Proven failing before
+  patch, all four scenarios pass after it.
+- New gui_thread_mixed_apc runs 12 Win32 mixed MsgWait/timer/APC rounds. Timer
+  callback blocks in a normal kernel wait while main queues sent and posted
+  messages, an ordinary user APC and signals an auto-event. Ordinary callback
+  wait does not dispatch APC/messages. Main cancels periodic pending timer APCs
+  and closes its last named handle while its native callback stack is parked;
+  a different object can immediately reuse that name. After gate release the
+  ordinary APC drains, original MsgWait returns IO_COMPLETION, event token and
+  queued messages remain for explicit waits/PeekMessage, and sent WndProc runs
+  on owner CPU/TEB/TLS. Finite waits bound regression failures.
+- New gui_thread_timer_exit executes ExitThread(77) inside a periodic timer APC
+  while owning a HWND/mutex and queuing an additional ordinary APC. Checks no
+  guest instructions after ExitThread or after outer SleepEx, queued APC drop,
+  owner-context window destruction/TLS, thread exit code, mutex abandonment,
+  timer cancellation with retained signaled state and no later periodic fire.
+- Full mandatory native/x86 local suite passed after source changes with
+  -fno-rtti/-fno-exceptions, including all original SEH/continuation/timer/wait
+  regressions and the new four-case revalidation test. Log (transient):
+  /tmp/switch-mixed-waits-host.log. Local MinGW/32-bit libc still unavailable;
+  new guests/oracle/ARM64/Switch require exact new-SHA Actions verification.
+  No physical Switch or proprietary Paint testing performed in this package.
+
+Stage C remains ~90%: acceptance coverage and correctness improved; no new
+large feature block or hardware acceptance is claimed. Remaining actual gates
+include physical Switch continuation/GUI/thread acceptance and targeted audit
+of untested shutdown/cancellation interactions. Avoid endlessly inflating this
+estimate through more tests alone. Full process/DLL shutdown and unload/refcount
+contracts are still concrete next roadmap foundation work; input/focus/hooks,
+I/O completion APCs and real IPC/token/DACL/child inheritance remain separate.
+Do not advance JIT/GPU/shell before their acceptance gates, change branches,
+create automation or extend the existing run series.

@@ -463,7 +463,14 @@ uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
     for (;;) {
         if (!rt::GuestExecution::Checkpoint()) return 0xffffffffu;
         if (!ValidateWaitObjects(memory,handles,all)) return 0xffffffffu;
-        if (enableApcs && DispatchUserApcs(state,memory)) return 0xc0;
+        if (enableApcs) {
+            if (DispatchUserApcs(state,memory)) return 0xc0;
+            // Dispatch can yield, then a peer can cancel the queued timer APC
+            // without any callback being delivered. Recheck both lifecycle and
+            // HANDLE set after returning, before consuming tokens or parking.
+            if (!rt::GuestExecution::Checkpoint()) return 0xffffffffu;
+            if (!sleepOnly && !ValidateWaitObjects(memory,handles,all)) return 0xffffffffu;
+        }
         if (!sleepOnly) {
             uint32_t result=PollWaitObjects(handles,all);
             if (result!=0x102) return result;
