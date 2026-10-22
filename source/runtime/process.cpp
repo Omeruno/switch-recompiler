@@ -783,6 +783,9 @@ bool Process::NotifyProcessExit(GuestThread& thread) {
 bool Process::NotifyThread(GuestThread& thread, uint32_t reason) {
     LoaderLock lock(*this);
     if (!lock) return false;
+    // A peer may have finished exiting while this caller parked on the
+    // loader lock. Its TEB/TLS must now survive for PROCESS_DETACH instead.
+    if (reason==3 && !scheduler_.HasLivePeer(thread.id)) return true;
     // A DLL loaded by this notification gets PROCESS_ATTACH on this thread,
     // never a retrospective THREAD_ATTACH. Detach visits current modules.
     auto order=initializationOrder_;

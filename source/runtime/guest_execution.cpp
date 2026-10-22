@@ -75,10 +75,20 @@ void GuestExecution::Run(void* arg) {
         !executor.stopped_ && !win32::g_guestExitRequested) {
         thread.detaching=true;
         win32::user::CleanupThreadWindows(thread.id);
-        executor.process_.NotifyThread(thread,3);
+        // A last-thread exit is process shutdown, not an extra round of
+        // thread detach followed by reclamation of the caller's TLS/TEB.
+        if (executor.process_.Scheduler().HasLivePeer(thread.id))
+            executor.process_.NotifyThread(thread,3);
         thread.detaching=false;
-        if (!executor.stopped_ && !win32::g_guestExitRequested)
-            executor.process_.Scheduler().Exit(thread,thread.requestedExitCode);
+        if (!executor.stopped_ && !win32::g_guestExitRequested) {
+            if (executor.process_.Scheduler().HasLivePeer(thread.id))
+                executor.process_.Scheduler().Exit(thread,thread.requestedExitCode);
+            else {
+                executor.process_.processExitThread_=&thread;
+                win32::g_guestExitCode=int32_t(thread.requestedExitCode);
+                win32::g_guestExitRequested=true;
+            }
+        }
     }
 }
 void GuestExecution::Resume(Continuation& continuation) {

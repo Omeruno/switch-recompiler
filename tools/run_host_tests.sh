@@ -98,7 +98,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         failed=1
     fi
     if $cxx $flags "$root/tests/test_process_detach.cpp" $src -o "$out/test_process_detach" &&
-       "$out/test_process_detach" "$guestRoot/gui_process_detach.exe" > "$out/test_process_detach.log" 2>&1; then
+       "$out/test_process_detach" "$guestRoot/gui_process_detach.exe" "$guestRoot/gui_last_thread_exit.exe" > "$out/test_process_detach.log" 2>&1; then
         tail -n 1 "$out/test_process_detach.log"
     else
         echo "   PROCESS DETACH REGRESSION FAILED"
@@ -125,6 +125,9 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     for exe in "$guestRoot"/*.exe; do
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
+        # Intentionally exits with 55; all six modes are checked by the
+        # post-exit inspector above, including retained DLL state and code.
+        [ "$(basename "$exe")" = "gui_last_thread_exit.exe" ] && continue
         # программы работают в своём каталоге: C:\ гостя = свежий guest-run каталог
         if (cd "$guestRoot" && "$out/winrun" "$exe" > "$out/$(basename "$exe").log" 2>&1); then
             tail -n 1 "$out/$(basename "$exe").log"

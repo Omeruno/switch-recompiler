@@ -6,6 +6,7 @@ typedef struct {
     LifeEvent events[256];
     DWORD exitTest,exitMode,exitOwner;
     HANDLE exitBlocked,exitSuspended,exitFinished;
+    HANDLE exitDetachGate;
 } LifeState;
 #ifdef LIFE_STATE_IMPL
 #define LIFE_IMPORT __declspec(dllexport)

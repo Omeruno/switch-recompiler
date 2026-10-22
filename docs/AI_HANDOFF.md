@@ -1077,3 +1077,48 @@ Stage C remains ~90%. Next: last-thread ExitThread/worker-return and startup
 failure process-shutdown bridge, followed by DLL unload/refcounts/rollback.
 Keep native abort separate from orderly guest teardown and retain hardware
 acceptance gate; do not advance JIT/GPU/shell or change the agreed branch.
+
+
+## Last-thread process-shutdown bridge (2026-10-22)
+
+Incoming HEAD **a39aa84cbd0d44db9e19364ce55447243db3f988**, all five jobs
+green in [39730901919](https://github.com/Omeruno/switch-recompiler/actions/runs/39730901919).
+Remote ref/branch matched local, worktree clean, no running build/test process
+or active prior CI. No competing change or uncommitted package was present.
+
+- Confirmed gap: last ExitThread directly finalized its HANDLE and stack/TEB/TLS
+  without process detach. Extended mandatory native regression failed on old
+  code expecting Stopped/global process code rather than an empty scheduler.
+- GuestExecution now selects process shutdown for a last ExitThread/worker
+  return before ordinary thread detach/finalization. Original native callbacks
+  still unwind normally; window cleanup remains on owner. Common process phase
+  retains TEB/TLS and unsignaled requester HANDLE until DLL/TLS process callbacks
+  finish, preserves requested code and drops pending APC/timers/owned mutexes.
+- Re-check live peers after acquiring the cooperative loader lock: a requester
+  parked behind another thread's DLL_THREAD_DETACH may now be last. Skip the
+  extra thread notifications and use process detach once. Created/suspended
+  peers remain live; no premature whole-process termination. Native/manual
+  scheduler Exit and host abort retain their existing explicit control semantics.
+- New source-only gui_last_thread_exit and expanded post-exit inspector cover
+  six real IA-32/Win32 scenarios: main ExitThread(55), main ExitThread(73) leaving
+  a final worker, worker return(55), ExitThread inside user APC, peer wakes during
+  DLL_THREAD_DETACH/Sleep while loader lock held, and CREATE_SUSPENDED last peer.
+  Host inspector resumes the latter only after proving the main thread has
+  exited without process detach and the suspended worker's TEB/TLS remain live.
+  Exact callback order/count, nonzero reserved, owner TLS/CPU, no final-owner
+  THREAD_DETACH, retained peer codes(73), final process code(55), mapping release,
+  APC drop, callback-free timer cancellation and mutex abandonment are checked.
+- The nonzero-exit fixture is intentionally handled by the post-exit inspector,
+  not the generic zero-exit guest loop. Existing four ExitProcess/CRT/abort
+  cases and old lifecycle guests remain mandatory, using the same DLL sources.
+- Full local native/x86 mandatory suite passed with -fno-rtti/-fno-exceptions.
+  New/extended inspector compiled locally. Log: /tmp/switch-last-thread-host.log
+  (transient). Local MinGW and 32-bit libc remain unavailable; exact new-SHA CI
+  must run all ten inspector modes/Win32 fixtures, CPU oracle, ARM64 and Switch.
+
+Reference for last-thread termination: [ExitThread](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitthread).
+Remaining concrete foundation work: startup failure/partial attach shutdown,
+startup blocking waits, DLL unload/refcounts/rollback. No claim of full NT
+shutdown, TerminateThread or physical Switch verification. Stage C stays ~90%;
+functional boundary closure does not remove its hardware acceptance gate.
+Keep all changes on the agreed branch and do not extend/create automation.

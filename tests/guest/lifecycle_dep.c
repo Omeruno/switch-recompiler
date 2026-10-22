@@ -15,7 +15,7 @@ void life_record(DWORD module,DWORD kind,DWORD reason,DWORD value,DWORD reserved
             WaitForSingleObject(GetCurrentThread(),0)!=WAIT_TIMEOUT) state.failure|=256;
         for(i=0;i<3;++i)
             if(WaitForSingleObject(peers[i],0)!=WAIT_OBJECT_0 ||
-               !GetExitCodeThread(peers[i],&code) || code!=(i==2?73:0)) state.failure|=512;
+               !GetExitCodeThread(peers[i],&code) || code!=((state.exitTest==2 || i==2)?73:0)) state.failure|=512;
         if (!GetModuleHandleA("lifecycle_dep.dll") ||
             !GetProcAddress(GetModuleHandleA("lifecycle_dep.dll"),"life_state")) state.failure|=1024;
         if (!LoadLibraryA("lifecycle_top.dll")) state.failure|=65536;

@@ -77,8 +77,12 @@
   и rollback не реализованы. Повторный exit/ExitThread из detach обрывает
   оставшиеся callbacks без повтора, сохраняется первый process exit code.
   Вложенный executor передаёт identity requester внешнему владельцу сессии.
-  Host abort/destructor не инициирует эту фазу. Последний ExitThread без
-  ExitProcess и startup failure требуют отдельного process-shutdown bridge.
+  Host abort/destructor не инициирует эту фазу. Последний ExitThread/worker
+  return также выбирает process-detach до сигнализации HANDLE/освобождения
+  TEB/TLS, без дополнительного DLL_THREAD_DETACH. Проверка живых peers
+  повторяется после захвата loader lock: ожидающий мог стать последним.
+  Suspended/created peers считаются живыми. Startup failure остаётся отдельным
+  контрактом: инициализация до GuestExecution пока синхронная.
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
   MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.
@@ -143,7 +147,7 @@ GuestExecution разворачивает его оставшиеся натив
   мьютексы становятся abandoned. Получивший владение возвращает
   WAIT_ABANDONED с нужным индексом. Незавершённый wait-all владение не забирает.
 - `ExitThread` завершает только выбранный поток, включая главный.
-  При завершении последнего потока циклы выходят с его кодом; `ExitProcess`
+  Последний ExitThread/worker return проходит process-detach с его кодом; `ExitProcess`
   и возврат из точки входа EXE по-прежнему завершают процесс целиком.
 
 HANDLE table хранит отдельные access mask и INHERIT/PROTECT_FROM_CLOSE flags
@@ -171,7 +175,7 @@ Global отдельно; это разделение имён внутри ед�
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
 полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
 сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
-загрузки, process shutdown после последнего ExitThread/startup failure и TerminateThread.
+загрузки, process shutdown после startup failure и TerminateThread.
 Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
 блокирующие ожидания между гостевыми потоками из startup DllMain.
 Стандартные HANDLE консоли

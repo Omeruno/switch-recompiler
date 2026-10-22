@@ -34,6 +34,10 @@ BOOL WINAPI DllMainCRTStartup(HINSTANCE module,DWORD reason,LPVOID reserved) {
         Sleep(3); // a peer's TLS/DllMain must not enter while this is parked
         state->busyTid=0;
     }
+    if (LIFE_ID==2 && reason==DLL_THREAD_DETACH && state->exitTest==2 && state->exitMode==4) {
+        SetEvent(state->exitDetachGate);
+        Sleep(5); // peer requests ExitThread and parks on this loader lock
+    }
     if (LIFE_ID==4 && reason==DLL_PROCESS_ATTACH) {
         state->lateAttaches++;
         state->busyTid=GetCurrentThreadId();
