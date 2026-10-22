@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified incoming GitHub state: **83b299be01406d86d0796107d9b1c309b9ab0257**, branch `claude/wonderful-hawking-10mpr0` (2026-10-21). All four jobs passed in run [39650590532](https://github.com/Omeruno/switch-recompiler/actions/runs/39650590532). This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified implementation GitHub state: **0280f43a44b138a5decca7ff6eb375a6d7823674**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39723997023](https://github.com/Omeruno/switch-recompiler/actions/runs/39723997023), including the execution-stop guest and real thread-memory regression. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -990,3 +990,21 @@ loader work. Stage C remains ~90%; additional boundary correctness is not a new
 large feature block. Physical Switch acceptance remains unperformed. Continue
 with concrete shutdown/input ownership gaps and loader foundations, without
 advancing JIT/GPU/shell gates or committing proprietary Microsoft binaries.
+
+
+### Verified execution-stop CI results
+Implementation commit **0280f43a44b138a5decca7ff6eb375a6d7823674**: all five
+jobs green in [39723997023](https://github.com/Omeruno/switch-recompiler/actions/runs/39723997023).
+Fetched host-job logs confirm the new test_execution_stop, 256 real thread
+reclamations plus live-stop/suspended-worker and nested-executor isolation,
+and gui_thread_process_stop all PASSED; entire native/x86/MinGW guest suite
+passed. CPU oracle: three 50,000-case runs, zero differences. ARM64 native
+continuation ABI/QEMU, main Switch NRO and existing isolated probe NRO builds
+passed. No physical Switch acceptance is inferred. This documentation follow-up
+also preserves the test runner executable bit. Verify any later HEAD separately.
+
+Next concrete foundation contract: orderly process DLL_PROCESS_DETACH and its
+interaction with cancellation, loader lock and already-exited workers; do not
+confuse the now-verified native abort cleanup with guest DLL process shutdown.
+Unload/refcounts/rollback and input/focus/hooks ownership remain open. Stage C
+is still ~90% and hardware acceptance remains a separate gate.
