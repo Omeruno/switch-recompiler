@@ -1608,3 +1608,18 @@ historical hardware-result commit was found in the inspected history/docs.
 Next package remains E1. Experimental dynarec may use this basic feasibility
 result, with code-cache rewrite/invalidation/icache/lifetime and fallback
 validated during actual integration and its next meaningful hardware test.
+
+
+## 2026-10-22 Stage E implementation plan accepted for next work
+
+User requested the next stage broken into necessary steps through 100%.
+See docs/STAGE_E_PLAN.md: ten weighted acceptance packages E0–E9. First
+coherent implementation block is E0–E2 (35% only after gates), auditing the
+existing Surface/GDI/PresentIfNeeded/Platform.present and Switch full-frame
+CPU conversion/cursor path, then extracting an actual software backend with
+pixel-equivalence and lifecycle tests. Existing abstractions are reused.
+Remaining packages: dirty updates, resource lifetime, real Switch GPU output,
+window composition, measured caches/batching, performance and hardware gate.
+No engineering percentage is credited merely for this plan. No JIT/shell/
+DirectX scope expansion hidden in E. Basic JIT 42 result remains user-reported
+confirmed; original codes/mode not recovered. No need to repeat that tiny probe.
