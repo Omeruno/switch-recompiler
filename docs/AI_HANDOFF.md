@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **0280f43a44b138a5decca7ff6eb375a6d7823674**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39723997023](https://github.com/Omeruno/switch-recompiler/actions/runs/39723997023), including the execution-stop guest and real thread-memory regression. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
+Last verified implementation GitHub state: **6dcc8c42c3e5106339c848cd394853cc6e4582b5**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39730636783](https://github.com/Omeruno/switch-recompiler/actions/runs/39730636783), including the four-scenario post-exit DLL/TLS inspector. This file is coordination documentation, **not** a substitute for the actual branch HEAD, diffs or test results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1058,3 +1058,22 @@ ExitThread/worker return and startup failure to process shutdown; then DLL
 unload/refcounts/rollback. Startup blocking waits, TerminateThread, security/IPC
 and physical Switch acceptance remain open. Stage C stays ~90%, without an
 automatic percentage increase for another shutdown regression package.
+
+
+### Verified orderly process-detach CI results
+Implementation **6dcc8c42c3e5106339c848cd394853cc6e4582b5**, all five jobs
+PASSED in [39730636783](https://github.com/Omeruno/switch-recompiler/actions/runs/39730636783).
+Fetched host logs confirm the four-scenario main/worker APC, CRT return and
+host-abort inspector PASSED, including order/count/reserved/TLS/loader/peer
+state and disabled/failed DLL checks. Expanded native execution-stop/entry
+RET/nested-owner regression, real thread-resource reclamation and the entire
+previous native/x86/MinGW suite passed. CPU oracle: 3 x 50,000, no differences.
+ARM64 continuation ABI/QEMU, Switch NRO and existing separate probe NRO builds
+passed. Local worktree synchronized to that exact code tree; no physical
+Switch validation claimed. The following documentation-only commit must also
+receive its own exact-SHA CI verification.
+
+Stage C remains ~90%. Next: last-thread ExitThread/worker-return and startup
+failure process-shutdown bridge, followed by DLL unload/refcounts/rollback.
+Keep native abort separate from orderly guest teardown and retain hardware
+acceptance gate; do not advance JIT/GPU/shell or change the agreed branch.
