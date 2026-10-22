@@ -1008,3 +1008,53 @@ interaction with cancellation, loader lock and already-exited workers; do not
 confuse the now-verified native abort cleanup with guest DLL process shutdown.
 Unload/refcounts/rollback and input/focus/hooks ownership remain open. Stage C
 is still ~90% and hardware acceptance remains a separate gate.
+
+
+## Orderly process-detach boundary (2026-10-22)
+
+Incoming HEAD **5012aedd98cb7703170c624a90a92c086cee87be**, all five jobs
+green in [39724317735](https://github.com/Omeruno/switch-recompiler/actions/runs/39724317735).
+Ref and clean branch/worktree checked; no active prior build or competing CI.
+No proprietary binaries used. Work remains only on the agreed branch.
+
+- Added distinct cooperative process-exit notification phase for ExitProcess,
+  CRT exit and runtime entry RET observed by RunOne. First unwind all original
+  saved native stacks; cancel timers/APCs and terminate peers without thread
+  detach. Keep requesting thread and its stack/TEB/TLS live until process
+  callbacks finish on a fresh native fiber. Then signal/reclaim requester.
+- Completed initialization order is traversed in reverse once; EXE TLS and
+  DLL TLS/DllMain receive PROCESS_DETACH and nonzero reserved. Thread-notification
+  disabling does not suppress process callbacks. Failed/partial attach modules
+  are excluded. Recursive loader queries of existing modules remain valid;
+  no new modules or workers are admitted during shutdown. No unload/refcount
+  or rollback contract is claimed. Sleep/finite waits can yield normally.
+- Recursive exit/ExitThread during detach ends remaining notifications without
+  repeating completed callbacks; first process code wins. Host abort/destructor
+  remains native-only. Nested executors defer shared process teardown and
+  preserve the original requester identity for the outer owner.
+- Expanded mandatory native test_execution_stop: actual ExitProcess and entry
+  RET from worker, parked peer, nested executors, RAII/mapping lifetime and
+  finalized tombstones before reporting Stopped. Reproduced failing before
+  patch (HasLiveThreads remained true); patched cases pass. Full mandatory
+  host/native/x86 suite passed with -fno-rtti/-fno-exceptions; targeted expanded
+  test rerun and new host-inspection harness compile passed. Local log:
+  /tmp/switch-process-detach-host.log (transient).
+- New source-only gui_process_detach MinGW fixture and mandatory host inspector
+  exercise main APC exit, worker APC exit, CRT/main return and host-abort
+  control. Inspector reads retained DLL data after termination: exact callback
+  order/count, requester thread/TLS, nonzero reserved, live requester vs already
+  terminated peer HANDLEs/codes, prior completed worker code, forced peers with
+  no THREAD_DETACH, disabled/failed modules, recursive loader lookup, finite
+  Sleep, pending APC/timer cleanup and final mapping release. Abort must have
+  zero PROCESS_DETACH. Existing lifecycle fixtures extended with guarded checks.
+- Local MinGW/32-bit libc remain unavailable: guest execution/resource inspection,
+  CPU oracle, ARM64/QEMU and Switch builds still require exact new-SHA CI.
+
+References used for the process/thread ordering and reserved-pointer contract:
+[ExitProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess),
+[DllMain](https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain).
+This is not full NT process shutdown. Next bounded contracts: connect the last
+ExitThread/worker return and startup failure to process shutdown; then DLL
+unload/refcounts/rollback. Startup blocking waits, TerminateThread, security/IPC
+and physical Switch acceptance remain open. Stage C stays ~90%, without an
+automatic percentage increase for another shutdown regression package.

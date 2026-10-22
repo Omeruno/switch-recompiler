@@ -30,6 +30,8 @@ private:
         HostFiber fiber;
     };
     static void Run(void* arg);
+    static void RunProcessExit(void* arg);
+    bool BeginProcessExit(GuestThread& thread);
     bool CheckCurrent();
     void SuspendCurrent();
     void Resume(Continuation& continuation);
@@ -42,5 +44,7 @@ private:
     GuestExecution* previous_=nullptr;
     uint32_t operations_=0;
     bool stopped_=false;
+    bool processExiting_=false;
+    int32_t processExitCode_=0;
 };
 } // namespace rt

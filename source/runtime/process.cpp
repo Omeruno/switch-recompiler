@@ -240,6 +240,7 @@ Module* Process::LoadLibrary(const std::string& name, std::string& error) {
         if (m->initializationFailed) { error=n+": previous load/initialization failed"; return nullptr; }
         return m;
     }
+    if (shuttingDown_) { error="new module load during process shutdown"; return nullptr; }
     if (!IsAlwaysHle(n)) {
         std::string path = FindFile(n);
         if (!path.empty()) return LoadModuleFile(path, n, error);
@@ -567,6 +568,7 @@ GuestThread* Process::FindThread(uint32_t id) {
 GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t parameter,
                                         uint32_t stackReserve, bool suspended,
                                         std::string& error) {
+    if (shuttingDown_) { error="thread creation during process shutdown"; return nullptr; }
     if (!threadReady_ || !main_) {
         error = "guest process main thread is not ready";
         return nullptr;
@@ -679,11 +681,11 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
     return result;
 }
 
-void Process::StopThreads(uint32_t code) {
+void Process::StopThreads(uint32_t code, GuestThread* except) {
     // Abort cleanup runs only after saved native stacks have unwound. Do not
     // call guest DLL/WndProc detach code here. Keep HANDLE/exit tombstones.
     for (auto& timer:handles_.Timers()) CancelTimer(*timer,&scheduler_);
-    scheduler_.ExitAll(code);
+    scheduler_.ExitAll(code,except);
 }
 
 void Process::ReleaseThreadMemory(GuestThread& thread) {
@@ -693,14 +695,14 @@ void Process::ReleaseThreadMemory(GuestThread& thread) {
     thread.memoryReleased=true;
 }
 
-bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason) {
+bool Process::CallTls(cpu::CpuState& state, Module& module, uint32_t reason, uint32_t reserved) {
     if (!module.tlsCallbacks) return true;
     const uint32_t teb=CurrentTebAddress();
     for (uint32_t i=0;i<64;++i) {
         const uint32_t callback=mem_.Read32(module.tlsCallbacks+i*4);
         if (!callback) break;
         cpu::CpuState local=state;
-        win32::CallGuestFunctionStdcall(local,mem_,callback,{module.base,reason,0},teb,teb);
+        win32::CallGuestFunctionStdcall(local,mem_,callback,{module.base,reason,reserved},teb,teb);
         if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
     }
     return true;
@@ -747,12 +749,33 @@ bool Process::InitializeModules(cpu::CpuState& state, std::string& error) {
 }
 
 bool Process::InitializeNewModules(cpu::CpuState& state, std::string& error) {
+    if (shuttingDown_) return true; // queries of existing modules cannot attach new ones
     LoaderLock lock(*this);
     if (!lock) { error="loader initialization interrupted"; return false; }
     for (size_t i=0;i<modules_.size();++i) {
         Module* module=modules_[i].get();
         if (module==main_ || module->initializationFailed) continue;
         if (!InitializeModule(state,module,error)) return false;
+    }
+    return true;
+}
+
+bool Process::NotifyProcessExit(GuestThread& thread) {
+    LoaderLock lock(*this);
+    if (!lock) return false;
+    auto order=initializationOrder_;
+    std::reverse(order.begin(),order.end());
+    for (Module* module:order) {
+        if (module->processDetached) continue;
+        // Mark before entering guest code: a recursive exit must not repeat it.
+        module->processDetached=true;
+        if (!CallTls(thread.cpu,*module,0,1)) return false;
+        if (module->isDll && module->entryRva) {
+            cpu::CpuState local=thread.cpu;
+            win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+                {module->base,0,1},thread.teb,thread.teb);
+            if (win32::g_guestExitRequested || !GuestExecution::Checkpoint()) return false;
+        }
     }
     return true;
 }

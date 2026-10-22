@@ -258,8 +258,8 @@ public:
         if (onExit_) onExit_(thread);
     }
 
-    void ExitAll(uint32_t code) {
-        for (GuestThread* thread:threads_) Exit(*thread,code);
+    void ExitAll(uint32_t code, GuestThread* except=nullptr) {
+        for (GuestThread* thread:threads_) if (thread!=except) Exit(*thread,code);
     }
 
     size_t Size() const { return threads_.size(); }

@@ -4,6 +4,8 @@ typedef struct { DWORD module, kind, reason, tid, value, reserved; } LifeEvent;
 typedef struct {
     DWORD count, failure, busyTid, lateAttaches;
     LifeEvent events[256];
+    DWORD exitTest,exitMode,exitOwner;
+    HANDLE exitBlocked,exitSuspended,exitFinished;
 } LifeState;
 #ifdef LIFE_STATE_IMPL
 #define LIFE_IMPORT __declspec(dllexport)

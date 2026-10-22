@@ -97,6 +97,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 20 "$out/test_thread_resources.log"
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_process_detach.cpp" $src -o "$out/test_process_detach" &&
+       "$out/test_process_detach" "$guestRoot/gui_process_detach.exe" > "$out/test_process_detach.log" 2>&1; then
+        tail -n 1 "$out/test_process_detach.log"
+    else
+        echo "   PROCESS DETACH REGRESSION FAILED"
+        tail -n 30 "$out/test_process_detach.log"
+        failed=1
+    fi
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
     if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then

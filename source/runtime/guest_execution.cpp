@@ -98,6 +98,49 @@ void GuestExecution::Resume(Continuation& continuation) {
     win32::g_tebAddr=teb;
     errno=error;
 }
+bool GuestExecution::BeginProcessExit(GuestThread& thread) {
+    processExiting_=true;
+    processExitCode_=win32::g_guestExitCode;
+    stopped_=true;
+    // The requester's original guest/native frames have already returned.
+    // Unwind every parked peer before their loader/window RAII or TEB is lost.
+    for (auto& item:continuations_)
+        if (item.second && item.second->fiber.Started() && !item.second->fiber.Finished())
+            Resume(*item.second);
+    process_.shuttingDown_=true;
+    process_.StopThreads(uint32_t(processExitCode_),&thread);
+    ReapExited();
+    continuations_.erase(thread.id);
+    auto created=std::unique_ptr<Continuation>(new (std::nothrow) Continuation());
+    if (!created) return false;
+    created->owner=this; created->thread=&thread;
+    if (!created->fiber.Initialize(&RunProcessExit,created.get(),
+            &thread==&process_.MainThread() ? 2*1024*1024 : 512*1024)) return false;
+    continuations_[thread.id]=std::move(created);
+    process_.Scheduler().InterruptWait(thread);
+    thread.status=GuestThreadStatus::Runnable;
+    thread.waitObject=thread.retryWaitToken=thread.timedOutHandle=0;
+    thread.waitDeadlineUs=thread.retryWaitDeadlineUs=thread.sleepDeadlineUs=0;
+    thread.waitHandles.clear(); thread.waitAll=thread.sleeping=false;
+    thread.suspendCount=0; thread.yieldRequested=false;
+    thread.pendingApcs.clear(); thread.alertableWait=false;
+    thread.exitRequested=false; thread.detachAborted=false; thread.detaching=true;
+    // Only the dedicated detach fiber may now execute guest instructions.
+    win32::g_guestExitRequested=false;
+    stopped_=false;
+    return true;
+}
+void GuestExecution::RunProcessExit(void* arg) {
+    auto& continuation=*static_cast<Continuation*>(arg);
+    auto& executor=*continuation.owner;
+    auto& thread=*continuation.thread;
+    executor.process_.NotifyProcessExit(thread);
+    thread.detaching=false;
+    executor.process_.Scheduler().Exit(thread,uint32_t(executor.processExitCode_));
+    executor.stopped_=true;
+    win32::g_guestExitCode=executor.processExitCode_;
+    win32::g_guestExitRequested=true;
+}
 void GuestExecution::ReapExited() {
     for (auto it=continuations_.begin();it!=continuations_.end();) {
         auto& continuation=it->second;
@@ -144,6 +187,15 @@ GuestExecution::Result GuestExecution::RunOne() {
     }
     Resume(*continuation);
     ReapExited();
+    if (win32::g_guestExitRequested && !processExiting_) {
+        if (!process_.processExitThread_) process_.processExitThread_=thread;
+        // A nested executor leaves the shared process's live native stacks
+        // to its outer owner. Keep the original requesting thread identity.
+        for (auto* owner=previous_;owner;owner=owner->previous_)
+            if (&owner->process_==&process_) return Result::Stopped;
+        if (!BeginProcessExit(*process_.processExitThread_)) return Result::AllocationFailed;
+        return RunOne();
+    }
     return stopped_ || win32::g_guestExitRequested ? Result::Stopped : Result::Ran;
 }
 } // namespace rt

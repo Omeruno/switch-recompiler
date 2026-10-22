@@ -64,8 +64,21 @@
   оставляет эту работу внешнему владельцу. ExitProcess/RET сохраняют код
   процесса; остановка хостом помечает оставшиеся потоки STATUS_UNSUCCESSFUL
   (0xC0000001). Ранее завершённые потоки сохраняют свои коды. HANDLE и PEB
-  остаются до уничтожения Process. Это аварийная очистка исполнения без
-  новых guest callbacks; полноценный DLL_PROCESS_DETACH остаётся отдельным.
+  остаются до уничтожения Process. Host abort не запускает новые guest callbacks.
+- При ExitProcess/CRT exit/entry RET внутри RunOne процесс проходит отдельную
+  cooperative detach-фазу. Сначала дренируются native frames и завершаются peers
+  без DLL_THREAD_DETACH; затем на новом fiber исходного requester, с его TEB/TLS,
+  идут EXE TLS и DLL_PROCESS_DETACH в обратном завершённом initializationOrder.
+  TLS предшествует DllMain внутри модуля, reserved ненулевой; disabled thread
+  calls не отключают process callbacks, failed/partial attach не включены.
+  Только после уведомлений сигналится requester HANDLE и освобождается память.
+  Loader lock рекурсивен, Sleep/finite waits могут отдавать квант, existing
+  module queries разрешены. Новые DLL/потоки при shutdown отвергаются; unload
+  и rollback не реализованы. Повторный exit/ExitThread из detach обрывает
+  оставшиеся callbacks без повтора, сохраняется первый process exit code.
+  Вложенный executor передаёт identity requester внешнему владельцу сессии.
+  Host abort/destructor не инициирует эту фазу. Последний ExitThread без
+  ExitProcess и startup failure требуют отдельного process-shutdown bridge.
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
   MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.
@@ -158,7 +171,7 @@ Global отдельно; это разделение имён внутри ед�
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
 полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
 сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
-загрузки, полноценного PROCESS_DETACH/ExitProcess shutdown и TerminateThread.
+загрузки, process shutdown после последнего ExitThread/startup failure и TerminateThread.
 Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
 блокирующие ожидания между гостевыми потоками из startup DllMain.
 Стандартные HANDLE консоли

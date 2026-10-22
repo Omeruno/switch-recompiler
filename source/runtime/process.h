@@ -41,6 +41,7 @@ struct Module {
     bool initializing = false;
     bool initializationFailed = false;
     bool threadCallsDisabled = false;
+    bool processDetached = false;
 
     // Разложенный образ (копия того, что в памяти гостя на момент загрузки) —
     // для ресурсов и разбора каталогов.
@@ -157,11 +158,12 @@ private:
     friend class GuestExecution;
     // Only after all native frames of this thread have returned to scheduler.
     void ReleaseThreadMemory(GuestThread& thread);
-    void StopThreads(uint32_t code);
+    void StopThreads(uint32_t code, GuestThread* except=nullptr);
+    bool NotifyProcessExit(GuestThread& thread);
     bool NotifyThread(GuestThread& thread, uint32_t reason);
     bool AcquireLoaderLock();
     void ReleaseLoaderLock();
-    bool CallTls(cpu::CpuState& state, Module& module, uint32_t reason);
+    bool CallTls(cpu::CpuState& state, Module& module, uint32_t reason, uint32_t reserved=0);
     Module* LoadModuleFile(const std::string& path, const std::string& lowerName, std::string& error);
     Module* CreateHleModule(const std::string& lowerName);
     std::string FindFile(const std::string& lowerName) const;
@@ -187,6 +189,8 @@ private:
     uint32_t nextTlsIndex_ = 0;
     uint32_t crtGlobals_ = 0;
     bool threadReady_ = false;
+    bool shuttingDown_ = false;
+    GuestThread* processExitThread_ = nullptr;
     GuestThread mainThread_{};
     std::vector<std::unique_ptr<GuestThread>> workerThreads_;
     uint32_t nextThreadId_ = 0x1008u;

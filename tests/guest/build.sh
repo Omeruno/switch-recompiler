@@ -25,6 +25,8 @@ $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DLIFE_ID=7 -DLIFE_PARENT "$h
     "$out/lifecycle_failed.dll" "$out/lifecycle_dep.dll" -o "$out/lifecycle_parent.dll" -lkernel32
 $cc -O1 "$here/gui_thread_dll_lifecycle.c" "$out/lifecycle_top.dll" "$out/lifecycle_dep.dll" \
     -o "$out/gui_thread_dll_lifecycle.exe" -luser32 -lkernel32
+$cc -O1 "$here/gui_process_detach.c" "$out/lifecycle_top.dll" "$out/lifecycle_dep.dll" \
+    -o "$out/gui_process_detach.exe" -luser32 -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
@@ -34,6 +36,7 @@ for t in "$here"/gui_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
     [ "$name" = "gui_thread_dll_lifecycle" ] && continue
+    [ "$name" = "gui_process_detach" ] && continue
     res=""
     if [ -e "$here/$name.rc" ]; then
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"
