@@ -299,12 +299,6 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     SafePrint("[+] %s loaded at 0x%x\n", path, exe->base);
 
     win32::g_getTickCountImpl = &RealGetTickCount;
-    if (!proc.InitializeModules(cpuState, err))
-    {
-        SafePrint("[!] DLL initialization failed: %s\n", err.c_str());
-        return;
-    }
-
     rt::GuestThread* runningThread=nullptr;
     SafePrint("\n[+] Executing from entry point 0x%x:\n",cpuState.eip);
     SafeConsoleUpdate();
@@ -350,7 +344,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         stopException=&savedException;
         stopReason=result==cpu::StepResult::UnknownOpcode ? "unknown opcode" : "guest exception";
         return false;
-    });
+    },rt::GuestExecution::Startup::InitializeModules);
     while (steps<maxSteps && !execution.Stopped()) {
         auto result=execution.RunOne();
         runningThread=proc.Scheduler().Current();
@@ -364,6 +358,11 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         }
     }
 
+    if (execution.InitializationFailed()) {
+        SafePrint("[!] DLL initialization failed: %s\n",execution.InitializationError().c_str());
+        SafeConsoleUpdate();
+        return;
+    }
     if (strcmp(stopReason, "guest called exit()") != 0 && strcmp(stopReason, "max steps reached") != 0)
         SaveGuestStopReport(stopReason, path, runningThread ? runningThread->cpu : cpuState, proc, stopException);
 

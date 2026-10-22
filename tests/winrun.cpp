@@ -344,8 +344,6 @@ int main(int argc, char** argv) {
             std::fflush(e ? stderr : stdout);
         };
     }
-    if (!proc.InitializeModules(c, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
-
     rt::GuestThread* running=nullptr;
     rt::GuestExecution execution(proc,[&](rt::GuestThread& thread) {
         running=&thread;
@@ -366,12 +364,14 @@ int main(int argc, char** argv) {
         // Keep the Windows exception code as process diagnostic exit status.
         thread.exitCode=fault.code;
         return false;
-    });
+    },rt::GuestExecution::Startup::InitializeModules);
     for (;;) {
         auto result=execution.RunOne();
         running=proc.Scheduler().Current();
         if (result==rt::GuestExecution::Result::Ran) continue;
         if (result==rt::GuestExecution::Result::Stopped) {
+            if(execution.InitializationFailed())
+                std::fprintf(stderr,"winrun: DLL initialization failed: %s\n",execution.InitializationError().c_str());
             if(dumpPath) DumpScreen(dumpPath);
             return win32::g_guestExitRequested ? win32::g_guestExitCode :
                    static_cast<int>(running ? running->exitCode : 3);

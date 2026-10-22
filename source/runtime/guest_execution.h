@@ -12,12 +12,15 @@ class GuestExecution {
 public:
     using Step = std::function<bool(GuestThread&)>;
     enum class Result { Ran, Idle, Stopped, AllocationFailed };
-    GuestExecution(Process& process, Step step);
+    enum class Startup { AlreadyInitialized, InitializeModules };
+    GuestExecution(Process& process, Step step, Startup startup=Startup::AlreadyInitialized);
     ~GuestExecution();
     GuestExecution(const GuestExecution&) = delete;
     GuestExecution& operator=(const GuestExecution&) = delete;
     Result RunOne();
     bool Stopped() const { return stopped_; }
+    bool InitializationFailed() const { return initializationFailed_; }
+    const std::string& InitializationError() const { return initializationError_; }
     // Called by nested guest loops as well as the outer instruction loop.
     // false means unwind native callbacks normally without more guest code.
     static bool Checkpoint();
@@ -46,5 +49,8 @@ private:
     bool stopped_=false;
     bool processExiting_=false;
     int32_t processExitCode_=0;
+    bool initializeModules_=false;
+    bool initializationFailed_=false;
+    std::string initializationError_;
 };
 } // namespace rt

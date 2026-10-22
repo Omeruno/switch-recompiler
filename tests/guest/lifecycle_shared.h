@@ -7,6 +7,8 @@ typedef struct {
     DWORD exitTest,exitMode,exitOwner;
     HANDLE exitBlocked,exitSuspended,exitFinished;
     HANDLE exitDetachGate;
+    DWORD startupMode,startupEntry,startupWorker,startupAfterExit,startupWait;
+    HANDLE startupReady,startupThread,startupSuspended,startupTimer,startupMutex;
 } LifeState;
 #ifdef LIFE_STATE_IMPL
 #define LIFE_IMPORT __declspec(dllexport)

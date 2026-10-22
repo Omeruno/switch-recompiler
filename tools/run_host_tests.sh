@@ -105,6 +105,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 30 "$out/test_process_detach.log"
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_startup_lifecycle.cpp" $src -o "$out/test_startup_lifecycle" &&
+       "$out/test_startup_lifecycle" "$guestRoot/gui_startup_lifecycle.exe" > "$out/test_startup_lifecycle.log" 2>&1; then
+        tail -n 1 "$out/test_startup_lifecycle.log"
+    else
+        echo "   STARTUP LIFECYCLE REGRESSION FAILED"
+        tail -n 35 "$out/test_startup_lifecycle.log"
+        failed=1
+    fi
     # Execute IA-32 instructions in alternating worker quanta; FS must
     # resolve the currently selected worker TEB, not the main TEB.
     if (cd "$guestRoot" && "$out/winrun" --probe-x86-threads "$guestRoot/gui_seh.exe" > "$out/x86_threads.log" 2>&1); then

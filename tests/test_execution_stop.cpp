@@ -175,9 +175,28 @@ static void LastThreadScenario(bool workerLast,bool suspendedPeer) {
     }
     win32::g_guestExitRequested=false;win32::g_guestExitCode=0;rt::g_process=nullptr;
 }
+static void StartupFailureScenario() {
+    cpu::PagedGuestMemory memory;
+    assert(memory.Map(0x10000,0x10000,cpu::kProtRWX));
+    rt::Process process(memory);rt::g_process=&process;
+    auto& main=process.MainThread();main.id=0x1004;main.teb=0x10000;main.cpu.ESP()=0x18000;
+    main.status=rt::GuestThreadStatus::Runnable;main.memoryRegions.emplace_back(main.teb,0x1000);
+    assert(process.Scheduler().Add(main));
+    {
+        rt::GuestExecution execution(process,[&](rt::GuestThread&) {
+            assert(false && "entry must not run after startup failure");return false;
+        },rt::GuestExecution::Startup::InitializeModules);
+        assert(execution.RunOne()==rt::GuestExecution::Result::Stopped);
+        assert(execution.InitializationFailed() && !execution.InitializationError().empty());
+        assert(win32::g_guestExitRequested && uint32_t(win32::g_guestExitCode)==0xc0000142u);
+        assert(main.memoryReleased && main.exitCode==0xc0000142u);
+    }
+    win32::g_guestExitRequested=false;win32::g_guestExitCode=0;rt::g_process=nullptr;
+}
 int main() {
     Scenario(false); Scenario(true);
     for (bool nested:{false,true}) for (bool viaReturn:{false,true}) ScheduledScenario(nested,viaReturn);
     LastThreadScenario(false,false);LastThreadScenario(true,false);LastThreadScenario(false,true);
+    StartupFailureScenario();
     puts("PASSED: execution stop/ExitProcess drain, thread tombstones, APC/timer cancellation, mutex abandonment and mapping order");
 }

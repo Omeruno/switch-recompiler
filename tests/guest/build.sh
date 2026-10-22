@@ -29,6 +29,10 @@ $cc -O1 "$here/gui_process_detach.c" "$out/lifecycle_top.dll" "$out/lifecycle_de
     -o "$out/gui_process_detach.exe" -luser32 -lkernel32
 $cc -O1 "$here/gui_last_thread_exit.c" "$out/lifecycle_top.dll" "$out/lifecycle_dep.dll" \
     -o "$out/gui_last_thread_exit.exe" -luser32 -lkernel32
+$cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/lifecycle_startup.c" \
+    "$out/lifecycle_dep.dll" -o "$out/lifecycle_startup.dll" -lkernel32
+$cc -O1 -nostdlib -e _start@0 "$here/gui_startup_lifecycle.c" "$out/lifecycle_startup.dll" \
+    "$out/lifecycle_dep.dll" -o "$out/gui_startup_lifecycle.exe" -lkernel32
 for t in "$here"/crt_*.c; do
     [ -e "$t" ] || continue
     name=$(basename "$t" .c)
@@ -40,6 +44,7 @@ for t in "$here"/gui_*.c; do
     [ "$name" = "gui_thread_dll_lifecycle" ] && continue
     [ "$name" = "gui_process_detach" ] && continue
     [ "$name" = "gui_last_thread_exit" ] && continue
+    [ "$name" = "gui_startup_lifecycle" ] && continue
     res=""
     if [ -e "$here/$name.rc" ]; then
         ${WINDRES:-i686-w64-mingw32-windres} -I "$here" "$here/$name.rc" -O coff -o "$out/$name.res.o"

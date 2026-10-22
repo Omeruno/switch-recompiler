@@ -729,7 +729,17 @@ bool Process::InitializeModule(cpu::CpuState& state, Module* module, std::string
         }
         if (!ok) {
             module->initializationFailed=true;
-            error=module->name+": DllMain returned FALSE"; return false;
+            error=module->name+": DllMain returned FALSE";
+            // Balance a rejected PROCESS_ATTACH once, while TLS/TEB and the
+            // loader lock are still live. Failed-load detach has reserved=0;
+            // image/TLS unmapping and dependency refcounts remain separate.
+            module->processDetached=true;
+            if (CallTls(state,*module,0)) {
+                local=state;
+                win32::CallGuestFunctionStdcall(local,mem_,module->base+module->entryRva,
+                    {module->base,0,0},teb,teb);
+            }
+            return false;
         }
     }
     module->initialized=true;

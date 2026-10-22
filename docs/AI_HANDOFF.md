@@ -1158,3 +1158,61 @@ Stage C remains ~90%. Next concrete packet: startup failure/partial initializati
 shutdown, then DLL unload/refcounts/rollback. Startup blocking waits and full
 NT failure semantics remain explicit limitations. Preserve interpreter and
 hardware gates; do not advance JIT/GPU/shell, change branch, or extend automation.
+
+
+## Cooperative startup and attach-failure termination (2026-10-22)
+
+Incoming HEAD **fc557eff9152d1b595c9007a936112b7bf6870d7** verified green
+in all five jobs [39737619758](https://github.com/Omeruno/switch-recompiler/actions/runs/39737619758).
+Remote ref/branch/worktree checked, no pending diff or active build/test process
+or competing CI. Work continues only in the agreed branch. No Microsoft
+proprietary binaries or physical Switch were used.
+
+- Audited startup: Switch/winrun ran InitializeModules before GuestExecution,
+  so no saved startup stack/normal cooperative waits or fatal-failure cleanup.
+  New native startup regression reproduced missing process-failure status.
+- New explicit GuestExecution Startup::InitializeModules runs main DLL/TLS
+  initialization on its fiber before main APC/user entry. AlreadyInitialized
+  remains default for existing probes/harnesses; standalone initialization
+  keeps its old limitations. Both production frontends now opt in.
+- Ordinary false initialization selects STATUS_DLL_INIT_FAILED (0xC0000142),
+  retains a diagnostic string, skips EXE entry and uses common process detach
+  for completed modules before freeing TEB/TLS and finalizing HANDLEs. Winrun
+  now returns raw Windows status for this failure (POSIX low byte 0x42), instead
+  of old generic code 3; Switch prints the initialization diagnostic.
+- DllMain returning FALSE balances TLS/DllMain with one immediate failed-load
+  PROCESS_DETACH, reserved=0, under the same loader lock. Marked detached before
+  guest cleanup so recursive exit cannot repeat it. This also corrects dynamic
+  LoadLibrary failure: old inspector now distinguishes immediate failed-module
+  cleanup from final process shutdown. Failed image/TLS unmapping, dependency
+  refcounts and retry/rollback are deliberately still separate work.
+- Explicit ExitProcess during attach or failed-load cleanup keeps its own code.
+  ExitThread from the initial startup callback conservatively cancels the
+  partial process with the requested code, preventing created workers from
+  running into an uninitialized EXE; this is a bounded runtime policy, not
+  complete NT behavior for unsupported DllMain termination. Host abort drains
+  native RAII without new guest callbacks. Interrupted partial modules are
+  excluded from process notifications; full partial-initialization rollback
+  and startup exception/fault semantics remain open.
+- New CRT-free source-only lifecycle_startup DLL + gui_startup_lifecycle EXE
+  and mandatory post-exit inspector cover six modes: normal cooperative
+  startup, FALSE attach, ExitProcess(37) from attach, startup ExitThread(38),
+  host abort during pending wait, and ExitProcess(39) from failed-load detach.
+  They verify child parks on loader token, finite wait times out in DllMain,
+  child body begins only after EXE TLS initialization, main entry runs exactly
+  once on success and never on failure/cancel, exact TLS/DllMain detach order
+  and reserved values, original exit codes, no partial-module callbacks,
+  mutex abandonment, timer cancellation, suspended/started worker reclamation
+  and PEB retention. Existing ten exit/last-thread modes remain mandatory.
+- Full local mandatory native/x86 suite PASSED with -fno-rtti/-fno-exceptions;
+  winrun and both host inspector harnesses compile/link against rebuilt objects.
+  Log: /tmp/switch-startup-host.log (transient). Local MinGW/32-bit libc still
+  unavailable: new guests/old MinGW suite, CPU oracle, ARM64/QEMU and Switch
+  build must be verified for the exact published SHA by Actions.
+
+References: [DllMain](https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain),
+[process startup/thread serialization](https://learn.microsoft.com/en-us/windows/win32/procthread/terminating-a-process).
+Next foundation work is DLL unload/refcounts/failed-image rollback and startup
+SEH/fault handling; do not claim full NT loader semantics. Stage C stays ~90%
+with physical Switch acceptance still outstanding. No JIT/GPU/shell gate is
+removed and no automation may be created/extended.

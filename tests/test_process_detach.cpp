@@ -104,7 +104,7 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
     };
     const uint32_t blockedId=peerId(blocked),suspendedId=peerId(suspended);
     const uint32_t expected[]={32,51,22,11,12};
-    unsigned detached=0,mainDetached=0;
+    unsigned detached=0,mainDetached=0,failedDetached=0;
     uint32_t count=memory.Read32(state); assert(count<=256);
     for(uint32_t i=0;i<count;++i) {
         uint32_t event=state+offsetof(LifeState32,events)+i*24;
@@ -116,6 +116,11 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
             if(tid==process.MainThread().id) { assert(!detached);++mainDetached; }
         }
         if(reason!=0) continue;
+        if(module==6) {
+            // A rejected dynamic PROCESS_ATTACH now gets its own immediate
+            // failed-load detach (reserved=0), outside final process shutdown.
+            assert(kind==2 && !memory.Read32(event+20) && !detached);++failedDetached;continue;
+        }
         assert((lastThread || mode!=3) && detached<5 && module*10+kind==expected[detached++]);
         assert(tid==owner && memory.Read32(event+20));
         if(module==1) assert(memory.Read32(event+16)==(owner^1));
@@ -123,6 +128,7 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
     }
     if(detached==0 && (lastThread || mode!=3)) fprintf(stderr,"process detach last=%d mode=%u notifications=%u events=%u\n",lastThread,mode,detached,count);
     assert(detached==(!lastThread && mode==3?0u:5u));
+    assert(failedDetached==1);
     assert(!(lastThread?mode!=0:mode==1) || owner!=process.MainThread().id);
     assert(!lastThread || mode!=5 || resumed);
     assert(!lastThread || mode!=4 || loaderParked);

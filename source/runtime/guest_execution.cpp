@@ -7,8 +7,9 @@
 
 namespace rt {
 namespace { thread_local GuestExecution* active=nullptr; }
-GuestExecution::GuestExecution(Process& process, Step step)
-    : process_(process), step_(std::move(step)), previous_(active) { active=this; }
+GuestExecution::GuestExecution(Process& process, Step step, Startup startup)
+    : process_(process), step_(std::move(step)), previous_(active),
+      initializeModules_(startup==Startup::InitializeModules) { active=this; }
 GuestExecution::~GuestExecution() {
     // Return through pending native frames so their RAII resources are
     // destroyed; freeing suspended stacks would silently leak these objects.
@@ -61,7 +62,26 @@ void GuestExecution::Run(void* arg) {
     auto& executor=*continuation.owner;
     auto& thread=*continuation.thread;
     bool start=true;
-    if (thread.needsThreadAttach) {
+    if (&thread==&executor.process_.MainThread() && executor.initializeModules_) {
+        executor.initializeModules_=false;
+        start=executor.process_.InitializeModules(thread.cpu,executor.initializationError_);
+        if (!start && thread.exitRequested && !win32::g_guestExitRequested && !executor.stopped_) {
+            // Do not release startup-created workers into a half-initialized
+            // process when its initial thread explicitly exits from DllMain.
+            executor.process_.processExitThread_=&thread;
+            win32::g_guestExitCode=int32_t(thread.requestedExitCode);
+            win32::g_guestExitRequested=true;
+        }
+        // A guest ExitProcess/ExitThread or host abort during startup retains
+        // its own termination semantics. Ordinary attach failure is fatal.
+        if (!start && !win32::g_guestExitRequested && !thread.ShouldUnwind() && !executor.stopped_) {
+            executor.initializationFailed_=true;
+            if (executor.initializationError_.empty()) executor.initializationError_="no main module";
+            win32::g_guestExitCode=int32_t(0xc0000142u); // STATUS_DLL_INIT_FAILED
+            win32::g_guestExitRequested=true;
+        }
+    }
+    if (start && thread.needsThreadAttach) {
         thread.needsThreadAttach=false;
         start=executor.process_.NotifyThread(thread,2);
     }

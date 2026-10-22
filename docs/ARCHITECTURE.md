@@ -70,7 +70,7 @@
   без DLL_THREAD_DETACH; затем на новом fiber исходного requester, с его TEB/TLS,
   идут EXE TLS и DLL_PROCESS_DETACH в обратном завершённом initializationOrder.
   TLS предшествует DllMain внутри модуля, reserved ненулевой; disabled thread
-  calls не отключают process callbacks, failed/partial attach не включены.
+  calls не отключают process callbacks, partial attach не включены; отказавший DllMain получает отдельный failed-load detach.
   Только после уведомлений сигналится requester HANDLE и освобождается память.
   Loader lock рекурсивен, Sleep/finite waits могут отдавать квант, existing
   module queries разрешены. Новые DLL/потоки при shutdown отвергаются; unload
@@ -81,8 +81,20 @@
   return также выбирает process-detach до сигнализации HANDLE/освобождения
   TEB/TLS, без дополнительного DLL_THREAD_DETACH. Проверка живых peers
   повторяется после захвата loader lock: ожидающий мог стать последним.
-  Suspended/created peers считаются живыми. Startup failure остаётся отдельным
-  контрактом: инициализация до GuestExecution пока синхронная.
+  Suspended/created peers считаются живыми.
+- Host/Switch frontend запрашивает GuestExecution::Startup::InitializeModules:
+  DLL/TLS startup исполняется на main fiber до APC/user entry. Sleep и finite
+  HLE waits сохраняют native frames; created workers ждут loader lock до конца
+  startup и только потом получают THREAD_ATTACH/entry. Обычный отказ attach
+  даёт STATUS_DLL_INIT_FAILED (0xC0000142), без EXE entry; завершённые модули
+  получают process-detach с живым main TEB/TLS. Failed DllMain получает один
+  TLS/DllMain PROCESS_DETACH с reserved=0 ещё под loader lock; mappings/refcounts
+  пока сохраняются. Явный ExitProcess сохраняет свой код; startup ExitThread
+  консервативно отменяет весь частично инициализированный процесс с его кодом,
+  не выпуская созданных workers в user entry. Host abort не запускает cleanup
+  callbacks. Interrupted partial modules пока не получают rollback. Прежний
+  AlreadyInitialized constructor и standalone InitializeModules остаются для
+  probes; без executor они не поддерживают блокирующие startup callbacks.
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
   MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.
@@ -175,9 +187,11 @@ Global отдельно; это разделение имён внутри ед�
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
 полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
 сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
-загрузки, process shutdown после startup failure и TerminateThread.
-Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
-блокирующие ожидания между гостевыми потоками из startup DllMain.
+загрузки, полных startup SEH/NT failure semantics и TerminateThread.
+Standalone InitializeModules вне executor остаётся синхронным; основной
+Switch/winrun путь использует startup на main fiber. Бесконечное ожидание
+created child внутри DllMain может deadlock из-за loader serialization, как
+и обычный loader-lock цикл; finite waits не обходят эту сериализацию.
 Стандартные HANDLE консоли
 пока сохраняют прежнюю политику CloseHandle. Для standalone/v1 HLE
 используется отдельная резервная таблица, когда нет `rt::g_process`.
