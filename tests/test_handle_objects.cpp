@@ -78,6 +78,23 @@ int main() {
     assert(call("CloseHandle",{alias}).returnValue==1);
     assert(call("CloseHandle",{semaphore}).returnValue==1);
 
+    // Combined wait ABI also works for standalone HLE callers with no fiber.
+    event=call("CreateEventA",{0,0,0,0}).returnValue;
+    alias=copy(event);
+    assert(call("SignalObjectAndWait",{event,alias,0,0}).returnValue==0);
+    assert(call("WaitForSingleObject",{event,0}).returnValue==0x102);
+    assert(call("SignalObjectAndWait",{event,123,0,0}).returnValue==0xffffffff);
+    assert(memory.Read32(main.teb+0x34)==6);
+    assert(call("WaitForSingleObject",{event,0}).returnValue==0x102);
+    semaphore=call("CreateSemaphoreA",{0,0,1,0}).returnValue;
+    assert(call("SignalObjectAndWait",{semaphore,event,0,0}).returnValue==0x102);
+    assert(call("SignalObjectAndWait",{semaphore,event,0,0}).returnValue==0xffffffff);
+    assert(memory.Read32(main.teb+0x34)==298);
+    assert(call("WaitForSingleObject",{semaphore,0}).returnValue==0);
+    assert(call("WaitForSingleObject",{semaphore,0}).returnValue==0x102);
+    assert(call("CloseHandle",{event}).returnValue && call("CloseHandle",{alias}).returnValue);
+    assert(call("CloseHandle",{semaphore}).returnValue);
+
     uint32_t mutex=call("CreateMutexA",{0,1,0}).returnValue;
     uint32_t threadHandle=copy(0xfffffffe);
     uint32_t threadCopy=copy(threadHandle);

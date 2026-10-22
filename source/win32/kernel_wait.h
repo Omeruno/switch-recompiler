@@ -8,5 +8,5 @@ bool ReadWaitObjects(cpu::IGuestMemory& memory,uint32_t count,uint32_t array,
                      bool all,uint32_t maximum,bool allowEmpty,std::vector<uint32_t>& handles);
 uint32_t PollWaitObjects(const std::vector<uint32_t>& handles,bool all);
 uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
-    const std::vector<uint32_t>& handles,bool all,uint32_t milliseconds,bool sleepOnly=false);
+    const std::vector<uint32_t>& handles,bool all,uint32_t milliseconds,bool sleepOnly=false,bool enableApcs=true);
 }

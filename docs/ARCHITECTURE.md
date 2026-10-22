@@ -219,7 +219,21 @@ MsgWaitEx возвращают WAIT_IO_COMPLETION после доставки. C
 alertable автоматически. Явный вложенный alertable wait допускает рекурсивную
 доставку. APC до старта выполняются после DLL_THREAD_ATTACH до user entry;
 при завершении pending очередь удаляется. I/O completion APCs, waitable timers
-и SignalObjectAndWait пока не реализованы.
+пока не реализованы.
+
+SignalObjectAndWait использует те же signal helpers, что SetEvent,
+ReleaseMutex и ReleaseSemaphore, затем сохранённую native continuation общего
+object-wait loop. Сигнал выполняется один раз, повторные пробуждения проверяют
+только wait HANDLE. Alertable режим доставляет APC после сигнала, обычный
+оставляет их в очереди. Проверяются SYNCHRONIZE, MODIFY_STATE и mutex ownership;
+переполнение семафора возвращает ERROR_TOO_MANY_POSTS. Ссылка на signal object
+освобождается до парковки, чтобы не продлевать lifetime его имени. Защитная
+политика: неверный wait HANDLE/права отклоняются до signal mutation; закрытие
+wait HANDLE во время ожидания даёт WAIT_FAILED. Эти случаи не заявляются как
+полная NT failure-ordering fidelity. На Windows signal/acquire не гарантируют
+атомарность относительно потоков на других процессорах; runtime не обещает её.
+Standalone HLE без GuestExecution умеет только немедленную проверку, как прежние
+object waits; рабочие host/Switch циклы используют GuestExecution.
 
 Focus/active/capture, async input, меню и hooks ещё имеют общие состояния;
 AttachThreadInput и полные правила marshalling сообщений не реализованы.
@@ -243,6 +257,6 @@ AttachThreadInput и полные правила marshalling сообщений 
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, waitable timers/SignalObjectAndWait и input ownership,
+полный process/DLL shutdown, waitable timers и input ownership,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

@@ -701,3 +701,60 @@ Stage C estimate is now ~80% by functional blocks, not time. The requested
 overnight automation was created earlier for eight hourly continuation runs;
 do not duplicate or extend it. Read current ROADMAP before choosing next work,
 so a scheduled run does not repeat this named-object/HANDLE package.
+
+
+## 2026-10-22 next package: SignalObjectAndWait
+
+Incoming exact HEAD `788174988754d706cd5ff0ad8693516f0c21e546` was clean and
+unchanged remotely; exact CI [39696366060](https://github.com/Omeruno/switch-recompiler/actions/runs/39696366060)
+passed all five jobs. No unfinished local edits, active build/test process or
+in-progress workflow was found before starting. No additional AGENTS.md or
+CLAUDE.md instructions were present in this checkout/parent directories.
+
+- Implemented KERNEL32 SignalObjectAndWait (16-byte stdcall) using shared
+  event/mutex/semaphore signal helpers, followed by the existing saved native
+  object-wait loop. A new enableApcs argument disables delivery for ordinary
+  combined waits; all previous callers retain alertable behavior by default.
+- Signal is emitted once before APC dispatch/acquisition; the native frame
+  survives every park, so retries/timeouts cannot re-post a semaphore or
+  re-release a mutex. Pending APC returns WAIT_IO_COMPLETION only when requested.
+  ReleaseSemaphore overflow now uses ERROR_TOO_MANY_POSTS (298); nonpositive
+  counts still use ERROR_INVALID_PARAMETER. Updated the older guest expectation.
+- Preflight validates wait HANDLE/type/SYNCHRONIZE before signal mutation.
+  Event/semaphore signal requires MODIFY_STATE; mutex uses owner/recursion.
+  Invalid wait preflight with no mutation is a defensive runtime policy,
+  not a claim of complete NT error-precedence/ordering fidelity. Closed wait
+  HANDLE returns WAIT_FAILED under the existing defensive policy. No promise
+  of cross-processor atomic signal/acquisition is made.
+- Drop the signal object shared_ptr before parking: a waiting caller must not
+  keep a closed signal HANDLE's named object alive. Wait-side revalidation and
+  absolute deadline use the shared wait loop. Standalone HLE without a native
+  continuation only polls, matching the existing unscheduled wait limitations.
+- Added gui_thread_signalwait guest regression: aliases/same-object waits,
+  recursion, wrong owner/type/rights, wait preflight preservation, semaphore
+  overflow, 32 blocking handshakes, exactly-once count after timeout, pending
+  APC signal-before-callback order and ordinary APC deferral, wait HANDLE
+  closure and abandoned mutex. Auto-discovered by tests/guest/build.sh.
+- Added test_signal_wait native continuation test to mandatory host suite:
+  actual parked wait, exactly-once count, finite timeout, signal HANDLE closure
+  and weak named-object expiration while caller is still waiting. Expanded
+  test_handle_objects with direct stdcall and immediate signal/wait checks.
+- Local native/x86 host suite passed with -fno-rtti/-fno-exceptions, including
+  the new direct HANDLE ABI assertions. New test_signal_wait also built and
+  passed independently against the same runtime objects. Final mandatory host
+  script was rerun after all source/test-list changes and passed, including
+  test_signal_wait (MinGW guest stage still skipped as described below).
+- Local environment has no MinGW compiler or 32-bit libc headers: MinGW guests
+  were skipped locally and CPU oracle could not compile (bits/wordsize.h).
+  Package installation was unavailable (dpkg lock held outside visible PID
+  namespace). GitHub Actions installs these dependencies; verify the new
+  commit's exact head_sha and all five jobs before calling this package green.
+  No new physical Switch or proprietary Paint binary testing was performed.
+
+Next: waitable timers (typed/named HANDLE, scheduler deadlines, manual/auto reset,
+Set/Cancel and timer APC cancellation/lifetime contract), then contention/edge
+regressions and hardware acceptance. I/O completion APCs, IPC/token/DACL,
+input/focus/hooks ownership and full process/DLL shutdown remain separate.
+Stage C remains approximately 80% until the timer block and acceptance gates
+advance; this smaller completed block does not automatically raise the estimate.
+Do not create/extend automation, switch branches, or advance JIT/GPU/shell gates.

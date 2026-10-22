@@ -15,7 +15,7 @@ int main(void) {
     gate=CreateMutexA(NULL,TRUE,NULL);
     ready=CreateSemaphoreA(NULL,0,1,NULL);
     if(!gate || !ready){puts("CREATE_SYNC_FAILED");return 1;}
-    if(ReleaseSemaphore(ready,2,NULL) || GetLastError()!=ERROR_INVALID_PARAMETER) {
+    if(ReleaseSemaphore(ready,2,NULL) || GetLastError()!=ERROR_TOO_MANY_POSTS) {
         puts("SEMAPHORE_MAX_NOT_ENFORCED");return 2;
     }
     DWORD id=0,code=0;

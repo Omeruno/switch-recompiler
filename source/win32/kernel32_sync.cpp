@@ -141,15 +141,18 @@ std::shared_ptr<WaitObject> GetSync(uint32_t handle) {
                     object->type != Kind::Semaphore)) return nullptr;
     return std::static_pointer_cast<WaitObject>(object);
 }
-HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto object = GetSync(Arg(c,m,0));
+bool SetEventObject(cpu::IGuestMemory& m,uint32_t handle) {
+    auto object = GetSync(handle);
     if (!object || object->type != Kind::Event) {
-        SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0);
+        SetLastError(m,ERROR_INVALID_HANDLE); return false;
     }
-    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0);
+    if (!HandleAccess(m,handle,2)) return false;
     object->signaled = true;
     rt::SignalObject(object.get());
-    return Ret(1);
+    return true;
+}
+HostCallOutcome K32_SetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return Ret(SetEventObject(m,Arg(c,m,0)));
 }
 HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     auto object = GetSync(Arg(c,m,0));
@@ -160,48 +163,74 @@ HostCallOutcome K32_ResetEvent(cpu::CpuState& c, cpu::IGuestMemory& m) {
     object->signaled = false;
     return Ret(1);
 }
-HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const uint32_t handle=Arg(c,m,0);
+bool ReleaseMutexObject(cpu::IGuestMemory& m,uint32_t handle) {
     auto object=GetSync(handle);
     if (!object || object->type!=Kind::Mutex) {
         SetLastError(m,ERROR_INVALID_HANDLE);
-        return Ret(0);
+        return false;
     }
     WaitObject& o=*object;
     uint32_t current=rt::g_process ? rt::g_process->CurrentThreadId() : kCurrentThreadId;
     if (o.ownerThread!=current || !o.recursion) {
         SetLastError(m,288u); // ERROR_NOT_OWNER
-        return Ret(0);
+        return false;
     }
     if (--o.recursion==0) {
         o.ownerThread=0;
         o.signaled=true;
         rt::SignalObject(object.get());
     }
-    return Ret(1);
+    return true;
 }
-HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const uint32_t handle=Arg(c,m,0);
+bool ReleaseSemaphoreObject(cpu::IGuestMemory& m,uint32_t handle,int32_t amount,uint32_t prev) {
     auto object=GetSync(handle);
     if(!object || object->type!=Kind::Semaphore) {
         SetLastError(m,ERROR_INVALID_HANDLE);
-        return Ret(0);
+        return false;
     }
-    if (!HandleAccess(m,handle,2)) return Ret(0);
+    if (!HandleAccess(m,handle,2)) return false;
     WaitObject& o=*object;
-    const int32_t amount=static_cast<int32_t>(Arg(c,m,1));
     if(amount<=0 || amount>o.maxCount-o.count) {
-        SetLastError(m,ERROR_INVALID_PARAMETER);
-        return Ret(0);
+        SetLastError(m,amount<=0 ? ERROR_INVALID_PARAMETER : 298u); // ERROR_TOO_MANY_POSTS
+        return false;
     }
-    uint32_t prev=Arg(c,m,2);
     if(prev) {
-        if(!m.IsRangeMapped(prev,4)) { SetLastError(m,ERROR_INVALID_PARAMETER);return Ret(0); }
+        if(!m.IsRangeMapped(prev,4)) { SetLastError(m,ERROR_INVALID_PARAMETER);return false; }
         m.Write32(prev,static_cast<uint32_t>(o.count));
     }
     o.count+=amount;
     rt::SignalObject(object.get());
-    return Ret(1);
+    return true;
+}
+
+HostCallOutcome K32_ReleaseMutex(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return Ret(ReleaseMutexObject(m,Arg(c,m,0)));
+}
+HostCallOutcome K32_ReleaseSemaphore(cpu::CpuState& c, cpu::IGuestMemory& m) {
+    return Ret(ReleaseSemaphoreObject(m,Arg(c,m,0),static_cast<int32_t>(Arg(c,m,1)),Arg(c,m,2)));
+}
+
+// The native continuation retains this call across all wakeups: signal once,
+// then park/revalidate only the wait side. Never retry the signal HLE on resume.
+HostCallOutcome K32_SignalObjectAndWait(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const uint32_t signal=Arg(c,m,0),wait=Arg(c,m,1),ms=Arg(c,m,2);
+    const bool alertable=Arg(c,m,3)!=0;
+    // Defensive runtime policy: validate wait access/type before any mutation.
+    if (!ValidateWaitObjects(m,{wait},false)) return Ret(0xffffffffu);
+    auto object=GetSync(signal);
+    if (!object) { SetLastError(m,ERROR_INVALID_HANDLE); return Ret(0xffffffffu); }
+    bool signaled=false;
+    switch (object->type) {
+        case Kind::Event: signaled=SetEventObject(m,signal); break;
+        case Kind::Mutex: signaled=ReleaseMutexObject(m,signal); break;
+        case Kind::Semaphore: signaled=ReleaseSemaphoreObject(m,signal,1,0); break;
+        default: break;
+    }
+    if (!signaled) return Ret(0xffffffffu);
+    object.reset(); // a parked wait must not extend the signaled object/name lifetime
+    // No peer runs between preflight and signal. As on Windows, this does not
+    // promise atomicity with the eventual acquisition of the second object.
+    return Ret(AlertableObjectWait(c,m,{wait},false,ms,false,alertable));
 }
 
 constexpr uint32_t kWaitAbandoned = 0x80u;
@@ -376,6 +405,7 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "PulseEvent", 4, CallConv::Stdcall, &K32_ResetEvent},
     {"KERNEL32.dll", "ReleaseMutex", 4, CallConv::Stdcall, &K32_ReleaseMutex},
     {"KERNEL32.dll", "ReleaseSemaphore", 12, CallConv::Stdcall, &K32_ReleaseSemaphore},
+    {"KERNEL32.dll", "SignalObjectAndWait", 16, CallConv::Stdcall, &K32_SignalObjectAndWait},
     {"KERNEL32.dll", "WaitForSingleObject", 8, CallConv::Stdcall, &K32_WaitForSingleObject},
     {"KERNEL32.dll", "WaitForSingleObjectEx", 12, CallConv::Stdcall, &K32_WaitForSingleObjectEx},
     {"KERNEL32.dll", "WaitForMultipleObjects", 16, CallConv::Stdcall, &K32_WaitForMultipleObjects},
@@ -428,8 +458,8 @@ uint32_t PollWaitObjects(const std::vector<uint32_t>& handles,bool all) {
     return 0x102;
 }
 uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
-    const std::vector<uint32_t>& handles,bool all,uint32_t milliseconds,bool sleepOnly) {
-    AlertableScope alertable(true);
+    const std::vector<uint32_t>& handles,bool all,uint32_t milliseconds,bool sleepOnly,bool enableApcs) {
+    AlertableScope alertable(enableApcs);
     auto* current=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     struct ClearRetry {
         rt::GuestThread* thread;
@@ -443,7 +473,7 @@ uint32_t AlertableObjectWait(cpu::CpuState& state,cpu::IGuestMemory& memory,
     for (;;) {
         if (!rt::GuestExecution::Checkpoint()) return 0xffffffffu;
         if (!ValidateWaitObjects(memory,handles,all)) return 0xffffffffu;
-        if (DispatchUserApcs(state,memory)) return 0xc0;
+        if (enableApcs && DispatchUserApcs(state,memory)) return 0xc0;
         if (!sleepOnly) {
             uint32_t result=PollWaitObjects(handles,all);
             if (result!=0x102) return result;
