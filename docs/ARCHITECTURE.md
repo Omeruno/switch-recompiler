@@ -98,7 +98,21 @@
 - USER32 v2 хранит отдельные очереди и маршрутизирует cross-thread SendMessage
   владельцу HWND; GetMessage при живых peers периодически отдаёт исполнение.
   MsgWait объединяет HANDLE и очередь, user APC исполняются в alertable waits.
-  Полной изоляции input/focus/hooks пока нет.
+  focus/active хранятся в ThreadQueue, foreground отдельно на desktop.
+  GetFocus/GetActiveWindow не возвращают чужой HWND. SetFocus/SetActiveWindow/
+  SetCapture отвергают чужую очередь; GetCapture/ReleaseCapture учитывают
+  владельца единственного capture. Встроенные controls используют ту же смену
+  capture с WM_CAPTURECHANGED. Key/char идут foreground-очереди, даже когда
+  платформу опрашивает worker. Фоновый capture не перехватывает чужой hover;
+  drag с удерживаемой кнопкой сохраняет capture foreground-владельца.
+  Смена focus/activation публикует состояние до callbacks и проверяет serial
+  перед продолжением: вложенный SetFocus/DestroyWindow/выход не затирается
+  старым native frame. Hide/disable/destroy и принудительный teardown очищают
+  соответствующие ссылки; menu loop не восстанавливает устаревший capture.
+  GetGUIThreadInfo реализует PE32 cbSize=48 и active/focus/capture, остальные
+  поля пока нулевые. AttachThreadInput явно возвращает 120 (не реализован).
+  Полные foreground restrictions, implicit/shared input attachment, hooks и
+  одновременные menu loops остаются отдельными контрактами.
 
 ## Процесс, потоки и HANDLE
 

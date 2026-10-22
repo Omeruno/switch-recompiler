@@ -133,6 +133,7 @@ void RetireWindow(uint32_t hwnd) {
         };
         remove(queue.posted);remove(queue.input);
     }
+    ForgetWindowInput(hwnd);
     S().retiredWindows.push_back(std::move(it->second));
     S().windows.erase(it);
     if (!S().nativeCalls) S().retiredWindows.clear();
@@ -149,6 +150,7 @@ void CleanupThreadWindows(uint32_t id) {
 }
 void OnGuiThreadExit(uint32_t id) {
     WindowCallScope scope;
+    for(auto& owner:S().mouseDownOwners)if(owner==id)owner=0;
     auto queue=S().queues.find(id);
     if (queue!=S().queues.end()) {
         auto& q=queue->second;
@@ -164,9 +166,6 @@ void OnGuiThreadExit(uint32_t id) {
             auto& children=parent->children;
             children.erase(std::remove(children.begin(),children.end(),hwnd),children.end());
         }
-        if (S().focus==hwnd) S().focus=0;
-        if (S().active==hwnd) S().active=0;
-        if (S().capture==hwnd) S().capture=0;
         RetireWindow(hwnd);
     }
     if (!windows.empty()) ui::g_gdi.InvalidateLayout();

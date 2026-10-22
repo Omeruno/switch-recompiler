@@ -438,8 +438,8 @@ FN(EnableWindow) {
     bool enable = A(c, m, 1) != 0;
     if (enable == !wasDisabled) return Ret(wasDisabled ? 1 : 0);
     if (enable) w->style &= ~WS_DISABLED; else w->style |= WS_DISABLED;
-    if (!enable && S().focus == hwnd) SetFocusInternal(0);
-    if (!enable && S().capture == hwnd) S().capture = 0;
+    if (!enable) ClearWindowFocus(hwnd);
+    if (!enable) ClearWindowCapture(hwnd);
     SendMsg(hwnd, WM_ENABLE, enable ? 1 : 0, 0);
     if ((w = Win(hwnd)) && (w->style & WS_VISIBLE)) {
         w->ncDirty = true;
@@ -456,27 +456,45 @@ FN(IsChild) {
 }
 FN(IsIconic) { ENTER; Window* w = Win(A(c, m, 0)); return Ret(w && (w->style & WS_MINIMIZE) ? 1 : 0); }
 FN(IsZoomed) { ENTER; Window* w = Win(A(c, m, 0)); return Ret(w && (w->style & WS_MAXIMIZE) ? 1 : 0); }
-FN(GetFocus) { ENTER; return Ret(S().focus); }
-FN(SetFocus) { ENTER; return Ret(SetFocusInternal(A(c, m, 0))); }
-FN(GetActiveWindow) { ENTER; return Ret(S().active); }
-FN(SetActiveWindow) { ENTER; uint32_t old = S().active; SetActive(A(c, m, 0)); return Ret(old); }
-FN(GetForegroundWindow) { ENTER; return Ret(S().active); }
-FN(SetForegroundWindow) { ENTER; SetActive(A(c, m, 0)); return Ret(1); }
-FN(GetCapture) { ENTER; return Ret(S().capture); }
-FN(SetCapture) {
+FN(GetFocus) { ENTER; return Ret(Q().focus); }
+FN(SetFocus) { ENTER; return Ret(SetFocusInternal(A(c,m,0))); }
+FN(GetActiveWindow) { ENTER; return Ret(Q().active); }
+FN(SetActiveWindow) {
     ENTER;
-    uint32_t old = S().capture;
-    S().capture = Win(A(c, m, 0)) ? A(c, m, 0) : 0;
-    if (old && old != S().capture) SendMsg(old, WM_CAPTURECHANGED, 0, S().capture);
-    return Ret(old);
+    const uint32_t hwnd=A(c,m,0),old=Q().active;
+    const auto* window=Win(hwnd);
+    if(hwnd && (!window || window->destroying)) {SetLastError(m,1400);return Ret(0);}
+    if(window && window->threadId!=CurrentGuiThread()) {SetLastError(m,5);return Ret(0);}
+    if(window && (window->style&WS_CHILD)) {SetLastError(m,87);return Ret(0);}
+    SetActive(hwnd,false);return Ret(old);
 }
-FN(ReleaseCapture) {
-    ENTER;
-    uint32_t old = S().capture;
-    S().capture = 0;
-    if (old) SendMsg(old, WM_CAPTURECHANGED, 0, 0);
-    return Ret(1);
+FN(GetForegroundWindow) { ENTER; return Ret(S().foreground); }
+FN(SetForegroundWindow) {
+    ENTER;const uint32_t hwnd=A(c,m,0);
+    const auto* window=Win(hwnd);
+    if(!window || window->destroying) {SetLastError(m,1400);return Ret(0);}
+    if(window->style&WS_CHILD) {SetLastError(m,87);return Ret(0);}
+    SetActive(hwnd);return Ret(S().foreground==hwnd?1:0);
 }
+FN(GetCapture) { ENTER; return Ret(CaptureForThread(CurrentGuiThread())); }
+FN(SetCapture) { ENTER;return Ret(SetCaptureInternal(A(c,m,0))); }
+FN(ReleaseCapture) { ENTER;return Ret(ReleaseCaptureInternal()?1:0); }
+FN(GetGUIThreadInfo) {
+    ENTER;uint32_t id=A(c,m,0),p=A(c,m,1);
+    if(!p || !m.IsRangeMapped(p,48)) {SetLastError(m,998);return Ret(0);}
+    if(m.Read32(p)!=48) {SetLastError(m,87);return Ret(0);}
+    if(!id) {const auto* foreground=Win(S().foreground);id=foreground?foreground->threadId:0;}
+    const auto queue=S().queues.find(id);
+    if(queue==S().queues.end() || queue->second.closed ||
+       (rt::g_process && (!rt::g_process->FindThread(id) || rt::g_process->FindThread(id)->status==rt::GuestThreadStatus::Exited))) {
+        SetLastError(m,1444);return Ret(0);
+    }
+    for(unsigned offset=4;offset<48;offset+=4)m.Write32(p+offset,0);
+    m.Write32(p+8,queue->second.active);m.Write32(p+12,queue->second.focus);
+    m.Write32(p+16,CaptureForThread(id));return Ret(1);
+}
+// Shared input queues are a separate contract; never report a fake attachment.
+FN(AttachThreadInput) { ENTER;SetLastError(m,120);return Ret(0); }
 FN(WindowFromPoint) { ENTER; Window* w = user::WindowFromPoint(SA(c, m, 0), SA(c, m, 1)); return Ret(w ? w->hwnd : 0); }
 FN(ChildWindowFromPoint) {
     ENTER;
@@ -1456,7 +1474,7 @@ const HostFunctionEntry kEntries[] = {
     E(GetDlgCtrlID, 4), E(IsWindow, 4), E(IsWindowVisible, 4), E(IsWindowEnabled, 4), E(IsWindowUnicode, 4),
     E(EnableWindow, 8), E(IsChild, 8), E(IsIconic, 4), E(IsZoomed, 4), E(GetFocus, 0), E(SetFocus, 4),
     E(GetActiveWindow, 0), E(SetActiveWindow, 4), E(GetForegroundWindow, 0), E(SetForegroundWindow, 4),
-    E(GetCapture, 0), E(SetCapture, 4), E(ReleaseCapture, 0), E(WindowFromPoint, 8), E(ChildWindowFromPoint, 12),
+    E(GetGUIThreadInfo, 8), E(AttachThreadInput, 12), E(GetCapture, 0), E(SetCapture, 4), E(ReleaseCapture, 0), E(WindowFromPoint, 8), E(ChildWindowFromPoint, 12),
     E(ChildWindowFromPointEx, 16), EAW(FindWindow, 8), EAW(FindWindowEx, 16), E(EnumWindows, 8), E(EnumChildWindows, 12),
     E(GetWindowThreadProcessId, 8), EAW(SetProp, 12), EAW(GetProp, 8), EAW(RemoveProp, 8),
     E(GetWindowPlacement, 8), E(SetWindowPlacement, 8),

@@ -170,7 +170,7 @@ void ActivateNextTopLevel(uint32_t except) {
             return;
         }
     }
-    if (S().active == except) S().active = 0;
+    if (S().foreground == except) {S().foreground = 0;++S().foregroundSerial;}
 }
 
 // --- Рисование рамки ---
@@ -622,6 +622,9 @@ bool DestroyWindowInternal(uint32_t hwnd) {
     if (!w || hwnd == S().desktop) return false;
     if (w->destroying) return true;
     w->destroying = true;
+    ClearWindowFocus(hwnd);
+    ClearWindowCapture(hwnd);
+    if(!rt::GuestExecution::Checkpoint())return true;
     CallHooks(5, 4, hwnd, 0); // WH_CBT, HCBT_DESTROYWND
     if (!(w = Win(hwnd))) return true;
     // принадлежащие окна — раньше владельца
@@ -659,7 +662,7 @@ bool DestroyWindowInternal(uint32_t hwnd) {
     }
     for (uint32_t h : order) {
         if (Window* x = Win(h)) x->destroying = true;
-        if (S().capture == h) S().capture = 0;
+        if (S().capture == h) ReleaseCaptureInternal();
         SendMsg(h, WM_DESTROY, 0, 0);
     }
     for (auto it = order.rbegin(); it != order.rend(); ++it) SendMsg(*it, WM_NCDESTROY, 0, 0);
@@ -669,8 +672,7 @@ bool DestroyWindowInternal(uint32_t hwnd) {
             auto& tm=queue.second.timers;
             tm.erase(std::remove_if(tm.begin(),tm.end(),[&](const Timer& t) { return t.hwnd==h; }),tm.end());
         }
-        if (S().focus == h) S().focus = 0;
-        if (S().active == h) { S().active = 0; wasActive = true; }
+        if (S().foreground == h) wasActive = true;
         if (Window* x = Win(h)) RemoveFromParent(x);
         RetireWindow(h);
     }
@@ -757,6 +759,7 @@ bool SetWindowPosInternal(uint32_t hwnd, uint32_t after, int x, int y, int cx, i
     writeWp();
     m.Write32(wp.addr() + 24, flags);
     SendMsg(hwnd, WM_WINDOWPOSCHANGED, 0, wp.addr());
+    if((flags&HIDE) && Win(hwnd)) {ClearWindowFocus(hwnd);ClearWindowCapture(hwnd);}
     (void)NOACTIVATE;
     return true;
 }
@@ -772,11 +775,8 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
         if (!wasVisible) return false;
         SendMsg(hwnd, WM_SHOWWINDOW, 0, 0);
         SetWindowPosInternal(hwnd, 0, 0, 0, 0, 0, base | 0x4 | 0x10 | 0x80);
-        if (topLevel && S().active == hwnd) ActivateNextTopLevel(hwnd);
-        if (S().focus && Win(hwnd)) {
-            for (Window* f = Win(S().focus); f; f = (f->style & WS_CHILD) ? Win(f->parent) : nullptr)
-                if (f->hwnd == hwnd) { S().focus = 0; break; }
-        }
+        if (topLevel && S().foreground == hwnd) ActivateNextTopLevel(hwnd);
+        if (Win(hwnd)) {ClearWindowFocus(hwnd);ClearWindowCapture(hwnd);}
         return true;
     case 3: { // SW_SHOWMAXIMIZED
         int b = BorderWidth(w->style, w->exStyle);
@@ -793,7 +793,7 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
     case 2: case 6: case 7: case 11: // свернуть: окно уходит за экран, как в Windows
         w->style = (w->style | WS_MINIMIZE) & ~WS_MAXIMIZE;
         SetWindowPosInternal(hwnd, 0, -32000, -32000, 160, 24, 0x4 | 0x10 | 0x40 | 0x20);
-        if (topLevel && S().active == hwnd && cmd != 2) ActivateNextTopLevel(hwnd);
+        if (topLevel && S().foreground == hwnd && cmd != 2) ActivateNextTopLevel(hwnd);
         return wasVisible;
     case 9: case 1: // SW_RESTORE / SW_SHOWNORMAL
         if (w->style & (WS_MINIMIZE | WS_MAXIMIZE)) {
@@ -818,43 +818,116 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
     }
 }
 
-void SetActive(uint32_t hwnd) {
-    hwnd = RootOf(hwnd);
-    uint32_t old = S().active;
-    if (hwnd == old) return;
-    if (Window* o = Win(old)) {
-        SendMsg(old, WM_NCACTIVATE, 0, 0);
-        SendMsg(old, WM_ACTIVATE, 0, hwnd);
-        if (Win(old)) o->active = false;
-    } else {
-        if (hwnd) SendMsg(hwnd, WM_ACTIVATEAPP, 1, 0);
-    }
-    S().active = hwnd;
-    Window* w = Win(hwnd);
-    if (!w) return;
-    // активное окно — наверх
-    InsertZ(w, 0);
-    ui::g_gdi.InvalidateLayout();
-    SendMsg(hwnd, WM_NCACTIVATE, 1, 0);
-    SendMsg(hwnd, WM_ACTIVATE, 1, old);
+// Queue-local activation is distinct from the desktop foreground window.
+// Publish state before callbacks; a nested activation/destruction wins.
+void SetActive(uint32_t hwnd,bool foreground) {
+    WindowCallScope scope;
+    hwnd=RootOf(hwnd);
+    Window* target=Win(hwnd);
+    const uint32_t owner=target?target->threadId:CurrentGuiThread();
+    auto& queue=QueueFor(owner);
+    if(queue.closed || (target && (target->destroying || (target->style&WS_DISABLED))))return;
+    const uint32_t old=queue.active,oldForeground=S().foreground;
+    if(old==hwnd && (!foreground || oldForeground==hwnd))return;
+    queue.active=hwnd;
+    const uint64_t serial=++queue.activationSerial;
+    if(foreground || oldForeground==old) {S().foreground=hwnd;++S().foregroundSerial;}
+    const uint64_t desktopSerial=S().foregroundSerial;
+    const auto valid=[&]() {
+        return rt::GuestExecution::Checkpoint() && queue.activationSerial==serial &&
+            S().foregroundSerial==desktopSerial && (!hwnd || (Win(hwnd)&&!Win(hwnd)->destroying));
+    };
+    const auto deactivate=[&](uint32_t previous) {
+        if(!previous || previous==hwnd || !Win(previous))return;
+        SendMsg(previous,WM_NCACTIVATE,0,0);
+        if(valid() && Win(previous))SendMsg(previous,WM_ACTIVATE,0,hwnd);
+    };
+    deactivate(old);
+    if(!valid())return;
+    if(foreground && oldForeground!=old)deactivate(oldForeground);
+    if(!valid() || !hwnd)return;
+    if(!oldForeground) {SendMsg(hwnd,WM_ACTIVATEAPP,1,0);if(!valid())return;}
+    target=Win(hwnd);
+    if(S().foreground==hwnd) {InsertZ(target,0);ui::g_gdi.InvalidateLayout();}
+    SendMsg(hwnd,WM_NCACTIVATE,S().foreground==hwnd?1:0,0);
+    if(valid())SendMsg(hwnd,WM_ACTIVATE,1,old);
 }
 
+uint32_t FocusForWindow(uint32_t hwnd) {
+    const auto* window=Win(hwnd);
+    if(!window)return 0;
+    auto queue=S().queues.find(window->threadId);
+    return queue==S().queues.end()?0:queue->second.focus;
+}
+uint32_t CaptureForThread(uint32_t id) {
+    const auto* window=Win(S().capture);
+    return window && window->threadId==id?window->hwnd:0;
+}
 uint32_t SetFocusInternal(uint32_t hwnd) {
-    uint32_t old = S().focus;
-    if (hwnd == old) return old;
-    if (hwnd) {
-        Window* w = Win(hwnd);
-        if (!w) return 0;
-        uint32_t root = RootOf(hwnd);
-        if (root != S().active) {
-            SetActive(root);
-            if (S().focus == hwnd) return old;
+    auto& queue=Q();
+    const uint32_t old=queue.focus;
+    if(hwnd) {
+        Window* window=Win(hwnd);
+        if(!window || window->destroying) {hle::SetLastError(*G().m,1400);return 0;}
+        if(window->threadId!=CurrentGuiThread()) {hle::SetLastError(*G().m,5);return 0;}
+        for(auto* parent=window;parent;parent=(parent->style&WS_CHILD)?Win(parent->parent):nullptr) {
+            if(parent->threadId!=CurrentGuiThread()) {hle::SetLastError(*G().m,5);return 0;}
+            if(parent->style&WS_DISABLED) {hle::SetLastError(*G().m,87);return 0;}
         }
+        const uint32_t root=RootOf(hwnd);
+        if(queue.active!=root)SetActive(root,false);
+        if(!rt::GuestExecution::Checkpoint() || !Win(hwnd) || queue.active!=root)return old;
     }
-    if (Win(old)) SendMsg(old, WM_KILLFOCUS, hwnd, 0);
-    S().focus = Win(hwnd) ? hwnd : 0;
-    if (S().focus) SendMsg(hwnd, WM_SETFOCUS, Win(old) ? old : 0, 0);
+    if(queue.closed || queue.focus==hwnd)return old;
+    const uint32_t previous=queue.focus;
+    queue.focus=hwnd;
+    const uint64_t serial=++queue.focusSerial;
+    if(Win(previous))SendMsg(previous,WM_KILLFOCUS,hwnd,0);
+    if(rt::GuestExecution::Checkpoint() && queue.focusSerial==serial && hwnd && Win(hwnd))
+        SendMsg(hwnd,WM_SETFOCUS,Win(previous)?previous:0,0);
     return old;
+}
+uint32_t SetCaptureInternal(uint32_t hwnd) {
+    if(hwnd) {
+        auto* window=Win(hwnd);
+        if(!window || window->destroying) {hle::SetLastError(*G().m,1400);return 0;}
+        if(window->threadId!=CurrentGuiThread()) {hle::SetLastError(*G().m,5);return 0;}
+    }
+    const uint32_t old=S().capture;
+    if(!hwnd && old && !CaptureForThread(CurrentGuiThread()))return 0;
+    S().capture=hwnd;
+    if(old && old!=hwnd && Win(old))SendMsg(old,WM_CAPTURECHANGED,0,hwnd);
+    return old;
+}
+bool ReleaseCaptureInternal() {
+    // A peer cannot release another queue's capture.
+    if(CaptureForThread(CurrentGuiThread()))SetCaptureInternal(0);
+    return true;
+}
+void ClearWindowFocus(uint32_t hwnd) {
+    auto* window=Win(hwnd);if(!window)return;
+    auto& queue=QueueFor(window->threadId);
+    for(auto* focus=Win(queue.focus);focus;focus=(focus->style&WS_CHILD)?Win(focus->parent):nullptr)
+        if(focus->hwnd==hwnd) {
+            const uint32_t old=queue.focus;queue.focus=0;++queue.focusSerial;
+            SendMsg(old,WM_KILLFOCUS,0,0);break;
+        }
+}
+void ClearWindowCapture(uint32_t hwnd) {
+    for(auto* capture=Win(S().capture);capture;capture=(capture->style&WS_CHILD)?Win(capture->parent):nullptr)
+        if(capture->hwnd==hwnd) {
+            const uint32_t old=S().capture;S().capture=0;
+            SendMsg(old,WM_CAPTURECHANGED,0,0);break;
+        }
+}
+void ForgetWindowInput(uint32_t hwnd) {
+    for(auto& item:S().queues) {
+        auto& queue=item.second;
+        if(queue.focus==hwnd) {queue.focus=0;++queue.focusSerial;}
+        if(queue.active==hwnd) {queue.active=0;++queue.activationSerial;}
+    }
+    if(S().foreground==hwnd) {S().foreground=0;++S().foregroundSerial;}
+    if(S().capture==hwnd) {S().capture=0;}
 }
 
 // --- Сообщения ---
@@ -1054,7 +1127,8 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         return 0;
     }
     case WM_ACTIVATE:
-        if ((wp & 0xFFFF) && !(w->style & WS_MINIMIZE)) SetFocusInternal(hwnd);
+        if ((wp & 0xFFFF) && !(w->style & WS_MINIMIZE) && RootOf(FocusForWindow(hwnd))!=RootOf(hwnd))
+            SetFocusInternal(hwnd);
         return 0;
     case WM_MOUSEACTIVATE:
         if ((w->style & WS_CHILD) && Win(w->parent)) {
@@ -1135,7 +1209,7 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         w->redraw = wp != 0;
         return 0;
     case 0x001F: // WM_CANCELMODE
-        if (S().capture == hwnd) S().capture = 0;
+        if (S().capture == hwnd) ReleaseCaptureInternal();
         return 0;
     case WM_SHOWWINDOW:
         return 0;

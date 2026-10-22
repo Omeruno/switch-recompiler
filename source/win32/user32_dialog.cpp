@@ -390,13 +390,13 @@ uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
         return 1;
     }
     case WM_NEXTDLGCTL: {
-        uint32_t target = lp ? wp : NextTab(hwnd, S().focus, wp != 0);
+        uint32_t target = lp ? wp : NextTab(hwnd, Q().focus, wp != 0);
         if (target) SetFocusInternal(target);
         return 0;
     }
     case WM_ACTIVATE:
         if ((wp & 0xFFFF) && di && di->lastFocus && Win(di->lastFocus)) SetFocusInternal(di->lastFocus);
-        else if (!(wp & 0xFFFF) && di) di->lastFocus = S().focus;
+        else if (!(wp & 0xFFFF) && di) di->lastFocus = Q().focus;
         return 0;
     case WM_SETFOCUS: {
         uint32_t t = NextTab(hwnd, 0, false);
@@ -439,7 +439,7 @@ bool DialogMessage(uint32_t dlg, Msg& msg) {
             case 0x09: // Tab
                 if (!(code & (DLGC_WANTTAB | DLGC_WANTALLKEYS))) {
                     bool shift = (Q().keys[0x10] & 0x80) != 0;
-                    uint32_t t = NextTab(dlg, S().focus, shift);
+                    uint32_t t = NextTab(dlg, Q().focus, shift);
                     if (t) {
                         SetFocusInternal(t);
                         if (SendMsg(t, 0x87, 0, 0) & DLGC_HASSETSEL) SendMsg(t, 0xB1 /* EM_SETSEL */, 0, 0xFFFFFFFFu);
@@ -449,8 +449,8 @@ bool DialogMessage(uint32_t dlg, Msg& msg) {
                 break;
             case 0x25: case 0x26: case 0x27: case 0x28: // стрелки — по группе
                 if (!(code & (DLGC_WANTARROWS | DLGC_WANTALLKEYS))) {
-                    uint32_t t = NextGroup(dlg, S().focus, msg.wParam == 0x25 || msg.wParam == 0x26);
-                    if (t && t != S().focus) {
+                    uint32_t t = NextGroup(dlg, Q().focus, msg.wParam == 0x25 || msg.wParam == 0x26);
+                    if (t && t != Q().focus) {
                         SetFocusInternal(t);
                         if (SendMsg(t, 0x87, 0, 0) & DLGC_RADIOBUTTON) SendMsg(t, 0xF5 /* BM_CLICK */, 0, 0);
                     }
@@ -459,7 +459,7 @@ bool DialogMessage(uint32_t dlg, Msg& msg) {
                 break;
             case 0x0D: // Enter
                 if (!(code & DLGC_WANTALLKEYS)) {
-                    uint32_t f = S().focus;
+                    uint32_t f = Q().focus;
                     uint32_t fc = f ? SendMsg(f, 0x87, 0, 0) : 0;
                     if (fc & DLGC_DEFPUSHBUTTON) { Command(dlg, Win(f)->id, f); return true; }
                     if (fc & DLGC_UNDEFPUSHBUTTON) { Command(dlg, Win(f)->id, f); return true; }

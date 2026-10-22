@@ -187,7 +187,7 @@ void PaintButton(uint32_t hwnd) {
     Ctl* c = C(w);
     uint32_t type = BtnType(w);
     bool enabled = !(w->style & WS_DISABLED);
-    bool focus = S().focus == hwnd;
+    bool focus = FocusForWindow(hwnd) == hwnd;
     Rect r(0, 0, w->client.Width(), w->client.Height());
     uint32_t hdc = CtlDc(hwnd);
     if (type == OWNERDRAW) {
@@ -335,11 +335,11 @@ uint32_t ButtonProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
         if (type == GROUP) return 0;
         if (msg == WM_LBUTTONDBLCLK && (type == RADIO || type == AUTORADIO || (w->style & BS_NOTIFY) || type == OWNERDRAW))
             Notify(hwnd, 5); // BN_DOUBLECLICKED
-        S().capture = hwnd;
+        SetCaptureInternal(hwnd);
         SetFocusInternal(hwnd);
         if (!(w = Win(hwnd))) return 0;
-        c->pushed = true;
-        c->captured = true;
+        c->captured = S().capture==hwnd;
+        c->pushed = c->captured;
         Redraw(hwnd);
         return 0;
     case WM_MOUSEMOVE:
@@ -352,7 +352,7 @@ uint32_t ButtonProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
     case WM_LBUTTONUP:
         if (c->captured) {
             c->captured = false;
-            if (S().capture == hwnd) S().capture = 0;
+            if (S().capture == hwnd) ReleaseCaptureInternal();
             bool click = c->pushed;
             c->pushed = false;
             Redraw(hwnd);
@@ -383,7 +383,7 @@ uint32_t ButtonProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool 
         if (IsCheckLike(type) || (w->style & BS_PUSHLIKE)) { c->check = static_cast<int>(wp > 2 ? 1 : wp); Redraw(hwnd); }
         return 0;
     case 0xF2: // BM_GETSTATE
-        return static_cast<uint32_t>(c->check) | (c->pushed ? 4 : 0) | (S().focus == hwnd ? 8 : 0);
+        return static_cast<uint32_t>(c->check) | (c->pushed ? 4 : 0) | (FocusForWindow(hwnd) == hwnd ? 8 : 0);
     case 0xF3: // BM_SETSTATE
         c->pushed = wp != 0;
         Redraw(hwnd);
@@ -572,7 +572,7 @@ void PaintEdit(uint32_t hwnd) {
     int lineH = ui::g_gdi.CurrentFont(hdc)->Metrics().height;
     std::u16string shown = Shown(w, c);
     size_t s0 = std::min(c->caret, c->anchor), s1 = std::max(c->caret, c->anchor);
-    bool focus = S().focus == hwnd;
+    bool focus = FocusForWindow(hwnd) == hwnd;
     bool showSel = focus || (w->style & ES_NOHIDESEL);
     dc->st.bkMode = 1;
     auto drawRun = [&](int x, int y, size_t from, size_t to) {
@@ -730,7 +730,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
         Notify(hwnd, 0x200);
         return 0;
     case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: {
-        if (S().focus != hwnd) SetFocusInternal(hwnd);
+        if (FocusForWindow(hwnd) != hwnd) SetFocusInternal(hwnd);
         if (!(w = Win(hwnd))) return 0;
         // Switch: экранная клавиатура вместо физической
         if (g_platform.textInput && !readonly && !(w->style & WS_DISABLED)) {
@@ -754,7 +754,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
             c->caret = pos;
             if (!(wp & 4)) c->anchor = pos; // MK_SHIFT
             c->captured = true;
-            S().capture = hwnd;
+            SetCaptureInternal(hwnd);
         }
         EnsureCaretVisible(hwnd);
         Redraw(hwnd);
@@ -768,7 +768,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
         }
         return 0;
     case WM_LBUTTONUP:
-        if (c->captured) { c->captured = false; if (S().capture == hwnd) S().capture = 0; }
+        if (c->captured) { c->captured = false; if (S().capture == hwnd) ReleaseCaptureInternal(); }
         return 0;
     case WM_CHAR: {
         uint32_t ch = wp & 0xFFFF;

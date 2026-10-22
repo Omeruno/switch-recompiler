@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **a0d816a72c7c9aab8708fd0643b64a2bf4c74619**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39770705669](https://github.com/Omeruno/switch-recompiler/actions/runs/39770705669), including dynamic rollback/forwarder/self-unload. The initializer fault packet below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
+Last verified implementation GitHub state: **1a5f585ea718eadf02eb3696cb86f6accbe44bb7**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39775696837](https://github.com/Omeruno/switch-recompiler/actions/runs/39775696837), including 36 initializer fault modes. The GUI input/Stage C acceptance packet below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1453,3 +1453,73 @@ rollback tests passed without changing their expected behavior. Exact-SHA
 CPU oracle/AArch64/Switch CI remains a publication gate; inspect its actual
 result before claiming green. Next bounded work: remaining shutdown/input
 ownership boundaries, then renderer boundary; preserve existing roadmap gates.
+
+
+## GUI input ownership and concrete Stage C acceptance (2026-10-22)
+Incoming HEAD 1a5f585ea718eadf02eb3696cb86f6accbe44bb7 is exact-SHA CI green
+(all five jobs in 39775696837). User requested next substantial packet and a
+concrete finish for C rather than an indefinite 90% estimate. Continuing
+same-repository/branch publication authorization remains in force.
+
+- Queue-local active/focus replace shared globals; foreground is separate.
+  Foreign SetFocus/SetActiveWindow/SetCapture cannot mutate a peer's queue.
+  GetCapture/ReleaseCapture/SetCapture(NULL) cannot expose/release peer capture.
+  Controls use centralized capture change notifications. Drawing checks the
+  owner window's queue; dialog/comdlg operations use their current queue.
+- Focus and activation publish state before guest callbacks, then validate
+  serials/liveness/cancellation before sending follow-up notifications. Nested
+  focus redirects, destroyed target and callback ExitThread keep their newer
+  state. Re-activation preserves a valid child focus. Foreground state, API
+  GetActiveWindow state and non-client display activation are distinct.
+- Keyboard/char/wheel use foreground queue state, regardless of which thread
+  polls the host. Capture routing distinguishes hover over another thread from
+  foreground-owner drag. Per-button origin thread ownership prevents a click
+  started on a peer from becoming a capture drag after that peer window dies;
+  the fifth platform batch reproduced this before the origin-owner fix.
+  WM_MOUSEACTIVATE caches HWND, revalidates after guest
+  callbacks and cannot activate a window destroyed by its handler.
+- Hide/disable/destroy clear subtree focus/capture. RetireWindow is the single
+  silent invalidation point for queue/global references, including host abort
+  and ExitProcess teardown. Menu loop no longer resurrects a saved stale HWND.
+- GetGUIThreadInfo validates mapped PE32 48-byte buffer, cbSize, thread/queue,
+  supports id=0 foreground and returns active/focus/capture; remaining fields
+  are zero. AttachThreadInput explicitly returns ERROR_CALL_NOT_IMPLEMENTED:
+  shared/implicit input attachment is not falsely advertised as success.
+- Source-only gui_thread_input covers two GUI threads and TEB/TLS owner checks,
+  foreground vs background focus/activation, foreign mutation/release rejection,
+  disabled controls/parents, nested focus redirect and target destruction,
+  reentrant capture, WM_SETFOCUS/WM_CAPTURECHANGED ExitThread and clean retry.
+  Native test_gui_input additionally exercises host abort/ExitProcess while
+  both native fibers are parked and five real platform-event batches polled by
+  the peer: A/B keyboard/char, foreign hover, held-button drag and destruction
+  from WM_MOUSEACTIVATE. All references/queues/windows are checked after exit.
+- stage_c_acceptance.exe links eight existing source test bodies in separate
+  translation units with renamed main functions: sync, multiple waits, named
+  access, SignalObjectAndWait, timer contention, mixed MsgWait/APC, input and
+  timer-APC exit. It flushes BEGIN/PASS per suite, ends with PASS: ALL 8 SUITES,
+  writes stage-c-acceptance.txt beside EXE and displays a brief PASS window.
+  CI runs this same EXE. docs/STAGE_C_ACCEPTANCE.md defines the bounded gate.
+- Stage C estimate is now ~95% for the existing single-process model; remaining
+  gate is physical execution of the matching green NRO + acceptance EXE, not
+  full NT/security/cross-process/TerminateThread expansion. Software and
+  hardware evidence remain separate. Prior Paint hardware baseline is 8b0ad70.
+  Do not call C complete before receiving the actual hardware report.
+
+Boundaries: no complete Windows foreground policy, shared AttachThreadInput,
+implicit cross-thread parent input groups, hooks ownership, concurrent menu
+loops, full caret/GUIThreadInfo metadata or cross-process UI/security contract.
+These remain explicit follow-up work; renderer-backend boundary can follow
+this acceptance gate without pretending to implement all Windows semantics.
+
+Validation: final complete sh tools/run_host_tests.sh PASSED on the exact final
+source state with host g++ -fno-exceptions -fno-rtti and relocated MinGW win32.
+Transient log /tmp/input-exact-final-host.log. Five platform batches, forced
+GUI cleanup, every old native/PE fixture and the combined eight-suite runner
+passed. Earlier fifth-batch failure reproduced foreign-origin drag capture;
+per-button origin ownership fixes it without weakening that assertion.
+Publication still requires exact-SHA CI; do not infer hardware acceptance.
+References: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getfocus
+https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setfocus
+https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getactivewindow
+https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcapture
+https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getguithreadinfo.

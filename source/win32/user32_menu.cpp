@@ -478,7 +478,6 @@ uint32_t MenuLoop() {
     g_menuResult = 0;
     State& s = S();
     if (g_menuOwner) SendMsg(g_menuOwner, WM_ENTERMENULOOP, g_menuBar ? 0 : 1, 0);
-    uint32_t savedCapture = s.capture;
     bool buttonWasDown = (s.asyncKeys[1] & 0x80) != 0;
     while (!g_menuDone && !g_guestExitRequested) {
         Msg msg;
@@ -579,7 +578,6 @@ uint32_t MenuLoop() {
     ClosePopupsFrom(0);
     g_barSelected = -1;
     RedrawBar();
-    s.capture = savedCapture;
     if (g_menuOwner) SendMsg(g_menuOwner, WM_EXITMENULOOP, g_menuBar ? 0 : 1, 0);
     return g_menuResult;
 }

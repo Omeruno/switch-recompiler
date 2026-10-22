@@ -86,15 +86,28 @@ void MouseEvent(const InputEvent& e) {
     if (e.type == InputEvent::MouseDown) s.asyncKeys[vk] = 0x80;
     if (e.type == InputEvent::MouseUp) s.asyncKeys[vk] = 0;
 
-    Window* target = s.capture ? Win(s.capture) : WindowFromPoint(x, y);
+    Window* target=WindowFromPoint(x,y);
+    const auto* capture=Win(s.capture);
+    const auto* foreground=Win(s.foreground);
+    const bool captureForeground=capture && foreground && capture->threadId==foreground->threadId;
+    const bool ownDrag=capture && std::any_of(std::begin(s.mouseDownOwners),std::end(s.mouseDownOwners),
+        [&](uint32_t owner) {return owner==capture->threadId;});
+    const bool captured=capture && ((captureForeground &&
+        ((target && target->threadId==capture->threadId) || ownDrag)) || target==capture);
+    if(captured)target=Win(s.capture);
+    const unsigned button=e.button==1?1:e.button==2?2:0;
+    if(e.type==InputEvent::MouseDown)s.mouseDownOwners[button]=target?target->threadId:0;
+    if(e.type==InputEvent::MouseUp)s.mouseDownOwners[button]=0;
     if (!target) return;
     uint32_t hwnd = target->hwnd;
-    uint32_t hit = s.capture ? HTCLIENT : SendMsg(hwnd, WM_NCHITTEST, 0, MakeLong(x, y));
-    if (!(target = Win(hwnd))) return;
+    uint32_t hit = captured ? HTCLIENT : SendMsg(hwnd, WM_NCHITTEST, 0, MakeLong(x, y));
+    if (!rt::GuestExecution::Checkpoint() || !(target = Win(hwnd))) return;
     if (hit == HTTRANSPARENT && (target->style & WS_CHILD)) { hwnd = target->parent; hit = HTCLIENT; target = Win(hwnd); if (!target) return; }
 
     if (e.type == InputEvent::Wheel) {
-        uint32_t f = s.focus ? s.focus : hwnd;
+        const auto* foreground=Win(s.foreground);
+        const uint32_t focus=foreground?FocusForWindow(foreground->hwnd):0;
+        uint32_t f = focus ? focus : hwnd;
         QueueInput(f, WM_MOUSEWHEEL, MakeLong(static_cast<int>(MouseKeyFlags()), e.wheel), MakeLong(x, y));
         return;
     }
@@ -109,9 +122,11 @@ void MouseEvent(const InputEvent& e) {
         // активация окна верхнего уровня щелчком
         Window* root = target;
         while (root && (root->style & WS_CHILD) && Win(root->parent)) root = Win(root->parent);
-        if (root && root->hwnd != s.active && !(root->style & WS_DISABLED)) {
-            uint32_t ma = SendMsg(hwnd, WM_MOUSEACTIVATE, root->hwnd, MakeLong(static_cast<int>(hit), static_cast<int>(msg)));
-            if (ma != 3 && ma != 4) SetActive(root->hwnd);
+        if (root && root->hwnd != s.foreground && !(root->style & WS_DISABLED)) {
+            const uint32_t rootHwnd=root->hwnd;
+            uint32_t ma = SendMsg(hwnd, WM_MOUSEACTIVATE, rootHwnd, MakeLong(static_cast<int>(hit), static_cast<int>(msg)));
+            if(!rt::GuestExecution::Checkpoint())return;
+            if (ma != 3 && ma != 4 && Win(rootHwnd)) SetActive(rootHwnd);
             if (ma == 2 || ma == 4) return; // щелчок «съеден»
         }
         // двойной щелчок
@@ -140,8 +155,9 @@ void MouseEvent(const InputEvent& e) {
 }
 
 uint32_t KeyTarget() {
-    if (S().focus && Win(S().focus)) return S().focus;
-    return S().active;
+    const uint32_t focus=FocusForWindow(S().foreground);
+    if(focus && Win(focus))return focus;
+    return S().foreground;
 }
 
 void KeyEvent(const InputEvent& e) {
@@ -188,7 +204,7 @@ bool PollPlatform(int timeoutMs) {
             if (uint32_t t = KeyTarget()) QueueInput(t, WM_CHAR, e.ch, 1);
             break;
         case InputEvent::Quit:
-            if (S().active) PostMsg(S().active, WM_CLOSE, 0, 0);
+            if (S().foreground) PostMsg(S().foreground, WM_CLOSE, 0, 0);
             else PostQuit(0);
             break;
         }

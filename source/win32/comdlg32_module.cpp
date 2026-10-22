@@ -297,8 +297,8 @@ bool ShowDialog(Request& r) {
             if (msg.wParam == 13) { Accept(r); continue; } // Enter
             if (msg.wParam == 9) { // Tab: cycle through interactive controls
                 uint32_t id = r.list;
-                if (S().focus == r.list) id = r.edit;
-                else if (S().focus == r.edit) id = r.list;
+                if (Q().focus == r.list) id = r.edit;
+                else if (Q().focus == r.edit) id = r.list;
                 if (id) SetFocusInternal(id);
                 continue;
             }

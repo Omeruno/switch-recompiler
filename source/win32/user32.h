@@ -150,6 +150,8 @@ struct ThreadQueue {
     uint32_t quitCode=0, nextTimerId=0x7FFE;
     uint32_t changed=0;
     uint8_t keys[256]={};
+    uint32_t active=0,focus=0;
+    uint64_t activationSerial=0,focusSerial=0;
 };
 
 struct State {
@@ -165,8 +167,10 @@ struct State {
     uint32_t desktop = 0;
     uint32_t nextHandle = 0x00010020;
     uint16_t nextAtom = 0xC000;
-    uint32_t active = 0, focus = 0, capture = 0;
+    uint32_t foreground = 0, capture = 0;
+    uint64_t foregroundSerial=0;
     int cursorX = 0, cursorY = 0;
+    uint32_t mouseDownOwners[3]={}; // left/right/middle gesture origin
     uint8_t asyncKeys[256] = {};  // текущее состояние (GetAsyncKeyState)
     uint32_t lastClickTime = 0, lastClickHwnd = 0, lastClickMsg = 0;
     int lastClickX = 0, lastClickY = 0;
@@ -256,7 +260,14 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
 bool DestroyWindowInternal(uint32_t hwnd);
 bool SetWindowPosInternal(uint32_t hwnd, uint32_t after, int x, int y, int cx, int cy, uint32_t flags);
 bool ShowWindowInternal(uint32_t hwnd, int cmd);
-void SetActive(uint32_t hwnd);
+void SetActive(uint32_t hwnd,bool foreground=true);
+uint32_t FocusForWindow(uint32_t hwnd);
+uint32_t CaptureForThread(uint32_t id);
+uint32_t SetCaptureInternal(uint32_t hwnd);
+bool ReleaseCaptureInternal();
+void ClearWindowFocus(uint32_t hwnd);
+void ClearWindowCapture(uint32_t hwnd);
+void ForgetWindowInput(uint32_t hwnd);
 uint32_t SetFocusInternal(uint32_t hwnd);
 WndClass* FindClass(const std::u16string& name, uint16_t atom, uint32_t hInstance);
 uint32_t RegisterClassInternal(const WndClass& wc);

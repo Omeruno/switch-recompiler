@@ -492,7 +492,7 @@ void PaintList(uint32_t hwnd) {
     uint32_t textColor = ui::DcColorOr(hdc, ui::SysColor(8));
     ui::g_gdi.FillRect(hdc, rc, brush);
     int ih = ItemHeight(hwnd);
-    bool focus = S().focus == hwnd || c->comboOwner;
+    bool focus = FocusForWindow(hwnd) == hwnd || c->comboOwner;
     bool enabled = !(w->style & WS_DISABLED);
     ui::DcObj* dc = ui::g_gdi.Dc(hdc);
     for (int i = c->top; i < static_cast<int>(c->items.size()); ++i) {
@@ -528,7 +528,7 @@ void PaintList(uint32_t hwnd) {
         dc->st.textColor = sel ? ui::SysColor(14) : (enabled ? textColor : ui::SysColor(17));
         Rect tr(2, y, rc.right - 2, y + ih);
         ui::g_gdi.DrawText(hdc, it.text, tr, 0x20 | 0x800 | ((w->style & 0x80) ? 0x40 : 0));
-        if (focus && i == c->caretItem && S().focus == hwnd && Multi(w)) FocusRect(hdc, ir);
+        if (focus && i == c->caretItem && FocusForWindow(hwnd) == hwnd && Multi(w)) FocusRect(hdc, ir);
     }
     ui::g_gdi.DeleteDc(hdc);
 }
@@ -656,7 +656,7 @@ uint32_t ListBoxProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool
             SetCur(hwnd, i, true);
         }
         if (msg == WM_LBUTTONDBLCLK && (w->style & LBS_NOTIFY)) Notify(hwnd, 2); // LBN_DBLCLK
-        if (!c->comboOwner) { c->captured = true; S().capture = hwnd; }
+        if (!c->comboOwner) { c->captured = true; SetCaptureInternal(hwnd); }
         return 0;
     }
     case WM_MOUSEMOVE: {
@@ -681,7 +681,7 @@ uint32_t ListBoxProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool
             if (Rect(0, 0, w->client.Width(), w->client.Height()).Contains(x, y)) CloseDrop(hwnd, true);
             return 0;
         }
-        if (c->captured) { c->captured = false; if (S().capture == hwnd) S().capture = 0; }
+        if (c->captured) { c->captured = false; if (S().capture == hwnd) ReleaseCaptureInternal(); }
         return 0;
     case WM_MOUSEWHEEL: {
         int d = static_cast<int16_t>(wp >> 16) > 0 ? -3 : 3;
@@ -906,7 +906,7 @@ void PaintCombo(uint32_t hwnd) {
         Window* lw = Win(ListOf(w));
         Ctl* lc = lw ? C(lw) : nullptr;
         Rect tr(3, 3, br.left - 1, rc.bottom - 3);
-        bool focus = S().focus == hwnd && !c->dropped;
+        bool focus = FocusForWindow(hwnd) == hwnd && !c->dropped;
         if (focus) ui::g_gdi.FillRect(hdc, tr, SysColorBrush(13));
         if (lc && lc->cur >= 0 && lc->cur < static_cast<int>(lc->items.size())) {
             if (w->style & (CBS_OWNERDRAWFIXED | CBS_OWNERDRAWVARIABLE)) {
@@ -969,7 +969,7 @@ void OpenDrop(uint32_t hwnd) {
     UpdateListScroll(c->listHwnd);
     c->dropped = true;
     lc->anchorItem = lc->cur;
-    S().capture = c->listHwnd;
+    SetCaptureInternal(c->listHwnd);
     Redraw(hwnd);
 }
 
@@ -983,7 +983,7 @@ void CloseDrop(uint32_t list, bool accept) {
     Ctl* c = C(w);
     if (!c->dropped) return;
     c->dropped = false;
-    if (S().capture == list) S().capture = 0;
+    if (S().capture == list) ReleaseCaptureInternal();
     if (!accept) lc->cur = lc->anchorItem;
     ShowWindowInternal(list, 0);
     Notify(combo, 8); // CBN_CLOSEUP

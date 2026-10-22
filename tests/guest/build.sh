@@ -85,3 +85,13 @@ for t in "$here"/crt_*.cpp; do
     name=$(basename "$t" .cpp)
     $cxx -O1 -static-libgcc -static-libstdc++ "$t" -o "$out/$name.exe"
 done
+
+# One reproducible executable for physical Switch acceptance. Each component
+# keeps its own translation-unit static state and the exact normal test body.
+acceptance_objects=""
+for part in sync wait_multiple named signalwait timer_contention mixed_apc input timer_exit; do
+    $cc -O1 -Dmain=StageC_$part -c "$here/gui_thread_$part.c" -o "$out/acceptance_$part.o"
+    acceptance_objects="$acceptance_objects $out/acceptance_$part.o"
+done
+# shellcheck disable=SC2086
+$cc -O1 "$here/stage_c_acceptance.c" $acceptance_objects -o "$out/stage_c_acceptance.exe" -luser32 -lgdi32 -lkernel32
