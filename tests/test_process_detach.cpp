@@ -49,8 +49,11 @@ static void Scenario(const char* path,uint32_t mode,bool lastThread=false) {
                 // after proving no premature process detach occurred.
                 assert(!win32::g_guestExitRequested && process.MainThread().exitCode==73);
                 assert(process.MainThread().memoryReleased);
-                for(uint32_t i=0;i<memory.Read32(state);++i)
-                    assert(memory.Read32(state+offsetof(LifeState32,events)+i*24+8)!=0);
+                for(uint32_t i=0;i<memory.Read32(state);++i) {
+                    uint32_t event=state+offsetof(LifeState32,events)+i*24;
+                    if(memory.Read32(event+8)==0)
+                        assert(memory.Read32(event)==6 && memory.Read32(event+4)==2 && !memory.Read32(event+20));
+                }
                 auto* worker=process.FindThread(memory.Read32(state+offsetof(LifeState32,exitOwner)));
                 assert(worker && worker->status==rt::GuestThreadStatus::Suspended && !worker->memoryReleased);
                 // Use the actual Win32 wrapper: scheduler Resume only changes

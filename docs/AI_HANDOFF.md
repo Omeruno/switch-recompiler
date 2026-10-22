@@ -1216,3 +1216,18 @@ Next foundation work is DLL unload/refcounts/failed-image rollback and startup
 SEH/fault handling; do not claim full NT loader semantics. Stage C stays ~90%
 with physical Switch acceptance still outstanding. No JIT/GPU/shell gate is
 removed and no automation may be created/extended.
+
+
+### Startup first CI attempt: six new modes pass, old precondition corrected
+Implementation 68db8675685d069615fb51cfd7aaed8d6eead406 / run
+[39743657894](https://github.com/Omeruno/switch-recompiler/actions/runs/39743657894):
+new six-mode startup inspector PASSED, as did the native suite, ordinary guest
+programs, CPU oracle, ARM64/QEMU, Switch and probe builds. Host job remained
+red because the older suspended-peer inspector's pre-resume scan rejected
+*any* prior PROCESS_DETACH event. It must now distinguish the immediate
+failed-load DLL6 detach (reserved=0) from final process-shutdown notifications,
+just as its post-exit scan already does. Corrected that precondition to allow
+only DLL6/kind2/reserved0, retaining the prohibition on all final process
+callbacks before resume; final scan still requires exactly one failed detach
+and the exact final process callback sequence. No production change required.
+This first attempt is not green; verify the corrected exact SHA separately.
