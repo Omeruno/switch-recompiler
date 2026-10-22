@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace rt {
-enum class ObjectKind { File, Thread, Event, Mutex, Semaphore };
+enum class ObjectKind { File, Thread, Event, Mutex, Semaphore, Timer };
 struct KernelObject {
     explicit KernelObject(ObjectKind type) : type(type) {}
     virtual ~KernelObject() = default;
@@ -23,6 +23,12 @@ struct SyncObject : KernelObject {
     bool manualReset = false, signaled = false, abandoned = false;
     int32_t count = 0, maxCount = 0;
     uint32_t ownerThread = 0, recursion = 0;
+};
+struct TimerObject : SyncObject {
+    TimerObject() : SyncObject(ObjectKind::Timer) {}
+    bool active=false, apcQueued=false;
+    uint64_t dueUs=0, absoluteTime=0, generation=0;
+    uint32_t periodMs=0, callbackThread=0, routine=0, data=0;
 };
 constexpr uint32_t kSynchronize = 0x00100000u;
 constexpr uint32_t kHandleInherit = 1, kHandleProtectFromClose = 2;
@@ -44,12 +50,14 @@ public:
     uint32_t Duplicate(uint32_t handle);
     std::vector<uint32_t> Aliases(const KernelObject* object) const;
     std::vector<std::shared_ptr<KernelObject>> Objects() const;
+    std::vector<std::shared_ptr<TimerObject>> Timers();
     std::shared_ptr<KernelObject> FindNamed(const std::u16string& name);
     void BindName(const std::u16string& name,const std::shared_ptr<KernelObject>& object);
 private:
     std::map<uint32_t, HandleEntry> handles_;
     // Single emulated process/session only; names never keep objects alive.
     std::map<std::u16string,std::weak_ptr<KernelObject>> names_;
+    std::vector<std::weak_ptr<TimerObject>> timers_;
     uint32_t next_ = 0xD0000100u; // reserved kernel-object range, separate from GUI/find/registry
 };
 // Process table for v2; isolated fallback for v1 / standalone HLE tests.

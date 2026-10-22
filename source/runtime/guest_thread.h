@@ -5,9 +5,11 @@
 #include <vector>
 #include <utility>
 #include <deque>
+#include <memory>
 #include "../cpu/cpu_state.h"
 
 namespace rt {
+struct TimerObject;
 enum class GuestThreadStatus : uint8_t { Created, Runnable, Waiting, Suspended, Exited };
 
 struct GuestThread {
@@ -25,7 +27,12 @@ struct GuestThread {
     uint32_t requestedExitCode = 0;
     bool detaching = false;
     bool detachAborted = false;
-    struct UserApc { uint32_t routine=0, data=0; };
+    struct UserApc {
+        uint32_t routine=0, data=0, timeLow=0, timeHigh=0;
+        bool timerApc=false;
+        uint64_t generation=0;
+        std::weak_ptr<TimerObject> timer;
+    };
     std::deque<UserApc> pendingApcs;
     bool alertableWait = false;
     uint32_t exitCode = 259; // STILL_ACTIVE

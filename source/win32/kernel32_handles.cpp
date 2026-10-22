@@ -36,7 +36,7 @@ HostCallOutcome SyncHandle(cpu::CpuState& c,cpu::IGuestMemory& m,Kind kind,bool 
     uint32_t flags=0;
     if(open) flags=Arg(c,m,1) ? rt::kHandleInherit : 0;
     else if(!InheritAttribute(m,Arg(c,m,0),flags)) return Ret(0);
-    const uint32_t namePtr=Arg(c,m,open ? 2 : (kind==Kind::Mutex ? 2 : 3));
+    const uint32_t namePtr=Arg(c,m,open ? 2 : ((kind==Kind::Mutex || kind==Kind::Timer) ? 2 : 3));
     if(open && !namePtr) { SetLastError(m,87);return Ret(0); }
     std::u16string name;
     if(!ReadObjectName(m,namePtr,wide,name)) return Ret(0);
@@ -47,9 +47,13 @@ HostCallOutcome SyncHandle(cpu::CpuState& c,cpu::IGuestMemory& m,Kind kind,bool 
     if(access & ~rt::AllObjectAccess(kind)) { SetLastError(m,5);return Ret(0); }
     const bool existing=object!=nullptr;
     if(!object) {
-        auto sync=std::make_shared<rt::SyncObject>(kind);
+        std::shared_ptr<rt::SyncObject> sync=kind==Kind::Timer ?
+            std::static_pointer_cast<rt::SyncObject>(std::make_shared<rt::TimerObject>()) :
+            std::make_shared<rt::SyncObject>(kind);
         if(kind==Kind::Event) {
             sync->manualReset=Arg(c,m,1)!=0;sync->signaled=Arg(c,m,2)!=0;
+        } else if(kind==Kind::Timer) {
+            sync->manualReset=Arg(c,m,1)!=0;
         } else if(kind==Kind::Mutex) {
             if(Arg(c,m,1)) {
                 sync->ownerThread=rt::g_process ? rt::g_process->CurrentThreadId() : 0x1004;
@@ -69,6 +73,8 @@ HostCallOutcome SyncHandle(cpu::CpuState& c,cpu::IGuestMemory& m,Kind kind,bool 
     return Ret(handle);
 }
 #define SYNC_API(api,kind,wide,open) HostCallOutcome api(cpu::CpuState& c,cpu::IGuestMemory& m) { return SyncHandle(c,m,Kind::kind,wide,open); }
+SYNC_API(CreateWaitableTimerA,Timer,false,false) SYNC_API(CreateWaitableTimerW,Timer,true,false)
+SYNC_API(OpenWaitableTimerA,Timer,false,true) SYNC_API(OpenWaitableTimerW,Timer,true,true)
 SYNC_API(CreateEventA,Event,false,false) SYNC_API(CreateEventW,Event,true,false)
 SYNC_API(CreateMutexA,Mutex,false,false) SYNC_API(CreateMutexW,Mutex,true,false)
 SYNC_API(CreateSemaphoreA,Semaphore,false,false) SYNC_API(CreateSemaphoreW,Semaphore,true,false)
@@ -89,6 +95,7 @@ HostCallOutcome SetHandleInformation(cpu::CpuState& c,cpu::IGuestMemory& m) {
 }
 #define ENTRY(api,bytes) {"KERNEL32.dll",#api,bytes,CallConv::Stdcall,&api}
 const HostFunctionEntry entries[]={
+    ENTRY(CreateWaitableTimerA,12),ENTRY(CreateWaitableTimerW,12),ENTRY(OpenWaitableTimerA,12),ENTRY(OpenWaitableTimerW,12),
     ENTRY(CreateEventA,16),ENTRY(CreateEventW,16),ENTRY(CreateMutexA,12),ENTRY(CreateMutexW,12),
     ENTRY(CreateSemaphoreA,16),ENTRY(CreateSemaphoreW,16),ENTRY(OpenEventA,12),ENTRY(OpenEventW,12),
     ENTRY(OpenMutexA,12),ENTRY(OpenMutexW,12),ENTRY(OpenSemaphoreA,12),ENTRY(OpenSemaphoreW,12),

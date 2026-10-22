@@ -1,6 +1,7 @@
 #include "handle_table.h"
 #include "files.h"
 #include "process.h"
+#include "waitable_timer.h"
 #include <set>
 
 namespace rt {
@@ -49,6 +50,12 @@ uint32_t HandleTable::Add(std::shared_ptr<KernelObject> object,uint32_t access,u
     next_ += 4;
     if(access==0xffffffffu) access=AllObjectAccess(object->type);
     else access=MapObjectAccess(object->type,access);
+    if(object->type==ObjectKind::Timer) {
+        auto timer=std::static_pointer_cast<TimerObject>(object);
+        bool tracked=false;
+        for(const auto& existing:timers_) if(existing.lock()==timer) { tracked=true;break; }
+        if(!tracked) timers_.push_back(timer);
+    }
     handles_.emplace(handle,HandleEntry{std::move(object),access,flags&3});
     return handle;
 }
@@ -91,6 +98,14 @@ std::vector<std::shared_ptr<KernelObject>> HandleTable::Objects() const {
         if (seen.insert(entry.second.object.get()).second) result.push_back(entry.second.object);
     return result;
 }
+std::vector<std::shared_ptr<TimerObject>> HandleTable::Timers() {
+    std::vector<std::shared_ptr<TimerObject>> result;
+    for(auto it=timers_.begin();it!=timers_.end();) {
+        if(auto timer=it->lock()) { result.push_back(std::move(timer));++it; }
+        else it=timers_.erase(it);
+    }
+    return result;
+}
 std::shared_ptr<KernelObject> HandleTable::FindNamed(const std::u16string& name) {
     auto it=names_.find(name);if(it==names_.end()) return nullptr;
     auto object=it->second.lock();if(!object) names_.erase(it);return object;
@@ -111,7 +126,10 @@ void SignalObject(const KernelObject* object) {
         g_process->Scheduler().Signal(handle, true);
 }
 bool CloseGuestHandle(uint32_t handle) {
+    auto object=Handles().Get(handle);
     if (!Handles().Close(handle)) return false;
+    if(object && object->type==ObjectKind::Timer && Handles().Aliases(object.get()).empty())
+        CancelTimer(*std::static_pointer_cast<TimerObject>(object),g_process ? &g_process->Scheduler() : nullptr);
     // Existing pending-close policy: retry and report WAIT_FAILED. Windows
     // leaves closing an active wait handle undefined; never hang the host.
     if (g_process) g_process->Scheduler().Signal(handle, true);

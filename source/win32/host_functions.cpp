@@ -3,6 +3,7 @@
 #include "win32_api_abi_table.h"
 #include "host_functions.h"
 #include "../runtime/process.h"
+#include "../runtime/clock.h"
 #include "../runtime/guest_execution.h"
 #include "seh_dispatch.h"
 #include "user32.h"
@@ -304,22 +305,13 @@ HostCallOutcome Impl_GetTickCount(cpu::CpuState&, cpu::IGuestMemory&) {
     return result;
 }
 
-// void GetSystemTimeAsFileTime(LPFILETIME lpTime) — записывает 8-байтовое
-// время (100-нс интервалы с 1601 года). Нам не нужна настоящая точность —
-// это чаще всего используется просто как источник "случайности" (например,
-// для генерации стековой cookie /GS — именно так впервые встретили эту
-// функцию в paint.exe). Берём что-то правдоподобное и меняющееся, на основе
-// уже имеющегося тика — этого достаточно для честного контракта функции.
+// FILETIME uses the same UTC/fast-forward source as absolute waitable timers.
 HostCallOutcome Impl_GetSystemTimeAsFileTime(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t pTime = ReadArg(cpu, mem, 0);
-    uint32_t tick = g_getTickCountImpl ? g_getTickCountImpl() : 0;
-    // Псевдо-FILETIME: не претендует на реальную дату, просто правдоподобно
-    // большое и меняющееся 64-битное число (единицы 100нс с 1601 — реальные
-    // значения такого порядка величины дают "разумные" непустые данные)
-    uint64_t fakeFileTime = 0x01D00000'00000000ull + (static_cast<uint64_t>(tick) * 10000ull);
+    uint64_t fileTime = rt::Clock::FileTime();
     if (pTime != 0) {
-        mem.Write32(pTime, static_cast<uint32_t>(fakeFileTime & 0xFFFFFFFFu));
-        mem.Write32(pTime + 4, static_cast<uint32_t>(fakeFileTime >> 32));
+        mem.Write32(pTime, static_cast<uint32_t>(fileTime & 0xFFFFFFFFu));
+        mem.Write32(pTime + 4, static_cast<uint32_t>(fileTime >> 32));
     }
     HostCallOutcome result;
     return result;

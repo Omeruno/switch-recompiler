@@ -2,6 +2,7 @@
 
 #include "process.h"
 #include "guest_execution.h"
+#include "waitable_timer.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -86,7 +87,11 @@ uint32_t EntryReturnAddress() {
 
 Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {
     win32::SetImportBindingMemory(&mem_);
+    scheduler_.SetTimerCallbacks([this] { PollWaitableTimers(handles_,&scheduler_); },
+        [this] { return HasActiveWaitableTimers(handles_); });
     scheduler_.SetExitCallback([this](GuestThread& thread) {
+        for(auto& timer:handles_.Timers())
+            if(timer->routine && timer->callbackThread==thread.id) CancelTimer(*timer,&scheduler_);
         win32::user::OnGuiThreadExit(thread.id);
         for (const auto& object : handles_.Objects()) {
             bool signal = false;

@@ -294,11 +294,7 @@ HostCallOutcome GetStartupInfoCommon(cpu::CpuState& c, cpu::IGuestMemory& m) {
 
 // --- Время ---
 // FILETIME: сотни наносекунд с 1601-01-01
-uint64_t NowFileTime() {
-    using namespace std::chrono;
-    uint64_t us = static_cast<uint64_t>(duration_cast<microseconds>(system_clock::now().time_since_epoch()).count());
-    return us * 10 + 116444736000000000ull;
-}
+uint64_t NowFileTime() { return rt::Clock::FileTime(); }
 uint32_t TickCount() { return rt::Clock::NowMs(); }
 HostCallOutcome K32_GetTickCount(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(g_getTickCountImpl ? g_getTickCountImpl() : TickCount()); }
 HostCallOutcome K32_QueryPerformanceFrequency(cpu::CpuState& c, cpu::IGuestMemory& m) {

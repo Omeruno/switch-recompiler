@@ -31,6 +31,7 @@ public:
     // Round-robin over runnable threads, starting immediately after the
     // last selected thread. Waiting, suspended and exited threads are skipped.
     GuestThread* Next() {
+        if(pollTimers_) pollTimers_();
         WakeExpiredSleepers();
         WakeExpiredWaits();
         if (threads_.empty()) return nullptr;
@@ -49,6 +50,9 @@ public:
     GuestThread* Current() const { return current_; }
     void SetExitCallback(std::function<void(GuestThread&)> callback) {
         onExit_ = std::move(callback);
+    }
+    void SetTimerCallbacks(std::function<void()> poll,std::function<bool()> pending) {
+        pollTimers_=std::move(poll);pendingTimers_=std::move(pending);
     }
     // Restore the host-visible running thread after a nested callback or
     // host-only thread probe without disturbing round-robin cursor.
@@ -162,6 +166,7 @@ public:
     }
 
     bool HasPendingTimers() const {
+        if(pendingTimers_ && pendingTimers_()) return true;
         for (const GuestThread* t:threads_)
             if (t->status==GuestThreadStatus::Waiting &&
                 (t->sleeping || t->waitDeadlineUs)) return true;
@@ -272,6 +277,8 @@ private:
     size_t cursor_ = 0;
     GuestThread* current_ = nullptr;
     std::function<void(GuestThread&)> onExit_;
+    std::function<void()> pollTimers_;
+    std::function<bool()> pendingTimers_;
     uint32_t lastExitCode_ = 0;
 };
 } // namespace rt

@@ -758,3 +758,72 @@ input/focus/hooks ownership and full process/DLL shutdown remain separate.
 Stage C remains approximately 80% until the timer block and acceptance gates
 advance; this smaller completed block does not automatically raise the estimate.
 Do not create/extend automation, switch branches, or advance JIT/GPU/shell gates.
+
+
+## 2026-10-22 current package: waitable timers and timer APC lifecycle
+
+Incoming branch HEAD `3bd6ff315a7c78c4e826a67285735c87e318a0b5` was clean and
+matched remote. Exact [CI 39701381134](https://github.com/Omeruno/switch-recompiler/actions/runs/39701381134)
+passed all five jobs, including native/MinGW SignalObjectAndWait, COMDLG and CPU
+oracle. No in-progress workflow, unfinished changes, competing build process
+or additional repository AGENTS.md/CLAUDE.md was found before starting.
+
+- Added typed TimerObject and weak per-HandleTable timer registry. Shared named
+  Create/Open A/W code covers timers, preserving reset mode on repeated Create,
+  Local/default/Global and namespace type collisions, access/inherit/protect and
+  DuplicateHandle policies. TIMER_MODIFY_STATE for Set/Cancel, SYNCHRONIZE for
+  waits. Timers cannot be used on the signal side of SignalObjectAndWait.
+- SetWaitableTimer/CancelWaitableTimer implement relative/absolute/periodic
+  deadlines, manual/auto reset, parameter validation and optional timer APC.
+  Set resets signaled state/cancels old APC; Cancel preserves signaled state.
+  Relative signed 100-ns input rounds upward to us without negating INT64_MIN.
+  Absolute FILETIME uses live UTC wall clock, so external clock adjustments are
+  observed. Periodic deadlines retain phase and coalesce missed expirations.
+- Clock::FileTime includes fast-forward skew; BOTH legacy and v2
+  GetSystemTimeAsFileTime now share it (legacy previously used a fake date).
+  Relative Clock stays monotonic. Real power-state behavior is unverified.
+- Process installs scheduler poll/pending hooks, including idle infinite waits.
+  Wait preflight/APC dispatch also poll expiry. All common single/multiple,
+  alertable, MsgWait and SignalObjectAndWait consumers use the existing shared
+  transaction layer; incomplete wait-all must not consume an auto timer.
+- Timer APC passes three stdcall arguments (data, UTC signal FILETIME low/high)
+  on setter CPU/TEB/TLS, only during alertable delivery. One pending APC per
+  timer; periodic signals do not accumulate count/backlog. Weak source and
+  generation reject stale notifications. Cancel/rearm removes the old source's
+  queued APC without touching ordinary QueueUserAPC entries. Last Close removes
+  queued callbacks and timer registry/name do not retain the object.
+- Setter exit cancels its callback timers, retaining signal state; a timer
+  armed without callback survives setter exit. Source object strong references
+  are released before guest callback execution, allowing reentrant close/rearm.
+- Fixed a real new cancellation race in shared DispatchUserApcs: Checkpoint can
+  yield after the nonempty queue check, then a peer cancels/removes the timer
+  APC. Recheck before front/pop; do not dereference an emptied deque. Native
+  regression forces precisely this interleaving, with no timing-based guess.
+- New test_waitable_timer native HLE/x86 callback regression covers names/mode,
+  weak expiry, access/errors, relative/absolute/periodic/reset/cancel, coalescing,
+  12-byte APC ABI/timestamp/TEB, setter exit, last close, idle infinite wait and
+  cancel-at-dispatch race. Registered in mandatory run_host_tests.sh.
+- New gui_thread_timer MinGW guest covers A/W namespaces/rights/inherit,
+  alias consumption, manual/auto reset, infinite/ALL/MsgWait/combined waits,
+  absolute future/past, periodic reactivation, setter TLS/context/timestamp,
+  APC coalescing and selective cancel/rearm/close, setter-exit/no-callback case.
+- Final mandatory native/x86 suite passed with -fno-rtti/-fno-exceptions after
+  all source changes, including timer APC cancellation race, INT64_MIN relative
+  due-time and fResume unsupported-power behavior. Log (transient only):
+  /tmp/switch-timer-final.log. Local MinGW/32-bit libc dependencies remain absent:
+  guest/oracle/Switch/ARM64 validation must be verified in exact new-SHA CI.
+
+Limits: cooperative quantum/1-ms idle polling, not a 100-ns accuracy promise;
+no Horizon hardware or suspend/resume test, no actual wake from suspend
+(fResume returns success with ERROR_NOT_SUPPORTED), no XP low-power timing
+parity claim, no Vista+/high-resolution/Ex or threadpool timer APIs. No I/O
+completion APCs, IPC/child inheritance/token/DACL expansion. Standalone HLE
+without Process cannot schedule timer APC; unscheduled waits remain poll-only.
+
+Next justified stage-C package: contention/edge regressions (competing timer
+waiters, wait-all token/deadline preservation, callback cancel/rearm/close,
+retargeting callback owner, shutdown/cancellation boundaries) and collect
+physical Switch acceptance separately. Input/focus/hooks and full process/DLL
+shutdown remain separate contracts. Stage C approximately 90% by functional
+blocks after the timer block, with hardware acceptance still open. Do not
+advance JIT/GPU/shell gates or create/extend scheduled runs.

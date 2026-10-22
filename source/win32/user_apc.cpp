@@ -1,6 +1,7 @@
 #include "user_apc.h"
 #include "handle_util.h"
 #include "../runtime/guest_execution.h"
+#include "../runtime/waitable_timer.h"
 namespace win32 {
 rt::GuestThread* HleThreadFromHandle(uint32_t handle);
 AlertableScope::AlertableScope(bool enabled)
@@ -10,17 +11,29 @@ AlertableScope::AlertableScope(bool enabled)
 }
 AlertableScope::~AlertableScope() { if (thread_) thread_->alertableWait=previous_; }
 bool DispatchUserApcs(cpu::CpuState& state,cpu::IGuestMemory& memory) {
+    rt::PollWaitableTimers();
     auto* thread=rt::g_process ? rt::g_process->Scheduler().Current() : nullptr;
     if (!thread) return false;
     // An APC may block normally. A nested alertable wait explicitly re-enables
     // dispatch; merely queuing another APC must not interrupt a plain wait.
     AlertableScope dispatching(false);
     bool delivered=false;
-    while (!thread->pendingApcs.empty() && rt::GuestExecution::Checkpoint()) {
+    while (!thread->pendingApcs.empty()) {
+        if(!rt::GuestExecution::Checkpoint()) break;
+        // A peer can cancel/rearm a timer while the checkpoint yields.
+        // Re-read the queue before taking its front after resuming.
+        if(thread->pendingApcs.empty()) break;
         const auto apc=thread->pendingApcs.front();thread->pendingApcs.pop_front();
+        if(apc.timerApc) {
+            auto timer=apc.timer.lock();
+            if(!timer || timer->generation!=apc.generation) continue;
+            timer->apcQueued=false; // no source reference survives the callback
+        }
         cpu::CpuState local=state;
         delivered=true;
-        CallGuestFunctionStdcall(local,memory,apc.routine,{apc.data},thread->teb,thread->teb,0x7fffffff);
+        CallGuestFunctionStdcall(local,memory,apc.routine,
+            apc.timerApc ? std::vector<uint32_t>{apc.data,apc.timeLow,apc.timeHigh} : std::vector<uint32_t>{apc.data},
+            thread->teb,thread->teb,0x7fffffff);
     }
     return delivered;
 }

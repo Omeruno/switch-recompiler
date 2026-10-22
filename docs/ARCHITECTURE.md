@@ -100,7 +100,7 @@ GuestExecution разворачивает его оставшиеся натив
   Wait-all сначала проверяет всю группу, затем потребляет её состояния
   внутри одной кооперативной операции. Повтор не продлевает тайм-аут.
 - `runtime/handle_table.*`: единое пространство файлов, потоков, событий,
-  мьютексов и семафоров. Числовой HANDLE — отдельная ссылка на общий объект,
+  мьютексов, семафоров и waitable timers. Числовой HANDLE — отдельная ссылка на общий объект,
   дубликат получает новое значение. В пределах Process номера не повторяются.
 - `FileTable` — совместимый фасад над той же таблицей для Win32 и CRT.
   Общая ссылка на OpenFile сохраняет файловую позицию между дубликатами.
@@ -128,7 +128,7 @@ Query/suspend/APC проверяют права thread HANDLE. Read/WriteFile, W
 SetEndOfFile и CRT data I/O проверяют права ссылки, не только общий OpenFile.
 Файловый DuplicateHandle не повышает права исходной ссылки.
 
-Process-owned weak namespace разделяется event/mutex/semaphore: имя чувствительно
+Process-owned weak namespace разделяется event/mutex/semaphore/timer: имя чувствительно
 к регистру, A декодирует ACP1252, W сохраняет UTF-16. Local/default совпадают,
 Global отдельно; это разделение имён внутри единственного emulated process,
 не настоящий межпроцессный namespace Horizon. Повторный Create того же типа
@@ -138,8 +138,7 @@ Global отдельно; это разделение имён внутри ед�
 
 Ограничения: нет межпроцессного DuplicateHandle/named namespace, передачи
 INHERIT handles дочерним процессам, token/DACL/security descriptor enforcement,
-полного аудита прав всех metadata/legacy Win32 API, I/O completion APCs и waitable
-timers. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
+полного аудита прав всех metadata/legacy Win32 API и I/O completion APCs. Security descriptor в SECURITY_ATTRIBUTES пока игнорируется; INHERIT
 сохраняется и доступен через HandleInformation. Нет DLL unload/refcounts, rollback отображений неудачной
 загрузки, полноценного PROCESS_DETACH/ExitProcess shutdown и TerminateThread.
 Инициализация до GuestExecution остаётся синхронной; этот путь не поддерживает
@@ -218,8 +217,7 @@ MsgWaitEx возвращают WAIT_IO_COMPLETION после доставки. C
 локальный CpuState с TEB/TLS получателя; обычные waits внутри APC не становятся
 alertable автоматически. Явный вложенный alertable wait допускает рекурсивную
 доставку. APC до старта выполняются после DLL_THREAD_ATTACH до user entry;
-при завершении pending очередь удаляется. I/O completion APCs, waitable timers
-пока не реализованы.
+при завершении pending очередь удаляется. I/O completion APCs пока не реализованы.
 
 SignalObjectAndWait использует те же signal helpers, что SetEvent,
 ReleaseMutex и ReleaseSemaphore, затем сохранённую native continuation общего
@@ -234,6 +232,29 @@ wait HANDLE во время ожидания даёт WAIT_FAILED. Эти слу
 атомарность относительно потоков на других процессорах; runtime не обещает её.
 Standalone HLE без GuestExecution умеет только немедленную проверку, как прежние
 object waits; рабочие host/Switch циклы используют GuestExecution.
+
+Waitable timers: TimerObject в общей HANDLE table, Create/Open A/W и Set/Cancel.
+Manual-reset остаётся signaled до Set; auto-reset потребляется только успешным
+wait. Cancel останавливает сроки/APC, сохраняя signaled state. Set очищает
+сигнал и предыдущий callback. Relative 100-ns input округляется вверх до us
+и считается по monotonic Clock; absolute UTC FILETIME проверяется по wall clock
+на каждом опросе. FILETIME API обоих HLE путей использует тот же источник с
+fast-forward skew тестов. Periodic deadlines сохраняют фазу, пропущенные периоды
+объединяются; таймер не накапливает токены и имеет не больше одной queued APC.
+
+HandleTable хранит только weak timer registry; Process подключает poll/pending
+hooks к scheduler. Expiry проверяется до выбора потока и при object/APC waits.
+HasPendingTimers учитывает armed timers, поэтому бесконечный wait не объявляется
+deadlock при простое всех CPU. Кванты/idle polling задают точность, не 100 ns.
+TimerAPC получает data/FILETIME low/high на CPU/TEB/TLS setter thread и исполняется
+только alertably. Queue entries содержат weak source + generation; Set/Cancel,
+последний Close и выход setter с callback удаляют queued notification. Таймер
+без callback переживает выход setter. Диспетчер проверяет deque после yield:
+peer может отменить APC на checkpoint. Никакая source shared_ptr не переживает
+вызов callback; допускаются cancel/rearm/close из гостевого callback.
+Нет аппаратного wake-from-suspend (fResume: success + ERROR_NOT_SUPPORTED),
+гарантии XP low-power clock поведения, high-resolution/coalescable Ex API и
+проверки реальной точности/сна Horizon. Threadpool timers и I/O APC — отдельно.
 
 Focus/active/capture, async input, меню и hooks ещё имеют общие состояния;
 AttachThreadInput и полные правила marshalling сообщений не реализованы.
@@ -257,6 +278,6 @@ AttachThreadInput и полные правила marshalling сообщений 
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, waitable timers и input ownership,
+полный process/DLL shutdown, timer contention/edge cases и input ownership,
 затем граница compositor/backend. JIT — после стабилизации этих контрактов
 и отдельной проверки разрешений на физическом устройстве.

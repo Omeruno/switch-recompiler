@@ -10,6 +10,7 @@
 #include "user_apc.h"
 #include "../runtime/guest_execution.h"
 #include "../runtime/clock.h"
+#include "../runtime/waitable_timer.h"
 #include "../runtime/process.h"
 
 namespace win32 {
@@ -138,7 +139,7 @@ using Kind = rt::ObjectKind;
 std::shared_ptr<WaitObject> GetSync(uint32_t handle) {
     auto object = rt::Handles().Get(handle);
     if (!object || (object->type != Kind::Event && object->type != Kind::Mutex &&
-                    object->type != Kind::Semaphore)) return nullptr;
+                    object->type != Kind::Semaphore && object->type != Kind::Timer)) return nullptr;
     return std::static_pointer_cast<WaitObject>(object);
 }
 bool SetEventObject(cpu::IGuestMemory& m,uint32_t handle) {
@@ -224,7 +225,7 @@ HostCallOutcome K32_SignalObjectAndWait(cpu::CpuState& c,cpu::IGuestMemory& m) {
         case Kind::Event: signaled=SetEventObject(m,signal); break;
         case Kind::Mutex: signaled=ReleaseMutexObject(m,signal); break;
         case Kind::Semaphore: signaled=ReleaseSemaphoreObject(m,signal,1,0); break;
-        default: break;
+        default: SetLastError(m,ERROR_INVALID_HANDLE);break;
     }
     if (!signaled) return Ret(0xffffffffu);
     object.reset(); // a parked wait must not extend the signaled object/name lifetime
@@ -240,6 +241,7 @@ uint32_t TryAcquire(uint32_t handle) {
     WaitObject& o=*object;
     switch (o.type) {
         case Kind::Event:
+        case Kind::Timer:
             if (!o.signaled) return 0x102;
             if (!o.manualReset) o.signaled=false;
             return 0;
@@ -267,7 +269,7 @@ bool WaitHandleReady(uint32_t h) {
         return thread->status==rt::GuestThreadStatus::Exited;
     auto object=GetSync(h);
     if (!object) return false;
-    if (object->type==Kind::Event) return object->signaled;
+    if (object->type==Kind::Event || object->type==Kind::Timer) return object->signaled;
     if (object->type==Kind::Semaphore) return object->count>0;
     return !object->ownerThread || object->ownerThread==GuestTid();
 }
@@ -419,6 +421,7 @@ const bool kRegistered = RegisterHostFunctions(kEntries, sizeof(kEntries) / size
 } // namespace
 
 bool ValidateWaitObjects(cpu::IGuestMemory& m,const std::vector<uint32_t>& handles,bool all) {
+    rt::PollWaitableTimers();
     for (size_t i=0;i<handles.size();++i) {
         const uint32_t h=handles[i];
         if (!ValidWaitHandle(h)) { hle::SetLastError(m,6); return false; }

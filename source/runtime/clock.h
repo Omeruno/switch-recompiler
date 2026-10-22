@@ -24,6 +24,13 @@ public:
         if (!Start()) Start() = real;
         return real - Start() + Skew() + 1000000000ull;
     }
+    // UTC FILETIME and absolute timers share the test clock's fast-forward.
+    // Relative deadlines continue to use the monotonic clock above.
+    static uint64_t FileTime() {
+        using namespace std::chrono;
+        const auto us=duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
+        return static_cast<uint64_t>(us)*10 + 116444736000000000ull + Skew()*10;
+    }
     static uint32_t NowMs() { return static_cast<uint32_t>(NowUs() / 1000); }
 
     // Подождать ms миллисекунд (или промотать часы)
