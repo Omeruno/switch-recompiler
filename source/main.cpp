@@ -12,6 +12,7 @@
 #include <set>
 #include <queue>
 #include <cctype>
+#include <chrono>
 
 // Include the main libnx system header, for Switch development
 #include <switch.h>
@@ -69,7 +70,7 @@ static bool g_useNewUi = false;
 namespace newui {
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
-void BeginPresentation();
+void BeginPresentation(const char* guestPath);
 void EndPresentation();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
@@ -301,7 +302,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
     if (g_useNewUi) {
-        newui::BeginPresentation();
+        newui::BeginPresentation(path);
         win32::user::g_platform.wait = &newui::Wait;
         win32::user::g_platform.present = &newui::Present;
         win32::user::g_platform.textInput = &newui::TextInput;
@@ -1556,9 +1557,18 @@ ui::Presentation g_presentation;
 float g_cx=kOutW/2.0f,g_cy=kOutH/2.0f;
 bool g_touching=false;
 int g_lastTouchX=0,g_lastTouchY=0;
+std::string g_presentationGuest;
+struct FramebufferStats {
+    uint64_t frames=0,beginNs=0,endNs=0,maxBeginNs=0,maxEndNs=0,deferredDragFrames=0;
+} g_framebufferStats;
+using PresentationClock=std::chrono::steady_clock;
+uint64_t PresentationElapsed(PresentationClock::time_point start) {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(PresentationClock::now()-start).count());
+}
 
-void BeginPresentation() {
+void BeginPresentation(const char* guestPath) {
     g_presentation.Detach();g_presentation.ResetStats();g_presentation.Attach(&g_software);
+    g_presentationGuest=guestPath;g_framebufferStats={};
     g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
 }
 void EndPresentation() {
@@ -1566,14 +1576,18 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Software presentation v1\nBuild: %s\nGuest: %dx%d\nOutput: %dx%d\n",
-            SR_BUILD_REVISION,g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
+        fprintf(log,"Software presentation v2\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+            SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
             (unsigned long long)s.rejected,g_presentation.FrameBytes());
         fprintf(log,"Snapshot bytes: %llu\nOutput bytes: %llu\nSnapshot ns: %llu\nRender ns: %llu\n",
             (unsigned long long)s.snapshotBytes,(unsigned long long)s.outputBytes,
             (unsigned long long)s.snapshotNs,(unsigned long long)s.renderNs);
+        fprintf(log,"Framebuffer frames: %llu\nFramebuffer begin ns: %llu\nFramebuffer end ns: %llu\nMax framebuffer begin ns: %llu\nMax framebuffer end ns: %llu\nDeferred drag redraws: %llu\n",
+            (unsigned long long)g_framebufferStats.frames,(unsigned long long)g_framebufferStats.beginNs,
+            (unsigned long long)g_framebufferStats.endNs,(unsigned long long)g_framebufferStats.maxBeginNs,
+            (unsigned long long)g_framebufferStats.maxEndNs,(unsigned long long)g_framebufferStats.deferredDragFrames);
         fclose(log);
     }
     g_presentation.Detach();
@@ -1581,10 +1595,17 @@ void EndPresentation() {
 void Blit() {
     if(!g_presentation.SourceWidth())return;
     u32 stride=0;
+    auto start=PresentationClock::now();
     u32* fb=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
+    const auto beginNs=PresentationElapsed(start);
     ui::OutputBuffer target{fb,kOutW,kOutH,stride/sizeof(u32),size_t(stride/sizeof(u32))*kOutH};
     g_presentation.Render(target,{static_cast<int>(g_cx),static_cast<int>(g_cy),true});
+    start=PresentationClock::now();
     framebufferEnd(&g_fb);
+    const auto endNs=PresentationElapsed(start);
+    ++g_framebufferStats.frames;g_framebufferStats.beginNs+=beginNs;g_framebufferStats.endNs+=endNs;
+    g_framebufferStats.maxBeginNs=std::max(g_framebufferStats.maxBeginNs,beginNs);
+    g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);
 }
 void Present(const ui::Surface& s) {
     if(g_presentation.Submit(s))Blit();
@@ -1664,7 +1685,14 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
             if (up & k.button) Key(out, false, k.vk);
         }
         if (down & HidNpadButton_Plus) { IE q; q.type = IE::Quit; out.push_back(q); }
-        if (moved && out.size() == 1) Blit(); // только курсор: перерисовать его
+        if (moved && out.size() == 1) {
+            // Deliver drag input to the guest before presenting its old pixels.
+            // Otherwise a cursor-only frame can block on scanout while Paint
+            // still has not received this movement. Hover keeps immediate redraw.
+            if(touching || (padGetButtons(&g_pad)&(HidNpadButton_A|HidNpadButton_ZR)))
+                ++g_framebufferStats.deferredDragFrames;
+            else Blit();
+        }
         if (!out.empty()) return true;
         if (timeoutMs >= 0 && static_cast<int>(rt::Clock::NowMs() - start) >= timeoutMs) return true;
         svcSleepThread(8'000'000);

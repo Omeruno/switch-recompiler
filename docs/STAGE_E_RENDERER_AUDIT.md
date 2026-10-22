@@ -107,3 +107,41 @@ Then a short new-UI Paint test (hold L for Paint): draw, move cursor to edges,
 open/save, dialog placement and text usability on the Lite panel. Note any
 speed/readability change: native desktop increases guest pixel area vs 800x600.
 This short check is still needed before crediting the full E0–E2 35% packet.
+
+## Hardware feedback and drag-latency follow-up (2026-10-22)
+
+User reports correct full-width geometry/corners/border and good Paint output,
+but a possible added delay between movement and the drawn line. Existing text
+shimmer is unchanged. Open/save in this smoke was not separately confirmed.
+Raw reports: `evidence/stage-e-d9ada11-presentation.txt` and
+`evidence/stage-e-d9ada11-renderer.txt`. Geometry PASS is explicit. Renderer
+records one frame (1.928 ms snapshot + 6.632 ms conversion), no rejection,
+and `Build: unknown`. This cannot establish Paint latency, scanout cost, or
+exact executable revision; do not credit the hardware performance gate yet.
+
+The native input adapter previously called Blit with the owned old frame
+before returning a movement-only batch even during a held A/ZR/touch drag.
+That synchronously converts and submits a framebuffer before the guest can
+draw the line for that movement. Drag now skips this early cursor redraw;
+ordinary guest presentation supplies both line and cursor after dispatch.
+Hover still redraws immediately and event batching/order are unchanged.
+Native-width 32-bit output uses sequential source reads rather than column
+map gathers; scaling and all non-32-bit formats retain the reference path.
+
+Renderer report v2 includes guest executable, CI-provided SHA, framebuffer
+frame count, cumulative/max begin/end durations, and deferred drag redraws.
+The report is still written once on exit, to the same root path, so copy it
+after Paint before launching another EXE. Totals/maxima are bounded counters,
+not end-to-end input latency measurements. Retry with new-UI Paint (hold L),
+draw using the same input device and clock settings, then open/save and exit.
+Capture the report and compare whether the lag is still perceptible. No dirty
+rectangles, GPU path, or measured Switch speedup is claimed by this fix.
+
+Local validation of this follow-up: complete host/MinGW suite passed with
+exceptions/RTTI disabled, including both presentation geometries, real-clock
+paced GUI input, all eight Stage C suites and open/save dialog regression.
+Standalone ASan+UBSan passed (`detect_leaks=0` for the traced environment).
+Added byte-aligned/padded/bottom-up native-width RGB/alpha/output-padding
+coverage; existing full-image pixel equivalence remains unchanged. Switch
+adapter compilation and exact-SHA CI are checked on the published commit;
+hardware latency comparison remains pending regardless of CI result.

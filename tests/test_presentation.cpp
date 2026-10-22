@@ -122,7 +122,30 @@ static void Benchmark(int w,int h) {
     std::printf("BENCH host-only %dx%d ->1280x720 rounds=%u legacy_ns=%llu snapshot_ns=%llu render_ns=%llu frame_bytes=%zu output_bytes=%llu\n",
         w,h,rounds,(unsigned long long)oldNs,(unsigned long long)s.snapshotNs,(unsigned long long)s.renderNs,p.FrameBytes(),(unsigned long long)s.outputBytes);
 }
+static void NativeRows() {
+    // Native-width conversion must tolerate byte-aligned, padded DIB rows,
+    // ignore guest alpha, preserve output padding, and handle bottom-up input.
+    for(bool reverse:{false,true}) {
+        std::vector<uint8_t> bytes(1+29*5);
+        Surface source;source.width=7;source.height=5;source.bpp=32;
+        source.pitch=reverse?-29:29;source.bits=bytes.data()+1+(reverse?29*4:0);
+        for(int y=0;y<5;++y)for(int x=0;x<7;++x) {
+            uint32_t pixel=0x7F000000u|uint32_t(x*31)<<16|uint32_t(y*47)<<8|uint32_t(x+y);
+            std::memcpy(source.Row(y)+x*4,&pixel,4);
+        }
+        std::vector<uint32_t> pixels(9*9,0xDEADBEEF);
+        OutputBuffer out{pixels.data(),7,9,9,pixels.size()};
+        SoftwarePresentation backend;
+        assert(backend.Render({source,FitViewport(7,5,7,9),{},1},out));
+        for(int y=0;y<9;++y)for(int x=0;x<9;++x) {
+            uint32_t want=0xDEADBEEF;
+            if(x<7)want=(y<2 || y>=7)?0xFF000000u:
+                (0xFF000000u|uint32_t(x*31)|uint32_t((y-2)*47)<<8|uint32_t(x+y-2)<<16);
+            assert(pixels[y*9+x]==want);
+        }
+    }
+}
 int main() {
-    CheckViewport();Golden(800,600);Golden(1280,720);FormatsAndOwnership();Benchmark(800,600);Benchmark(1280,720);
+    CheckViewport();Golden(800,600);Golden(1280,720);FormatsAndOwnership();NativeRows();Benchmark(800,600);Benchmark(1280,720);
     puts("PASSED: old-output pixel equivalence, Lite full width, aspect/input mapping, DIB formats, padding, owned redraw, detach/resize/failure and bounded metrics");
 }

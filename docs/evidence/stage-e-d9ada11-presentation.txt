@@ -1,0 +1,5 @@
+Stage E software presentation v1
+Virtual screen: 1280 x 720
+RUNNING
+PASS: desktop geometry and four CPU GDI corner pixels
+Virtual screen: 1280 x 720

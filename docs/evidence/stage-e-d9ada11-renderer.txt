@@ -1,0 +1,13 @@
+Software presentation v1
+Build: unknown
+Guest: 1280x720
+Output: 1280x720
+Submitted: 1
+Rendered: 1
+Cursor/redraw frames: 0
+Rejected: 0
+Frame storage: 3686400 bytes
+Snapshot bytes: 3686400
+Output bytes: 3686400
+Snapshot ns: 1927692
+Render ns: 6631716

@@ -58,7 +58,11 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
         const int sy=int(int64_t(y-v.y)*s.height/v.height);
         if(s.bpp==32) {
             const uint8_t* src=s.Row(sy);
-            for(int x=0;x<v.width;++x) {uint32_t rgb;std::memcpy(&rgb,src+size_t(columns_[x])*4,4);row[v.x+x]=Rgba(rgb);}
+            // Native-size desktop: contiguous reads, no column-map gather.
+            // memcpy also permits unaligned guest DIB rows and negative pitch.
+            if(v.width==s.width) {
+                for(int x=0;x<v.width;++x) {uint32_t rgb;std::memcpy(&rgb,src+size_t(x)*4,4);row[v.x+x]=Rgba(rgb);}
+            } else for(int x=0;x<v.width;++x) {uint32_t rgb;std::memcpy(&rgb,src+size_t(columns_[x])*4,4);row[v.x+x]=Rgba(rgb);}
         } else for(int x=0;x<v.width;++x)row[v.x+x]=Rgba(s.Get(columns_[x],sy));
     }
     // Kept pixel-for-pixel identical to the previous Switch cursor.
