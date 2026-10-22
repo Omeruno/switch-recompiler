@@ -61,7 +61,7 @@ for cpp in $src; do
 done
 src="$objects"
 
-for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop; do
+for t in test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
@@ -138,11 +138,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         failed=1
     fi
     if $cxx $flags "$root/tests/test_gui_input.cpp" $src -o "$out/test_gui_input" &&
-       "$out/test_gui_input" "$guestRoot/gui_thread_input.exe" > "$out/test_gui_input.log" 2>&1; then
+       "$out/test_gui_input" "$guestRoot/gui_thread_input.exe" > "$out/test_gui_input.log" 2>&1 &&
+       "$out/test_gui_input" "$guestRoot/gui_thread_input.exe" --paced > "$out/test_gui_input_paced.log" 2>&1; then
         tail -n 1 "$out/test_gui_input.log"
+        tail -n 2 "$out/test_gui_input_paced.log"
     else
         echo "   GUI INPUT OWNERSHIP REGRESSION FAILED"
         tail -n 35 "$out/test_gui_input.log" 2>/dev/null || true
+        tail -n 35 "$out/test_gui_input_paced.log" 2>/dev/null || true
         failed=1
     fi
     # Execute IA-32 instructions in alternating worker quanta; FS must

@@ -1,7 +1,8 @@
 #include <windows.h>
 #include <stdio.h>
-#define CHECK(x) do{if(!(x)){printf("FAIL input line %d error %lu handler %ld\n",__LINE__,GetLastError(),failure);ExitProcess(1);}}while(0)
-#define REQUIRE(x) do{if(!(x)){failure=__LINE__;return 0;}}while(0)
+#include "acceptance_trace.h"
+#define CHECK(x) do{if(!(x)){ACCEPT_FAIL(#x);printf("FAIL input line %d error %lu handler %ld\n",__LINE__,GetLastError(),failure);ExitProcess(1);}}while(0)
+#define REQUIRE(x) do{if(!(x)){ACCEPT_FAIL(#x);failure=__LINE__;return 0;}}while(0)
 enum { SNAPSHOT=WM_APP+1,TAKE_CAPTURE,PROBE,EXIT_FOCUS,EXIT_CAPTURE };
 /* The native inspector enables platform-event probes; normal EXE execution
    remains a complete, unattended state/reentrancy/lifecycle test on Switch. */
@@ -58,15 +59,16 @@ static LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){
     return DefWindowProcA(hwnd,msg,wp,lp);
 }
 static DWORD WINAPI worker(LPVOID unused){
-    MSG msg;(void)unused;workerId=GetCurrentThreadId();TlsSetValue(tls,(LPVOID)222);
+    MSG msg;(void)unused;ACCEPT_STEP("worker begin");workerId=GetCurrentThreadId();TlsSetValue(tls,(LPVOID)222);
     b=CreateWindowA("ThreadInput","worker",WS_OVERLAPPEDWINDOW,400,20,200,180,NULL,NULL,GetModuleHandleA(NULL),NULL);
     b1=CreateWindowExA(WS_EX_NOPARENTNOTIFY,"ThreadInput","worker child",WS_CHILD|WS_VISIBLE,10,10,100,80,b,NULL,GetModuleHandleA(NULL),NULL);
+    ACCEPT_STEP("worker windows created");
     CHECK(b && b1);ShowWindow(b,SW_SHOWNOACTIVATE);
     SetActiveWindow(b);SetFocus(b1);
     crossChild=CreateWindowExA(WS_EX_NOPARENTNOTIFY,"ThreadInput","cross parent",WS_CHILD,0,0,5,5,a,NULL,GetModuleHandleA(NULL),NULL);
     CHECK(crossChild && !SetFocus(crossChild) && !SetActiveWindow(b1) && !SetForegroundWindow(b1) && GetForegroundWindow()==a);
     CHECK(GetFocus()==b1 && GetActiveWindow()==b);
-    SetEvent(ready);
+    ACCEPT_STEP("worker ready");SetEvent(ready);
     while(GetMessageA(&msg,NULL,0,0)>0)DispatchMessageA(&msg);
     return 64;
 }
@@ -76,6 +78,10 @@ static HANDLE start_worker(void){
     CHECK(thread && WaitForSingleObject(ready,5000)==WAIT_OBJECT_0);return thread;
 }
 int main(void){
+#ifndef ACCEPTANCE_AGGREGATE
+    AcceptanceTraceBegin("standalone GUI input");
+#endif
+    ACCEPT_STEP("input begin");
     WNDCLASSA cls={0};GUITHREADINFO info={0};HANDLE thread;DWORD code;MSG msg;unsigned keys=0,chars=0;
     mainId=GetCurrentThreadId();tls=TlsAlloc();CHECK(tls!=TLS_OUT_OF_INDEXES && TlsSetValue(tls,(LPVOID)111));
     cls.lpfnWndProc=proc;cls.hInstance=GetModuleHandleA(NULL);cls.lpszClassName="ThreadInput";CHECK(RegisterClassA(&cls));
@@ -84,19 +90,26 @@ int main(void){
     a2=CreateWindowExA(WS_EX_NOPARENTNOTIFY,cls.lpszClassName,"two",WS_CHILD|WS_VISIBLE,80,10,60,60,a,NULL,cls.hInstance,NULL);
     a3=CreateWindowExA(WS_EX_NOPARENTNOTIFY,cls.lpszClassName,"three",WS_CHILD|WS_VISIBLE,150,10,60,60,a,NULL,cls.hInstance,NULL);
     ready=CreateEventA(NULL,TRUE,FALSE,NULL);CHECK(a && a1 && a2 && a3 && ready);
+    ACCEPT_STEP("main windows created");
     ShowWindow(a,SW_SHOW);CHECK(SetForegroundWindow(a));SetFocus(a1);SetCapture(a1);
-    thread=start_worker();
+    ACCEPT_STEP("create first worker");thread=start_worker();
     CHECK(GetFocus()==a1 && GetActiveWindow()==a && GetCapture()==a1 && GetForegroundWindow()==a);
+    ACCEPT_STEP("cross-thread snapshot");
     CHECK(SendMessageA(b,SNAPSHOT,0,0)==101 && !failure && GetCapture()==a1);
+    ACCEPT_STEP("GUIThreadInfo and foreign queues");
     info.cbSize=sizeof(info);CHECK(GetGUIThreadInfo(workerId,&info) && info.hwndActive==b && info.hwndFocus==b1 && !info.hwndCapture);
     CHECK(GetGUIThreadInfo(0,&info) && info.hwndActive==a && info.hwndFocus==a1 && info.hwndCapture==a1);
     info.cbSize=47;CHECK(!GetGUIThreadInfo(mainId,&info) && GetLastError()==ERROR_INVALID_PARAMETER);info.cbSize=sizeof(info);
     CHECK(!GetGUIThreadInfo(0x12345678,&info));
     CHECK(!SetFocus(b1) && !SetCapture(b1) && GetFocus()==a1 && GetCapture()==a1);
     EnableWindow(a2,FALSE);CHECK(!SetFocus(a2) && GetLastError()==ERROR_INVALID_PARAMETER && GetFocus()==a1);EnableWindow(a2,TRUE);
+    ACCEPT_STEP("nested focus redirection");
     redirectFocus=1;setA2=0;CHECK(SetFocus(a2)==a1 && GetFocus()==a3 && !setA2);
+    ACCEPT_STEP("destroy focus target in callback");
     SetFocus(a1);destroyFocus=1;CHECK(SetFocus(a2)==a1 && !IsWindow(a2) && !GetFocus() && !setA2);
+    ACCEPT_STEP("nested capture redirection");
     SetFocus(a1);redirectCapture=1;CHECK(SetCapture(a)==a1 && GetCapture()==a3);
+    ACCEPT_STEP("cross-thread capture transfer");
     SetCapture(a1);CHECK(SendMessageA(b,TAKE_CAPTURE,0,0)==102 && !GetCapture() && captureChanges>=2);
     CHECK(ReleaseCapture() && !GetCapture());CHECK(GetGUIThreadInfo(workerId,&info) && info.hwndCapture==b1);
     if(InputTestProbe){
@@ -117,16 +130,21 @@ int main(void){
         CHECK(SendMessageA(b,PROBE,5,0)==103 && !IsWindow(doomed) && GetForegroundWindow()==b);
     }
     CHECK(SetForegroundWindow(a));SetFocus(a1);SetCapture(a1);
+    ACCEPT_STEP("ExitThread from WM_SETFOCUS");
     SendMessageA(b,EXIT_FOCUS,0,0);
     CHECK(WaitForSingleObject(thread,5000)==WAIT_OBJECT_0 && GetExitCodeThread(thread,&code) && code==62 && CloseHandle(thread));
     CHECK(!afterExit && !failure && !IsWindow(b) && !IsWindow(b1) && !GetGUIThreadInfo(workerId,&info));
     CHECK(GetFocus()==a1 && GetCapture()==a1 && GetActiveWindow()==a);
+    ACCEPT_STEP("create second worker");
     thread=start_worker();CHECK(SendMessageA(b,TAKE_CAPTURE,0,0)==102);
+    ACCEPT_STEP("ExitThread from WM_CAPTURECHANGED");
     SendMessageA(b,EXIT_CAPTURE,0,0);
     CHECK(WaitForSingleObject(thread,5000)==WAIT_OBJECT_0 && GetExitCodeThread(thread,&code) && code==63 && CloseHandle(thread));
     CHECK(!afterExit && !failure && !GetCapture() && GetFocus()==a1 && !IsWindow(b1));
+    ACCEPT_STEP("disable and destroy main window");
     SetCapture(a1);EnableWindow(a,FALSE);CHECK(!GetFocus() && !GetCapture());EnableWindow(a,TRUE);SetFocus(a1);SetCapture(a1);
     CHECK(DestroyWindow(a) && !GetFocus() && !GetCapture() && !GetActiveWindow());
     CHECK(CloseHandle(ready) && TlsFree(tls));
+    ACCEPT_STEP("input passed");
     puts("PASSED: per-thread focus/activation/capture, foreign-queue rejection, nested focus/destruction/capture and callback thread-exit cleanup");return 0;
 }

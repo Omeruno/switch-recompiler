@@ -1,6 +1,7 @@
 /* Same source regressions as CI, linked into one unattended hardware probe. */
 #include <windows.h>
 #include <stdio.h>
+#include "acceptance_trace.h"
 int StageC_sync(void);
 int StageC_wait_multiple(void);
 int StageC_named(void);
@@ -23,10 +24,12 @@ static const struct Suite suites[]={
 int main(void){
     FILE* log=fopen("stage-c-acceptance.txt","w");unsigned i;HWND result;MSG msg;DWORD until;
     if(!log){puts("FAIL: cannot create stage-c-acceptance.txt");return 2;}
-    fprintf(log,"Stage C acceptance v1\nRUNNING: incomplete report is not a pass\n");fflush(log);
+    AcceptanceTraceBegin("combined acceptance");
+    fprintf(log,"Stage C acceptance v2\nRUNNING: incomplete report is not a pass\n");fflush(log);
     for(i=0;i<sizeof(suites)/sizeof(suites[0]);++i){
         int code;
         fprintf(log,"BEGIN %u: %s\n",i+1,suites[i].name);fflush(log);
+        ACCEPT_STEP(suites[i].name);
         code=suites[i].run();
         if(code){fprintf(log,"FAIL %u: code %d\n",i+1,code);fclose(log);return code;}
         fprintf(log,"PASS %u: %s\n",i+1,suites[i].name);fflush(log);
@@ -41,5 +44,5 @@ int main(void){
         Sleep(16);
     }
     if(IsWindow(result))DestroyWindow(result);
-    puts("PASSED: Stage C acceptance v1, ALL 8 SUITES; report stage-c-acceptance.txt");return 0;
+    puts("PASSED: Stage C acceptance v2, ALL 8 SUITES; report stage-c-acceptance.txt");return 0;
 }

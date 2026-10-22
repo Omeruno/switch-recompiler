@@ -4,12 +4,13 @@
 #include "source/win32/user32.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 namespace user=win32::user;
 static cpu::PagedGuestMemory* probeMemory;
 static rt::Process* probeProcess;
 static uint32_t probeStage,previousStage;
-static unsigned injected;
+static unsigned injected,presented;
 static void AbortInput(bool guestExit) {
     cpu::PagedGuestMemory memory;rt::Process process(memory);rt::g_process=&process;
     assert(memory.Map(0x10000,0x10000,cpu::kProtRWX));
@@ -48,7 +49,8 @@ static void AbortInput(bool guestExit) {
     user::S()=user::State{};
 }
 int main(int argc,char** argv) {
-    assert(argc==2);rt::Clock::SetFastForward(true);
+    assert(argc==2 || (argc==3 && std::strcmp(argv[2],"--paced")==0));
+    const bool paced=argc==3;rt::Clock::SetFastForward(!paced);
     AbortInput(false);AbortInput(true);
     user::EnableUi(800,600);
     cpu::PagedGuestMemory memory;rt::Process process(memory);rt::g_process=&process;
@@ -57,6 +59,9 @@ int main(int argc,char** argv) {
     uint32_t enabled=process.GetProcAddress(process.MainModule(),"InputTestProbe");
     uint32_t stage=process.GetProcAddress(process.MainModule(),"InputTestStage");assert(enabled&&stage);
     memory.Write32(enabled,1);probeMemory=&memory;probeProcess=&process;probeStage=stage;
+    if(paced)user::g_platform.present=[](const ui::Surface& surface) {
+        assert(surface.Valid());++presented;rt::Clock::Sleep(16);
+    };
     user::g_platform.wait=[](int,std::vector<user::InputEvent>& events) {
         uint32_t current=probeMemory->Read32(probeStage);
         if(!current || current==previousStage)return true;
@@ -99,6 +104,8 @@ int main(int argc,char** argv) {
     assert(stopped && injected==5 && !user::S().foreground && !user::S().capture);
     for(const auto& item:user::S().queues)assert(!item.second.active && !item.second.focus);
     for(const auto& item:user::S().windows)assert(item.first==user::S().desktop);
-    user::g_platform.wait={};rt::g_process=nullptr;
+    if(paced)assert(presented>0);
+    user::g_platform.wait={};user::g_platform.present=nullptr;rt::g_process=nullptr;
+    if(paced)puts("PASSED: real-clock GUI callbacks with paced presentation");
     puts("PASSED: foreground input routing from peer poll, capture drag/hover ownership, nested callbacks and host-abort/ExitProcess GUI cleanup");
 }

@@ -209,7 +209,12 @@ int OpenPath(cpu::IGuestMemory& m, const std::string& guestPath, const ModeInfo&
 }
 
 uint32_t NewFileStruct(cpu::IGuestMemory& m, int fd, const ModeInfo& mi) {
-    uint32_t file = Malloc(m, kFileSize, true);
+    // Dynamically allocated MSVCRT streams carry a six-DWORD critical section
+    // immediately after the public FILE. MinGW's formatter enters that section
+    // directly. Reserving only sizeof(FILE) aliases the next heap allocation.
+    // Keep kFileSize unchanged: the public _iob array still has 32-byte stride.
+    uint32_t file = Malloc(m, kFileSize + 24, true);
+    m.Write32(file + kFileSize + 4, 0xFFFFFFFFu);
     m.Write32(file + 12, mi.read && mi.write ? _IORW : mi.read ? _IOREAD : _IOWRT);
     m.Write32(file + 16, static_cast<uint32_t>(fd));
     Stream s;

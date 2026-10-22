@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **1a5f585ea718eadf02eb3696cb86f6accbe44bb7**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39775696837](https://github.com/Omeruno/switch-recompiler/actions/runs/39775696837), including 36 initializer fault modes. The GUI input/Stage C acceptance packet below still needs its own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
+Last verified implementation GitHub state: **1aa471f1d0e995a736fd71dc36f8cd59611ebdac**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in run [39781689322](https://github.com/Omeruno/switch-recompiler/actions/runs/39781689322). Hardware acceptance is incomplete: the normal v1 run passed 1–6 and stopped inside block 7. The diagnostic v2 changes below need their own exact-SHA CI. This file is coordination documentation, not a substitute for branch HEAD/diffs/results.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1523,3 +1523,45 @@ https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setfocus
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getactivewindow
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcapture
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getguithreadinfo.
+
+## 2026-10-22 Stage C hardware failure and diagnostic v2
+
+- All five CI jobs for `1aa471f` are green (run 39781689322). Physical
+  acceptance is NOT green: the user's ordinary v1 run passed suites 1–6,
+  reached BEGIN 7 (GUI input ownership/callback exit), briefly showed text,
+  then black screen and exit without input. A separate run holding L exited
+  after BEGIN 3. For non-Paint EXEs L selects legacy UI; do not mix that run
+  with the required new-UI gate. Stage C remains ~95%, hardware gate blocked.
+- Added durable guest stdout/stderr capture in the Switch frontend, preserving
+  native errno and restoring the console callback. It flushes a bounded 16 KiB
+  payload plus prefixes to `sdmc:/switch-recompiler-execution.txt`, records
+  source build/UI/EXE and stop reason/exit code/steps. Nonzero explicit exits
+  and exhausted instruction budgets now also produce a guest stop report.
+  Fatal native termination may leave RUNNING; that is not a pass. No frame or
+  instruction trace writes. Existing fatal report remains in root SD.
+- Source acceptance v2 adds phase checkpoints and exact failing CHECKs to
+  `stage-c-details.txt` beside EXE (input and named suites), preserving Win32
+  last-error and guest CRT errno. No acceptance assertions weakened. Combined
+  runner preserves details across all eight renamed main calls. Standalone
+  gui_thread_input is the next physical test, without L, using matching NRO.
+- Diagnostic instrumentation exposed a reproducible host deadlock BEFORE suite
+  1: MinGW's statically linked formatter enters a critical section at FILE+32.
+  Dynamic FILE allocations reserved only 32 bytes; a neighbouring FILE's flags
+  appeared as the lock owner. Fixed allocation to include/init the 24-byte lock,
+  preserving the public 32-byte _iob stride. crt_files now exercises two live
+  formatted streams, writes after closing one, heap canary and readback.
+  This is a real runtime fix; its relation to the original hardware suite-7
+  failure is unproven. Do not claim the Switch failure fixed without new logs.
+- Native GUI regression now additionally runs with real Clock and a 16 ms
+  present delay. This checks timing beyond host fast-forward; it does not
+  execute libnx/framebuffer. Need user logs from the matching physical NRO:
+  stage-c-details.txt; root switch-recompiler-execution.txt; root
+  switch-recompiler-crash.txt if generated. Collect before another launch.
+- Current packet needs exact-SHA CI after publication. Full local validation
+  result must be recorded below once finished; do not inherit an earlier pass.
+
+Validation for diagnostic v2: complete `sh tools/run_host_tests.sh` PASSED
+with `g++ -fno-exceptions -fno-rtti` and actual MinGW guest builds, including
+new FILE regression, bounded log test, fast + real-clock paced GUI inspector,
+all prior native/PE fixtures and `Stage C acceptance v2, ALL 8 SUITES`.
+Transient log: /tmp/acceptance-v2-fixed-full.log. Hardware cause remains pending.

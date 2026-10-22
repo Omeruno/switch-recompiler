@@ -16,6 +16,9 @@
 // Include the main libnx system header, for Switch development
 #include <switch.h>
 #include <sys/stat.h>
+#ifndef SR_BUILD_REVISION
+#define SR_BUILD_REVISION "unknown"
+#endif
 
 // Наш PE-парсер и x86-decoder
 #include "loader/pe_parser.h"
@@ -26,6 +29,7 @@
 #include "runtime/clock.h"
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
+#include "runtime/guest_execution_log.h"
 #include "win32/user32.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
@@ -245,14 +249,16 @@ static void PrintDisassembly(const char* path, int maxLinesToShow)
 // Не пишем трассу каждого кадра на SD (это быстро убьёт карту и FPS).
 static void SaveGuestStopReport(const char* reason, const char* exeName,
                                 const cpu::CpuState& state, rt::Process& proc,
-                                const cpu::CpuException* exception, bool initializationFailure=false)
+                                const cpu::CpuException* exception, bool initializationFailure=false, int steps=0)
 {
     // Главный файл — корень SD: отдельный каталог создавать не требуется.
     FILE* log = fopen("sdmc:/switch-recompiler-crash.txt", "w");
     if (!log) return;
     fprintf(log, "switch-recompiler guest stop report\n");
     fprintf(log, "EXE: %s\n", exeName ? exeName : "?");
+    fprintf(log,"Build: %s\n",SR_BUILD_REVISION);
     fprintf(log, "Reason: %s\n", reason ? reason : "?");
+    fprintf(log,"Window layer: %s\nGuest exit code: 0x%08x\nSteps: %d\n",g_useNewUi?"new":"legacy",uint32_t(win32::g_guestExitCode),steps);
     fprintf(log, "EIP: 0x%08x\n", state.eip);
     fprintf(log, "ESP: 0x%08x\n", state.Get(cpu::Reg32::ESP));
     if (exception) {
@@ -280,6 +286,7 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
 
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
+    rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
@@ -303,6 +310,8 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     rt::Module* exe = proc.LoadMainExe(path, err);
     if (!exe || !proc.PrepareMainThread(cpuState, err))
     {
+        executionLog.Complete(err.c_str(),193,0);
+        SaveGuestStopReport(err.c_str(),path,cpuState,proc,nullptr);
         SafePrint("[!] Failed to load %s: %s\n", path, err.c_str());
         return;
     }
@@ -369,13 +378,17 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     }
 
     if (execution.InitializationFailed()) {
-        SaveGuestStopReport(execution.InitializationError().c_str(),path,cpuState,proc,nullptr,true);
+        executionLog.Complete(execution.InitializationError().c_str(),uint32_t(win32::g_guestExitCode),steps);
+        SaveGuestStopReport(execution.InitializationError().c_str(),path,cpuState,proc,nullptr,true,steps);
         SafePrint("[!] DLL initialization failed: %s\n",execution.InitializationError().c_str());
         SafeConsoleUpdate();
         return;
     }
-    if (strcmp(stopReason, "guest called exit()") != 0 && strcmp(stopReason, "max steps reached") != 0)
-        SaveGuestStopReport(stopReason, path, runningThread ? runningThread->cpu : cpuState, proc, stopException);
+    if(steps<maxSteps && win32::g_guestExitRequested && strcmp(stopReason,"max steps reached")==0)
+        stopReason="guest called exit()";
+    executionLog.Complete(stopReason,uint32_t(win32::g_guestExitCode),steps);
+    if (strcmp(stopReason, "guest called exit()") != 0 || win32::g_guestExitCode!=0)
+        SaveGuestStopReport(stopReason, path, runningThread ? runningThread->cpu : cpuState, proc, stopException,false,steps);
 
     if (!g_graphicsInitialized) {
         SafePrint("\n[+] Execution stopped: %s\n", stopReason);

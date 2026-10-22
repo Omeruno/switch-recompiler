@@ -90,7 +90,7 @@ done
 # keeps its own translation-unit static state and the exact normal test body.
 acceptance_objects=""
 for part in sync wait_multiple named signalwait timer_contention mixed_apc input timer_exit; do
-    $cc -O1 -Dmain=StageC_$part -c "$here/gui_thread_$part.c" -o "$out/acceptance_$part.o"
+    $cc -O1 -DACCEPTANCE_AGGREGATE -Dmain=StageC_$part -c "$here/gui_thread_$part.c" -o "$out/acceptance_$part.o"
     acceptance_objects="$acceptance_objects $out/acceptance_$part.o"
 done
 # shellcheck disable=SC2086

@@ -15,6 +15,34 @@ static int failures;
 
 int main(void) {
     _mkdir("testdir");
+    /* MinGW fprintf locks FILE+32. Two live streams must not overlap locks
+       with another FILE or a neighbouring guest heap allocation. */
+    {
+        FILE* left = fopen("testdir/left.txt", "w");
+        FILE* right = fopen("testdir/right.txt", "w");
+        unsigned char* guard = (unsigned char*)malloc(64);
+        int i;
+        CHECK(left && right && guard);
+        if (!left || !right || !guard) return 1;
+        memset(guard, 0xA5, 64);
+        CHECK(fprintf(right, "right %d\n", 22) > 0);
+        CHECK(fprintf(left, "left %d\n", 11) > 0);
+        CHECK(fclose(right) == 0);
+        CHECK(fprintf(left, "still open %d\n", 33) > 0);
+        CHECK(fclose(left) == 0);
+        for (i = 0; i < 64 && guard[i] == 0xA5; ++i) {}
+        CHECK(i == 64);
+        free(guard);
+        left = fopen("testdir/left.txt", "r");
+        if (left) {
+            char text[64] = {0};
+            CHECK(fread(text, 1, sizeof(text)-1, left) > 0);
+            CHECK(strcmp(text, "left 11\nstill open 33\n") == 0);
+            fclose(left);
+        } else CHECK(left != NULL);
+        remove("testdir/left.txt");
+        remove("testdir/right.txt");
+    }
     FILE* f = fopen("testdir\\Text.TXT", "w");
     CHECK(f != NULL);
     fprintf(f, "line one\nline %d\n", 2);

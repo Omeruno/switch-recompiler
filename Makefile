@@ -55,6 +55,8 @@ CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
+BUILD_REVISION := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
+CXXFLAGS += -DSR_BUILD_REVISION=\"$(if $(BUILD_REVISION),$(BUILD_REVISION),unknown)\"
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)

@@ -1,7 +1,8 @@
 #define _WIN32_WINNT 0x0501
 #include <windows.h>
 #include <stdio.h>
-#define CHECK(x) do { if (!(x)) { printf("FAIL named line %d error %lu\n",__LINE__,GetLastError()); return __LINE__; } } while (0)
+#include "acceptance_trace.h"
+#define CHECK(x) do { if (!(x)) { ACCEPT_FAIL(#x);printf("FAIL named line %d error %lu\n",__LINE__,GetLastError()); return __LINE__; } } while (0)
 static DWORD WINAPI Worker(LPVOID unused) {
     HANDLE event=OpenEventW(EVENT_MODIFY_STATE,FALSE,L"Local\\NamedEvent");
     HANDLE mutex=OpenMutexA(SYNCHRONIZE,FALSE,"NamedMutex");
@@ -11,6 +12,10 @@ static DWORD WINAPI Worker(LPVOID unused) {
     CloseHandle(event);CloseHandle(mutex);return 42;
 }
 int main(void) {
+#ifndef ACCEPTANCE_AGGREGATE
+    AcceptanceTraceBegin("standalone named objects");
+#endif
+    ACCEPT_STEP("named begin");
     SECURITY_ATTRIBUTES sa={sizeof(sa),NULL,TRUE};
     HANDLE event,alias,waiter,modifier,mutex,semaphore,other,worker,copy;
     HANDLE pair[2];
@@ -43,12 +48,14 @@ int main(void) {
     CHECK(!CreateEventA(NULL,FALSE,FALSE,longName) && GetLastError()==ERROR_FILENAME_EXCED_RANGE);
     CHECK(!OpenEventA(SYNCHRONIZE,FALSE,NULL) && GetLastError()==ERROR_INVALID_PARAMETER);
     CHECK(!CreateEventA(NULL,FALSE,FALSE,(LPCSTR)1) && GetLastError()==ERROR_INVALID_PARAMETER);
+    ACCEPT_STEP("named ANSI and UTF-16 identity");
     // ANSI ACP 1252 and UTF-16 must refer to exactly the same name.
     other=CreateEventA(NULL,TRUE,TRUE,"Euro-\x80");CHECK(other);
     copy=OpenEventW(SYNCHRONIZE,FALSE,L"Euro-\x20ac");CHECK(copy && WaitForSingleObject(copy,0)==WAIT_OBJECT_0);
     CHECK(CloseHandle(other) && CloseHandle(copy));
     other=CreateEventW(NULL,TRUE,TRUE,L"Unicode-\x0416-\xd83d\xde00");CHECK(other);
     copy=OpenEventW(SYNCHRONIZE,FALSE,L"Unicode-\x0416-\xd83d\xde00");CHECK(copy && CloseHandle(other) && CloseHandle(copy));
+    ACCEPT_STEP("named mutex worker");
     mutex=CreateMutexA(NULL,TRUE,"NamedMutex");CHECK(mutex);
     other=CreateMutexW(NULL,TRUE,L"Local\\NamedMutex");CHECK(other && GetLastError()==ERROR_ALREADY_EXISTS);
     CHECK(ReleaseMutex(mutex)); // Reopening with initialOwner must not acquire again.
@@ -57,6 +64,7 @@ int main(void) {
     CHECK(WaitForSingleObject(waiter,2000)==WAIT_OBJECT_0 && WaitForSingleObject(worker,2000)==WAIT_OBJECT_0);
     CHECK(GetExitCodeThread(worker,&code) && code==42 && CloseHandle(worker));
     CHECK(CloseHandle(mutex) && CloseHandle(other));
+    ACCEPT_STEP("named restricted wait-all and MsgWait");
     semaphore=CreateSemaphoreA(NULL,1,3,"NamedSemaphore");CHECK(semaphore);
     other=CreateSemaphoreW(NULL,0,1,L"NamedSemaphore");CHECK(other && GetLastError()==ERROR_ALREADY_EXISTS);
     CHECK(ReleaseSemaphore(other,2,NULL)); // Original maxCount=3 remains.
@@ -69,6 +77,7 @@ int main(void) {
     CHECK(WaitForSingleObject(event,0)==WAIT_OBJECT_0 && WaitForSingleObject(semaphore,0)==WAIT_OBJECT_0);
     CHECK(WaitForSingleObject(semaphore,0)==WAIT_OBJECT_0 && WaitForSingleObject(semaphore,0)==WAIT_TIMEOUT);
     CHECK(CloseHandle(pair[1]) && CloseHandle(semaphore) && CloseHandle(other));
+    ACCEPT_STEP("named final handle lifetime");
     CHECK(DuplicateHandle(GetCurrentProcess(),event,GetCurrentProcess(),&copy,0,FALSE,DUPLICATE_SAME_ACCESS));
     CHECK(CloseHandle(event) && CloseHandle(alias) && CloseHandle(waiter) && CloseHandle(modifier));
     other=OpenEventA(EVENT_ALL_ACCESS,FALSE,"NamedEvent");CHECK(other && CloseHandle(other));
@@ -76,6 +85,7 @@ int main(void) {
     CHECK(!OpenEventW(SYNCHRONIZE,FALSE,L"NamedEvent") && GetLastError()==ERROR_FILE_NOT_FOUND);
     event=CreateEventA(NULL,TRUE,TRUE,"NamedEvent");CHECK(event && GetLastError()==0);
     CHECK(WaitForSingleObject(event,0)==WAIT_OBJECT_0 && WaitForSingleObject(event,0)==WAIT_OBJECT_0 && CloseHandle(event));
+    ACCEPT_STEP("named passed");
     puts("PASSED: named A/W sync identity, type/session namespaces, ACP/Unicode, initialization, lifetime and restricted atomic waits");
     return 0;
 }
