@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Last verified implementation GitHub state: **6aacc4e013e55be84a6f7860dfb34e810c6fbda0**, branch `claude/wonderful-hawking-10mpr0` (2026-10-22). All five jobs passed in [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Bounded Stage C hardware acceptance PASSED: user-supplied combined v2 report has PASS 1–8 and PASS: ALL 8 SUITES. Next implementation package is E1 renderer boundary/software reference, with baseline isolated ARM64 probe execution (return 42) now reported by the user as already tested on Switch. This summary supersedes older pending-C notes below; it does not claim full NT/Win32, GPU, shell or dynarec completion.
+Current incoming base: **fed7668673916242538f68d213ce071c3af0f7c5**, branch `claude/wonderful-hawking-10mpr0` (2026-10-23). E6 retained window/GPU composition and E7 revision-driven snapshots are implemented. Continue from the latest dated entry below and current commits, not the historical E1/common-dialog notes. E8 instrumentation is the current software package; E8 hardware performance and E9 final acceptance remain open. No physical Switch is attached to this environment.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1655,3 +1655,33 @@ and all eight Stage C suites. Standalone ASan+UBSan passed with detect_leaks=0
 (LSan cannot inspect traced process here). Timing sample preserved under
 docs/evidence/stage-e012-host-presentation.txt; host-only, not Switch FPS.
 Exact-SHA Switch/CPU oracle/QEMU/host/probe CI still required after publication.
+
+## 2026-10-23 E8: bounded asynchronous GPU measurement
+
+Incoming remote HEAD was fed7668, unchanged from the scheduled task; clean clone,
+no AGENTS.md found in the checkout or checked workspace ancestor locations.
+Added separate CPU upload/preparation and draw-submission sums/maxima, a four-slot
+GL_TIME_ELAPSED query ring, per-plane attempted transfer bytes, current/peak
+logical texture storage and revision-cache bytes. Queries are read only after
+RESULT_AVAILABLE, skip sampling when all slots are pending, and are deleted
+before GL context destruction. No glFinish, readback or per-frame SD logging was
+added to production. Reset retains GL allocation accounting; Shutdown releases it.
+Renderer report is now v6. CPU GDI, fallback and native Lite geometry are unchanged.
+
+See STAGE_E_PERFORMANCE.md for measurement scope and the consolidated deferred
+Switch checklist. Exact-SHA CI status must be checked after publication; local
+validation results are recorded at the end of this entry before commit.
+Next independent software block: E9 combined unattended acceptance fixture/report,
+reusing Stage C, presentation/composition and dialog regressions. E8 cannot be
+accepted without real CPU/GPU workload measurements; do not invent them or block
+independent E9 work waiting for the sleeping user. Add raster-stage and software
+comparison coverage before claiming the full E8 measurement contract complete.
+
+Local validation for this package: complete `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with actual MinGW fixtures, including all eight
+Stage C suites, both 28-scene CPU/GL composition runs, dialogs and input.
+Standalone actual EGL/Mesa presentation test passed with -fno-exceptions and
+-fno-rtti, including the new timers/memory assertions. Window layer allocator/
+lifetime regression passed ASan+UBSan with detect_leaks=0. No physical Switch,
+Switch toolchain, local CPU-oracle/multilib or local ARM64/QEMU run is claimed;
+the latter build/oracle/ABI gates remain exact-SHA CI responsibilities.

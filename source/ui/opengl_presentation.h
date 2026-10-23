@@ -2,6 +2,13 @@
 #include "presentation.h"
 
 namespace ui {
+// CPU submission and asynchronous GL command intervals, never scanout/input latency.
+struct GpuPresentationStats {
+    uint64_t frames=0,uploadCpuNs=0,drawCpuNs=0,maxUploadCpuNs=0,maxDrawCpuNs=0;
+    uint64_t gpuSamples=0,gpuNs=0,maxGpuNs=0,gpuSkipped=0;
+    uint64_t screenUploadBytes=0,ownershipUploadBytes=0,layerUploadBytes=0;
+    size_t peakTextureBytes=0;
+};
 // Draws to the current GL context's default framebuffer. Context/window ownership
 // and swapping stay in the platform adapter. Host builds use an unavailable stub
 // unless SR_OPENGL_TEST enables the same implementation for EGL pixel tests.
@@ -18,11 +25,16 @@ public:
     uint64_t UploadCalls() const {return uploadCalls_;}
     size_t CacheBytes() const;
     uint64_t LayerDraws() const {return layerDraws_;}
+    const GpuPresentationStats& Timings() const {return timings_;}
+    bool TimerAvailable() const {return timerAvailable_;}
+    void PollTimings(); // checks availability only; never waits for GPU completion
+    size_t TextureBytes() const;
     const char* Error() const {return error_;}
 private:
     struct Texture {
         unsigned handle=0;
         int width=0,height=0;
+        size_t allocatedBytes=0;
         uint64_t id=0,generation=0;
         PresentationBuffer<uint64_t> versions;
     };
@@ -35,6 +47,10 @@ private:
     int ownershipUniform_=-1,modeUniform_=-1,layerRectUniform_=-1,layerTokenUniform_=-1;
     uint64_t uploadedBytes_=0,totalUploaded_=0,uploadCalls_=0,layerDraws_=0;
     uint64_t sceneEpoch_=0,frameId_=0,frameGeneration_=0;
+    struct TimerSlot {unsigned handle=0;bool pending=false;};
+    std::array<TimerSlot,4> timers_{};
+    bool timerAvailable_=false;
+    GpuPresentationStats timings_;
     const char* error_="not initialized";
 };
 } // namespace ui

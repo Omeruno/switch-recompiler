@@ -2,6 +2,7 @@
 #include "presentation_cursor.h"
 #include <algorithm>
 #include <cstring>
+#include <chrono>
 #if defined(__SWITCH__)
 #include <glad/glad.h>
 #elif defined(SR_OPENGL_TEST)
@@ -27,8 +28,17 @@ size_t OpenGlPresentation::CacheBytes() const {
     for(const auto& layer:layers_)bytes+=layer.versions.size()*8;
     return bytes;
 }
+size_t OpenGlPresentation::TextureBytes() const {
+    size_t bytes=screen_.allocatedBytes+ownership_.allocatedBytes;
+    for(const auto& layer:layers_)bytes+=layer.allocatedBytes;
+    return bytes+(cursorTexture_?kCursorWidth*kCursorHeight*4:0);
+}
 #if defined(__SWITCH__) || defined(SR_OPENGL_TEST)
 namespace {
+using Clock=std::chrono::steady_clock;
+uint64_t Elapsed(Clock::time_point start) {
+    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-start).count());
+}
 const char* vertex=R"GLSL(#version 330 core
 void main() {
     vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);
@@ -104,10 +114,30 @@ bool OpenGlPresentation::Initialize() {
     if(!vao_ || !cursorTexture_ || glGetError()!=GL_NO_ERROR) {
         Shutdown();error_="GL resource allocation failed";return false;
     }
-    totalUploaded_=uploadCalls_=layerDraws_=0;error_="none";return true;
+    // GL 3.3 timer queries are optional diagnostics. A bounded ring avoids
+    // glFinish and blocking reads even when the GPU falls behind the producer.
+    GLint bits=0;glGetQueryiv(GL_TIME_ELAPSED,GL_QUERY_COUNTER_BITS,&bits);
+    timerAvailable_=bits>0;
+    if(timerAvailable_)for(auto& timer:timers_)glGenQueries(1,&timer.handle);
+    if(glGetError()!=GL_NO_ERROR) {
+        for(auto& timer:timers_) {if(timer.handle)glDeleteQueries(1,&timer.handle);timer={};}
+        timerAvailable_=false;
+    }
+    timings_={};totalUploaded_=uploadCalls_=layerDraws_=0;error_="none";return true;
+}
+void OpenGlPresentation::PollTimings() {
+    for(auto& timer:timers_)if(timer.pending) {
+        GLint ready=0;glGetQueryObjectiv(timer.handle,GL_QUERY_RESULT_AVAILABLE,&ready);
+        if(!ready)continue;
+        GLuint64 ns=0;glGetQueryObjectui64v(timer.handle,GL_QUERY_RESULT,&ns);
+        ++timings_.gpuSamples;timings_.gpuNs+=ns;
+        timings_.maxGpuNs=std::max<uint64_t>(timings_.maxGpuNs,ns);timer.pending=false;
+    }
 }
 void OpenGlPresentation::Shutdown() {
-    auto destroy=[](Texture& texture){if(texture.handle)glDeleteTextures(1,&texture.handle);texture.handle=0;};
+    for(auto& timer:timers_) {if(timer.handle)glDeleteQueries(1,&timer.handle);timer={};}
+    timerAvailable_=false;
+    auto destroy=[](Texture& texture){if(texture.handle)glDeleteTextures(1,&texture.handle);texture.handle=0;texture.allocatedBytes=0;};
     destroy(screen_);destroy(ownership_);for(auto& layer:layers_)destroy(layer);
     if(cursorTexture_)glDeleteTextures(1,&cursorTexture_);
     if(vao_)glDeleteVertexArrays(1,&vao_);
@@ -130,6 +160,7 @@ bool OpenGlPresentation::Upload(Texture& texture,const Surface& s,uint64_t id,ui
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
+        texture.allocatedBytes=size_t(s.width)*s.height*4;
     }
     auto upload=[&](int x,int y,int w,int h) {
         glTexSubImage2D(GL_TEXTURE_2D,0,x,y,w,h,integer?GL_RED_INTEGER:GL_BGRA,
@@ -185,23 +216,39 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
         ResetTexture(ownership_);for(auto& layer:layers_)ResetTexture(layer);
     }
     const bool tracked=frame.owner && frame.serial && frame.resourceId;
+    PollTimings();
+    TimerSlot* active=nullptr;
+    if(timerAvailable_) {
+        for(auto& timer:timers_)if(!timer.pending && timer.handle){active=&timer;break;}
+        if(active)glBeginQuery(GL_TIME_ELAPSED,active->handle);
+        else ++timings_.gpuSkipped;
+    }
+    const auto uploadStart=Clock::now();
     bool ok=Upload(screen_,s,frame.resourceId,frame.resourceGeneration,tracked?frame.tileVersions:nullptr);
+    timings_.screenUploadBytes+=uploadedBytes_;
     if(scene && ok) {
         if(sceneEpoch_!=scene->generation)ResetTexture(ownership_);
         Surface owners;owners.width=s.width;owners.height=s.height;owners.pitch=s.width*4;
         owners.bits=reinterpret_cast<uint8_t*>(const_cast<uint32_t*>(scene->owners));
+        const auto beforeOwners=uploadedBytes_;
         ok=Upload(ownership_,owners,frame.resourceId,scene->generation,scene->versions,true);
+        timings_.ownershipUploadBytes+=uploadedBytes_-beforeOwners;
+        const auto beforeLayers=uploadedBytes_;
         for(size_t n=0;n<scene->count && ok;++n) {
             const auto& layer=scene->layers[n];
             ok=Upload(layers_[n],*layer.surface,layer.token,layer.generation,layer.versions);
         }
+        timings_.layerUploadBytes+=uploadedBytes_-beforeLayers;
     }
     for(size_t n=scene?scene->count:0;n<layers_.size();++n) {
         if(layers_[n].handle)glDeleteTextures(1,&layers_[n].handle);
-        layers_[n].handle=0;ResetTexture(layers_[n]);
+        layers_[n].handle=0;layers_[n].allocatedBytes=0;ResetTexture(layers_[n]);
     }
-    if(!scene && ownership_.handle){glDeleteTextures(1,&ownership_.handle);ownership_.handle=0;ResetTexture(ownership_);}
-    if(!ok){Reset();error_="GPU scene allocation failed";return false;}
+    if(!scene && ownership_.handle){glDeleteTextures(1,&ownership_.handle);ownership_.handle=0;ownership_.allocatedBytes=0;ResetTexture(ownership_);}
+    const auto uploadNs=Elapsed(uploadStart);
+    timings_.peakTextureBytes=std::max(timings_.peakTextureBytes,TextureBytes());
+    if(!ok){if(active){glEndQuery(GL_TIME_ELAPSED);active->pending=true;}Reset();error_="GPU scene allocation failed";return false;}
+    const auto drawStart=Clock::now();
     glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,out.width,out.height);
     glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_SCISSOR_TEST);glDisable(GL_DITHER);
     glDisable(GL_FRAMEBUFFER_SRGB);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
@@ -235,11 +282,17 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
         }
         glDisable(GL_SCISSOR_TEST);
     }
+    if(active){glEndQuery(GL_TIME_ELAPSED);active->pending=true;}
+    const auto drawNs=Elapsed(drawStart);
     if(glGetError()!=GL_NO_ERROR) {Reset();error_="GPU upload/draw failed";return false;}
+    ++timings_.frames;timings_.uploadCpuNs+=uploadNs;timings_.drawCpuNs+=drawNs;
+    timings_.maxUploadCpuNs=std::max(timings_.maxUploadCpuNs,uploadNs);
+    timings_.maxDrawCpuNs=std::max(timings_.maxDrawCpuNs,drawNs);
     frameId_=frame.resourceId;frameGeneration_=frame.resourceGeneration;sceneEpoch_=scene?scene->generation:0;
     totalUploaded_+=uploadedBytes_;error_="none";return true;
 }
 #else
+void OpenGlPresentation::PollTimings() {}
 bool OpenGlPresentation::Initialize() {error_="OpenGL unavailable in this build";return false;}
 void OpenGlPresentation::Shutdown() {Reset();}
 bool OpenGlPresentation::Render(const PresentationFrame&,const OutputBuffer&) {return false;}

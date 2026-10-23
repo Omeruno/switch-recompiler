@@ -1635,10 +1635,11 @@ void BeginPresentation(const char* guestPath) {
 }
 void EndPresentation() {
     // One summary per session; never log each frame to SD or closed console.
+    if(g_gpuActive)g_gpu.PollTimings();
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v5\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v6\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1670,6 +1671,17 @@ void EndPresentation() {
         fprintf(log,"Layer snapshot ns: %llu\n",(unsigned long long)s.layerSnapshotNs);
         fprintf(log,"Layer compared bytes: %llu\nOwnership checked pixels: %llu\n",
             (unsigned long long)g_presentation.LayerComparedBytes(),(unsigned long long)g_presentation.OwnershipCheckedPixels());
+        const auto& t=g_gpu.Timings();
+        fprintf(log,"GPU CPU stage frames: %llu\nGPU upload CPU ns: %llu\nGPU draw submission CPU ns: %llu\nMax GPU upload CPU ns: %llu\nMax GPU draw submission CPU ns: %llu\n",
+            (unsigned long long)t.frames,(unsigned long long)t.uploadCpuNs,(unsigned long long)t.drawCpuNs,
+            (unsigned long long)t.maxUploadCpuNs,(unsigned long long)t.maxDrawCpuNs);
+        fprintf(log,"GPU timer available: %u\nGPU command interval samples: %llu\nGPU command interval ns: %llu\nMax GPU command interval ns: %llu\nGPU timer ring skips: %llu\nGPU logical texture bytes: %zu\nGPU revision cache bytes: %zu\n",
+            unsigned(g_gpu.TimerAvailable()),(unsigned long long)t.gpuSamples,(unsigned long long)t.gpuNs,
+            (unsigned long long)t.maxGpuNs,(unsigned long long)t.gpuSkipped,g_gpu.TextureBytes(),g_gpu.CacheBytes());
+        fprintf(log,"Timing scope: CPU submission, asynchronous GPU upload/draw interval (includes idle gaps), swap CPU wait; excludes scanout and physical input latency. Pending GPU samples are not waited for. Texture bytes exclude driver/EGL buffers.\n");
+        fprintf(log,"GPU screen upload attempted bytes: %llu\nGPU ownership upload attempted bytes: %llu\nGPU layer upload attempted bytes: %llu\nGPU peak logical texture bytes: %zu\n",
+            (unsigned long long)t.screenUploadBytes,(unsigned long long)t.ownershipUploadBytes,
+            (unsigned long long)t.layerUploadBytes,t.peakTextureBytes);
         fclose(log);
     }
     g_presentation.Detach();

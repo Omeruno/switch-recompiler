@@ -35,9 +35,17 @@ static void Scenario(EGLDisplay display,EGLConfig config,EGLContext context,int 
     if(bpp!=32) {source.s.bits+=source.s.pitch*(sh-1);source.s.pitch=-source.s.pitch;}
     for(int y=0;y<sh;++y)for(int x=0;x<sw;++x)source.s.Set(x,y,(x*17113u+y*97231u)&0xFFFFFF);
     assert(p.Submit(source.s));Compare(gpu,p,source.s,w,h,{});
+    assert(gpu.TextureBytes()==size_t(sw)*sh*4+11*19*4);
     const auto upload=gpu.UploadedBytes();
     for(int n=0;n<16;++n)Compare(gpu,p,source.s,w,h,{n*17%sw,n*7%sh,true});
     assert(gpu.UploadedBytes()==upload); // cursor motion never reuploads desktop
+    gpu.PollTimings(); // preceding readbacks complete GPU work; production never waits
+    const auto timing=gpu.Timings();
+    assert(timing.frames==17 && timing.uploadCpuNs && timing.drawCpuNs);
+    assert(timing.maxUploadCpuNs<=timing.uploadCpuNs && timing.maxDrawCpuNs<=timing.drawCpuNs);
+    assert(timing.screenUploadBytes==upload && !timing.ownershipUploadBytes && !timing.layerUploadBytes);
+    assert(timing.peakTextureBytes==gpu.TextureBytes());
+    if(gpu.TimerAvailable())assert(timing.gpuSamples>0 && timing.gpuSamples<=timing.frames);
     for(int n=0;n<12;++n) {
         source.s.Set(n*13%sw,n*17%sh,0xFF1010+n);
         if(bpp<=8 && n==4)source.s.palette[0]^=0xFFFFFF;
@@ -80,7 +88,10 @@ static void Scenario(EGLDisplay display,EGLConfig config,EGLContext context,int 
     assert(expected.Render({source.s,FitViewport(sw,sh,w,h),{},1},
         {reference.data(),w,h,size_t(w),reference.size()}));
     assert(cpuOutput==reference);p.Attach(&gpu);Compare(gpu,p,source.s,w,h,{});
-    p.Detach();assert(!p.FrameBytes() && !gpu.CacheBytes());gpu.Shutdown();
+    const auto textureBytes=gpu.TextureBytes();
+    p.Detach();assert(!p.FrameBytes() && !gpu.CacheBytes());
+    assert(gpu.TextureBytes()==textureBytes); // Reset invalidates metadata, retains GL allocations
+    gpu.Shutdown();assert(!gpu.TextureBytes());
     assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
     assert(eglDestroySurface(display,surface));
 }
@@ -113,6 +124,7 @@ static void IndependentLayers(EGLDisplay display,EGLConfig config,EGLContext con
         glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());assert(glGetError()==GL_NO_ERROR);
         for(int y=0;y<h;++y)for(int x=0;x<w;++x)assert(actual[size_t(h-1-y)*w+x]==reference[size_t(y)*w+x]);
         assert(gpu.LayerDraws()>0);
+        assert(gpu.TextureBytes()==(size_t(sw)*sh*2+15*11+18*9+11*19)*4);
         if(pass==1) {
             glEnable(0xFFFFFFFFu);assert(!gpu.Render(frame,{nullptr,w,h,0,0}));
             assert(gpu.Render(frame,{nullptr,w,h,0,0}));
@@ -142,7 +154,7 @@ static void IndependentLayers(EGLDisplay display,EGLConfig config,EGLContext con
     }
     glEnable(0xFFFFFFFFu);assert(!retained.Render({nullptr,w,h,0,0}));assert(retained.Render({nullptr,w,h,0,0}));
     retained.Detach();assert(!retained.LayerBytes());
-    gpu.Shutdown();assert(!gpu.CacheBytes());
+    gpu.Shutdown();assert(!gpu.CacheBytes() && !gpu.TextureBytes());
     assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
     assert(eglDestroySurface(display,surface));
 }
