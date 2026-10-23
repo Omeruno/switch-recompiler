@@ -1,5 +1,10 @@
 # E8 measurement boundary (2026-10-23)
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 This package instruments the production GL backend and extends the exit-only
 renderer report to v6. It does not award E8's percentage or claim Switch speedup.
 

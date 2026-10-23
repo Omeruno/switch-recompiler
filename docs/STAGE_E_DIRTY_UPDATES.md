@@ -1,5 +1,10 @@
 # E3 — pixel-verified partial software presentation
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 2026-10-22. Software implementation; exact-SHA CI and Switch acceptance are
 recorded for the resulting commit, not inferred from host performance.
 

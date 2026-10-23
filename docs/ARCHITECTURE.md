@@ -371,7 +371,9 @@ peer может отменить APC на checkpoint. Никакая source shar
 Focus/active/capture, async input, меню и hooks ещё имеют общие состояния;
 AttachThreadInput и полные правила marshalling сообщений не реализованы.
 Старый v1 message loop остаётся отдельным compatibility path.
-На Switch новый путь Paint выбирается удержанием L; DLL должна лежать
+На Switch новый путь теперь выбран по умолчанию, включая Paint; L выбирает
+прежний compatibility path. F4a подключает native shell к активной сессии
+([границы композиции и ввода](F4_WORKSPACE.md)); DLL должна лежать
 рядом с EXE. Проверка пользователя подтвердила Open/Save на базовой сборке
 `2c9a1fa`; последующие изменения требуют собственной проверки на железе.
 

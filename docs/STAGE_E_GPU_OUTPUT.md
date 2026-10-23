@@ -1,5 +1,10 @@
 # E4–E7 large work block: implementation and acceptance gates
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 The user requested one work block covering E4–E7 (50% → 90% of Stage E).
 This document distinguishes delivered code from acceptance; hardware percentage
 is not inferred from host output, and E6 window layers are not simulated by

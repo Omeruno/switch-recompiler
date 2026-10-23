@@ -195,6 +195,7 @@ bool PollPlatform(int timeoutMs) {
     }
     const uint64_t ingestedNs=S().inputFrames.Enabled()?ui::PerformanceNowNs():0;
     for (InputEvent e : events) {
+        if(g_platform.filterInput && g_platform.filterInput(g_platform.shellContext,e))continue;
         if(!e.observedNs)e.observedNs=ingestedNs;
         switch (e.type) {
         case InputEvent::MouseMove: case InputEvent::MouseDown: case InputEvent::MouseUp: case InputEvent::Wheel:
@@ -270,10 +271,11 @@ void PresentIfNeeded(bool force) {
     State& s = S();
     if (!g_platform.present) return;
     uint64_t changes = ui::g_gdi.ScreenChangeCounter();
-    if (changes == s.presentedChanges && !force) return;
+    const uint64_t shellRevision=g_platform.shellRevision?g_platform.shellRevision(g_platform.shellContext):0;
+    if (changes == s.presentedChanges && shellRevision==s.presentedShellRevision && !force) return;
     uint32_t now = NowMs();
     if (!force && now - s.lastPresentMs < 16) return;
-    s.presentedChanges = changes;
+    s.presentedChanges = changes;s.presentedShellRevision=shellRevision;
     s.lastPresentMs = now;
     g_platform.present(s.screen.s);
 }

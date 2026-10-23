@@ -1,5 +1,10 @@
 # E0–E2: presentation audit and software reference
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 2026-10-22. Initial implementation package; physical acceptance pending.
 This records the real boundary, not completion of dirty updates or a GPU path.
 

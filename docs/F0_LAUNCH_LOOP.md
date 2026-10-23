@@ -1,5 +1,10 @@
 # F0 frontend launch/return loop — 2026-10-23
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 The production Switch main uses `ui::RunLauncher`, the same lifecycle controller
 exercised by the native restart/failure/shutdown test. Host services (ROMFS,
 registry values, audio device) live across launches. Each launch chooses the

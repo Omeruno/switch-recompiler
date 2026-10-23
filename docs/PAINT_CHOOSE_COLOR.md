@@ -1,5 +1,10 @@
 # Paint: missing ChooseColorW export and common color dialog
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 ## Problem
 
 Paint dynamically resolves ChooseColorW through COMDLG32. This export was absent

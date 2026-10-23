@@ -1,5 +1,10 @@
 # Startup input and cursor speed follow-up
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 2026-10-22, after the E3 implementation (`3b48605`). User confirmed the previous
 drawing/menu issues no longer occur, then reported an open File menu and missing
 toolbar on startup (both normalize after clicking elsewhere), plus faster stick

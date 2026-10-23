@@ -627,7 +627,7 @@ FN(GetWindowPlacement) {
     m.Write32(p + 16, 0xFFFFFFFFu);
     m.Write32(p + 20, 0xFFFFFFFFu);
     m.Write32(p + 24, 0xFFFFFFFFu);
-    WriteRect(m, p + 28, w->rect);
+    WriteRect(m, p + 28, (w->hasNormalRect && (w->style&(WS_MINIMIZE|WS_MAXIMIZE)))?w->normalRect:w->rect);
     return Ret(1);
 }
 FN(SetWindowPlacement) {
@@ -1173,7 +1173,7 @@ HostCallOutcome SystemParametersInfoImpl(cpu::CpuState& c, cpu::IGuestMemory& m,
     };
     switch (action) {
     case 0x30: // SPI_GETWORKAREA
-        if (p) WriteRect(m, p, Rect(0, 0, S().screenW, S().screenH));
+        if (p) WriteRect(m, p, WorkArea());
         return Ret(1);
     case 0x29: { // SPI_GETNONCLIENTMETRICS
         if (!p) return Ret(0);
@@ -1399,7 +1399,7 @@ HostCallOutcome GetMonitorInfoImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool 
     uint32_t p = A(c, m, 1);
     uint32_t size = m.Read32(p);
     WriteRect(m, p + 4, Rect(0, 0, S().screenW, S().screenH));
-    WriteRect(m, p + 20, Rect(0, 0, S().screenW, S().screenH));
+    WriteRect(m, p + 20, WorkArea());
     m.Write32(p + 36, 1); // MONITORINFOF_PRIMARY
     if (size >= 72) WriteText(p + 40, u"\\\\.\\DISPLAY1", 32, unicode);
     return Ret(1);

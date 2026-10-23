@@ -1,5 +1,10 @@
 # F2: native idle desktop and theme
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 Implemented F2 baseline, based on d6a6351. Subsequent [F3a](F3_EXPLORER.md)
 enables real My Computer/Documents and path-only Run; the F2 behavior below is
 its original delivery scope. Physical Switch acceptance stays

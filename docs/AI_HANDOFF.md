@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`12f0114fd53e6f5d042a76a75d3feca5b41c5338` (2026-10-24).
-[CI 40031884729](https://github.com/Omeruno/switch-recompiler/actions/runs/40031884729)
+`9c6e4d450d52aa7c28b6c0ad618a7fa4f3d750dd` (2026-10-24).
+[CI 40036571514](https://github.com/Omeruno/switch-recompiler/actions/runs/40036571514)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -14,8 +14,7 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 The user prioritizes a functional XP-like native shell and real Switch/SD-backed
 file structure. **F1/F2 and F3a real directory browser/path-only launch are implemented;
 F3b document arguments/application choice are implemented;
-next code package: F3c preferences/settings and remaining shell refinements**,
-followed by F4–F5 active-guest integration and save/find/reopen. Continue
+the user now prioritizes Paint new UI by default, active-guest workspace and XP-like visuals. F4a shared desktop/taskbar/input is implemented; next: F4b retained workspace layers and interaction/visual refinement**, then F3c preferences/settings/tree and F5 save/find/reopen. See [F4_WORKSPACE.md](F4_WORKSPACE.md). Continue
 G0 only as retained diagnostics; representative timing/optimization is no longer
 the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
 [F_SHELL_PLAN.md](F_SHELL_PLAN.md) and ACTIVE_ROADMAP.md. Historical next-G/E1 and
@@ -65,8 +64,8 @@ It does not certify a full dynarec: code-cache rewrite/invalidation, instruction
 cache/lifetime and fallback need their own integration checks.
 
 Paint's earlier Open/Save functionality has user confirmation, but newer graphics
-commits still need the consolidated Paint smoke. Preserve the current launch-mode
-selection; do not infer acceptance of a new build from an older confirmation.
+commits still need the consolidated Paint smoke. New USER/GDI is now the default for every EXE including Paint; L selects the
+legacy compatibility path, ZL software output. Preserve those explicit overrides; do not infer acceptance of a new build from an older confirmation.
 
 ## Stage E implementation state
 
@@ -649,3 +648,66 @@ passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti. The native associated-fi
 render was inspected; Markdown relative links/fences and git diff --check passed.
 Fetched unchanged 12f0114 again before commit. Exact published-SHA CI remains to
 be verified after push; no local Switch SDK or physical acceptance is implied.
+
+
+## F4a: Paint default and shared active workspace (latest user steering)
+
+Fetched clean 9c6e4d4; its exact CI run 40036571514 passed all six jobs. No newer
+branch work was overwritten. User requested new UI Paint without L, real EXE
+windows over the desktop and visuals closer to XP. This deliberately brings F4
+ahead of F3c; preferences/settings/tree remain open, not implicitly completed.
+
+UseNewGuestUi now selects new USER/GDI for all EXEs, L explicitly requests legacy,
+ZL requests software output. No application EXE is replaced. The worker-owned
+ShellSession temporarily binds the host shell to exposed USER desktop painting,
+pre-queue native input routing and topmost native output chrome. Same logical
+1280x720 desktop, live Start/Explorer/About and one task button; second launch/
+association changes/Run/homebrew exit are blocked while a guest runs. The single
+task minimizes/restores visible top-level handles, with preserved normal/maximized
+placement. Work-area APIs/maximize reserve the 40-pixel taskbar. Gestures retain
+press/release ownership across native/guest boundaries. Prior shell panel/path,
+platform hooks and work area are restored after draining on exit/error/abort.
+
+Native visuals use plain XP-like blue background, highlighted blue titlebars,
+red close control and icon-bearing Start with the existing licensed Tango/OFL art.
+No Microsoft assets or new external art was imported; guest controls still have
+their classic theme. This does not claim pixel-identical XP or arbitrary EXE support.
+
+F4a uses three fallible 1280x720 RGB buffers (11,059,200 bytes) and conservative
+flat CPU native/guest composition before GPU/software presentation. Independent
+E6 window layers remain available/tested outside this adapter; F4b must integrate
+retained native/guest layers and the full ownership oracle. No speedup claim.
+See F4_WORKSPACE.md for exact boundaries and the public two-window x86 regression.
+
+Full clean MinGW/Mesa suite, strict native checks, screenshots and exact new-SHA CI
+are required before publication/acceptance. Local Switch SDK remains absent;
+physical Paint/GPU/fallback/Lite/input/relaunch acceptance remains deferred. SD
+troubleshooting stays closed. Next package: F4b retained workspace layers and
+interaction/visual refinement, then F3c preferences/settings/tree, then F5.
+
+Native overlay revisions request output separately from CPU GDI screen changes;
+Start/clock rendering does not manufacture guest raster change/input-correlation
+samples. Allocation failure is injected at each of the three buffers, and failed
+EXE load also checks hook/workspace restoration. The first x86 harness iteration
+incorrectly invoked window callbacks outside an active guest context; it now
+performs scripted actions inside the production platform wait callback. No
+runtime workaround for that harness error was introduced.
+
+Shell interaction still depends on the active guest USER pump. CPU-only/non-pumping
+workloads retain periodic PLUS abort, but bounded native-shell responsiveness
+without that pump remains an explicit F4b requirement.
+
+Final F4a validation: complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final source,
+header and public fixture tree. New workspace normal/abort/restart, allocation
+fault/failed-load, input/revision/work-area and second-launch guards passed;
+all existing F1/F3b, core/USER/legacy session, Stage C, six E9 groups, both
+CPU/actual-GL composition sizes and dialogs/input remained green. ShellSession,
+DesktopShell and the new host harness also passed strict -Wall -Wextra -Werror
+-fno-exceptions -fno-rtti compilation. Actual native x86 workspace screenshot was
+inspected; the harness rejects emergency bitmap font fallback. Markdown links/
+fences and git diff --check passed. An earlier intermediate full run had only
+test-harness compile errors; another was stopped when native revision fields
+changed, avoiding mixed-header objects. Neither is the final validation result.
+Fetched unchanged 9c6e4d4 before publication. Verify the exact new published SHA's
+six CI jobs after push; no local Switch SDK or physical acceptance is implied.

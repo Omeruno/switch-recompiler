@@ -23,6 +23,8 @@ struct Frontend {
     void RestorePicker(){assert(!output&&!guest&&alive);trace+='C';}
 };
 int main(){
+    static_assert(ui::UseNewGuestUi(false),"Every EXE including Paint defaults to new UI");
+    static_assert(!ui::UseNewGuestUi(true),"L requests the legacy UI");
     Frontend normal;ui::RunLauncher(normal);
     assert(normal.trace=="PBGECPBGECPBGECP");
     assert((normal.initial==std::vector<bool>{true,false,false,false}));

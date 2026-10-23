@@ -71,6 +71,7 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case GuestTask:return {158,684,468,716};
     case Start:return {0,680,142,720};
     case Programs:return {20,26,132,116};
     case Computer:return {20,132,132,222};
@@ -118,6 +119,14 @@ bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::stri
     return browser_.Configure(system,sd,rom,error);
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
+void DesktopShell::SetGuestActive(const std::string& label) {
+    returnPanel_=panel_;returnFocus_=focus_;guestActive_=true;guestMinimized_=false;
+    guestLabel_=label.substr(0,240);panel_=Panel::Desktop;Enter();
+}
+void DesktopShell::EndGuest() {
+    guestActive_=false;guestLabel_.clear();panel_=returnPanel_;focus_=returnFocus_;
+    request_.Clear();startOpen_=false;pressed_=None;
+}
 void DesktopShell::Enter() {
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
@@ -125,6 +134,11 @@ void DesktopShell::Enter() {
 }
 bool DesktopShell::Enabled(int t) const {
     if(t==None)return false;
+    if(guestActive_ && (t==MenuRun || t==OpenWith || t==Exit))return false;
+    if(guestActive_ && t==Launch) {
+        if(panel_!=Panel::Explorer || browser_.Entries().empty())return false;
+        return browser_.Entries()[browser_.Selected()].kind!=ShellBrowser::Kind::File;
+    }
     if(t==Computer || t==Documents || t==MenuComputer || t==MenuDocuments || t==MenuRun ||
        t==QuickComputer || t==QuickDocuments || t==Address || t==Refresh || t==Sort)return browser_.Ready();
     if(t>=QuickC && t<=QuickR)return browser_.Mounted(t==QuickC?'C':t==QuickS?'S':'R');
@@ -174,12 +188,15 @@ void DesktopShell::OpenBrowser(const std::string& path) {
     else if(startOpen_)focus_=menuReturnFocus_;
 }
 void DesktopShell::LaunchProgram() {
-    request_.Clear();if(selected_<files_.size())browser_.ResolveCatalogExecutable(files_[selected_],request_);
+    request_.Clear();if(guestActive_) {SetStatus("Close the current application before starting another.");return;}
+    if(selected_<files_.size())browser_.ResolveCatalogExecutable(files_[selected_],request_);
 }
 void DesktopShell::ChooseApplication(const std::string& document) {
+    if(guestActive_)return;
     pendingDocument_=document;textInput_=TextInput::OpenWith;initialText_=browser_.ApplicationFor(document);
 }
 void DesktopShell::OpenCurrent() {
+    if(guestActive_ && (browser_.Entries().empty() || browser_.Entries()[browser_.Selected()].kind==ShellBrowser::Kind::File))return;
     if(!browser_.OpenSelected(request_) && browser_.LastError()==ShellBrowser::Error::UnsupportedFile && !browser_.UnassociatedDocument().empty())
         ChooseApplication(browser_.UnassociatedDocument());
     FocusBrowserSelection();
@@ -230,7 +247,7 @@ void DesktopShell::Back() {
     if(startOpen_){ToggleStart();}
     else if(panel_==Panel::Explorer && browser_.CanBack()){browser_.Back();FocusBrowserSelection();}
     else if(panel_!=Panel::Desktop){panel_=Panel::Desktop;focus_=Programs;}
-    else exit_=true;
+    else if(!guestActive_)exit_=true;
 }
 int DesktopShell::HitTest(int x,int y) const {
     if(Bounds(Start).Contains(x,y))return Start;
@@ -300,17 +317,17 @@ void DesktopShell::Activate(int target) {
 }
 void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(s.width!=Width || s.height!=Height || !s.Valid() || s.bpp!=32)return;
-    Gradient(s,{0,0,Width,680},0x21689C,0x092F61);
-    Text(s,{880,42,1240,88},u"Switch Recompiler",0xD0EAFF,30,true);
-    Text(s,{925,90,1240,120},u"Рабочая среда • один гостевой сеанс",0xA5CEE9,14);
-    Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
+    Fill(s,{0,0,Width,680},0x3A6EA5);
+
+    if(!guestActive_)Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
     Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):Wide(status_),0xC1DCF4,12);
     auto control=[&](int target,std::u16string label,Rect r) {
         const bool enabled=Enabled(target),hot=hover_==target && enabled,down=pressed_==target && hot;
-        Gradient(s,r,down?0x255BB3:hot?0xFCFCFF:0xF6F7F3,down?0x3E79CF:0xDAE3EF);
+        Gradient(s,r,target==Close?(down?0xA22917:0xEE9A84):down?0x255BB3:hot?0xFCFCFF:0xFFFFFF,
+                 target==Close?0xC43A22:down?0x3E79CF:0xE4E1D1);
         Frame(s,r,enabled?0x3465A4:0xA0ABBA);
         if(focus_==target && enabled)Frame(s,{r.left+3,r.top+3,r.right-3,r.bottom-3},0x6684AE);
-        Text(s,{r.left+10,r.top+7,r.right-7,r.bottom-2},label,!enabled?0x8793A0:down?0xFFFFFF:0x162B47,15,true);
+        Text(s,{r.left+10,r.top+7,r.right-7,r.bottom-2},label,target==Close?0xFFFFFF:!enabled?0x8793A0:down?0xFFFFFF:0x162B47,15,true);
     };
     for(int t:{Programs,Computer,Documents}) {
         const auto r=Bounds(t);const bool selected=focus_==t,enabled=Enabled(t);
@@ -322,7 +339,8 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(panel_!=Panel::Desktop) {
         Fill(s,{224,106,1166,630},0x13385B);
         Fill(s,{218,100,1160,624},0xECE9D8);Frame(s,{218,100,1160,624},0x0646A4);
-        Gradient(s,{220,102,1158,146},0x4E93F8,0x0950C6);
+        Gradient(s,{220,102,1158,112},0x5C9CFF,0x0A5AE7);
+        Gradient(s,{220,112,1158,146},0x0868F4,0x0347BD);
         Text(s,{234,110,1100,142},panel_==Panel::Programs?u"Все программы — запуск EXE":panel_==Panel::Explorer?u"Проводник":u"О Switch Recompiler",0xFFFFFF,20,true);
         control(Close,u"×",Bounds(Close));
         if(panel_==Panel::Programs) {
@@ -339,7 +357,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             control(Previous,u"← Назад",Bounds(Previous));control(Next,u"Далее →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
             char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",files_.empty()?0:selected_+1,files_.size());
             Text(s,{522,584,682,610},Wide(count),0x42576B,16);
-            Text(s,{242,556,1136,577},truncated_?u"Достигнут лимит поиска: список неполный.":errors_?u"Часть каталогов недоступна: список может быть неполным.":u"При запуске: L меняет UI, ZL выбирает программный вывод.",0x5A6574,13);
+            Text(s,{242,556,1136,577},truncated_?u"Достигнут лимит поиска: список неполный.":errors_?u"Часть каталогов недоступна: список может быть неполным.":u"Новый UI по умолчанию. L: прежний режим; ZL: программный вывод.",0x5A6574,13);
         } else if(panel_==Panel::Explorer) {
             control(NavBack,u"← Назад",Bounds(NavBack));control(NavUp,u"Вверх",Bounds(NavUp));
             control(Refresh,u"Обновить",Bounds(Refresh));
@@ -403,20 +421,27 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(focus_==Start || hover_==Start)Frame(s,{3,683,139,717},0xADDEAB);
     Fill(s,{14,691,32,709},0xE8FAEB);Text(s,{16,689,34,712},u"S",0x21713D,14,true);
     Text(s,{45,685,137,717},u"Пуск",0xFFFFFF,22,true);
-    Text(s,{166,690,500,715},u"Switch Recompiler",0xDCEBFF,16);
+    if(guestActive_) {
+        const auto task=Bounds(GuestTask);
+        Gradient(s,task,guestMinimized_?0x5E9CF0:0x174DAA,guestMinimized_?0x397DE0:0x2562BB);
+        Frame(s,task,guestMinimized_?0x91B8F2:0x103C8C);
+        Icon(s,task.left+3,task.top,shell_art::programs);
+        Text(s,{task.left+40,task.top+7,task.right-8,task.bottom},Wide(guestLabel_),0xFFFFFF,14,true);
+    }
     Gradient(s,{1158,682,1280,720},0x2598DE,0x127BBD);
     Text(s,{1180,689,1272,716},clock,0xFFFFFF,17);
     if(startOpen_) {
         Fill(s,{4,288,484,680},0x163B64);Fill(s,{0,284,480,680},0xFFFFFF);
         Fill(s,{242,352,478,630},0xD8E8F7);Frame(s,{0,284,480,680},0x1555AD);
         Gradient(s,{2,286,478,352},0x4D98EB,0x1C63BD);
-        Icon(s,18,302,shell_art::computer);Text(s,{66,306,465,342},u"Player",0xFFFFFF,23,true);
+        Frame(s,{14,298,54,340},0xE7F1FF);Icon(s,18,302,shell_art::computer);Text(s,{66,306,465,342},u"Player",0xFFFFFF,23,true);
         for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About}) {
             const auto r=Bounds(t);const bool hot=Enabled(t) && (focus_==t || hover_==t);
             if(hot){Fill(s,r,pressed_==t?0x1D4C99:0x316AC5);Frame(s,r,0x204DA0);}
-            Text(s,{r.left+10,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,17,t==MenuPrograms);
+            Icon(s,r.left+5,r.top+7,t==MenuComputer?shell_art::computer:t==MenuDocuments?shell_art::folder:shell_art::programs);
+            Text(s,{r.left+43,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,15,t==MenuPrograms);
         }
-        Text(s,{258,538,466,602},browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
+        Text(s,{258,538,466,602},guestActive_?u"Одно приложение за раз":browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
         Gradient(s,{2,622,478,678},0x3282D6,0x1C61B5);control(Exit,u"Выйти в Homebrew",Bounds(Exit));
     }
 }

@@ -104,6 +104,9 @@ struct Window {
     uint32_t owner = 0;
     std::vector<uint32_t> children; // порядок по оси Z: первый — сверху
     Rect rect;                  // прямоугольник окна в координатах клиентской области родителя
+    Rect normalRect;
+    bool hasNormalRect=false;
+    bool restoreMaximized=false;
     Rect client;                // клиентская область в координатах окна
     std::u16string text;
     uint32_t wndProc = 0;
@@ -162,6 +165,7 @@ struct State {
     ui::InputFrameMetrics inputFrames;
     bool initialized = false;
     int screenW = 800, screenH = 600;
+    int workBottom=0; // zero: full screen; native shell reserves its taskbar
     ui::OwnedSurface screen;
     ui::WindowLayers windowLayers;
     std::map<uint32_t, std::unique_ptr<Window>> windows;
@@ -180,7 +184,7 @@ struct State {
     uint8_t asyncKeys[256] = {};  // текущее состояние (GetAsyncKeyState)
     uint32_t lastClickTime = 0, lastClickHwnd = 0, lastClickMsg = 0;
     int lastClickX = 0, lastClickY = 0;
-    uint64_t presentedChanges = 0;
+    uint64_t presentedChanges = 0,presentedShellRevision=0;
     uint32_t lastPresentMs = 0;
     int cascade=0;
     uint32_t systemBrushes[31]={},lastPollMs=0;
@@ -344,6 +348,10 @@ struct InputEvent {
     uint64_t observedNs=0; // optional real host sample time, zero means ingestion
 };
 struct Platform {
+    void* shellContext=nullptr;
+    void (*paintDesktop)(void*,ui::Surface&,const Region&)=nullptr;
+    bool (*filterInput)(void*,const InputEvent&)=nullptr;
+    uint64_t (*shellRevision)(void*)=nullptr;
     // Ждать ввода не дольше timeoutMs (<0 — без ограничения); события — в out.
     // false: ввода больше не будет (головной режим без сценария).
     bool (*wait)(int timeoutMs, std::vector<InputEvent>& out) = nullptr;
@@ -353,6 +361,7 @@ struct Platform {
     bool (*textInput)(const std::u16string& initial, bool multiline, bool password, std::u16string& out) = nullptr;
 };
 extern Platform g_platform;
+Rect WorkArea();
 
 // Включает слой "ui2" (вызывать до загрузки EXE). screenW/H — размер экрана.
 void EnableUi(int screenW = 800, int screenH = 600);

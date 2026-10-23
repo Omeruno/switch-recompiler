@@ -1,5 +1,7 @@
 #pragma once
 namespace ui {
+// One policy for Paint and all other EXEs; L is an explicit compatibility override.
+constexpr bool UseNewGuestUi(bool legacyRequested) { return !legacyRequested; }
 // RunGuest returns only after all guest work and session teardown have drained.
 // Output also needs cleanup when initialization only partially succeeded.
 template<class Frontend> void RunLauncher(Frontend& frontend) {

@@ -1,5 +1,10 @@
 # Standard dialog dispatch: preserve framework subclasses
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 ## Reproduced defect
 
 CreateFromTemplate unconditionally replaced a standard dialog's window procedure

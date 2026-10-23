@@ -91,6 +91,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    if $cxx $flags "$root/tests/test_shell_workspace.cpp" $src -o "$out/test_shell_workspace" &&
+       (cd "$root" && "$out/test_shell_workspace" "$guestRoot/shell_workspace.exe") > "$out/shell_workspace.log" 2>&1; then
+        tail -n 1 "$out/shell_workspace.log"
+    else
+        echo "   SHELL WORKSPACE FAILED"
+        tail -n 35 "$out/shell_workspace.log" 2>/dev/null || true
+        failed=1
+    fi
+
     if $cxx $flags "$root/tests/test_shell_documents.cpp" $src -o "$out/test_shell_documents" &&
        "$out/test_shell_documents" "$guestRoot/shell_document.exe" > "$out/shell_documents.log" 2>&1; then
         tail -n 1 "$out/shell_documents.log"
@@ -250,6 +259,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     fi
     for exe in "$guestRoot"/*.exe; do
         [ "$(basename "$exe")" = "filesystem_mounts.exe" ] && continue
+        [ "$(basename "$exe")" = "shell_workspace.exe" ] && continue
         [ "$(basename "$exe")" = "shell_document.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue

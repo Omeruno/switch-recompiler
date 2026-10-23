@@ -407,6 +407,8 @@ bool EnableWindowLayers(bool enabled) {
     state.screen.s.writeCapture=state.windowLayers.ScreenCapture();return ok;
 }
 
+Rect WorkArea() {return Rect(0,0,S().screenW,S().workBottom>0?std::min(S().workBottom,S().screenH):S().screenH);}
+
 void RepaintDesktop(const Region& screenRgn) {
     Window* desk = Desktop();
     if (!desk) return;
@@ -417,7 +419,8 @@ void RepaintDesktop(const Region& screenRgn) {
         if (w && (w->style & WS_VISIBLE)) r.SubtractRect(ScreenRect(w));
     }
     uint32_t rgb = ui::ColorrefToRgb(ui::SysColor(1));
-    for (const Rect& q : r.Rects()) ui::FillSurface(S().screen.s, Region(q), q, rgb);
+    if(g_platform.paintDesktop)g_platform.paintDesktop(g_platform.shellContext,S().screen.s,r);
+    else for (const Rect& q : r.Rects()) ui::FillSurface(S().screen.s, Region(q), q, rgb);
     if(!r.Empty())ui::g_gdi.MarkScreenChanged();
 }
 
@@ -832,9 +835,10 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
         return true;
     case 3: { // SW_SHOWMAXIMIZED
         int b = BorderWidth(w->style, w->exStyle);
+        if(!(w->style&(WS_MINIMIZE|WS_MAXIMIZE))) {w->normalRect=w->rect;w->hasNormalRect=true;}
         w->style = (w->style | WS_MAXIMIZE) & ~WS_MINIMIZE;
         if (!wasVisible) SendMsg(hwnd, WM_SHOWWINDOW, 1, 0);
-        if (topLevel) SetWindowPosInternal(hwnd, 0, -b, -b, S().screenW + 2 * b, S().screenH + 2 * b, 0x40 | 0x20);
+        if (topLevel) SetWindowPosInternal(hwnd, 0, -b, -b, WorkArea().Width() + 2 * b, WorkArea().Height() + 2 * b, 0x40 | 0x20);
         else {
             Window* p = ParentWin(w);
             SetWindowPosInternal(hwnd, 0, -b, -b, p->client.Width() + 2 * b, p->client.Height() + 2 * b, 0x40 | 0x20);
@@ -843,15 +847,20 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
         return wasVisible;
     }
     case 2: case 6: case 7: case 11: // свернуть: окно уходит за экран, как в Windows
+        if(!(w->style&WS_MINIMIZE)) {
+            w->restoreMaximized=(w->style&WS_MAXIMIZE)!=0;
+            if(!(w->style&WS_MAXIMIZE)) {w->normalRect=w->rect;w->hasNormalRect=true;}
+        }
         w->style = (w->style | WS_MINIMIZE) & ~WS_MAXIMIZE;
         SetWindowPosInternal(hwnd, 0, -32000, -32000, 160, 24, 0x4 | 0x10 | 0x40 | 0x20);
         if (topLevel && S().foreground == hwnd && cmd != 2) ActivateNextTopLevel(hwnd);
         return wasVisible;
     case 9: case 1: // SW_RESTORE / SW_SHOWNORMAL
+        if((w->style&WS_MINIMIZE) && w->restoreMaximized) {w->restoreMaximized=false;return ShowWindowInternal(hwnd,3);}
         if (w->style & (WS_MINIMIZE | WS_MAXIMIZE)) {
             w->style &= ~(WS_MINIMIZE | WS_MAXIMIZE);
             if (Window* x = Win(hwnd)) {
-                Rect r = x->rect;
+                Rect r = x->hasNormalRect?x->normalRect:x->rect;
                 if (r.left <= -32000) r = Rect(40, 40, 40 + S().screenW * 3 / 4, 40 + S().screenH * 3 / 4);
                 SetWindowPosInternal(hwnd, 0, r.left, r.top, r.Width(), r.Height(), 0x4 | 0x20);
             }

@@ -15,7 +15,7 @@ public:
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26};
     enum class Panel {Desktop,Programs,About,Explorer};
     enum class TextInput {None,Address,Run,OpenWith};
     bool ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error);
@@ -26,6 +26,10 @@ public:
     void CompleteTextInput(bool accepted,const std::string& text);
     void SetCatalog(const ExecutableCatalog&);
     void SetStatus(const std::string&);
+    void SetGuestActive(const std::string& label);
+    void EndGuest();
+    bool GuestActive() const {return guestActive_;}
+    void SetGuestMinimized(bool value) {guestMinimized_=value;}
     void Enter(); // Cancel transient presses/menu on return, retain panel/selection.
     void ToggleStart();
     void Move(int delta);
@@ -66,6 +70,10 @@ private:
     ShellLaunchRequest request_;
     TextInput textInput_=TextInput::None;
     size_t selected_=0,errors_=0;
+    std::string guestLabel_;
+    bool guestActive_=false,guestMinimized_=false;
+    Panel returnPanel_=Panel::Desktop;
+    int returnFocus_=Programs;
     bool truncated_=false,startOpen_=false,exit_=false;
     Panel panel_=Panel::Desktop;
     int focus_=Programs,menuReturnFocus_=Programs,hover_=None,pressed_=None;

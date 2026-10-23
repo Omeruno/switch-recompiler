@@ -1,5 +1,10 @@
 # F3b: document applications and launch arguments
 
+> Current launch policy: new UI is the default for every EXE, including Paint;
+> **L now requests legacy compatibility**, ZL software output. Older L-for-Paint
+> instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
+
+
 Software package after F3a (`12f0114`); full F3 still has supported settings/tree
 work remaining. Current scope is one guest at a time, with hardware acceptance
 deferred in [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).

@@ -1,8 +1,7 @@
 # Active implementation map — 2026-10-24
 
 Current user priority: complete the supported XP-like shell and bind its files
-to actual Switch SD storage. F1 persistent roots/filesystem contracts are implemented; F2 native idle desktop/theme and F3a real directory navigation/path launch are implemented; F3b document applications/arguments are implemented; the next code package
-is **F3c: persisted preferences, supported settings and tree refinements**, before further G optimization. See the source-backed
+to actual Switch SD storage. F1 persistent roots/filesystem contracts are implemented; F2 native idle desktop/theme and F3a real directory navigation/path launch are implemented; F3b document applications/arguments are implemented; the latest user priority moves active-guest integration ahead of F3c. **F4a implements the shared native workspace and new UI default for Paint/all EXEs**; next is **F4b retained shell/window composition and interaction refinement**, followed by F3c persisted preferences/settings, before further G optimization. See the source-backed
 [audit](PROJECT_AUDIT_2026_10_23.md) and [F1–F5 shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 
@@ -19,11 +18,12 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F2 | [Native idle desktop/theme](F2_DESKTOP.md), Start Programs/About/Exit, bounded EXE panel, licensed Tango art, device clock, retained selection and Start-dismiss focus restoration | Physical shell/input/launch-return checks; F3a now enables My Computer/Documents and path-only Run |
 | F3a | [Real directory explorer](F3_EXPLORER.md), C/S/R and documents, bounded listing/history/case lookup, back/up/address/refresh/sort/pages and shared EXE launch from catalog/Explorer/path-only Run | Physical keyboard/navigation checks; F3b now adds explicit document applications |
 | F3b | [Document applications and arguments](F3_DOCUMENTS.md), Open/Choose application, remembered session types, full A/W/CRT argument transport and public x86 reader | On-disk preferences/association management remain F3c; no default or verified Paint association |
-| **F3c/F4/F5: next** | Persistent filesystem and idle shell/browser/document launch primitives | Supported settings/preferences/tree refinements → active-guest integration → save/find/reopen |
+| F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; flat native overlay composition still needs F4b retained-layer integration and visual/interaction refinement |
+| **F4b/F3c/F5: next** | Persistent filesystem, shell/browser/document launch and one active guest | Retained active shell layers/refinement → persisted settings/preferences/tree → save/find/reopen |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: F3c preferences/settings and remaining shell refinements
+## Next concrete package: F4b retained workspace layers and interaction refinement
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -33,9 +33,7 @@ absolute C paths from the former per-EXE mapping may need reselection through S.
 F2 now provides the host-owned idle desktop/theme/menu and executable selector;
 see [F2_DESKTOP.md](F2_DESKTOP.md). F3a now adds the bounded F1-backed browser and path-only Run; see
 [F3_EXPLORER.md](F3_EXPLORER.md). F3b now adds explicit document applications and bounded A/W/CRT argv transport
-([contract/tests](F3_DOCUMENTS.md)). Next: persisted preference/association management,
-supported Start/settings actions and directory-tree refinements.
-Active-guest taskbar remains F4; F3/F4/F5 criteria remain in F_SHELL_PLAN.md.
+([contract/tests](F3_DOCUMENTS.md)). F4a now keeps its native desktop/taskbar/Start around the active guest; see [F4_WORKSPACE.md](F4_WORKSPACE.md). Next: retained native/guest composition and interaction/visual refinement. Persisted preference/association management, supported settings and tree remain F3c, then the F5 scenario. F3/F4/F5 are not complete.
 
 Подробная [очередь действий после F1](F_SHELL_PLAN.md#рабочий-план-после-f1-2026-10-23)
 фиксирует критерии F2–F5, возврат к измерениям G и контрольные точки активной работы.
@@ -44,9 +42,8 @@ Active-guest taskbar remains F4; F3/F4/F5 criteria remain in F_SHELL_PLAN.md.
 
 1. Preserve F1 mount/path/readonly/CWD/volume and cross-session x86 regressions;
    existing standalone host launches keep the legacy one-C-per-EXE default.
-2. Preserve F2 idle shell/artwork/input checks; preserve F3a browser/launch checks; implement
-   preserve F3b argument/document regressions; implement F3c preferences, supported
-   Start/settings actions and directory-tree refinements.
+2. Preserve F2/F3a/F3b shell/browser/document checks. Finish F4b active native/guest
+   retained-layer composition and interaction checks; then F3c preferences/settings/tree.
 3. F4/F5: shell/guest output and input ownership, active task handling in the
    one-Process model, return after errors/abort, Paint save/find/reopen workflow.
    Idle shell screenshots alone do not certify taskbar integration while a guest runs.

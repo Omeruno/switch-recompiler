@@ -42,6 +42,8 @@
 #include "ui/opengl_presentation.h"
 #include "ui/switch_gpu_output.h"
 #include "win32/user32.h"
+#include "win32/shell_session.h"
+#include <new>
 #include "win32/presentation_session.h"
 #include "win32/host_functions.h"
 #include "win32/seh_dispatch.h"
@@ -83,11 +85,11 @@ static ui::PointerInputGate g_legacyInputGate;
 // в main() (native shell или fallback picker) ДО игрового потока; объявлена так рано
 // специально, чтобы GameThreadFunc (которая идёт по файлу раньше, чем сам
 // пикер) могла её использовать.
-// Новая оконная подсистема: для всех программ, кроме Paint (у него на новом
-// слое ещё нет диалогов открытия/сохранения). Зажатый при запуске L
-// переключает слой: у Paint — на новый, у остальных — на прежний.
-static bool g_useNewUi = false;
+// New USER/GDI is the default for every EXE; hold L for legacy compatibility.
+static bool g_useNewUi = true;
+static ui::DesktopShell* g_activeShell = nullptr; // worker-only until its join
 namespace newui {
+extern win32::user::ShellSession* g_shellSession;
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
 void BeginPresentation(const char* guestPath);
@@ -341,6 +343,21 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         win32::user::g_platform.textInput = &newui::TextInput;
         win32::user::EnableUi(ui::kHandheldWidth,ui::kHandheldHeight);
         win32::user::EnableWindowLayers(newui::g_gpuActive);
+    }
+
+    std::unique_ptr<win32::user::ShellSession> shellSession;
+    struct ShellBinding {~ShellBinding(){newui::g_shellSession=nullptr;}} shellBinding;
+    if(g_useNewUi && g_activeShell) {
+        shellSession.reset(new(std::nothrow) win32::user::ShellSession(*g_activeShell));
+        const std::string label=std::string(path).substr(std::string(path).find_last_of("/\\")+1);
+        if(!shellSession || !shellSession->Attach(label)) {
+            g_launchStatus="Could not allocate shared desktop. Choose a program to retry.";
+            executionLog.Complete("Native shell initialization failed",8,0);return;
+        }
+        newui::g_shellSession=shellSession.get();
+        // F4a composes native chrome in a bounded CPU image before GPU/software
+        // output. Existing retained window layers remain available without it.
+        win32::user::EnableWindowLayers(false);
     }
 
     // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
@@ -1615,10 +1632,11 @@ static void ResetLegacyFrontend() {
 // Экран Windows (800x600) масштабируется на 1280x720 с полями по бокам,
 // поверх рисуется курсор. Ввод: тач — мышь (касание = левая кнопка), стик —
 // курсор, A — левая кнопка, ZR — правая, крестовина — стрелки, B — Esc,
-// X — Enter, Y — Tab, L — Alt (меню), R — F2, «+» — закрыть окно. Поля
+// X — Enter, Y — Tab, L — Alt (меню), R — Пуск при активной оболочке (иначе F2), «+» — закрыть окно. Поля
 // ввода открывают экранную клавиатуру.
 namespace newui {
 
+win32::user::ShellSession* g_shellSession=nullptr;
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
 ui::SoftwarePresentation g_software;
 ui::OpenGlPresentation g_gpu;
@@ -1817,7 +1835,17 @@ void Blit() {
         g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
     }
 }
+std::u16string DeviceClock() {
+    const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";
+    if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);
+    return std::u16string(clock,clock+std::strlen(clock));
+}
 void Present(const ui::Surface& s) {
+    if(g_shellSession) {
+        g_shellSession->SetClock(DeviceClock());
+        if(g_presentation.Submit(g_shellSession->Compose(s)))Blit();
+        return;
+    }
     const bool submitted=g_gpuActive && win32::user::S().windowLayers.Enabled()
         ?g_presentation.Submit(s,win32::user::S().windowLayers.Scene()):g_presentation.Submit(s);
     if(submitted)Blit();
@@ -1842,7 +1870,13 @@ void Mouse(std::vector<win32::user::InputEvent>& out, win32::user::InputEvent::T
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     using IE = win32::user::InputEvent;
     uint32_t start = rt::Clock::NowMs();
+    uint32_t clockPoll=start;std::u16string lastClock;
     for (;;) {
+        // Native taskbar time advances even while the guest blocks in GetMessage.
+        if(g_shellSession && uint32_t(rt::Clock::NowMs()-clockPoll)>=1000) {
+            clockPoll=rt::Clock::NowMs();const auto clock=DeviceClock();
+            if(clock!=lastClock){lastClock=clock;g_shellSession->SetClock(clock);Present(win32::user::S().screen.s);}
+        }
         if (!ContinueApplet()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
         const uint64_t observedNs=ui::PerformanceNowNs();
         padUpdate(&g_pad);
@@ -1882,7 +1916,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         struct { u64 button; uint32_t vk; } keys[] = {
             {HidNpadButton_Left, 0x25}, {HidNpadButton_Up, 0x26}, {HidNpadButton_Right, 0x27}, {HidNpadButton_Down, 0x28},
             {HidNpadButton_B, 0x1B}, {HidNpadButton_X, 0x0D}, {HidNpadButton_Y, 0x09}, {HidNpadButton_L, 0x12},
-            {HidNpadButton_R, 0x71}};
+            {HidNpadButton_R, g_shellSession?0x5Bu:0x71u}};
         for (auto& k : keys) {
             if (down & k.button) Key(out, true, k.vk,observedNs);
             if (up & k.button) Key(out, false, k.vk,observedNs);
@@ -1929,6 +1963,9 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     char buf[2048] = {0};
     Result rc = swkbdShow(&kbd, buf, sizeof(buf));
     swkbdClose(&kbd);
+    padUpdate(&g_pad);HidTouchScreenState touch{};
+    const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+    g_pointerInputGate.Reset(padGetButtons(&g_pad),touching);g_touching=false;
     g_pointerMotion.ResetTime(rt::Clock::NowUs());
     if (R_FAILED(rc)) return false;
     out = FromUtf8(buf);
@@ -2247,8 +2284,9 @@ int main(int argc, char* argv[])
         bool Alive() {return ContinueApplet();}
         bool Pick(bool initial) {return PickDesktopExecutable(shell,initial);}
         bool BeginOutput() {
+            g_activeShell=&shell;
             padUpdate(&g_pad);
-            g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad)&HidNpadButton_L);
+            g_useNewUi = ui::UseNewGuestUi((padGetButtons(&g_pad)&HidNpadButton_L)!=0);
             const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
             consoleExit(NULL);cpu::g_consoleAvailable=false;
             g_launchStatus="Could not initialize display. Choose a program to retry.";
@@ -2266,7 +2304,7 @@ int main(int argc, char* argv[])
             } else g_launchStatus="Could not start guest thread. Choose a program to retry.";
             threadClose(&worker);
         }
-        void EndOutput() {newui::CloseOutput();g_graphicsInitialized=false;}
+        void EndOutput() {g_activeShell=nullptr;newui::CloseOutput();g_graphicsInitialized=false;}
         void RestorePicker() {consoleInit(NULL);cpu::g_consoleAvailable=true;}
     } launcher;
     ui::RunLauncher(launcher);
