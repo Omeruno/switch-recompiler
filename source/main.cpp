@@ -64,6 +64,7 @@ namespace win32 {
 // остальным вводом ниже), чтобы RunInterpreter мог его проверить перед
 // своими финальными диагностическими printf: если мы уже в графике
 // (консоль закрыта), печатать туда больше нельзя.
+static PadState g_pad;
 static bool g_graphicsInitialized = false;
 static bool g_framebufferReady = false;
 static bool g_appletStopped = false;
@@ -1295,7 +1296,7 @@ static void DrawGdiScreenIntoFramebuffer(Framebuffer& fb, int cursorX, int curso
 // аккуратный abort(). Стик/кнопки — это API, что мы УЖЕ проверили на
 // реальном железе много раз без единого сбоя, поэтому пока переключаемся
 // на него, курсор + клик вместо прямого тача.)
-static PadState g_pad;
+
 static Framebuffer g_fb;
 static int g_cursorX = 320, g_cursorY = 180; // старт — центр виртуального экрана 640x360
 static float g_cursorXf = 320.0f, g_cursorYf = 180.0f; // дробная позиция — для плавного аналогового движения

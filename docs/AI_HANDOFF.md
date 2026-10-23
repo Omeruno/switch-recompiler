@@ -281,3 +281,10 @@ workload profiling with repeatable public fixture measurements, before choosing
 an optimization. No Switch speedup, total memory stability, physical relaunch,
 real Paint or E8/E9 hardware acceptance is claimed. Continue software work while
 the physical checklist remains deferred.
+
+Switch CI for 59393c1 caught a frontend declaration-order error: RunInterpreter
+now uses g_pad before its old declaration. The follow-up moves the one PadState
+declaration above the interpreter; no input/lifetime behavior changes. Four other
+CI jobs had already passed. Verify the corrected published SHA, not the failed
+59393c1 Switch build. Local full host validation remains applicable because it
+does not compile main.cpp; Switch build is the direct check for this correction.
