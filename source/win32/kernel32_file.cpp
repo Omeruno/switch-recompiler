@@ -34,6 +34,9 @@ constexpr uint32_t ERROR_HANDLE_EOF = 38, ERROR_FILE_EXISTS = 80, ERROR_DIR_NOT_
 uint32_t ErrnoToWin() {
     switch (errno) {
         case ENOENT: return ERROR_FILE_NOT_FOUND;
+        case ENODEV: return 15;
+        case EINVAL: return 123;
+        case EROFS: return 19;
         case ENOTDIR: return ERROR_PATH_NOT_FOUND;
         case EACCES: case EPERM: return ERROR_ACCESS_DENIED;
         case EEXIST: return ERROR_ALREADY_EXISTS;
@@ -82,7 +85,9 @@ HostCallOutcome CreateFileCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wi
         f->canRead = f->canWrite = true;
         return Ret(rt::Handles().Add(f,access,handleFlags));
     }
-    std::string host = rt::FileSystem().ToHost(name);
+    const bool mutating=(access&6)!=0 || disp==1 || disp==2 || disp==4 || disp==5 || (flags&0x04000000u)!=0;
+    std::string host = rt::FileSystem().ToHost(name,mutating);
+    if(host.empty()){SetLastError(m,ErrnoToWin());return Ret(INVALID_HANDLE);}
     struct stat st;
     bool exists = StatHost(host, st);
     if (exists && S_ISDIR(st.st_mode)) {
@@ -298,11 +303,21 @@ HostCallOutcome PathOp(cpu::IGuestMemory& m, int r) {
     if (r != 0) { SetLastError(m, ErrnoToWin()); return Ret(0); }
     return Ret(1);
 }
-HostCallOutcome K32_DeleteFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, std::remove(rt::FileSystem().ToHost(ReadAnsi(m, Arg(c, m, 0))).c_str())); }
-HostCallOutcome K32_DeleteFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, std::remove(rt::FileSystem().ToHost(WideToUtf8(ReadWide(m, Arg(c, m, 0)))).c_str())); }
+enum class PathMutation {Delete,Mkdir,Rmdir};
+HostCallOutcome MutatePath(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide,PathMutation op) {
+    const auto host=rt::FileSystem().ToHost(ReadPath(m,Arg(c,m,0),wide),true);
+    if(host.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
+    const int result=op==PathMutation::Delete?std::remove(host.c_str()):
+                     op==PathMutation::Mkdir?mkdir(host.c_str(),0777):rmdir(host.c_str());
+    return PathOp(m,result);
+}
+HostCallOutcome K32_DeleteFileA(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,false,PathMutation::Delete);}
+HostCallOutcome K32_DeleteFileW(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,true,PathMutation::Delete);}
 HostCallOutcome MoveCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bool replace) {
-    std::string a = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide));
-    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide));
+    std::string a = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide),true);
+    if(a.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
+    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide),true);
+    if(b.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
     struct stat st;
     if (!replace && StatHost(b, st)) { SetLastError(m, ERROR_ALREADY_EXISTS); return Ret(0); }
     return PathOp(m, std::rename(a.c_str(), b.c_str()));
@@ -313,7 +328,9 @@ HostCallOutcome K32_MoveFileExA(cpu::CpuState& c, cpu::IGuestMemory& m) { return
 HostCallOutcome K32_MoveFileExW(cpu::CpuState& c, cpu::IGuestMemory& m) { return MoveCommon(c, m, true, (Arg(c, m, 2) & 1) != 0); }
 HostCallOutcome CopyCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     std::string a = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide));
-    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide));
+    if(a.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
+    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide),true);
+    if(b.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
     bool failIfExists = Arg(c, m, 2) != 0;
     struct stat st;
     if (failIfExists && StatHost(b, st)) { SetLastError(m, ERROR_FILE_EXISTS); return Ret(0); }
@@ -330,10 +347,10 @@ HostCallOutcome CopyCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
 }
 HostCallOutcome K32_CopyFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return CopyCommon(c, m, false); }
 HostCallOutcome K32_CopyFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return CopyCommon(c, m, true); }
-HostCallOutcome K32_CreateDirectoryA(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, mkdir(rt::FileSystem().ToHost(ReadAnsi(m, Arg(c, m, 0))).c_str(), 0777)); }
-HostCallOutcome K32_CreateDirectoryW(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, mkdir(rt::FileSystem().ToHost(WideToUtf8(ReadWide(m, Arg(c, m, 0)))).c_str(), 0777)); }
-HostCallOutcome K32_RemoveDirectoryA(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, rmdir(rt::FileSystem().ToHost(ReadAnsi(m, Arg(c, m, 0))).c_str())); }
-HostCallOutcome K32_RemoveDirectoryW(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathOp(m, rmdir(rt::FileSystem().ToHost(WideToUtf8(ReadWide(m, Arg(c, m, 0)))).c_str())); }
+HostCallOutcome K32_CreateDirectoryA(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,false,PathMutation::Mkdir);}
+HostCallOutcome K32_CreateDirectoryW(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,true,PathMutation::Mkdir);}
+HostCallOutcome K32_RemoveDirectoryA(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,false,PathMutation::Rmdir);}
+HostCallOutcome K32_RemoveDirectoryW(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,true,PathMutation::Rmdir);}
 
 HostCallOutcome AttrCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     struct stat st;
@@ -394,13 +411,14 @@ void FillFindData(cpu::IGuestMemory& m, uint32_t p, const std::string& dir, cons
     m.Write32(p + 32, static_cast<uint32_t>(size));
     m.Write32(p + 36, 0);
     m.Write32(p + 40, 0);
-    if (wide) { WriteWide(m, p + 44, AnsiToWide(name), 260); WriteWide(m, p + 44 + 520, u"", 14); }
+    if (wide) { WriteWide(m, p + 44, Utf8PathToWide(name), 260); WriteWide(m, p + 44 + 520, u"", 14); }
     else { WriteAnsi(m, p + 44, name, 260); WriteAnsi(m, p + 44 + 260, "", 14); }
 }
 HostCallOutcome FindFirstCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     std::string pattern = ReadPath(m, Arg(c, m, 0), wide);
     uint32_t data = Arg(c, m, 1);
     std::string full = rt::FileSystem().FullGuestPath(pattern);
+    if(full.empty()){SetLastError(m,ErrnoToWin());return Ret(INVALID_HANDLE);}
     size_t slash = full.find_last_of('\\');
     std::string dirGuest = full.substr(0, slash), mask = full.substr(slash + 1);
     std::string dirHost = rt::FileSystem().ToHost(dirGuest.size() == 2 ? dirGuest + "\\" : dirGuest);
@@ -435,26 +453,27 @@ HostCallOutcome K32_FindClose(cpu::CpuState& c, cpu::IGuestMemory& m) { Finds().
 
 // --- Пути и каталоги ---
 // DWORD GetFullPathName(LPCSTR name, DWORD n, LPSTR buf, LPSTR* filePart)
-HostCallOutcome FullPathCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
-    std::string full = rt::FileSystem().FullGuestPath(ReadPath(m, Arg(c, m, 0), wide));
-    uint32_t cap = Arg(c, m, 1), buf = Arg(c, m, 2), part = Arg(c, m, 3);
-    if (cap <= full.size()) return Ret(static_cast<uint32_t>(full.size() + 1));
-    if (wide) WriteWide(m, buf, AnsiToWide(full), cap); else WriteAnsi(m, buf, full, cap);
-    if (part) {
-        size_t slash = full.find_last_of('\\');
-        m.Write32(part, buf + static_cast<uint32_t>((slash + 1) * (wide ? 2 : 1)));
+HostCallOutcome FullPathCommon(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
+    const auto full=rt::FileSystem().FullGuestPath(ReadPath(m,Arg(c,m,0),wide));
+    if(full.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
+    const auto w=Utf8PathToWide(full);const auto count=uint32_t(wide?w.size():full.size());
+    const auto cap=Arg(c,m,1),buf=Arg(c,m,2),part=Arg(c,m,3);
+    if(cap<=count)return Ret(count+1);
+    if(wide)WriteWide(m,buf,w,cap);else WriteAnsi(m,buf,full,cap);
+    if(part) {
+        const auto slash=wide?w.find_last_of(u'\\'):full.find_last_of('\\');
+        m.Write32(part,buf+uint32_t((slash+1)*(wide?2:1)));
     }
-    return Ret(static_cast<uint32_t>(full.size()));
+    return Ret(count);
 }
 HostCallOutcome K32_GetFullPathNameA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FullPathCommon(c, m, false); }
 HostCallOutcome K32_GetFullPathNameW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FullPathCommon(c, m, true); }
-HostCallOutcome CurDirCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
-    std::string d = rt::FileSystem().CurrentDirectory();
-    if (d.size() == 2) d += "\\";
-    uint32_t cap = Arg(c, m, 0), buf = Arg(c, m, 1);
-    if (cap <= d.size()) return Ret(static_cast<uint32_t>(d.size() + 1));
-    if (wide) WriteWide(m, buf, AnsiToWide(d), cap); else WriteAnsi(m, buf, d, cap);
-    return Ret(static_cast<uint32_t>(d.size()));
+HostCallOutcome CurDirCommon(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
+    const auto d=rt::FileSystem().CurrentDirectory();const auto w=Utf8PathToWide(d);
+    const auto count=uint32_t(wide?w.size():d.size()),cap=Arg(c,m,0),buf=Arg(c,m,1);
+    if(cap<=count)return Ret(count+1);
+    if(wide)WriteWide(m,buf,w,cap);else WriteAnsi(m,buf,d,cap);
+    return Ret(count);
 }
 HostCallOutcome K32_GetCurrentDirectoryA(cpu::CpuState& c, cpu::IGuestMemory& m) { return CurDirCommon(c, m, false); }
 HostCallOutcome K32_GetCurrentDirectoryW(cpu::CpuState& c, cpu::IGuestMemory& m) { return CurDirCommon(c, m, true); }
@@ -468,7 +487,8 @@ HostCallOutcome K32_SetCurrentDirectoryW(cpu::CpuState& c, cpu::IGuestMemory& m)
 }
 HostCallOutcome TempPathCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     // C:\TEMP\ внутри корня гостя; создаём каталог при первом обращении
-    std::string host = rt::FileSystem().ToHost("C:\\TEMP");
+    std::string host = rt::FileSystem().ToHost("C:\\TEMP",true);
+    if(host.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
     mkdir(host.c_str(), 0777);
     std::string p = "C:\\TEMP\\";
     uint32_t cap = Arg(c, m, 0), buf = Arg(c, m, 1);
@@ -490,52 +510,14 @@ HostCallOutcome K32_GetTempFileNameA(cpu::CpuState& c, cpu::IGuestMemory& m) {
         std::snprintf(name, sizeof(name), "%X.TMP", u & 0xFFFF);
         std::string full = dir + pre + name;
         struct stat st;
-        std::string host = rt::FileSystem().ToHost(full);
+        std::string host = rt::FileSystem().ToHost(full,!unique);
+        if(host.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
         if (unique || !StatHost(host, st)) {
-            if (!unique) { std::FILE* f = std::fopen(host.c_str(), "wb"); if (f) std::fclose(f); }
+            if (!unique) { std::FILE* f = std::fopen(host.c_str(), "wb"); if (!f){SetLastError(m,ErrnoToWin());return Ret(0);} std::fclose(f); }
             WriteAnsi(m, Arg(c, m, 3), full, 260);
             return Ret(u & 0xFFFF);
         }
     }
-}
-HostCallOutcome K32_GetDriveTypeA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    std::string root = ReadAnsi(m, Arg(c, m, 0));
-    if (root.empty() || std::toupper(static_cast<unsigned char>(root[0])) == 'C') return Ret(3); // DRIVE_FIXED
-    return Ret(1); // DRIVE_NO_ROOT_DIR
-}
-HostCallOutcome K32_GetDriveTypeW(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    std::u16string root = ReadWide(m, Arg(c, m, 0));
-    if (root.empty() || root[0] == 'C' || root[0] == 'c') return Ret(3);
-    return Ret(1);
-}
-HostCallOutcome K32_GetLogicalDrives(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(1u << 2); }
-HostCallOutcome K32_GetLogicalDriveStringsA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t cap = Arg(c, m, 0), buf = Arg(c, m, 1);
-    if (cap < 5) return Ret(5);
-    const char s[] = "C:\\\0";
-    for (int i = 0; i < 5; ++i) m.Write8(buf + i, static_cast<uint8_t>(s[i]));
-    return Ret(4);
-}
-// BOOL GetDiskFreeSpaceA(root, sectorsPerCluster*, bytesPerSector*, freeClusters*, totalClusters*)
-HostCallOutcome K32_GetDiskFreeSpaceA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    if (Arg(c, m, 1)) m.Write32(Arg(c, m, 1), 8);
-    if (Arg(c, m, 2)) m.Write32(Arg(c, m, 2), 512);
-    if (Arg(c, m, 3)) m.Write32(Arg(c, m, 3), 0x100000); // 4 ГБ свободно
-    if (Arg(c, m, 4)) m.Write32(Arg(c, m, 4), 0x200000);
-    return Ret(1);
-}
-HostCallOutcome K32_GetDiskFreeSpaceExA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    for (int i = 1; i <= 3; ++i) if (Arg(c, m, i)) Write64(m, Arg(c, m, i), 0x100000000ull);
-    return Ret(1);
-}
-// BOOL GetVolumeInformationA(root, nameBuf, nameSize, serial*, maxComp*, flags*, fsBuf, fsSize)
-HostCallOutcome K32_GetVolumeInformationA(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    if (Arg(c, m, 1)) WriteAnsi(m, Arg(c, m, 1), "SWITCH", Arg(c, m, 2));
-    if (Arg(c, m, 3)) m.Write32(Arg(c, m, 3), 0x1234ABCD);
-    if (Arg(c, m, 4)) m.Write32(Arg(c, m, 4), 255);
-    if (Arg(c, m, 5)) m.Write32(Arg(c, m, 5), 0x3);
-    if (Arg(c, m, 6)) WriteAnsi(m, Arg(c, m, 6), "NTFS", Arg(c, m, 7));
-    return Ret(1);
 }
 // DWORD GetLongPathName/GetShortPathName(src, dst, cch): путь не меняем
 HostCallOutcome SamePathA(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -600,13 +582,6 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "GetTempPathA", 8, CallConv::Stdcall, &K32_GetTempPathA},
     {"KERNEL32.dll", "GetTempPathW", 8, CallConv::Stdcall, &K32_GetTempPathW},
     {"KERNEL32.dll", "GetTempFileNameA", 16, CallConv::Stdcall, &K32_GetTempFileNameA},
-    {"KERNEL32.dll", "GetDriveTypeA", 4, CallConv::Stdcall, &K32_GetDriveTypeA},
-    {"KERNEL32.dll", "GetDriveTypeW", 4, CallConv::Stdcall, &K32_GetDriveTypeW},
-    {"KERNEL32.dll", "GetLogicalDrives", 0, CallConv::Stdcall, &K32_GetLogicalDrives},
-    {"KERNEL32.dll", "GetLogicalDriveStringsA", 8, CallConv::Stdcall, &K32_GetLogicalDriveStringsA},
-    {"KERNEL32.dll", "GetDiskFreeSpaceA", 20, CallConv::Stdcall, &K32_GetDiskFreeSpaceA},
-    {"KERNEL32.dll", "GetDiskFreeSpaceExA", 16, CallConv::Stdcall, &K32_GetDiskFreeSpaceExA},
-    {"KERNEL32.dll", "GetVolumeInformationA", 32, CallConv::Stdcall, &K32_GetVolumeInformationA},
     {"KERNEL32.dll", "GetLongPathNameA", 12, CallConv::Stdcall, &SamePathA},
     {"KERNEL32.dll", "GetShortPathNameA", 12, CallConv::Stdcall, &SamePathA},
     {"KERNEL32.dll", "GetLongPathNameW", 12, CallConv::Stdcall, &SamePathW},

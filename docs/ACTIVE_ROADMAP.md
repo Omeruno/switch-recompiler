@@ -1,8 +1,8 @@
 # Active implementation map — 2026-10-23
 
 Current user priority: complete the supported XP-like shell and bind its files
-to actual Switch SD storage. The next code package is **F1: persistent roots and
-filesystem contracts**, before further G optimization. See the source-backed
+to actual Switch SD storage. F1 persistent roots/filesystem contracts are implemented; the next code package
+is **F2: native desktop/theme**, before further G optimization. See the source-backed
 [audit](PROJECT_AUDIT_2026_10_23.md) and [F1–F5 shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 
@@ -10,32 +10,32 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | --- | --- | --- |
 | A/B | CPU oracle/regressions, cooperative guest threads/TEB/TLS/native continuations | Continuous correctness; bounded HLE response and compatibility extensions |
 | C | Limited one-Process HANDLE/wait/APC/timer/lifecycle scope accepted on Switch | Full NT/cross-process/security/AttachThreadInput are outside that acceptance |
-| D | PE/DLL/TLS/unload/rollback, limited SEH and substantial Win32/CRT | Shared filesystem/volume/path contracts for F1; page protection enforcement, full unwind/COM/API compatibility remain separate |
+| D | PE/DLL/TLS/unload/rollback, limited SEH and substantial Win32/CRT | Filesystem contracts implemented in F1; page protection enforcement and full unwind/COM/API compatibility remain separate |
 | E0–E4 | Backend/software/dirty/fallible resources/lifetime; accepted Stage E milestone 60% | Preserve regressions |
 | E5–E7 | Switch GL/fallback, retained layers, ownership, revision caches and 28-scene CPU/GL oracle | Current Paint/output/input/fallback hardware acceptance and console workload evidence |
 | E8/E9 | CPU/GPU/bytes/memory/input-correlation metrics, six software groups and public EXE/report | Console measurements, total process/driver memory, physical latency, GPU/fallback and real Paint |
 | F0 | Picker, core/USER/legacy/MFC session ownership and production launch/exit/error/return loop | Physical picker/relaunch acceptance; **not the desktop/Start/explorer milestone** |
-| **F1–F5: next** | Existing host filesystem/USER/GDI/font/input primitives can be reused | Persistent SD-backed roots → native XP-like desktop/taskbar → functional Start/explorer → shell/guest integration and save/reopen scenario |
+| F1 | Persistent C/S/R, per-drive cwd, mapped module/command-line/profile paths, readonly mutations, real statvfs space and Unicode W dialogs; [contract/tests](F1_FILESYSTEM.md) | Physical SD/Paint compatibility; no automatic migration of old absolute C paths |
+| **F2–F5: next** | Existing USER/GDI/font/input/presentation primitives and licensed visual sources | Native XP-like desktop/taskbar → functional Start/explorer → shell/guest integration and save/reopen scenario |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: F1
+## Next concrete package: F2 native desktop/theme
 
-Today `Process::LoadMainExe` assigns C to the EXE directory; VFS drive letters
-alias that one root, and volume/free-space APIs return constants. File bytes do
-persist on real host/SD storage, but a common desktop/documents/programs volume
-is missing. Resolve these contracts before drawing a functional explorer.
+F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
+read-only ROMFS as R, and keeps ordinary host launches compatible by default.
+See [F1_FILESYSTEM.md](F1_FILESYSTEM.md). Existing files are not moved; old saved
+absolute C paths from the former per-EXE mapping may need reselection through S.
 
-The proposed shell layout is C on `sdmc:/switch-recompiler/drive_c/`, a separate
-SD view S and read-only ROMFS R. This is a plan, not shipped mounts. Preserve
-existing EXE directories, documents and registry; keep EXE directory, guest CWD,
-module/command-line paths and DLL search distinct from the persistent root.
-Detailed acceptance and licensed visual sources are in F_SHELL_PLAN.md.
+Next: host-owned desktop/theme/input model and native blue taskbar/green Start
+with licensed artwork/fonts, independently tested at 1280x720 and scaled sizes.
+Initial idle shell is an intermediate milestone, not full Start/explorer or
+active-guest taskbar acceptance. F3/F4/F5 criteria remain in F_SHELL_PLAN.md.
 
 ## Implementation order and gates
 
-1. F1: mount/path/readonly/CWD and volume provider; shared documents and real-x86
-   cross-session persistence, loader/CRT/dialog consistency and legacy launch compatibility.
+1. Preserve F1 mount/path/readonly/CWD/volume and cross-session x86 regressions;
+   existing standalone host launches keep the legacy one-C-per-EXE default.
 2. F2/F3: native blue/green XP-like desktop/taskbar/Start and bounded real-directory
    explorer. Selected assets need source/license/hash notices; CSS is not a Switch runtime.
 3. F4/F5: shell/guest output and input ownership, active task handling in the

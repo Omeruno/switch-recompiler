@@ -23,7 +23,7 @@
   TLS, `DllMain`), TEB/PEB Windows XP. Системные DLL эмулируются; DLL
   «наборов API» Windows 7+ (`api-ms-win-*`) отображаются на KERNEL32.
 - **KERNEL32 и msvcrt.dll**: несколько сотен функций — куча, файлы
-  (`C:\` гостя = каталог EXE), синхронизация, время, `printf`/`scanf` по
+  (Switch: постоянные C/S/R; standalone host default — каталог EXE), синхронизация, время, `printf`/`scanf` по
   правилам msvcrt, математика.
 - **USER32/GDI32** (новый слой, `source/ui/`, `win32/user32_*.cpp`,
   `win32/gdi32_module.cpp`): окна и классы, порядок окон и отсечение,
@@ -44,8 +44,9 @@
 и [аудите 2026-10-23](docs/PROJECT_AUDIT_2026_10_23.md). Базовые runtime, GPU-output
 и изоляция повторных гостевых сеансов реализованы; полный XP desktop ещё нет.
 
-1. F1: постоянная файловая структура на реальной SD, общий корень/тома,
-   корректные пути и информация о накопителе. Сейчас `C:\` — каталог EXE.
+1. F1 реализован: постоянные C/S/R на Switch, profile/system/temp tree,
+   корректные пути и реальные данные о свободном месте.
+   [Контракт, проверки и standalone default](docs/F1_FILESYSTEM.md).
 2. F2–F5: native XP-like desktop/taskbar/«Пуск» и проводник, запуск приложения,
    сохранение и повторное открытие документа. [План и visual sources](docs/F_SHELL_PLAN.md).
 3. Совместимость Win32/SEH/памяти расширять по воспроизводимым случаям.
@@ -109,9 +110,13 @@ sdmc:/switch/switch-recompiler.nro
 sdmc:/switch-recompiler/winmine.exe
 sdmc:/switch-recompiler/paint.exe
 sdmc:/switch-recompiler/Game/game.exe     программа с DLL — в своей подпапке
+sdmc:/switch-recompiler/drive_c/Programs/App/app.exe   новый общий C:
 ```
 
-При запуске появится список программ (крестовина и A).
+При запуске появится список программ (крестовина и A). На Switch C: теперь
+постоянный `sdmc:/switch-recompiler/drive_c/`, S: — SD-карта, R: — ROMFS
+только для чтения. Старые папки не переносятся; относительные пути остаются
+возле EXE. Старые сохранённые абсолютные C-пути могут потребовать выбора через S.
 
 ## Хост-тесты (Linux/WSL, g++)
 

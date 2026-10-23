@@ -24,6 +24,7 @@
 #include "source/runtime/process.h"
 #include "source/runtime/guest_execution.h"
 #include "source/runtime/guest_session.h"
+#include "source/runtime/files.h"
 #include "source/runtime/workload_profile.h"
 #include "source/runtime/workload_report.h"
 #include "source/win32/gdi.h"
@@ -125,12 +126,16 @@ void DumpScreen(const char* path) {
 int main(int argc, char** argv) {
     bool verbose = false, profileEnabled = false;
     std::vector<std::string> libDirs;
+    std::string systemRoot,sdRoot,romRoot;
     const char* dumpPath = nullptr;
     bool forceLegacy = false, forceNew = false, listMissing = false, probeThreads = false, probeX86Threads = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
         else if (std::strcmp(argv[i], "--profile-workload") == 0) profileEnabled = true;
+        else if (std::strcmp(argv[i], "--system-root") == 0 && i+1<argc) systemRoot=argv[++i];
+        else if (std::strcmp(argv[i], "--sd-root") == 0 && i+1<argc) sdRoot=argv[++i];
+        else if (std::strcmp(argv[i], "--romfs-root") == 0 && i+1<argc) romRoot=argv[++i];
         else if (std::strcmp(argv[i], "-L") == 0 && i + 1 < argc) libDirs.push_back(argv[++i]);
         else if (std::strcmp(argv[i], "-f") == 0 && i + 1 < argc) g_frameLimit = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "-d") == 0 && i + 1 < argc) dumpPath = argv[++i];
@@ -150,6 +155,9 @@ int main(int argc, char** argv) {
     if (i >= argc) {
         std::fprintf(stderr, "usage: %s [-v] [-L dir] program.exe [args...]\n", argv[0]);
         return 2;
+    }
+    if(systemRoot.empty() && (!sdRoot.empty() || !romRoot.empty())) {
+        std::fprintf(stderr,"winrun: --sd-root/--romfs-root require --system-root\n");return 2;
     }
     std::string exe = argv[i];
     std::string cmd = exe;
@@ -189,6 +197,9 @@ int main(int argc, char** argv) {
     proc.SetCommandLine(cmd);
 
     std::string err;
+    if(!systemRoot.empty() && !rt::FileSystem().ConfigurePersistent(systemRoot,sdRoot,romRoot,err)) {
+        std::fprintf(stderr,"winrun: %s\n",err.c_str());return 3;
+    }
     if (!proc.LoadMainExe(exe, err)) { std::fprintf(stderr, "winrun: %s\n", err.c_str()); return 3; }
     if (listMissing) {
         // импорты из эмулируемых DLL, для которых нет реализации

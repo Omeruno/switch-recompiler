@@ -68,6 +68,27 @@ inline std::string WideToUtf8(const std::u16string& w) {
     return out;
 }
 
+inline std::u16string Utf8PathToWide(const std::string& s) {
+    std::u16string out;
+    for(size_t i=0;i<s.size();) {
+        uint32_t cp=static_cast<unsigned char>(s[i++]);
+        int extra=cp<0x80?0:(cp&0xe0)==0xc0?1:(cp&0xf0)==0xe0?2:(cp&0xf8)==0xf0?3:-1;
+        if(extra<0 || i+size_t(extra)>s.size()){out.push_back(u'\ufffd');continue;}
+        if(extra)cp&=(1u<<(6-extra))-1;
+        bool valid=true;
+        for(int j=0;j<extra;++j) {
+            const auto c=static_cast<unsigned char>(s[i]);
+            if((c&0xc0)!=0x80){valid=false;break;}
+            ++i;cp=(cp<<6)|(c&0x3f);
+        }
+        if(!valid || cp>0x10ffff || (cp>=0xd800&&cp<=0xdfff) ||
+           (extra==1&&cp<0x80) || (extra==2&&cp<0x800) || (extra==3&&cp<0x10000))cp=0xfffd;
+        if(cp<0x10000)out.push_back(char16_t(cp));
+        else {cp-=0x10000;out.push_back(char16_t(0xd800+(cp>>10)));out.push_back(char16_t(0xdc00+(cp&0x3ff)));}
+    }
+    return out;
+}
+
 inline std::u16string AnsiToWide(const std::string& s) {
     std::u16string w;
     for (unsigned char ch : s) w.push_back(static_cast<char16_t>(ch));

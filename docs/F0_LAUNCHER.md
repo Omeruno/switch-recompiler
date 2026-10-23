@@ -44,7 +44,8 @@ The runtime/renderer teardown path after a launched guest is unchanged here.
 
 The paragraph below records the first package only. Its lifecycle integration
 is now implemented; see [F0_LAUNCH_LOOP.md](F0_LAUNCH_LOOP.md). The current next
-package is F1 filesystem foundation in [F_SHELL_PLAN.md](F_SHELL_PLAN.md).
+package follows [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md); F1 filesystem foundation
+is now implemented in [F1_FILESYSTEM.md](F1_FILESYSTEM.md).
 
 Original next F block: audit and make the existing one-Process session initialization/
 teardown repeatable before implementing return-to-launcher or a desktop shell.

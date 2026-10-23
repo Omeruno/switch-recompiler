@@ -122,7 +122,7 @@ bool MatchExtension(const std::string& name, const std::string& pattern) {
     }
     return false;
 }
-std::u16string Text(const std::string& a) { return AnsiToWide(a); }
+std::u16string Text(const std::string& a) { return Utf8PathToWide(a); }
 std::string Narrow(const std::u16string& s) { return WideToUtf8(s); }
 
 void UpdateList(Request& r) {
@@ -183,6 +183,11 @@ bool PutResult(Request& r, std::string full) {
     std::string title = slash == std::string::npos ? full : full.substr(slash + 1);
     size_t dot = title.find_last_of('.');
     uint32_t base = slash == std::string::npos ? 0u : static_cast<uint32_t>(slash + 1);
+    if(r.wide) {
+        const auto wslash=wfull.find_last_of(u"\\/");
+        base=wslash==std::u16string::npos?0:uint32_t(wslash+1);
+        const auto wtitle=wfull.substr(base);dot=wtitle.find_last_of(u'.');
+    }
     // Offset in characters (not bytes), including for W.
     m.Write16(r.ofn + 56, static_cast<uint16_t>(std::min<uint32_t>(base, 0xFFFF)));
     m.Write16(r.ofn + 58, static_cast<uint16_t>(dot == std::string::npos ? 0 : std::min<uint32_t>(base + dot + 1, 0xFFFF)));
@@ -198,6 +203,7 @@ void Accept(Request& r) {
     Trace("accept: name=%s directory=%s", chosen.c_str(), r.directory.c_str());
     if (chosen.empty()) return;
     std::string full = Join(r.directory, chosen);
+    if(full.empty())return;
     if (Exists(full, true)) {
         r.directory = full;
         if (edit) edit->text.clear();
@@ -214,6 +220,7 @@ void Accept(Request& r) {
     // OVERWRITEPROMPT is deferred until the confirmation UI is implemented:
     // refuse overwriting instead of silently destroying files.
     if (r.save && (r.flags & OFN_OVERWRITEPROMPT) && Exists(full, false)) return;
+    if(r.save && rt::FileSystem().ToHost(full,true).empty())return;
     r.accepted = PutResult(r, full);
     if (r.accepted || CommonErrorValue()) r.done = true;
 }

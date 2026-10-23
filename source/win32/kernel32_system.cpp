@@ -1,3 +1,4 @@
+#include "../runtime/files.h"
 // kernel32_system.cpp — KERNEL32: сведения о системе, кодовые страницы,
 // окружение, командная строка, время, обработчик необработанных исключений.
 //
@@ -166,6 +167,7 @@ HostCallOutcome K32_GetCurrentThreadId(cpu::CpuState&, cpu::IGuestMemory&) {
 
 // --- Обработчик необработанных исключений ---
 struct SystemState {
+    bool profileInitialized=false;
     uint32_t unhandledFilter=0,errorMode=0,cmdLineA=0,cmdLineW=0,flsNext=1;
     std::map<uint32_t,uint32_t> fls;
     std::map<std::string,std::string> env={
@@ -175,7 +177,19 @@ struct SystemState {
         {"NUMBER_OF_PROCESSORS","1"},{"PROCESSOR_ARCHITECTURE","x86"}
     };
 };
-SystemState& System() {return rt::LocalState<SystemState>();}
+SystemState& System() {
+    auto& state=rt::LocalState<SystemState>();
+    // Add defaults lazily once; guest SetEnvironmentVariable remains authoritative.
+    if(rt::FileSystem().Persistent() && !state.profileInitialized) {
+        const auto profile=rt::FileSystem().ProfileDirectory();
+        state.env["USERPROFILE"]=profile;state.env["HOMEDRIVE"]="C:";
+        state.env["HOMEPATH"]=profile.substr(2);
+        state.env["APPDATA"]=profile+"\\Application Data";
+        state.env["LOCALAPPDATA"]=profile+"\\Local Settings\\Application Data";
+        state.profileInitialized=true;
+    }
+    return state;
+}
 
 HostCallOutcome K32_SetUnhandledExceptionFilter(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t old = System().unhandledFilter;
@@ -206,8 +220,7 @@ std::string CommandLineString() {
     std::string cmd = rt::g_process->CommandLine();
     std::string exe = rt::g_process->MainModule() ? rt::g_process->MainModule()->path : "";
     if (!exe.empty() && cmd.compare(0, exe.size(), exe) == 0) {
-        std::string base = exe.substr(exe.find_last_of("/\\") + 1);
-        cmd = "\"C:\\" + base + "\"" + cmd.substr(exe.size());
+        cmd = "\"" + rt::FileSystem().ToGuest(exe) + "\"" + cmd.substr(exe.size());
     }
     return cmd;
 }
@@ -221,7 +234,7 @@ HostCallOutcome K32_GetCommandLineA(cpu::CpuState&, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_GetCommandLineW(cpu::CpuState&, cpu::IGuestMemory& m) {
     if (!System().cmdLineW) {
-        std::u16string s = AnsiToWide(CommandLineString());
+        std::u16string s = Utf8PathToWide(CommandLineString());
         System().cmdLineW = AllocGuest(m, static_cast<uint32_t>((s.size() + 1) * 2));
         WriteWide(m, System().cmdLineW, s, static_cast<uint32_t>(s.size() + 1));
     }

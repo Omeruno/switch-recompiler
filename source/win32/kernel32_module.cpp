@@ -36,10 +36,7 @@ void ConsoleWrite(const char* data, size_t len, bool err) {
 
 std::string GuestModulePath(const rt::Module* m) {
     if (m->hle) return "C:\\WINDOWS\\system32\\" + m->name;
-    std::string base = m->path;
-    size_t slash = base.find_last_of("/\\");
-    if (slash != std::string::npos) base = base.substr(slash + 1);
-    return "C:\\" + base;
+    return rt::FileSystem().ToGuest(m->path);
 }
 
 rt::Module* ModuleFromHandle(uint32_t h) {
@@ -179,7 +176,7 @@ HostCallOutcome K32_GetModuleFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) {
     rt::Module* mod = ModuleFromHandle(Arg(c, m, 0));
     uint32_t buf = Arg(c, m, 1), size = Arg(c, m, 2);
     if (!mod) { SetLastError(m, ERROR_MOD_NOT_FOUND); return Ret(0); }
-    std::u16string path = AnsiToWide(GuestModulePath(mod));
+    std::u16string path = Utf8PathToWide(GuestModulePath(mod));
     uint32_t n = WriteWide(m, buf, path, size);
     if (path.size() >= size) { SetLastError(m, ERROR_INSUFFICIENT_BUFFER); return Ret(size); }
     return Ret(n);

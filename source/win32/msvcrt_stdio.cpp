@@ -185,7 +185,8 @@ ModeInfo ParseMode(const std::string& mode) {
 
 // Открывает файл хоста по пути гостя; -1 и errno — при ошибке
 int OpenPath(cpu::IGuestMemory& m, const std::string& guestPath, const ModeInfo& mi) {
-    std::string host = rt::FileSystem().ToHost(guestPath);
+    std::string host = rt::FileSystem().ToHost(guestPath,mi.write || mi.create);
+    if(host.empty()){SetErrno(m,errno==EROFS||errno==EACCES?kEACCES:kENOENT);return -1;}
     struct stat st;
     bool exists = stat(host.c_str(), &st) == 0;
     if (exists && S_ISDIR(st.st_mode)) { SetErrno(m, kEACCES); return -1; }
@@ -718,15 +719,26 @@ HostCallOutcome PathResult(cpu::IGuestMemory& m, int r) {
     if (r != 0) { SetErrno(m, errno == ENOENT ? kENOENT : kEACCES); return Ret(static_cast<uint32_t>(-1)); }
     return Ret(0);
 }
-std::string HostOf(cpu::IGuestMemory& m, uint32_t p, bool wide = false) {
-    return rt::FileSystem().ToHost(wide ? WideToUtf8(ReadWide(m, p)) : ReadAnsi(m, p));
+std::string HostOf(cpu::IGuestMemory& m, uint32_t p, bool wide = false, bool write = false) {
+    return rt::FileSystem().ToHost(wide ? WideToUtf8(ReadWide(m, p)) : ReadAnsi(m, p),write);
 }
-HostCallOutcome C_remove(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, std::remove(HostOf(m, Arg(c, m, 0)).c_str())); }
-HostCallOutcome C_wremove(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, std::remove(HostOf(m, Arg(c, m, 0), true).c_str())); }
-HostCallOutcome C_rename(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, std::rename(HostOf(m, Arg(c, m, 0)).c_str(), HostOf(m, Arg(c, m, 1)).c_str())); }
-HostCallOutcome C_mkdir(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, mkdir(HostOf(m, Arg(c, m, 0)).c_str(), 0777)); }
-HostCallOutcome C_wmkdir(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, mkdir(HostOf(m, Arg(c, m, 0), true).c_str(), 0777)); }
-HostCallOutcome C_rmdir(cpu::CpuState& c, cpu::IGuestMemory& m) { return PathResult(m, rmdir(HostOf(m, Arg(c, m, 0)).c_str())); }
+enum class CrtMutation {Remove,Mkdir,Rmdir,Rename};
+HostCallOutcome CrtMutate(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide,CrtMutation op) {
+    const auto a=HostOf(m,Arg(c,m,0),wide,true);
+    if(a.empty()){SetErrno(m,kEACCES);return Ret(uint32_t(-1));}
+    if(op==CrtMutation::Rename) {
+        const auto b=HostOf(m,Arg(c,m,1),wide,true);
+        if(b.empty()){SetErrno(m,kEACCES);return Ret(uint32_t(-1));}
+        return PathResult(m,std::rename(a.c_str(),b.c_str()));
+    }
+    return PathResult(m,op==CrtMutation::Remove?std::remove(a.c_str()):op==CrtMutation::Mkdir?mkdir(a.c_str(),0777):rmdir(a.c_str()));
+}
+HostCallOutcome C_remove(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,false,CrtMutation::Remove);}
+HostCallOutcome C_wremove(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,true,CrtMutation::Remove);}
+HostCallOutcome C_rename(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,false,CrtMutation::Rename);}
+HostCallOutcome C_mkdir(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,false,CrtMutation::Mkdir);}
+HostCallOutcome C_wmkdir(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,true,CrtMutation::Mkdir);}
+HostCallOutcome C_rmdir(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,false,CrtMutation::Rmdir);}
 HostCallOutcome C_chdir(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (!rt::FileSystem().SetCurrentDirectory(ReadAnsi(m, Arg(c, m, 0)))) { SetErrno(m, kENOENT); return Ret(static_cast<uint32_t>(-1)); }
     return Ret(0);
@@ -814,6 +826,7 @@ void FillFind(cpu::IGuestMemory& m, uint32_t p, const std::string& dir, const st
 }
 HostCallOutcome C_findfirst(cpu::CpuState& c, cpu::IGuestMemory& m) {
     std::string full = rt::FileSystem().FullGuestPath(ReadAnsi(m, Arg(c, m, 0)));
+    if(full.empty()){SetErrno(m,kENOENT);return Ret(uint32_t(-1));}
     size_t slash = full.find_last_of('\\');
     std::string dirGuest = full.substr(0, slash), mask = full.substr(slash + 1);
     FindState st;
@@ -840,7 +853,7 @@ HostCallOutcome C_findclose(cpu::CpuState& c, cpu::IGuestMemory& m) { Finds().er
 HostCallOutcome C_tmpfile(cpu::CpuState&, cpu::IGuestMemory& m) {
     auto& n=FindData().tmpFile;
     std::string name = "C:\\TEMP\\tmp" + std::to_string(n++) + ".tmp";
-    mkdir(rt::FileSystem().ToHost("C:\\TEMP").c_str(), 0777);
+    mkdir(rt::FileSystem().ToHost("C:\\TEMP",true).c_str(), 0777);
     ModeInfo mi = ParseMode("w+b");
     int fd = OpenPath(m, name, mi);
     if (fd < 0) return Ret(0);

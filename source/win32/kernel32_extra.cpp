@@ -1,3 +1,4 @@
+#include <cerrno>
 // kernel32_extra.cpp — KERNEL32: функции, нужные программам на MFC
 // (настоящей mfc42u.dll и Paint): процессы и потоки (без многопоточности),
 // атомы, MulDiv, FormatMessage, SearchPath, GetStringTypeEx, форматы даты,
@@ -167,29 +168,15 @@ FN(GetTempFileNameW) {
         char name[16];
         std::snprintf(name, sizeof(name), "%X.TMP", u & 0xFFFF);
         std::u16string full = dir + pre + AnsiToWide(name);
-        std::string host = rt::FileSystem().ToHost(WideToUtf8(full));
+        std::string host = rt::FileSystem().ToHost(WideToUtf8(full),!unique);
+        if(host.empty()){SetLastError(m,errno==EROFS?19:ERROR_PATH_NOT_FOUND);return Ret(0);}
         struct stat st;
         if (unique || stat(host.c_str(), &st) != 0) {
-            if (!unique) { std::FILE* f = std::fopen(host.c_str(), "wb"); if (f) std::fclose(f); }
+            if (!unique) { std::FILE* f = std::fopen(host.c_str(), "wb"); if (!f){SetLastError(m,ERROR_ACCESS_DENIED);return Ret(0);} std::fclose(f); }
             WriteWide(m, A(c, m, 3), full, 260);
             return Ret(u & 0xFFFF);
         }
     }
-}
-FN(GetDiskFreeSpaceW) {
-    if (A(c, m, 1)) m.Write32(A(c, m, 1), 8);
-    if (A(c, m, 2)) m.Write32(A(c, m, 2), 512);
-    if (A(c, m, 3)) m.Write32(A(c, m, 3), 0x100000);
-    if (A(c, m, 4)) m.Write32(A(c, m, 4), 0x200000);
-    return Ret(1);
-}
-FN(GetVolumeInformationW) {
-    if (A(c, m, 1)) WriteWide(m, A(c, m, 1), u"SWITCH", A(c, m, 2));
-    if (A(c, m, 3)) m.Write32(A(c, m, 3), 0x1234ABCD);
-    if (A(c, m, 4)) m.Write32(A(c, m, 4), 255);
-    if (A(c, m, 5)) m.Write32(A(c, m, 5), 0x3);
-    if (A(c, m, 6)) WriteWide(m, A(c, m, 6), u"NTFS", A(c, m, 7));
-    return Ret(1);
 }
 FN(LockFile) { (void)c; (void)m; return Ret(1); }
 FN(UnlockFile) { (void)c; (void)m; return Ret(1); }
@@ -211,7 +198,7 @@ HostCallOutcome SearchPathCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool un
         }
     } else {
         dirs.push_back(u"C:\\");
-        dirs.push_back(AnsiToWide(rt::FileSystem().CurrentDirectory()));
+        dirs.push_back(Utf8PathToWide(rt::FileSystem().CurrentDirectory()));
     }
     bool absolute = file.size() > 1 && (file[1] == ':' || file[0] == '\\');
     if (absolute) dirs.assign(1, u"");
@@ -220,7 +207,7 @@ HostCallOutcome SearchPathCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool un
         std::string full = rt::FileSystem().FullGuestPath(WideToUtf8(cand));
         struct stat st;
         if (stat(rt::FileSystem().ToHost(full).c_str(), &st) != 0) continue;
-        std::u16string res = AnsiToWide(full);
+        std::u16string res = Utf8PathToWide(full);
         uint32_t cap = A(c, m, 3), buf = A(c, m, 4);
         if (cap <= res.size()) return Ret(static_cast<uint32_t>(res.size() + 1));
         uint32_t n = Put(m, buf, res, cap, unicode);
@@ -481,7 +468,7 @@ const HostFunctionEntry kEntries[] = {
     E(GetProfileStringA, 20), E(GetProfileStringW, 20), E(WriteProfileStringA, 12),
     {"KERNEL32.dll", "WriteProfileStringW", 12, CallConv::Stdcall, &WriteProfileStringA},
     E(WritePrivateProfileStringA, 16), {"KERNEL32.dll", "WritePrivateProfileStringW", 16, CallConv::Stdcall, &WritePrivateProfileStringA},
-    E(GetTempFileNameW, 16), E(GetDiskFreeSpaceW, 20), E(GetVolumeInformationW, 32), E(LockFile, 20), E(UnlockFile, 20),
+    E(GetTempFileNameW, 16), E(LockFile, 20), E(UnlockFile, 20),
     E(GetFileSecurityW, 20), {"KERNEL32.dll", "SetFileSecurityW", 12, CallConv::Stdcall, &GetFileSecurityW},
     {"ADVAPI32.dll", "GetFileSecurityW", 20, CallConv::Stdcall, &GetFileSecurityW},
     {"ADVAPI32.dll", "SetFileSecurityW", 12, CallConv::Stdcall, &GetFileSecurityW},

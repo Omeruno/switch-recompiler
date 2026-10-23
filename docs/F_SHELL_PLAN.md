@@ -1,8 +1,9 @@
 # Stage F: постоянная файловая система и XP-подобная оболочка
 
-Статус: план реализации после аудита 2026-10-23, **ещё не реализовано**.
+Статус: **F1 реализован программно** ([контракт и проверки](F1_FILESYSTEM.md));
+F2–F5 ещё не реализованы. Физическая приёмка остаётся отложенной.
 База: 03b9fd4. [Аудит всех этапов](PROJECT_AUDIT_2026_10_23.md) объясняет,
-почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F1.
+почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F2, native desktop/theme.
 
 Пользовательская цель: реальная файловая структура Switch/SD, синяя панель
 задач и зелёный «Пуск», рабочий стол, программы и проводник в пределах уже
@@ -12,7 +13,7 @@ Surface/GDI/font/presentation/input primitives, не запуск explorer.exe �
 
 ## Постоянное хранилище
 
-Предлагаемый layout для нового shell-режима:
+Layout F1 в production Switch launch (host winrun сохраняет standalone default):
 
 | Видимый том/путь | Реальное место | Назначение |
 | --- | --- | --- |
@@ -23,14 +24,16 @@ Surface/GDI/font/presentation/input primitives, не запуск explorer.exe �
 | `S:\` | `sdmc:/` | Явное отображение реальных папок SD в браузере; режим доступа учитывается mount provider |
 | `R:\` | `romfs:/` | Ресурсы/встроенные EXE, только чтение |
 
-Это проектируемые mounts, не существующая конфигурация. Корень SD не является
+Эти mounts подключены F1; desktop/Start/explorer ещё не подключены. Корень SD не является
 системным разделом Horizon. NAND/системные файлы консоли не нужны для этой вехи.
 Существующие `sdmc:/switch-recompiler/Game/game.exe`, документы, registry.dat и
 стабильные NRO сохраняются. Ничего автоматически не переносить/перезаписывать.
 Новый layout создаёт только отсутствующие каталоги; старые EXE доступны через S.
+Относительные пути остаются в каталоге EXE; старые сохранённые абсолютные C-пути
+из per-EXE режима могут потребовать выбора через S — автоматической миграции нет.
 Host-тесты используют временные directory-backed mounts, не Switch device paths.
 
-Нужна единая модель drive/path/root/CWD/readonly и ошибок; нельзя оставить
+F1 использует единую модель drive/path/root/CWD/readonly и ошибок; нельзя вводить
 несколько разных правил у VFS, loader, CRT, dialogs и shell. Неизвестный диск
 должен давать ошибку, а не alias C. Учитывать separators, `.`/`..`, case,
 per-drive relative paths, root boundary, отсутствующий путь, Unicode и read-only.
@@ -40,7 +43,7 @@ UNC/unsupported устройства должны иметь явный непо
 
 | Пакет | Реализация | Проверяемое завершение |
 | --- | --- | --- |
-| **F1: реальная файловая основа** | Mount/root configuration отдельно от EXE directory/CWD; согласованные guest module/command-line пути, env/special folders, реальные volume/free-space provider и A/W APIs; сохранение старого standalone workflow | Две публичные EXE в разных каталогах видят одни документы; сохранённый файл читается после двух fresh sessions; C/S/R round-trip, неизвестный диск, read-only, traversal, case/Unicode, соседние DLL и failed load покрыты native+real-x86 tests |
+| **F1: реализован программно** ([F1_FILESYSTEM.md](F1_FILESYSTEM.md)) | Mount/root configuration отдельно от EXE directory/CWD; согласованные guest module/command-line пути, env/special folders, реальные volume/free-space provider и A/W APIs; сохранение старого standalone workflow | Две публичные EXE в разных каталогах видят одни документы; сохранённый файл читается после двух fresh sessions; C/S/R round-trip, неизвестный диск, read-only, traversal, case/Unicode, соседние DLL и failed load покрыты native+real-x86 tests |
 | **F2: native desktop** | Постоянное host-состояние shell, фон, папки/ярлыки и selection, синяя taskbar, зелёный Start, часы реального времени; asset/theme manifest; 1280x720 и общий viewport | Host screenshot/pixel/layout и controller/touch tests; вход/выход shell не создаёт guest Process и не заимствует guest-owned pointers; изменение viewport не рассогласует ввод |
 | **F3: функциональный Start и explorer** | Программы из реальных EXE-путей, «Все программы», «Мой компьютер», «Мои документы», «Выполнить», доступные настройки, About и выход из homebrew; дерево/список, адрес, back/up, сортировка/страницы, выбор и открытие EXE/документа | Каждая видимая активная команда выполняет действие; browser читает directory-backed/SD provider с лимитами и честно сообщает truncation/read errors; Start/Explorer/Run приводят к одному launch request; app association проверяет существующую поддержку |
 | **F4: shell ↔ guest** | Повторное использование GuestSession/RunLauncher teardown; ownership shell/taskbar/output при активном приложении, per-launch UI/GPU mode, карантин ввода, активная task button, один guest одновременно | Launch/normal exit/PLUS abort/load error/display error возвращают тот же desktop/selection/path; несколько окон одного приложения корректны; реализация minimize/restore и меню во время работы должна иметь explicit compositor/input route, а не ложную кнопку второго процесса |
@@ -90,7 +93,7 @@ Bliss wallpaper и выгрузки shell32.dll в этот набор не вх
 
 ## Очередь и проверки
 
-Сначала F1 и его реальный API/loader contract, затем F2/F3/F4/F5 небольшими
+F1 и его API/loader contract реализованы; далее F2/F3/F4/F5 небольшими
 когерентными пакетами. Файловые недостачи D исправлять внутри соответствующего
 пакета F1; отдельную memory-protection/SEH работу вести без заявления о полном NT.
 G0 не удалять. Продолжение G/H не подменяет недостающий shell.

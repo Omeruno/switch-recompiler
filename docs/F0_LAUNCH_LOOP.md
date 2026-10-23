@@ -37,6 +37,6 @@ Paint, GPU/fallback, 1280x720 and memory stability remain on the single physical
 checklist in STAGE_E_PERFORMANCE.md.
 
 The subsequent G0 census was implemented in STAGE_G_PROFILING.md. After the
-2026-10-23 user-priority audit, the next code package is F1 persistent SD roots
-and filesystem contracts, then the native XP-like shell in F_SHELL_PLAN.md.
+2026-10-23 user-priority audit, F1 persistent SD roots/filesystem contracts were implemented next; the current
+next package is F2 native desktop/theme in F_SHELL_PLAN.md.
 F0 alone is not desktop/Start/explorer acceptance; hardware checks remain deferred.

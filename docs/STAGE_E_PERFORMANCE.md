@@ -62,8 +62,8 @@ Keep private user logs and proprietary Paint/MFC binaries outside public git.
    not measure these, so full E8 acceptance remains open.
 
 E9 combined unattended acceptance/reporting was subsequently implemented in
-STAGE_E_ACCEPTANCE.md. The current next software block is F1 filesystem/shell
-foundation in F_SHELL_PLAN.md. Optimize further only after the counters or a
+STAGE_E_ACCEPTANCE.md. F1 filesystem foundation was subsequently implemented; the current next
+software block is F2 native desktop/theme in F_SHELL_PLAN.md. Optimize further only after the counters or a
 reproducible benchmark identify excess work.
 
 ## v7: CPU raster and observed-input correlation
@@ -137,3 +137,10 @@ shutdown without reopening the picker, current Paint open/save/color/tool
 behavior and stable memory over repeated launches at 1280x720 Switch Lite.
 Inject display/thread initialization failure if a controlled hardware harness is
 available. These are deferred checks, not claimed host/console results.
+
+F1 adds persistent C/S/R mount configuration (F1_FILESYSTEM.md). In the same
+future physical smoke, check two EXEs in different SD directories sharing a C
+Unicode document across normal exit/abort/relaunch, original relative files and
+adjacent DLLs, readonly R, actual free-space reporting and C Programs discovery.
+Existing files are not moved; old saved per-EXE absolute C paths may need
+reselection through S. This is feature validation, not renewed SD diagnosis.

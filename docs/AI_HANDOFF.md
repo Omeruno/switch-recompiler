@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`2742eeac77d6fcde354336f680846804138c3661` (2026-10-23).
-[CI 39940606718](https://github.com/Omeruno/switch-recompiler/actions/runs/39940606718)
+`1d1bd6f4f2fc418aa43899101d6cab3817698253` (2026-10-23).
+[CI 39959927599](https://github.com/Omeruno/switch-recompiler/actions/runs/39959927599)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -12,8 +12,8 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 ## Current priority after the 2026-10-23 audit
 
 The user prioritizes a functional XP-like native shell and real Switch/SD-backed
-file structure. **Next code package: F1 persistent mounts/root/path/volume
-contracts**, followed by F2–F5 desktop/Start/explorer/guest integration. Continue
+file structure. **F1 filesystem contracts are implemented; next code package: F2 native
+desktop/theme**, followed by F3–F5 Start/explorer/guest integration. Continue
 G0 only as retained diagnostics; representative timing/optimization is no longer
 the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
 [F_SHELL_PLAN.md](F_SHELL_PLAN.md) and ACTIVE_ROADMAP.md. Historical next-G/E1 and
@@ -381,3 +381,57 @@ Audit document validation: 14 changed/new Markdown files, 52 relative file links
 resolved, balanced fenced blocks and clean git diff --check. The two targeted
 native probes passed outside the checkout. No source/test/dependency/asset files
 were changed, and the unchanged runtime suite was not rerun for this doc package.
+
+## 2026-10-23 F1: persistent SD-backed filesystem foundation
+
+Incoming 1d1bd6f was fetched clean, no newer branch commit or AGENTS.md was found.
+Its exact CI run 39959927599 has now completed all six jobs successfully.
+F1 configures C=sdmc:/switch-recompiler/drive_c, S=sdmc:/ and read-only R=romfs:/
+for each production Switch guest. It creates only missing profile/system/temp/
+Programs directories and leaves existing EXEs, documents and registry in place.
+Picker discovery includes C Programs within existing budgets. EXE directory and
+CWD remain distinct from persistent C; old relative paths and sibling DLLs stay
+beside the EXE. Old saved absolute C paths may need reselection through S; no
+ambiguous fallback or automatic migration is introduced. Host winrun preserves
+its standalone default and offers explicit system/sd/romfs root options.
+
+VFS has separate drive cwd, invalid-drive/UNC/stream/link/read-only handling and
+bounded path lengths. Mutating Win32/CRT calls check write intent first. Loader
+paths/command line, env/profile/special folders and actual statvfs-backed free
+space share the mapping. Volume names identify providers, not invented physical
+NTFS/FAT formats; ROMFS capacity remains unmeasured (reported zero). HLE modules
+remain virtual; no proprietary Windows DLLs are installed. See F1_FILESYSTEM.md.
+
+Native mount tests cover actual host capacity, C-inside-S round trips, per-drive
+cwd, case/Unicode, root boundaries, invalid/linked/read-only paths and repeated
+non-destructive setup. A public x86 fixture runs four fresh sessions from two
+EXE directories with a mixed-case real sibling DLL, normal writer/reader and
+host-aborted writer/reader, plus failed load. Host inspection checks real Unicode
+document bytes. Win32/CRT readonly failures, A/W drive/space/profile APIs and
+scripted real Unicode Save/Open dialogs are checked, including refusing R save.
+
+The dialog extension exposed an old ANSI conversion of UTF-8 paths and byte-
+based W extension offsets; these are corrected to UTF-16 paths/code-unit offsets.
+Persistent bare DLL lookup now uses the mounted case-insensitive resolver;
+standalone legacy lookup stays compatible. Initial compilation of the targeted
+harness needed its Window pointer qualifier corrected; no runtime workaround.
+An early targeted link mixed old VFS ABI objects with new ones and was rejected;
+only the complete clean rebuilds and final-tree checks count as validation.
+
+Next package: F2 native desktop/theme with pinned licensed artwork and host-owned
+shell state, then F3/F4/F5 according to F_SHELL_PLAN.md. F1 does not claim a
+working desktop/Start/explorer or physical Switch/Paint acceptance. GPU/fallback/
+input/relaunch hardware checks stay deferred; SD is not re-diagnosed.
+Exact new published-SHA CI must be checked after publication.
+
+Final F1 local validation: complete clean `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed on the final runtime/test tree after the Unicode
+Save/Open/readonly-cancel and mixed-case DLL checks were added. It executed the
+new native mount test and four-session public x86 harness, all six E9 groups,
+Stage C, both CPU/actual-GL composition sizes, input/dialog and existing sequential
+session regressions. files.cpp and kernel32_volumes.cpp passed standalone -Wall
+-Wextra -Werror -fno-exceptions -fno-rtti compilation. CLI --system-root/--sd-root/
+--romfs-root smoke ran a freshly built public CRT fixture successfully and created
+the persistent profile. Switch-only main/picker/statvfs integration still requires
+the exact new-SHA Switch CI gate; local Switch SDK is unavailable. No hardware
+result is inferred from these host runs.

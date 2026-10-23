@@ -31,6 +31,7 @@
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
 #include "runtime/guest_session.h"
+#include "runtime/files.h"
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
@@ -345,6 +346,10 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     proc.SetCommandLine(g_selectedExePath);
 
     std::string err;
+    if(!rt::FileSystem().ConfigurePersistent("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",err)) {
+        g_launchStatus="Could not initialize persistent filesystem. Check SD access.";
+        executionLog.Complete(err.c_str(),5,0);return;
+    }
     cpu::CpuState& cpuState = proc.MainThread().cpu;
     rt::Module* exe = proc.LoadMainExe(path, err);
     if (!exe || !proc.PrepareMainThread(cpuState, err))
@@ -2005,6 +2010,9 @@ static ui::ExecutableCatalog ListExecutables() {
     ui::ExecutableCatalog catalog;
     catalog.ScanRoot("romfs:/",0);
     catalog.ScanRoot(std::string(win32::kRegistryFolderPath)+"/",1);
+    const auto programs=std::string(win32::kRegistryFolderPath)+"/drive_c/Programs/";
+    struct stat st{};
+    if(stat(programs.c_str(),&st)==0 && S_ISDIR(st.st_mode))catalog.ScanRoot(programs,1);
     return catalog;
 }
 

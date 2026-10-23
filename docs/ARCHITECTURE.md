@@ -257,8 +257,11 @@ created child внутри DllMain может deadlock из-за loader serializ
 
 `win32/kernel32_*.cpp` реализуют загрузку, память, файлы, строки, систему
 и синхронизацию; `msvcrt_*.cpp` — CRT, форматирование, строки и stdio.
-`runtime/files.*` отображает гостевой C: на каталог EXE и ищет существующие
-компоненты путей без учёта регистра. Это ещё не изолированная Windows ФС.
+`runtime/files.*` в production Switch использует постоянный C на SD, S для
+реальной SD и read-only R для ROMFS; отдельно хранит cwd каждого диска.
+Standalone host default сохраняет C на каталог EXE. Компоненты ищутся без
+учёта регистра; Unicode W paths согласованы с UTF-8 host paths. Контракт и
+границы — F1_FILESYSTEM.md; это не полная NT filesystem/security model.
 `runtime/heap.*` и `resources.*` обслуживают выделения и ресурсы модулей.
 Реестр остаётся в `virtual_registry.*`.
 
@@ -386,7 +389,7 @@ AttachThreadInput и полные правила marshalling сообщений 
 - `tools/jit_probe/`: standalone ARM64 `movz w0,#42; ret` через libnx JIT.
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
-Текущая очередь после аудита: постоянная SD-backed файловая основа F1 и
+F1 постоянная SD-backed файловая основа реализована. Текущая очередь —
 XP-like native shell F2–F5. Shutdown/timers/input ownership и compositor уже
 имеют последующие реализации/регрессии; актуальные границы — в ACTIVE_ROADMAP.
 Минимальный JIT probe ранее возвращал 42 по сообщению пользователя; полноценный

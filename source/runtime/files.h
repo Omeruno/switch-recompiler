@@ -11,6 +11,7 @@
 // Открытые файлы — в общей таблице: хендлы KERNEL32 (CreateFile) и
 // дескрипторы msvcrt (_open, fopen) ссылаются на одни и те же объекты.
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -21,29 +22,40 @@
 
 namespace rt {
 
+struct VolumeInfo {
+    uint64_t totalBytes=0, freeBytes=0, availableBytes=0;
+    uint32_t bytesPerSector=512, sectorsPerCluster=1, maxComponent=255;
+    bool readOnly=false;
+    std::string label, fileSystem;
+};
+
 class Vfs {
 public:
-    // Каталог хоста, который гость видит как C:\ .
+    Vfs();
+    // Standalone compatibility: one C drive rooted at the EXE directory.
     void SetRoot(const std::string& hostDir);
-    const std::string& Root() const { return root_; }
-
-    // Текущий каталог гостя (Windows-путь с диском, без завершающего "\").
+    const std::string& Root() const { return mounts_[2].root; }
+    bool Persistent() const { return persistent_; }
+    // Explicit directory-backed mounts; no global host chdir or guest pointers.
+    bool Mount(char drive,const std::string& hostDir,bool readOnly=false,uint32_t type=3);
+    bool ConfigurePersistent(const std::string& systemRoot,const std::string& sdRoot,
+                             const std::string& romRoot,std::string& error);
+    uint32_t DriveMask() const;
+    uint32_t DriveType(const std::string& path) const;
+    bool QueryVolume(const std::string& path,VolumeInfo& out) const;
     const std::string& CurrentDirectory() const { return cwd_; }
     bool SetCurrentDirectory(const std::string& guestPath);
-
-    // Полный Windows-путь ("C:\A\b.txt") для относительного/абсолютного пути гостя.
     std::string FullGuestPath(const std::string& guestPath) const;
-
-    // Путь хоста. Существующие компоненты ищутся без учёта регистра;
-    // несуществующие (для создания файла) остаются как есть.
-    std::string ToHost(const std::string& guestPath) const;
-
-    // Windows-путь для пути хоста внутри корня (для GetFullPathName и т.п.).
+    // Empty on invalid/unmounted/read-only/linked path; errno explains failure.
+    // Every mutating API must request write access before touching host files.
+    std::string ToHost(const std::string& guestPath,bool write=false) const;
     std::string ToGuest(const std::string& hostPath) const;
-
+    std::string ProfileDirectory() const;
 private:
-    std::string root_ = ".";
-    std::string cwd_ = "C:";
+    struct MountPoint {std::string root,cwd;bool readOnly=false;uint32_t type=0;};
+    std::array<MountPoint,26> mounts_{};
+    std::string cwd_="C:\\";
+    bool persistent_=false;
 };
 
 Vfs& FileSystem();

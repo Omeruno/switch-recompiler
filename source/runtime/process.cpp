@@ -168,6 +168,13 @@ std::string Process::FindFile(const std::string& lowerName) const {
     if (!exeDir_.empty()) dirs.push_back(exeDir_);
     dirs.insert(dirs.end(), searchPaths_.begin(), searchPaths_.end());
     for (const std::string& d : dirs) {
+        if(FileSystem().Persistent()) {
+            const auto guest=FileSystem().ToGuest(d);
+            if(guest.empty())continue;
+            const auto candidate=FileSystem().ToHost(guest+"\\"+lowerName);
+            if(!candidate.empty() && FileExists(candidate))return candidate;
+            continue;
+        }
         std::string p = d + "/" + lowerName;
         if (FileExists(p)) return p;
         // Имя на диске может быть в другом регистре (MFC42u.DLL)
@@ -222,7 +229,14 @@ Module* Process::CreateHleModule(const std::string& lowerName) {
 
 Module* Process::LoadMainExe(const std::string& path, std::string& error) {
     exeDir_ = DirName(path);
-    FileSystem().SetRoot(exeDir_); // C:\ гостя — каталог EXE
+    if(!FileSystem().Persistent())FileSystem().SetRoot(exeDir_);
+    else {
+        const auto guest=FileSystem().ToGuest(path);
+        const auto slash=guest.find_last_of('\\');
+        if(guest.empty() || slash==std::string::npos || !FileSystem().SetCurrentDirectory(guest.substr(0,slash)+"\\")) {
+            error="EXE is outside mounted roots or its directory is unavailable";return nullptr;
+        }
+    }
     Module* m = LoadModuleFile(path, NormalizeName(path), error);
     if (!m) return nullptr;
     if (m->isDll) { error = "это DLL, а не EXE"; return nullptr; }
@@ -245,7 +259,8 @@ Module* Process::LoadLibrary(const std::string& name, std::string& error, bool r
     }
     if (shuttingDown_) { error="new module load during process shutdown"; return nullptr; }
     if (!IsAlwaysHle(n)) {
-        std::string path = FindFile(n);
+        const bool explicitPath=name.find_first_of("/\\")!=std::string::npos || (name.size()>1 && name[1]==':');
+        std::string path = explicitPath?FileSystem().ToHost(name):FindFile(n);
         if (!path.empty()) {
             Module* module=LoadModuleFile(path,n,error);
             if (module && reference) ReferenceModule(module);

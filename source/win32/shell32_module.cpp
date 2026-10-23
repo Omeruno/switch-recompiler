@@ -145,6 +145,11 @@ HostCallOutcome SpecialFolder(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide)
             SetLastError(m,ERROR_INVALID_PARAMETER);
             return Ret(0);
     }
+    if(rt::FileSystem().Persistent()) {
+        const auto profile=rt::FileSystem().ProfileDirectory();
+        if(csidl==CSIDL_PROFILE)path=profile;
+        else if(csidl!=CSIDL_COMMON_DOCUMENTS)path=profile+"\\"+path.substr(3);
+    }
     if (create) {
         std::string part="C:\\";
         size_t off=3;
@@ -152,7 +157,8 @@ HostCallOutcome SpecialFolder(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide)
             size_t end=path.find('\\',off);
             if(end==std::string::npos)end=path.size();
             part=path.substr(0,end);
-            if(mkdir(rt::FileSystem().ToHost(part).c_str(),0777)!=0) {
+            const auto writable=rt::FileSystem().ToHost(part,true);
+            if(writable.empty() || mkdir(writable.c_str(),0777)!=0) {
                 struct stat st{};
                 if(stat(rt::FileSystem().ToHost(part).c_str(),&st)!=0||!S_ISDIR(st.st_mode)) {
                     SetLastError(m,ERROR_ACCESS_DENIED);

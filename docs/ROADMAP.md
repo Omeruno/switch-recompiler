@@ -10,7 +10,7 @@
 - Производительность: сначала эталонный интерпретатор, затем опциональный dynarec, GPU backend. Ускорение НЕ должно менять семантику приложений.
 
 ## Подтверждённые факты / текущая точка
-- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: следующий кодовый пакет — F1, постоянный SD-backed корень/тома, затем рабочий стол, «Пуск» и проводник. См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
+- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: F1 постоянный SD-backed корень/тома реализован; следующий пакет — F2, native desktop/theme, затем «Пуск» и проводник. См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
 - Принятая реализация: `6aacc4e013e55be84a6f7860dfb34e810c6fbda0`; все пять CI jobs прошли в [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Пользователь запустил standalone input и combined acceptance v2 на Switch и прислал отчёты: PASS 1–8, `PASS: ALL 8 SUITES`, `input passed`, без FAIL. [Запись приёмки](STAGE_C_ACCEPTANCE.md#результат-приёмки-2026-10-22).
 - Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
 - Дополнительная аппаратная проверка пользователем: Paint на NRO `8b0ad70` работает без изменений/регрессии (2026-10-22). Это проверка Paint, а не всех новых loader/concurrency-сценариев.
@@ -66,7 +66,7 @@ E3. Native Switch GPU backend только после проверки дост�
 E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software если несовместимый путь.
 Критерий: пиксельное сравнение CPU и GPU вывода на GDI-сценах + Paint visual regression.
 
-## Этап F — XP-подобная оболочка [F0 реализован; F1–F5 следующий приоритет]
+## Этап F — XP-подобная оболочка [F0/F1 программно реализованы; F2–F5 следующий приоритет]
 - Сначала общий SD-backed root/mount/path/volume contract, отдельно от EXE directory/CWD; затем F2–F5 по [F_SHELL_PLAN.md](F_SHELL_PLAN.md).
 - Свой desktop-shell host UI: фон, taskbar, Start menu, часы, shortcuts, запуск и переключение EXE, сохранение на SD, управление Joy-Con/тач.
 - Собственный файловый менеджер. Настоящий explorer.exe — необязательная отдельная цель с огромными зависимостями.
@@ -92,9 +92,9 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 
 ## Актуальная очередь 2026-10-23 (после аудита)
 
-1. **F1:** постоянная реальная файловая структура SD, drive/root/CWD/readonly,
-   согласованные loader/CRT/dialog/special-folder пути и volume/free-space APIs.
-   Сейчас C — каталог EXE, буквы дисков alias, размеры диска константны.
+1. **F1 реализован:** постоянные C/S/R, per-drive CWD/readonly, согласованные
+   loader/CRT/dialog/profile пути и реальные statvfs space APIs. Контракт,
+   совместимость старых запусков и пределы — [F1_FILESYSTEM.md](F1_FILESYSTEM.md).
 2. **F2–F5:** native XP-like desktop/taskbar/Start, проводник по реальным файлам,
    integration shell/один guest, сохранение/поиск/повторное открытие документа.
    F0 session/picker foundation не означает готовую оболочку.
@@ -108,7 +108,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 
 Сводка доказательств: [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md).
 Пакеты и критерии F, предложенный layout и лицензируемые visual sources:
-[F_SHELL_PLAN.md](F_SHELL_PLAN.md). Это планы, не уже работающие mounts/desktop.
+[F_SHELL_PLAN.md](F_SHELL_PLAN.md). F1 mounts уже подключены; desktop/Start/explorer ещё впереди.
 
 ## Историческая очередь (сохранена для контекста)
 1. **Зафиксировать базу:** Stage C принят на `6aacc4e`; сохранить рабочую NRO. Paint hardware baseline остаётся `8b0ad70`: приёмка C сама по себе не доказывает Paint open/save на новом SHA. Host/MinGW, CPU oracle, ARM64/QEMU и Switch build остаются обязательными регрессиями.
