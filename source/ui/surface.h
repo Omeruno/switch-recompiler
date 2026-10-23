@@ -28,13 +28,41 @@ struct SurfaceWriteCapture {
     uint32_t token=0;
     uint32_t* pixels=nullptr;
     int left=0,top=0,width=0,height=0;
+    uint64_t* pixelVersions=nullptr;
+    int pixelCols=0;
+    uint64_t revision=0;
+    uint64_t* ownerVersions=nullptr;
+    int ownerCols=0;
+    uint64_t* ownerClock=nullptr;
+    uint64_t* ownerEpoch=nullptr;
+    uint64_t NextOwnerRevision() const {
+        if(!ownerClock)return 0;
+        uint64_t value=++*ownerClock;
+        if(!value) {
+            const size_t count=size_t(ownerCols)*((screenHeight+31)/32);
+            for(size_t n=0;ownerVersions && n<count;++n)ownerVersions[n]=0;
+            if(ownerEpoch)++*ownerEpoch;
+            value=++*ownerClock;
+        }
+        return value;
+    }
     void Write(int x,int y,uint32_t rgb) const {
         if(!owners || x<0 || y<0 || x>=screenWidth || y>=screenHeight)return;
         const int64_t lx=int64_t(x)-left,ly=int64_t(y)-top;
+        uint32_t next=0;
         if(pixels && lx>=0 && ly>=0 && lx<width && ly<height) {
-            pixels[size_t(ly)*width+size_t(lx)]=rgb&0xFFFFFFu;
-            owners[size_t(y)*screenWidth+x]=token;
-        } else owners[size_t(y)*screenWidth+x]=0; // direct/fallback screen write
+            auto& pixel=pixels[size_t(ly)*width+size_t(lx)];
+            if(pixel!=(rgb&0xFFFFFFu)) {
+                pixel=rgb&0xFFFFFFu;
+                if(pixelVersions)pixelVersions[size_t(ly/32)*pixelCols+size_t(lx/32)]=revision;
+            }
+            next=token;
+        }
+        auto& owner=owners[size_t(y)*screenWidth+x];
+        if(owner!=next) {
+            owner=next;
+            if(ownerVersions)ownerVersions[size_t(y/32)*ownerCols+x/32]=NextOwnerRevision();
+        }
     }
 };
 

@@ -105,6 +105,8 @@ public:
     size_t LayerBytes() const {return layers_.Bytes();}
     size_t LayerCount() const {return layers_.Frame()?layers_.Frame()->count:0;}
     uint64_t ReconciledPixels() const {return layers_.ReconciledPixels();}
+    uint64_t LayerComparedBytes() const {return layers_.ComparedBytes();}
+    uint64_t OwnershipCheckedPixels() const {return layers_.CheckedPixels();}
     bool Render(const OutputBuffer&,PresentationCursor cursor={});
     int SourceWidth() const {return snapshot_.width;}
     int SourceHeight() const {return snapshot_.height;}

@@ -36,6 +36,14 @@ static void Basic() {
     assert(store.Scene().layers[0].surface->Get(2,2)==0x123456);
     Inspect backend;Presentation p(&backend);std::vector<uint32_t> out(64*48);
     assert(p.Submit(screen.s,store.Scene()) && p.Render({out.data(),64,48,64,out.size()}));
+    p.ResetStats();assert(p.Submit(screen.s,store.Scene()));
+    assert(!p.LayerComparedBytes() && !p.OwnershipCheckedPixels());
+    draw.writeCapture=store.Capture(100,10,10,20,20);draw.Set(12,12,0x123456);
+    assert(p.Submit(screen.s,store.Scene()));
+    assert(!p.LayerComparedBytes() && !p.OwnershipCheckedPixels()); // redundant raster write is a no-op too
+    draw.writeCapture=store.Capture(100,10,10,20,20);draw.Set(13,12,0x777777);
+    assert(p.Submit(screen.s,store.Scene()));
+    assert(p.LayerComparedBytes()<=4096 && p.OwnershipCheckedPixels()<=1024);
     // A direct CPU pointer write cannot leave a stale window texture visible.
     reinterpret_cast<uint32_t*>(screen.s.Row(12))[12]=0xABCDEF;
     assert(store.Scene().layers[0].surface->Get(2,2)==0x123456); // not copied from the finished screen
@@ -43,6 +51,10 @@ static void Basic() {
     assert(p.Submit(screen.s,store.Scene()) && p.Render({out.data(),64,48,64,out.size()}));assert(p.ReconciledPixels());
     draw.Set(12,12,0x123456);backend.expectOwned=true;
     assert(p.Submit(screen.s,store.Scene()));
+    const auto epoch=store.Scene().ownershipGeneration;
+    draw.writeCapture=store.Capture(100,10,10,20,20);
+    *draw.writeCapture->ownerClock=~uint64_t(0);draw.Set(14,12,0x888888);
+    assert(store.Scene().ownershipGeneration!=epoch && p.Submit(screen.s,store.Scene()));
     store.Forget(100);assert(!store.PixelBytes() && !store.Scene().owners[12*64+12]);
     // Cursor-only replay owns its layer data after the original window is gone.
     assert(p.Render({out.data(),64,48,64,out.size()},{20,20,true}));
@@ -61,7 +73,7 @@ static void Basic() {
 static void AllocationFailures() {
     WindowLayers store;assert(store.Enable(64,48));OwnedSurface screen;screen.Allocate(64,48);
     screen.s.writeCapture=store.Capture(1,10,10,20,20);screen.s.Set(12,12,0x123456);screen.s.writeCapture=nullptr;
-    for(size_t fail=1;fail<=8;++fail) {
+    for(size_t fail=1;fail<=10;++fail) {
         FaultAllocator allocator;allocator.failAt=fail;
         {
             Inspect backend;Presentation p(&backend,&allocator);std::vector<uint32_t> out(64*48);
@@ -71,6 +83,11 @@ static void AllocationFailures() {
                 assert(submitted);backend.expectScene=fail>6;
                 assert(p.Render({out.data(),64,48,64,out.size()}));
                 assert(out[12*64+12]==0xFF563412);
+                if(fail>=7) {
+                    assert(p.Submit(screen.s,store.Scene()) && p.Render({out.data(),64,48,64,out.size()}));
+                    p.ResetStats();assert(p.Submit(screen.s,store.Scene()));
+                    assert(!p.LayerComparedBytes() && !p.OwnershipCheckedPixels());
+                }
             }
         }
         assert(!allocator.live);
@@ -83,6 +100,14 @@ static void AllocationFailures() {
         assert(!failed.PixelBytes());
     }
     assert(!allocator.live);
+    for(size_t fail=1;fail<=2;++fail) {
+        FaultAllocator faults;
+        {WindowLayers failed(&faults);faults.failAt=fail;assert(!failed.Enable(64,48));assert(!failed.Enabled());}
+        assert(!faults.live);
+        {WindowLayers failed(&faults);faults.failAt=0;assert(failed.Enable(64,48));faults.failAt=faults.calls+fail;
+            assert(!failed.Capture(1,0,0,16,16)->token && !failed.PixelBytes());}
+        assert(!faults.live);
+    }
 }
 static void Budgets() {
     WindowLayers store;assert(store.Enable(64,48));

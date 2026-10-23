@@ -1668,6 +1668,8 @@ void EndPresentation() {
             (unsigned long long)s.layeredSubmissions,(unsigned long long)s.layerFallbacks,
             (unsigned long long)g_presentation.ReconciledPixels(),(unsigned long long)g_gpu.LayerDraws());
         fprintf(log,"Layer snapshot ns: %llu\n",(unsigned long long)s.layerSnapshotNs);
+        fprintf(log,"Layer compared bytes: %llu\nOwnership checked pixels: %llu\n",
+            (unsigned long long)g_presentation.LayerComparedBytes(),(unsigned long long)g_presentation.OwnershipCheckedPixels());
         fclose(log);
     }
     g_presentation.Detach();

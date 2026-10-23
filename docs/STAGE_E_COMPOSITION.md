@@ -130,6 +130,43 @@ on host tests alone, and no Switch FPS/latency improvement is claimed. E7/E8 can
 now measure/optimize the real layer path; the canonical base texture still
 receives its normal dirty updates as a conservative fallback.
 
+## E7 follow-up: revision-driven snapshot work
+
+The first layer implementation still compared every window image and ownership
+row on each Submit. A host microbenchmark identified that work on unchanged
+frames as a real cost. Raster capture now marks the window tiles actually written
+by each synchronous GDI operation. Ownership changes have separate tile revisions
+and an epoch that invalidates the cache on counter wrap/reinitialization.
+
+Layer snapshot comparison skips unchanged source tile revisions. Ownership
+reconciliation skips a tile only when **both** its canonical RGB revision and
+ownership revision match. A raw CPU pointer write changes canonical RGB and still
+forces reconciliation even without capture metadata. Untrusted scene views use
+the conservative full path. The revision caches are optional: allocation failure
+returns to comparison/reconciliation, without dropping pixels or changing Win32
+results. Required raster pixels/revisions are allocated together before a slot
+becomes live. Forget/eviction updates ownership revisions before storage release.
+
+Work-count tests enforce zero layer comparison bytes and zero ownership pixel
+checks on a repeated unchanged submission. A one-tile edit checks at most one
+32x32 tile; fault cases verify cache recovery, and ownership-counter wrap verifies
+the epoch reset. Report v5 now includes layer comparison bytes and ownership
+checked pixels alongside timings.
+
+`tools/benchmark_window_layers.cpp` reproduces the host-only CPU snapshot workload
+(120 warm native-size submissions, unchanged and one-pixel edits). Three alternating
+before/after runs saw the layer stage fall from roughly 1.0–1.3 ms to 0.004 ms for
+unchanged images, and from roughly 0.94–1.04 ms to 0.012–0.013 ms for one-pixel
+edits. These are host microbenchmarks excluding rasterization, GPU and scanout;
+they are not a Switch FPS or input-latency claim. Two added snapshot revision maps
+cost 14,720 bytes at native size for one full-screen layer. E8 still requires
+the deferred Switch measurements.
+
+```sh
+g++ -std=c++17 -O2 -fno-exceptions -fno-rtti -I. tools/benchmark_window_layers.cpp source/ui/presentation.cpp source/ui/presentation_layers.cpp source/ui/window_layers.cpp -o /tmp/benchmark-window-layers
+/tmp/benchmark-window-layers
+```
+
 Reproduce locally:
 
 ```sh

@@ -226,3 +226,14 @@ and actual GL/lifetime/fault tests pass locally. Report v5 includes layer memory
 work and CPU timing. E6 implementation is ready for exact-SHA CI and the later
 Switch check; accepted Stage E stays at 60% until hardware gates are complete.
 Next is E7/E8 batching/measurement: [STAGE_E_COMPOSITION.md](STAGE_E_COMPOSITION.md).
+
+## E7: measured snapshot-work reduction
+
+The same work block continued into E7 after a host microbenchmark found repeated
+full window/ownership scans on unchanged frames. Raster and ownership tile
+revisions now drive the retained snapshot caches, with conservative fallback on
+optional-cache allocation failure and epoch invalidation on wrap/reset. Tests
+enforce zero comparison/reconciliation work for unchanged tiles and bounded work
+for a local edit; the real x86/GL oracle remains mandatory. The benchmark and v5
+work counters support E8, but do not substitute for Switch timing/latency checks.
+Hardware gates remain deferred, with no added accepted percentage yet.
