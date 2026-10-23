@@ -2,6 +2,7 @@
 #include "source/runtime/guest_execution.h"
 #include "source/runtime/files.h"
 #include "source/runtime/clock.h"
+#include "source/ui/desktop_shell.h"
 #include "source/cpu/interpreter.h"
 #include "source/win32/host_functions.h"
 #include "source/win32/user32.h"
@@ -67,17 +68,40 @@ int main(int argc,char**argv) {
     for(const auto& app:{sd/"Apps/One",sd/"Apps/Two"}) {
         fs::copy_file(argv[1],app/"filesystem_mounts.exe");fs::copy_file(argv[2],app/"TeStDlL.DLL");
     }
-    Run(sd/"Apps/One/filesystem_mounts.exe",system,sd,rom,"writer");
+    ui::DesktopShell shell;std::string shellError;
+    CHECK(shell.ConfigureFilesystem(system.string(),sd.string(),rom.string(),shellError));
+    auto click=[&](int target) {
+        const auto r=ui::DesktopShell::Bounds(target);const int x=(r.left+r.right)/2,y=(r.top+r.bottom)/2;
+        shell.PointerDown(x,y);shell.PointerUp(x,y);
+    };
+    ui::ExecutableCatalog catalog;catalog.ScanRoot((sd/"Apps/One").string()+"/",0);
+    shell.SetCatalog(catalog);shell.Enter();shell.Accept();shell.Accept();
+    CHECK(shell.LaunchRequest().guestPath=="S:\\Apps\\One\\filesystem_mounts.exe");
+    Run(shell.LaunchPath(),system,sd,rom,"writer");
     const auto document=system/"Documents and Settings/Player/My Documents/文件.txt";
     {std::ifstream f(document);std::string bytes{std::istreambuf_iterator<char>(f),{}};CHECK(bytes=="shared bytes");}
     {rt::GuestSession failed;std::string error;
         CHECK(rt::FileSystem().ConfigurePersistent(system.string(),sd.string(),rom.string(),error));
         CHECK(!failed.ProcessObject().LoadMainExe((sd/"missing.exe").string(),error));CHECK(!error.empty());}
-    Run(sd/"Apps/Two/filesystem_mounts.exe",system,sd,rom,"reader");
-    Run(sd/"Apps/One/filesystem_mounts.exe",system,sd,rom,"abort");
-    Run(sd/"Apps/Two/filesystem_mounts.exe",system,sd,rom,"reader");
+    auto runTwo=[&]() {
+        shell.Enter();shell.ToggleStart();click(ui::DesktopShell::MenuRun);
+        CHECK(shell.PendingTextInput()==ui::DesktopShell::TextInput::Run);
+        shell.CompleteTextInput(true,"S:\\Apps\\Two\\filesystem_mounts.exe");
+        CHECK(shell.LaunchPath()==(sd/"Apps/Two/filesystem_mounts.exe").string());
+        Run(shell.LaunchPath(),system,sd,rom,"reader");
+    };
+    runTwo();
+    shell.Enter();click(ui::DesktopShell::Close);click(ui::DesktopShell::Computer);
+    click(ui::DesktopShell::Address);shell.CompleteTextInput(true,"S:\\Apps\\One");
+    size_t row=0;const auto& entries=shell.Browser().Entries();
+    while(row<entries.size() && entries[row].name!="filesystem_mounts.exe")++row;
+    CHECK(row<entries.size());click(ui::DesktopShell::BrowserRowBase+int(row));shell.Accept();
+    CHECK(shell.LaunchPath()==(sd/"Apps/One/filesystem_mounts.exe").string());
+    Run(shell.LaunchPath(),system,sd,rom,"abort");
+    shell.Enter();CHECK(shell.ActivePanel()==ui::DesktopShell::Panel::Explorer && shell.Browser().Path()=="S:\\Apps\\One");
+    runTwo();
     CHECK(!fs::exists(system/"moved.txt") && !fs::exists(rom/"copy.txt"));
     std::string locked;std::ifstream(rom/"locked.txt")>>locked;CHECK(locked=="locked");
     CHECK(!rt::g_process);
-    puts("PASSED: four fresh x86 mounted filesystem sessions, real host Unicode bytes, distinct EXE directories, sibling DLLs, failed load and host-abort restart");
+    puts("PASSED: four fresh x86 mounted filesystem sessions via Start/Run/Explorer, real host Unicode bytes, distinct EXE directories, sibling DLLs, failed load and host-abort restart");
 }

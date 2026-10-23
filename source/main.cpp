@@ -2074,11 +2074,15 @@ static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
 // existing guest output/worker starts; do not borrow USER state or write guest
 // renderer metrics. Active-guest taskbar/compositor integration remains F4.
 static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
+    if(!shell.FilesystemReady()) {
+        std::string error;
+        shell.ConfigureFilesystem("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",error);
+    }
     const auto catalog=ListExecutables();shell.SetCatalog(catalog);shell.Enter();
     if(initial && catalog.Files().size()==1 && !catalog.Truncated()) {
         g_selectedExePath=catalog.Files()[0];return true;
     }
-    shell.SetStatus(initial?"":g_launchStatus);
+    shell.SetStatus(!shell.FilesystemReady()?"Persistent filesystem unavailable; file actions are disabled.":initial?"":g_launchStatus);
     consoleExit(NULL);cpu::g_consoleAvailable=false;
     ui::PresentationBuffer<uint32_t> pixels;
     const bool ready=pixels.Resize(size_t(ui::DesktopShell::Width)*ui::DesktopShell::Height)
@@ -2117,7 +2121,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
         dirty=dirty || shell.Hover()!=oldHover;
         const u64 down=edges.down;
         if(down&HidNpadButton_Plus)break;
-        const u64 navigation=down&(HidNpadButton_R|HidNpadButton_B|HidNpadButton_Up|HidNpadButton_Down|HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_X);
+        const u64 navigation=down&(HidNpadButton_R|HidNpadButton_B|HidNpadButton_Up|HidNpadButton_Down|HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_X|HidNpadButton_Y);
         if(navigation){shell.CancelPointer();pointerHeld=false;gate.Reset(padGetButtons(&g_pad),rawTouch);}
         if(down&HidNpadButton_R){shell.ToggleStart();keyboard=true;}
         if(down&HidNpadButton_B){shell.Back();keyboard=true;}
@@ -2125,12 +2129,36 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
         if(down&HidNpadButton_Down){shell.Move(1);keyboard=true;}
         if(down&HidNpadButton_Left){shell.Page(-1);keyboard=true;}
         if(down&HidNpadButton_Right){shell.Page(1);keyboard=true;}
+        if(down&HidNpadButton_Y){shell.NextFocus();keyboard=true;}
         if(down&HidNpadButton_X || (keyboard && (down&HidNpadButton_A)))shell.Accept();
         const bool contact=!navigation && (acceptedTouch || (!keyboard && (edges.held&HidNpadButton_A)));
         if(contact && !pointerHeld)shell.PointerDown(int(x),int(y));
         if(!contact && pointerHeld)shell.PointerUp(int(x),int(y));
         pointerHeld=contact;
         dirty=dirty || down || edges.up || acceptedTouch!=wasTouching;wasTouching=acceptedTouch;
+        if(shell.PendingTextInput()!=ui::DesktopShell::TextInput::None) {
+            // Shell keyboard uses no guest USER state or newui::Blit binding.
+            const bool address=shell.PendingTextInput()==ui::DesktopShell::TextInput::Address;
+            SwkbdConfig config;char text[4097]={};bool accepted=false;
+            if(R_SUCCEEDED(swkbdCreate(&config,0))) {
+                swkbdConfigMakePresetDefault(&config);
+                swkbdConfigSetHeaderText(&config,address?"Путь к папке":"Путь к EXE или папке");
+                swkbdConfigSetGuideText(&config,"C:\\, S:\\ или R:\\; без аргументов командной строки");
+                swkbdConfigSetStringLenMax(&config,500);
+                swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
+                accepted=R_SUCCEEDED(swkbdShow(&config,text,sizeof(text)));
+                swkbdClose(&config);
+            } else shell.SetStatus("Text input is unavailable.");
+            if(!ContinueApplet()){shell.CompleteTextInput(false,"");break;}
+            shell.CompleteTextInput(accepted,text);
+            // Confirm/cancel belongs to the keyboard until released. Re-present
+            // after the applet even if clock/content/cursor did not change.
+            padUpdate(&g_pad);touch={};
+            const bool heldTouch=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+            gate.Reset(padGetButtons(&g_pad),heldTouch);shell.CancelPointer();
+            pointerHeld=false;wasTouching=false;keyboard=true;dirty=true;
+            motion.ResetTime(rt::Clock::NowUs());
+        }
         if(shell.ExitRequested() || !shell.LaunchPath().empty())break;
         const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";
         if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);

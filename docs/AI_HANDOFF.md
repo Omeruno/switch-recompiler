@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`d6a63510af2eab7c409acefd189d6fc04e1e9933` (2026-10-24).
-[CI 39967576903](https://github.com/Omeruno/switch-recompiler/actions/runs/39967576903)
+`12c11372896cded9b19cd98bc41cab79cf84c351` (2026-10-24).
+[CI 40027919660](https://github.com/Omeruno/switch-recompiler/actions/runs/40027919660)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -12,8 +12,8 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 ## Current priority after the 2026-10-23 audit
 
 The user prioritizes a functional XP-like native shell and real Switch/SD-backed
-file structure. **F1 filesystem contracts and F2 native idle desktop/theme are implemented;
-next code package: F3 real directory explorer and supported Start actions**,
+file structure. **F1/F2 and F3a real directory browser/path-only launch are implemented;
+next code package: F3b document arguments/associations and remaining supported Start actions**,
 followed by F4–F5 active-guest integration and save/find/reopen. Continue
 G0 only as retained diagnostics; representative timing/optimization is no longer
 the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
@@ -520,3 +520,74 @@ groups, Stage C, filesystem/core/USER/legacy sessions, actual GL composition,
 input and dialogs). The strict standalone shell harness passed with the new
 About/Programs focus restoration cases. Exact corrected-SHA CI must be checked
 following publication; the preceding 437de20 CPU job was still installing GCC.
+
+
+## 2026-10-24 F3a: real directory explorer and direct path launch
+
+Fetched clean 12c11372896cded9b19cd98bc41cab79cf84c351; exact CI run 40027919660
+passed all six jobs. No newer changes or AGENTS.md were found/overwritten.
+ShellBrowser now owns separate host VFS metadata over the actual persistent F1
+C/S/R roots, with real My Computer/My Documents, directory/file/size list,
+back/up/address/refresh, directory-first name/size sorting, pages, quick roots,
+readonly labels, retained selection/history and explicit errors/truncation.
+Y cycles controls for controller-only access. Original F2 initial sole-EXE
+launch, L/ZL mode override, console fallback and joined guest teardown remain.
+
+Start/catalog, Explorer and path-only Run share a guest/native ShellLaunchRequest
+validator. Run accepts one EXE or directory path (optional surrounding quotes),
+not an argument-bearing command line/PATH search/host execution. Failed/missing/
+invalid/linked/unsupported paths clear pending launch and preserve the view.
+Documents remain visible without associations; Open is disabled and keyboard
+attempts report the limit. No fake Paint/open support or complete F3 is claimed.
+
+Enumeration caps retained entries at 256, scanned non-dot entries at 4096 and
+history at 32; no recursion or retained native directory/file handles. The
+retained subset is deterministic within the scanned prefix; sorting operates on
+that subset. Code review caught that directory enumeration alone did not bound
+F1 case-insensitive resolver searches. Vfs ToHost/ToGuest/SetCurrentDirectory now
+accept an optional shared case-search entry budget for shell callers, failing
+with empty/EOVERFLOW; ordinary guest callers remain unbudgeted/compatible.
+F1 additive startup configuration remains a separate operation. A failed budgeted
+readonly-path probe closes DIR and preserves the error rather than guessing.
+
+Native regression covers actual C/S/R fixture data, Unicode/case/readonly,
+unknown/UNC/stream/linked/oversize paths, no native chdir, item/scan/history
+limits, sorted subset, stale requests, cancellation/focus and common launch
+parity. Strict isolated build passed; early test-only auto declaration/indentation
+compile issues were corrected. Native screenshots of computer/documents/explorer
+were inspected. Initial renders were refined to avoid calling a failed/filtered
+empty listing an empty folder and to label volume quantities as available space.
+
+The existing public filesystem EXE now enters four writer/reader/abort/reader
+sessions through native catalog/Run/Explorer, preserving its sibling DLL, actual
+Unicode saved bytes, modal A/W dialog and readonly assertions. The host shell
+survives GuestSession teardown and returns to its former directory. Full suite
+and final strict-render checks must complete on the final tree before publishing.
+See F3_EXPLORER.md. Local Switch SDK remains unavailable: libnx keyboard/output/
+input transitions require exact published-SHA Switch CI and deferred hardware
+checks, not inference from host tests. SD diagnosis stays closed.
+
+Next package: F3b argument-bearing launch transport and explicit document app
+associations with public fixture; remaining supported Start/settings and tree
+refinements. F4 active-guest taskbar/compositor/input ownership and F5 persistence/
+save-find-reopen remain open. Do not jump to G optimization or claim F complete.
+
+
+Final navigation review also covers a vanished My Documents directory selected
+from Start: failure returns focus to the previous visible panel/control instead
+of leaving focus on a closed menu item. A strict public regression removes that
+fixture folder and checks preserved view/focus/error. The preceding full suites
+passed; a clean release-suite rerun on this final focus/test tree is the final
+local gate. Readonly/empty-list wording and reduced-budget exhaustion tests are
+included in that tree; no earlier/stale object result substitutes for it.
+
+Final F3a local validation: complete clean `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed on the release source/test tree after final
+vanished-folder focus and budget/error refinements. New native browser and F2
+regressions, four actual-x86 Start/Run/Explorer filesystem sessions, all six E9
+software groups, Stage C, CPU/actual-GL composition at both sizes, input/dialog
+and core/USER/legacy lifecycle checks passed. Strict isolated browser build also
+passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti. Changed Markdown local
+links/fences and git diff --check passed. The incoming branch was fetched again
+at unchanged 12c1137 before publishing; no force/reset is used. Exact new-SHA CI
+must be checked following push; local host builds do not compile libnx main.

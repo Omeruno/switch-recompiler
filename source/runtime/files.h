@@ -44,12 +44,14 @@ public:
     uint32_t DriveType(const std::string& path) const;
     bool QueryVolume(const std::string& path,VolumeInfo& out) const;
     const std::string& CurrentDirectory() const { return cwd_; }
-    bool SetCurrentDirectory(const std::string& guestPath);
+    bool SetCurrentDirectory(const std::string& guestPath,size_t* caseBudget=nullptr);
     std::string FullGuestPath(const std::string& guestPath) const;
     // Empty on invalid/unmounted/read-only/linked path; errno explains failure.
     // Every mutating API must request write access before touching host files.
-    std::string ToHost(const std::string& guestPath,bool write=false) const;
-    std::string ToGuest(const std::string& hostPath) const;
+    // Optional cumulative directory-entry budget for shell case lookup; ordinary
+    // guest API behavior is unchanged. Exhaustion returns empty/EOVERFLOW.
+    std::string ToHost(const std::string& guestPath,bool write=false,size_t* caseBudget=nullptr) const;
+    std::string ToGuest(const std::string& hostPath,size_t* caseBudget=nullptr) const;
     std::string ProfileDirectory() const;
 private:
     struct MountPoint {std::string root,cwd;bool readOnly=false;uint32_t type=0;};

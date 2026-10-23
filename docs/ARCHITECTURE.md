@@ -390,7 +390,7 @@ AttachThreadInput и полные правила marshalling сообщений 
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
 F1 постоянная SD-backed файловая основа реализована. Текущая очередь —
-XP-like native shell: F2 idle desktop реализован, F3–F5 остаются следующими. Shutdown/timers/input ownership и compositor уже
+XP-like native shell: F2 idle desktop и F3a directory browser/path launch реализованы, F3b/F4/F5 остаются следующими. Shutdown/timers/input ownership и compositor уже
 имеют последующие реализации/регрессии; актуальные границы — в ACTIVE_ROADMAP.
 Минимальный JIT probe ранее возвращал 42 по сообщению пользователя; полноценный
 dynarec/cache/icache/fault fallback остаётся отдельной программой. Физическая

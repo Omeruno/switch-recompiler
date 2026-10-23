@@ -119,3 +119,10 @@ harness must execute and pass. The rest of the existing suite still runs.
 Local validation and exact-SHA CI are recorded in AI_HANDOFF.md/commit reporting.
 Switch compilation is a separate gate; physical SD/Paint/GPU/fallback/input/
 relaunch checks remain consolidated and deferred in STAGE_E_PERFORMANCE.md.
+
+
+F3a update: the idle shell now browses these same mounts with its own VFS cwd.
+The resolver accepts an optional case-search entry budget for shell callers;
+unbudgeted guest callers retain prior behavior. The four-session public harness
+now obtains EXEs through Start catalog, Explorer and path-only Run before the
+same x86 filesystem/dialog checks. See [F3_EXPLORER.md](F3_EXPLORER.md).

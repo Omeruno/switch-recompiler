@@ -72,6 +72,7 @@ int main(int argc,char** argv) {
     paths.push_back(std::string(dir)+"/тест-文件.exe");
     FILE* unicode=std::fopen(paths.back().c_str(),"wb");assert(unicode);std::fclose(unicode);
     ui::ExecutableCatalog catalog;catalog.ScanRoot(std::string(dir)+"/",0);
+    std::string setupError;assert(shell.ConfigureFilesystem(dir,"","",setupError));
     shell.SetCatalog(catalog);assert(shell.Count()==36);
     shell.Enter();Click(shell,Shell::Programs);assert(shell.Selection()==0);
     shell.Move(-1);assert(shell.Selection()==35);shell.Move(1);assert(shell.Selection()==0);
@@ -88,9 +89,13 @@ int main(int argc,char** argv) {
     assert(shell.Selection()==17);
     const int rowFocus=shell.Focus();shell.ToggleStart();shell.ToggleStart();assert(shell.Focus()==rowFocus);
     shell.Accept();assert(shell.LaunchPath()==catalog.Files()[17]);
-    shell.Enter();shell.Back();shell.ToggleStart();shell.Move(1);shell.Accept();
+    shell.Enter();shell.Back();shell.ToggleStart();
+    for(int i=0;i<20 && shell.Focus()!=Shell::About;++i)shell.Move(1);
+    assert(shell.Focus()==Shell::About);shell.Accept();
     assert(shell.ActivePanel()==Shell::Panel::About); // Keyboard Start -> About.
-    shell.Back();shell.ToggleStart();shell.Move(2);shell.Accept();assert(shell.ExitRequested());
+    shell.Back();shell.ToggleStart();
+    for(int i=0;i<20 && shell.Focus()!=Shell::Exit;++i)shell.Move(1);
+    assert(shell.Focus()==Shell::Exit);shell.Accept();assert(shell.ExitRequested());
     shell.Enter();assert(!shell.ExitRequested());
 
     // Physical/scaled output and touch share the actual presentation viewport.
@@ -117,6 +122,12 @@ int main(int argc,char** argv) {
     auto edges=gate.Update(1,true);assert(!edges.down && !edges.touching);
     gate.Update(0,false);edges=gate.Update(1,true);assert(edges.down==1 && edges.touching);
     for(const auto& path:paths)assert(unlink(path.c_str())==0);
+    for(const char* sub:{"/Programs","/WINDOWS/system32","/WINDOWS","/TEMP",
+        "/Documents and Settings/Player/Desktop","/Documents and Settings/Player/My Documents/My Pictures",
+        "/Documents and Settings/Player/My Documents","/Documents and Settings/Player/Application Data",
+        "/Documents and Settings/Player/Local Settings/Application Data","/Documents and Settings/Player/Local Settings",
+        "/Documents and Settings/Player","/Documents and Settings","/Shared Documents"})
+        assert(rmdir((std::string(dir)+sub).c_str())==0);
     assert(rmdir(dir)==0);
     std::puts("Desktop shell: native render, licensed font/art, menu/selection/return, paging and scaled input PASS");
 }

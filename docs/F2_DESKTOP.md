@@ -1,6 +1,8 @@
 # F2: native idle desktop and theme
 
-Implemented software package, based on d6a6351. Physical Switch acceptance stays
+Implemented F2 baseline, based on d6a6351. Subsequent [F3a](F3_EXPLORER.md)
+enables real My Computer/Documents and path-only Run; the F2 behavior below is
+its original delivery scope. Physical Switch acceptance stays
 on the deferred checklist in [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).
 
 ## Delivered behavior
@@ -54,8 +56,10 @@ controller navigation, initial held input quarantine, and output/touch alignment
 at 1280x720, 800x600 and 640x360 with pitch/letterbox guards. Native strict build:
 
 ```sh
-g++ -std=c++17 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -I. \
+g++ -std=c++17 -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
+  -ffunction-sections -fdata-sections -Wl,--gc-sections -I. \
   tests/test_desktop_shell.cpp source/ui/desktop_shell.cpp source/ui/font.cpp \
+  source/ui/shell_browser.cpp source/runtime/files.cpp \
   source/ui/executable_catalog.cpp source/ui/presentation.cpp \
   source/ui/presentation_layers.cpp source/ui/window_layers.cpp \
   -o /tmp/test_desktop_shell
@@ -73,7 +77,6 @@ compilation and later physical checks remain distinct gates.
 
 ## Next package
 
-F3: real directory provider over the F1 VFS, enabled My Computer/My Documents,
-back/up/address/sorting/limits/errors, functional All Programs/Run/settings and a
-shared launch request. Afterwards F4 active-guest integration and F5 the public
+F3a now implements the real F1-backed browser and shared path-only launch. Next:
+F3b document arguments/associations, supported Start/settings and tree refinements. Afterwards F4 active-guest integration and F5 the public
 save/find/reopen scenario. See [F_SHELL_PLAN.md](F_SHELL_PLAN.md).

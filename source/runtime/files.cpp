@@ -24,14 +24,17 @@ bool HostExists(const std::string& p) {
 }
 
 // Ищет в каталоге dir элемент с именем name без учёта регистра.
-std::string FindCaseInsensitive(const std::string& dir, const std::string& name) {
+std::string FindCaseInsensitive(const std::string& dir,const std::string& name,size_t* budget,bool& exhausted) {
     std::string direct = dir + "/" + name;
     if (HostExists(direct)) return name;
     DIR* d = opendir(dir.c_str());
     if (!d) return "";
     std::string found;
-    while (dirent* e = readdir(d)) {
-        if (strcasecmp(e->d_name, name.c_str()) == 0) { found = e->d_name; break; }
+    for(;;) {
+        if(budget && !*budget){exhausted=true;break;}
+        dirent* e=readdir(d);if(!e)break;
+        if(budget)--*budget;
+        if(strcasecmp(e->d_name,name.c_str())==0){found=e->d_name;break;}
     }
     closedir(d);
     return found;
@@ -152,13 +155,15 @@ std::string Vfs::FullGuestPath(const std::string& guestPath) const {
     if(parts.empty())out+="\\";
     return out;
 }
-std::string Vfs::ToHost(const std::string& guestPath,bool write) const {
+std::string Vfs::ToHost(const std::string& guestPath,bool write,size_t* caseBudget) const {
     const auto full=FullGuestPath(guestPath);if(full.empty())return {};
     const auto& mount=mounts_[size_t(Drive(full[0]))];
     if(write && mount.readOnly){errno=EROFS;return {};}
     std::string cur=mount.root;
     for(const auto& part:SplitPath(full.substr(2))) {
-        auto name=FindCaseInsensitive(cur,part);if(name.empty())name=part;
+        bool exhausted=false;auto name=FindCaseInsensitive(cur,part,caseBudget,exhausted);
+        if(exhausted){errno=EOVERFLOW;return {};}
+        if(name.empty())name=part;
         if(cur.back()!='/')cur+='/';
         cur+=name;
 #ifndef __SWITCH__
@@ -169,12 +174,12 @@ std::string Vfs::ToHost(const std::string& guestPath,bool write) const {
     }
     return cur;
 }
-bool Vfs::SetCurrentDirectory(const std::string& path) {
+bool Vfs::SetCurrentDirectory(const std::string& path,size_t* caseBudget) {
     const auto full=FullGuestPath(path);if(full.empty())return false;
-    const auto host=ToHost(full);if(!Directory(host))return false;
+    const auto host=ToHost(full,false,caseBudget);if(!Directory(host))return false;
     cwd_=full;mounts_[size_t(Drive(full[0]))].cwd=full;return true;
 }
-std::string Vfs::ToGuest(const std::string& hostPath) const {
+std::string Vfs::ToGuest(const std::string& hostPath,size_t* caseBudget) const {
     const auto native=NativePath(hostPath);size_t best=0;int drive=-1;
     for(size_t i=0;i<mounts_.size();++i) {
         const auto& root=mounts_[i].root;
@@ -185,7 +190,7 @@ std::string Vfs::ToGuest(const std::string& hostPath) const {
     for(const auto& part:SplitPath(native.substr(best)))out+="\\"+part;
     if(out.size()==2)out+="\\";
     // Reject host symlinks outside/inside another mount just like guest lookup.
-    return ToHost(out).empty()?std::string{}:out;
+    return ToHost(out,false,caseBudget).empty()?std::string{}:out;
 }
 std::string Vfs::ProfileDirectory() const {
     return persistent_?"C:\\Documents and Settings\\Player":"C:\\";
