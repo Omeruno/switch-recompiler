@@ -435,3 +435,21 @@ session regressions. files.cpp and kernel32_volumes.cpp passed standalone -Wall
 the persistent profile. Switch-only main/picker/statvfs integration still requires
 the exact new-SHA Switch CI gate; local Switch SDK is unavailable. No hardware
 result is inferred from these host runs.
+
+
+## 2026-10-23 execution plan and checkpoint request
+
+F1 published commit d7a15b79650e337429573651c02774fca96dc787 is verified:
+CI run 39965068140 completed all six jobs successfully, including Switch build.
+The working branch was clean at that HEAD when planning began. Added the granular
+F2 → F3 → F4 → F5 → measured G execution queue to F_SHELL_PLAN.md and linked it
+from ACTIVE_ROADMAP.md. Next code package remains F2; no shell implementation or
+new runtime acceptance is claimed by this documentation package.
+
+User requested a checkpoint every 40 minutes. No alarm/scheduler tool is available
+in this session; no recurring alarm or automatic agent wake-up has been created.
+Use the interval as an active-session checkpoint guideline, preserving progress,
+checks, blockers and the next concrete step. Do not promise unattended resumption.
+Local Switch SDK remains unavailable; hardware checks remain deferred, SD closed.
+Validation for this package: Markdown local links/fences and git diff --check;
+runtime source is unchanged. Check CI for the published documentation SHA.

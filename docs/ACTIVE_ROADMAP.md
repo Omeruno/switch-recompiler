@@ -32,6 +32,9 @@ with licensed artwork/fonts, independently tested at 1280x720 and scaled sizes.
 Initial idle shell is an intermediate milestone, not full Start/explorer or
 active-guest taskbar acceptance. F3/F4/F5 criteria remain in F_SHELL_PLAN.md.
 
+Подробная [очередь действий после F1](F_SHELL_PLAN.md#рабочий-план-после-f1-2026-10-23)
+фиксирует критерии F2–F5, возврат к измерениям G и контрольные точки активной работы.
+
 ## Implementation order and gates
 
 1. Preserve F1 mount/path/readonly/CWD/volume and cross-session x86 regressions;
