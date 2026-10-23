@@ -1,6 +1,7 @@
 # Архитектура switch-recompiler v2
 
-Срез кода: 2026-10-21, ветка `claude/wonderful-hawking-10mpr0`.
+Основной архитектурный срез: 2026-10-21; уточнение текущих границ после аудита
+2026-10-23 (03b9fd4). Старые детали сверять с AI_HANDOFF/ACTIVE_ROADMAP, ветка `claude/wonderful-hawking-10mpr0`.
 Это карта реализации, а не заявление о полной совместимости с Windows.
 Историческое описание v1 сохранено в [архиве](archive/ARCHITECTURE_v1.md).
 Результаты проверок конкретных коммитов — в [AI_HANDOFF.md](AI_HANDOFF.md).
@@ -30,7 +31,9 @@
 ## Память, ABI и исключения
 
 - `cpu/paged_memory.h`: гостевые 32-битные адреса, отображение страниц,
-  защиты и проверка диапазонов. `FlatGuestMemory` остаётся для старых тестов.
+  metadata защиты и проверка отображения/диапазонов. Права mapped-страниц
+  ещё не enforced всеми guest read/write/fetch helpers (см. аудит); не заявлять
+  полный VirtualProtect contract. `FlatGuestMemory` остаётся для старых тестов.
 - `CpuState` хранит целочисленные и FP/SIMD регистры и ленивые флаги.
   Ошибка `Interpreter::Step` возвращается как `CpuException` с адресом
   инструкции и параметрами ошибки доступа.
@@ -272,7 +275,10 @@ SHELL32, OLE32/OLEAUT32, COMCTL32, GDI+ и UXTHEME имеют частичные
 
 Новый USER32 строит классы/окна, управление фокусом, меню, диалоги,
 таймеры и controls. `ui::Gdi` растеризует DC, битмапы, шрифты TrueType,
-области и ROP в CPU-поверхности. GPU backend и готовой desktop-shell нет.
+области и ROP в CPU-поверхности. Реальный OpenGL backend, software fallback,
+оконные слои, revision caches и telemetry уже реализованы пакетами E5–E9;
+см. STAGE_E_COMPOSITION.md и STAGE_E_PERFORMANCE.md. Готовой desktop-shell
+пока нет: F0 дал повторный picker, F1–F5 находятся в F_SHELL_PLAN.md.
 `Window::threadId` фиксирует создателя HWND. `State::queues` содержит отдельные
 posted/input/sent queues, WM_QUIT, таймеры, keyboard snapshot и last MSG для
 каждого guest thread. Очередь создаётся лениво при USER32 API/создании окна;
@@ -380,7 +386,9 @@ AttachThreadInput и полные правила marshalling сообщений 
 - `tools/jit_probe/`: standalone ARM64 `movz w0,#42; ret` через libnx JIT.
   Сборка не доказывает права выполнения на Switch. Dynarec в ядро не включён.
 
-Следующие архитектурные задачи: аппаратная проверка continuations,
-полный process/DLL shutdown, timer contention/edge cases и input ownership,
-затем граница compositor/backend. JIT — после стабилизации этих контрактов
-и отдельной проверки разрешений на физическом устройстве.
+Текущая очередь после аудита: постоянная SD-backed файловая основа F1 и
+XP-like native shell F2–F5. Shutdown/timers/input ownership и compositor уже
+имеют последующие реализации/регрессии; актуальные границы — в ACTIVE_ROADMAP.
+Минимальный JIT probe ранее возвращал 42 по сообщению пользователя; полноценный
+dynarec/cache/icache/fault fallback остаётся отдельной программой. Физическая
+приёмка текущих GPU/Paint/fallback/input/relaunch остаётся отложенной.

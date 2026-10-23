@@ -58,13 +58,13 @@ The initial fixture called unsupported legacy USER32 SetFocus. It was corrected
 to use the already implemented MFC CWnd::SetFocus ordinal. No new SetFocus
 implementation or compatibility claim was introduced to hide that test error.
 
-## Next frontend gate
+## Subsequent frontend integration
 
-No production return-to-picker loop is enabled. Next connect a bounded sequential
-frontend launch loop with explicit picker selection/cancellation, per-launch mode
-and output setup/rebind, startup-held input quarantine for both UI paths and
-normal/failed/aborted return. Reuse the core, new-USER and legacy session tests;
-exercise the actual frontend transition flow automatically where possible.
+The production return-to-picker loop was later integrated in F0_LAUNCH_LOOP.md:
+picker selection/cancellation, per-launch mode/output rebind, startup-held input
+quarantine and normal/failed/aborted return. It reuses core/new-USER/legacy scopes
+and has a dedicated host controller regression. The next software milestone is
+F1–F5 in F_SHELL_PLAN.md, not another implementation of the same F0 loop.
 Hardware remains one combined GPU/software/Lite input/Paint/picker/relaunch
 checklist in STAGE_E_PERFORMANCE.md. No physical console timing, memory, real
 Paint or final F0 shell acceptance is asserted from these host fixtures.

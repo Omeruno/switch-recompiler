@@ -69,10 +69,11 @@ fallback tests remain mandatory; the new regression is not physical GPU evidence
 
 The legacy UI/MFC and image/callback lifetime follow-up is now implemented; see
 [F0_LEGACY_SESSIONS.md](F0_LEGACY_SESSIONS.md). It adds nine sequential legacy
-fixture runs and scopes the remaining runtime/frontend scratch bindings. The
-next gate is the actual bounded picker-return-picker launch loop, per-launch
-mode/output setup and held-input quarantine. This document's USER/GDI regression
-does not itself enable that loop or certify physical relaunch/Paint behavior.
+fixture runs and scopes the remaining runtime/frontend scratch bindings.
+That later bounded picker-return-picker launch loop and per-launch mode/output/
+input integration is now implemented in F0_LAUNCH_LOOP.md. This document's
+USER/GDI regression alone did not enable it and does not certify physical
+relaunch/Paint behavior. Next software milestone: F1–F5 in F_SHELL_PLAN.md.
 
 Keep the physical GPU/forced software/Lite input/Paint checks in
 STAGE_E_PERFORMANCE.md. No physical memory/timing result is added here.

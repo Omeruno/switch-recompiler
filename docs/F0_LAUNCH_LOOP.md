@@ -36,6 +36,7 @@ reinitialization. Switch CI compilation is necessary; actual repeated launch,
 Paint, GPU/fallback, 1280x720 and memory stability remain on the single physical
 checklist in STAGE_E_PERFORMANCE.md.
 
-Next independent software block: interpreter workload profiling for Stage G,
-with bounded opcode/host-call counts and repeatable public fixture measurements.
-Measure first; do not claim console speedups or enable a dynarec from host data.
+The subsequent G0 census was implemented in STAGE_G_PROFILING.md. After the
+2026-10-23 user-priority audit, the next code package is F1 persistent SD roots
+and filesystem contracts, then the native XP-like shell in F_SHELL_PLAN.md.
+F0 alone is not desktop/Start/explorer acceptance; hardware checks remain deferred.

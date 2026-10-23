@@ -61,8 +61,10 @@ Keep private user logs and proprietary Paint/MFC binaries outside public git.
    input-to-display latency with an appropriate device/method. Current report does
    not measure these, so full E8 acceptance remains open.
 
-Next software block is E9 combined unattended acceptance/reporting. Optimize
-further only after the counters or a reproducible benchmark identify excess work.
+E9 combined unattended acceptance/reporting was subsequently implemented in
+STAGE_E_ACCEPTANCE.md. The current next software block is F1 filesystem/shell
+foundation in F_SHELL_PLAN.md. Optimize further only after the counters or a
+reproducible benchmark identify excess work.
 
 ## v7: CPU raster and observed-input correlation
 

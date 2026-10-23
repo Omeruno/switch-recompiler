@@ -40,7 +40,13 @@ Switch CI must compile the actual adapter; menu rendering, cancellation/app exit
 long labels and launch quarantine still require the deferred hardware smoke.
 The runtime/renderer teardown path after a launched guest is unchanged here.
 
-Next F block: audit and make the existing one-Process session initialization/
+## Historical next step of the first picker package
+
+The paragraph below records the first package only. Its lifecycle integration
+is now implemented; see [F0_LAUNCH_LOOP.md](F0_LAUNCH_LOOP.md). The current next
+package is F1 filesystem foundation in [F_SHELL_PLAN.md](F_SHELL_PLAN.md).
+
+Original next F block: audit and make the existing one-Process session initialization/
 teardown repeatable before implementing return-to-launcher or a desktop shell.
 Current main closes the NRO after its one guest thread, while the interpreter
 owns static Process/memory and global UI state. Do not simply loop that path or

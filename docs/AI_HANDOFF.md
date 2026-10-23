@@ -9,6 +9,17 @@ This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technic
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
+## Current priority after the 2026-10-23 audit
+
+The user prioritizes a functional XP-like native shell and real Switch/SD-backed
+file structure. **Next code package: F1 persistent mounts/root/path/volume
+contracts**, followed by F2–F5 desktop/Start/explorer/guest integration. Continue
+G0 only as retained diagnostics; representative timing/optimization is no longer
+the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
+[F_SHELL_PLAN.md](F_SHELL_PLAN.md) and ACTIVE_ROADMAP.md. Historical next-G/E1 and
+pre-integration F0 notes below do not override this instruction. F0 is implemented
+software, not completion of F or hardware relaunch acceptance.
+
 ## Working agreement
 
 - Before every change, fetch/check branch HEAD, recent commits and this handoff;
@@ -334,3 +345,39 @@ Local Switch compilation is unverified; use exact-SHA Switch CI. No current
 Paint, physical GPU/fallback/input, SD or console relaunch test was performed.
 Exact new-SHA CI is pending publication at commit time; check GitHub, not the
 incoming green run, for this package's outcome.
+
+## 2026-10-23: project audit and restoration of the Stage F priority
+
+Audited clean fetched 03b9fd4; no newer branch commit or AGENTS.md was found.
+Compared all A–I stage boundaries with runtime/files, Process loader, kernel32
+file/system/volume APIs, shell32/UxTheme, actual Switch picker/worker/output and
+existing tests. Native probes confirmed real host file persistence and case
+lookup, per-EXE root isolation, aliasing drive letters, and unenforced mapped-
+page permission metadata. The latter remains an explicit D/A gap requiring a
+separate privileged-host/guest-access design; no runtime source was changed.
+
+The missing user milestone is F1–F5: a persistent common SD-backed filesystem,
+native desktop/taskbar/Start, real-directory explorer and one-Process guest
+integration. Merely skinning the console picker cannot satisfy it. Current
+RunGuest joins the worker and output changes owner across launches, so an active
+taskbar needs real compositor/input ownership work. Existing SD files/registry
+must be preserved; proposed mounts are not yet implemented or a migration.
+
+Corrected active ROADMAP/ARCHITECTURE/README and early F0 documents that still
+claimed no GPU or no return loop. Historical implementation records remain
+labelled. XP.css MIT (376f42e) and Tango public-domain icons (41b8f6a) were checked
+as pinned visual sources; no assets or new dependencies were imported. Native
+blue/green theme and actual menu/file actions have distinct F2–F5 acceptance.
+See the audit and shell plan for sources, missing contracts and package gates.
+
+Incoming 03b9fd4 CI run 39955956133 still had five successful jobs and ARM64
+installation in progress at this audit check; do not call that 6/6. Full local
+MinGW/Mesa and local ARM64/QEMU results were previously verified. This package
+changes documents only: source/link/diff validation applies; no repeated runtime
+build or new physical test is claimed. Check the exact documentation SHA's CI
+after publishing. Physical checks remain consolidated/deferred; SD is restored.
+
+Audit document validation: 14 changed/new Markdown files, 52 relative file links
+resolved, balanced fenced blocks and clean git diff --check. The two targeted
+native probes passed outside the checkout. No source/test/dependency/asset files
+were changed, and the unchanged runtime suite was not rerun for this doc package.
