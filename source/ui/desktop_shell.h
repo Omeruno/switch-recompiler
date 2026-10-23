@@ -49,6 +49,6 @@ private:
     size_t selected_=0,errors_=0;
     bool truncated_=false,startOpen_=false,exit_=false;
     Panel panel_=Panel::Desktop;
-    int focus_=Programs,hover_=None,pressed_=None;
+    int focus_=Programs,menuReturnFocus_=Programs,hover_=None,pressed_=None;
 };
 } // namespace ui

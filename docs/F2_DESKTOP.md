@@ -24,7 +24,7 @@ Controls: stick moves the cursor, A clicks (or accepts controller focus), X open
 focused items, R toggles Start, Up/Down selects, Left/Right pages the EXE list,
 B closes menu/panel then exits from desktop, PLUS exits the idle shell. Touch
 selects a row; Open explicitly launches it. Press/release must target the same
-control. Entry quarantines held buttons/touch; controller navigation cancels and
+control. Dismissing Start restores the previous panel/row focus. Entry quarantines held buttons/touch; controller navigation cancels and
 quarantines an in-progress pointer gesture. L/ZL held on guest launch retain the
 existing UI-layer/software-output overrides.
 

@@ -501,3 +501,22 @@ screenshots. Markdown relative links/fences and git diff --check passed. Only
 libnx adapter input-quarantine/comments and documentation changed after the full
 host compile; main.cpp is excluded from that host suite and is checked by Switch
 CI. Exact published-SHA CI remains to be verified after push.
+
+
+F2 focus follow-up: initial published 437de20 passed Switch build, full host,
+ARM64/QEMU, GL and JIT jobs in run 40026831580; its CPU oracle job was still
+installing GCC at this check, so it was not called 6/6. Additional navigation
+review found that dismissing Start from About/Programs could reset focus to the
+underlying desktop Programs icon. Start now saves/restores the prior focus on
+keyboard toggle, Back and outside-click dismissal. The public native regression
+covers Close focus in About and selected-row focus in Programs. Re-run the full
+suite and verify the corrected published SHA; earlier five jobs are not that
+new SHA's gate. No physical result is added.
+
+
+Final focus correction validation: the complete clean MinGW/Mesa host suite
+passed again on the corrected source/test tree (including all six E9 software
+groups, Stage C, filesystem/core/USER/legacy sessions, actual GL composition,
+input and dialogs). The strict standalone shell harness passed with the new
+About/Programs focus restoration cases. Exact corrected-SHA CI must be checked
+following publication; the preceding 437de20 CPU job was still installing GCC.

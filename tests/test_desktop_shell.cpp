@@ -50,6 +50,12 @@ int main(int argc,char** argv) {
     Click(shell,Shell::MenuComputer);assert(shell.StartOpen()); // Disabled stays inert.
     Click(shell,Shell::About);assert(!shell.StartOpen() && shell.ActivePanel()==Shell::Panel::About);
     shell.Render(image.s,u"13:42");Snapshot(image.s,prefix,"about");
+    shell.ToggleStart();shell.Back();
+    assert(shell.ActivePanel()==Shell::Panel::About && shell.Focus()==Shell::Close);
+    shell.ToggleStart();shell.ToggleStart();assert(shell.Focus()==Shell::Close);
+    // Dismissing Start outside the menu also restores the underlying focus.
+    shell.ToggleStart();shell.PointerDown(900,200);shell.PointerUp(900,200);
+    assert(!shell.StartOpen() && shell.Focus()==Shell::Close);
     shell.Back();shell.Accept();assert(shell.ActivePanel()==Shell::Panel::Programs);
     assert(!shell.Enabled(Shell::Launch));Click(shell,Shell::Launch);assert(shell.LaunchPath().empty());
     shell.Back();assert(shell.ActivePanel()==Shell::Panel::Desktop);
@@ -79,7 +85,9 @@ int main(int argc,char** argv) {
     assert(shell.ActivePanel()==Shell::Panel::Programs); // Same host model on guest return.
     Click(shell,Shell::Launch);assert(shell.LaunchPath()==launch);
     shell.Enter();shell.Page(-100);shell.Page(1);Click(shell,Shell::RowBase+3);
-    assert(shell.Selection()==17);shell.Accept();assert(shell.LaunchPath()==catalog.Files()[17]);
+    assert(shell.Selection()==17);
+    const int rowFocus=shell.Focus();shell.ToggleStart();shell.ToggleStart();assert(shell.Focus()==rowFocus);
+    shell.Accept();assert(shell.LaunchPath()==catalog.Files()[17]);
     shell.Enter();shell.Back();shell.ToggleStart();shell.Move(1);shell.Accept();
     assert(shell.ActivePanel()==Shell::Panel::About); // Keyboard Start -> About.
     shell.Back();shell.ToggleStart();shell.Move(2);shell.Accept();assert(shell.ExitRequested());

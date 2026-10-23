@@ -126,7 +126,11 @@ std::vector<int> DesktopShell::FocusOrder() const {
     }
     return {Programs,Start};
 }
-void DesktopShell::ToggleStart() {pressed_=None;startOpen_=!startOpen_;focus_=startOpen_?MenuPrograms:Programs;}
+void DesktopShell::ToggleStart() {
+    pressed_=None;
+    if(!startOpen_) {menuReturnFocus_=focus_;startOpen_=true;focus_=MenuPrograms;}
+    else {startOpen_=false;focus_=menuReturnFocus_;}
+}
 void DesktopShell::Move(int delta) {
     if(panel_==Panel::Programs && !startOpen_ && !files_.empty() && focus_>=RowBase) {
         const int count=int(files_.size());selected_=size_t((int(selected_)+delta%count+count)%count);
@@ -145,7 +149,7 @@ void DesktopShell::Page(int delta) {
 void DesktopShell::Accept() {Activate(focus_);}
 void DesktopShell::Back() {
     pressed_=None;
-    if(startOpen_){startOpen_=false;focus_=Programs;}
+    if(startOpen_){ToggleStart();}
     else if(panel_!=Panel::Desktop){panel_=Panel::Desktop;focus_=Programs;}
     else exit_=true;
 }
@@ -171,7 +175,7 @@ void DesktopShell::PointerDown(int x,int y) {PointerMove(x,y);pressed_=hover_;}
 void DesktopShell::PointerUp(int x,int y) {
     PointerMove(x,y);const int target=pressed_;pressed_=None;
     if(target!=hover_)return;
-    if(target==None){if(startOpen_){startOpen_=false;focus_=Programs;}return;}
+    if(target==None){if(startOpen_){ToggleStart();}return;}
     if(!Enabled(target))return;
     focus_=target;
     if(target>=RowBase) {
