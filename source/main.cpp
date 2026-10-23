@@ -34,6 +34,7 @@
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
+#include "ui/launcher_loop.h"
 #include "ui/executable_catalog.h"
 #include "ui/opengl_presentation.h"
 #include "ui/switch_gpu_output.h"
@@ -65,6 +66,14 @@ namespace win32 {
 // (консоль закрыта), печатать туда больше нельзя.
 static bool g_graphicsInitialized = false;
 static bool g_framebufferReady = false;
+static bool g_appletStopped = false;
+static const char* g_launchStatus = "Program stopped. Choose a program to launch again.";
+static bool ContinueApplet() {
+    if(g_appletStopped)return false;
+    if(appletMainLoop())return true;
+    g_appletStopped=true;return false;
+}
+static ui::PointerInputGate g_legacyInputGate;
 
 // Путь к выбранному исполняемому файлу — заполняется PickExecutableFile()
 // в main() (см. ниже) ДО создания игрового потока; объявлена здесь так рано
@@ -308,7 +317,12 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     auto& mem=guestSession.Memory();auto& proc=guestSession.ProcessObject();
     win32::EnableHostLayer(win32::kUiLayer,g_useNewUi);
     struct FrontendCleanup {bool legacy;~FrontendCleanup(){if(legacy)ResetLegacyFrontend();}} frontendCleanup{!g_useNewUi};
-    if(!g_useNewUi)ResetLegacyFrontend();
+    if(!g_useNewUi) {
+        ResetLegacyFrontend();padUpdate(&g_pad);
+        HidTouchScreenState touch{};
+        const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+        g_legacyInputGate.Reset(padGetButtons(&g_pad),touching);
+    }
     int stackMarker=0;win32::g_threadStackBase=&stackMarker;
     win32::g_pumpHostFrame=&PumpHostFrame;
     win32::user::PresentationSession presentationScope(g_useNewUi,&newui::EndPresentation);
@@ -334,6 +348,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     rt::Module* exe = proc.LoadMainExe(path, err);
     if (!exe || !proc.PrepareMainThread(cpuState, err))
     {
+        g_launchStatus="Could not load program. Choose another EXE or retry.";
         executionLog.Complete(err.c_str(),193,0);
         SaveGuestStopReport(err.c_str(),path,cpuState,proc,nullptr);
         SafePrint("[!] Failed to load %s: %s\n", path, err.c_str());
@@ -388,7 +403,17 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         stopReason=result==cpu::StepResult::UnknownOpcode ? "unknown opcode" : "guest exception";
         return false;
     },rt::GuestExecution::Startup::InitializeModules);
+    ui::PointerInputGate stopInput;
+    padUpdate(&g_pad);stopInput.Reset(padGetButtons(&g_pad),false);
+    unsigned appletPoll=0;
     while (steps<maxSteps && !execution.Stopped()) {
+        if((++appletPoll%4096)==0) {
+            if(!ContinueApplet()) {stopReason="applet shutdown";break;}
+            padUpdate(&g_pad);
+            if(stopInput.Update(padGetButtons(&g_pad),false).down&HidNpadButton_Plus) {
+                stopReason="host cancelled guest";break;
+            }
+        }
         auto result=execution.RunOne();
         runningThread=proc.Scheduler().Current();
         if (result==rt::GuestExecution::Result::AllocationFailed) {
@@ -402,6 +427,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     }
 
     if (execution.InitializationFailed()) {
+        g_launchStatus="Program initialization failed. Choose another EXE or retry.";
         executionLog.Complete(execution.InitializationError().c_str(),uint32_t(win32::g_guestExitCode),steps);
         SaveGuestStopReport(execution.InitializationError().c_str(),path,cpuState,proc,nullptr,true,steps);
         SafePrint("[!] DLL initialization failed: %s\n",execution.InitializationError().c_str());
@@ -1304,8 +1330,12 @@ static win32::HostFrameResult PumpHostFrame()
 {
     win32::HostFrameResult result;
 
+    if(!ContinueApplet()) {result.shouldQuit=true;return result;}
     padUpdate(&g_pad);
-    u64 kDown = padGetButtonsDown(&g_pad);
+    HidTouchScreenState touchState{};
+    const bool rawTouch=hidGetTouchScreenStates(&touchState,1) && touchState.count>0;
+    const auto input=g_legacyInputGate.Update(padGetButtons(&g_pad),rawTouch);
+    const u64 kDown=input.down;
 
     if (kDown & HidNpadButton_Plus)
     {
@@ -1377,7 +1407,7 @@ static win32::HostFrameResult PumpHostFrame()
     // ЛКМ ровно пока палец на экране, а кнопка "клевала" сразу). Теперь
     // отслеживаем РЕАЛЬНОЕ состояние кнопки (padGetButtons, не только
     // "только что нажата") — полностью так же, как уже сделано для тача.
-    u64 kHeld = padGetButtons(&g_pad);
+    const u64 kHeld = input.held;
     bool aHeldNow = (kHeld & HidNpadButton_A) != 0;
     bool zrHeldNow = (kHeld & HidNpadButton_ZR) != 0;
 
@@ -1467,11 +1497,10 @@ static win32::HostFrameResult PumpHostFrame()
     }
 
     // --- Тач-экран: касание напрямую двигает курсор В ТУ ТОЧКУ и кликает ---
-    HidTouchScreenState touchState = {0};
     bool isTouchingNow = false;
     uint32_t touchX = 0, touchY = 0;
 
-    if (hidGetTouchScreenStates(&touchState, 1) && touchState.count > 0)
+    if (input.touching)
     {
         isTouchingNow = true;
         // Реальные координаты тача — в физических пикселях (1280x720 в
@@ -1805,7 +1834,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     using IE = win32::user::InputEvent;
     uint32_t start = rt::Clock::NowMs();
     for (;;) {
-        if (!appletMainLoop()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
+        if (!ContinueApplet()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
         const uint64_t observedNs=ui::PerformanceNowNs();
         padUpdate(&g_pad);
         HidTouchScreenState ts = {0};
@@ -1908,6 +1937,7 @@ static void GameThreadFunc(void* arg)
     // Лимит шагов теперь по сути "неограниченный" — реальный выход
     // происходит по кнопке + (через PumpHostFrame -> GetMessage -> WM_QUIT),
     // а не по счётчику инструкций.
+    g_launchStatus="Program stopped. Choose a program to launch again.";
     RunInterpreter(g_selectedExePath.c_str(), 40, 100000000);
 }
 
@@ -1979,23 +2009,26 @@ static ui::ExecutableCatalog ListExecutables() {
 
 // Single-file autolaunch is preserved. The picker can always return on applet
 // shutdown or B/PLUS, including while waiting for a new selection edge.
-static bool PickExecutableFile() {
+static bool PickExecutableFile(bool allowAutoLaunch) {
+    padUpdate(&g_pad);
+    ui::PointerInputGate gate;gate.Reset(padGetButtons(&g_pad),false);
     const auto catalog=ListExecutables();const auto& files=catalog.Files();
     if(files.empty()) {
         printf("[!] No .exe found in romfs or %s/\n",win32::kRegistryFolderPath);
         printf("B/PLUS: exit\n");consoleUpdate(NULL);
-        while(appletMainLoop()) {
+        while(ContinueApplet()) {
             padUpdate(&g_pad);
-            if(padGetButtonsDown(&g_pad)&(HidNpadButton_B|HidNpadButton_Plus))break;
+            if(gate.Update(padGetButtons(&g_pad),false).down&(HidNpadButton_B|HidNpadButton_Plus))break;
             svcSleepThread(16'000'000);
         }
         return false;
     }
-    if(files.size()==1 && !catalog.Truncated()) {g_selectedExePath=files[0];return true;}
+    if(allowAutoLaunch && files.size()==1 && !catalog.Truncated()) {g_selectedExePath=files[0];return true;}
     ui::LauncherSelection selection(files.size());
-    while(appletMainLoop()) {
+    while(ContinueApplet()) {
         consoleClear();
         printf("=== Switch Recompiler - choose a program ===\n\n");
+        if(!allowAutoLaunch)printf("%s\n\n",g_launchStatus);
         for(size_t i=selection.FirstVisible();i<selection.EndVisible();++i) {
             std::string label=files[i];
             for(char& c:label)if(static_cast<unsigned char>(c)<32 || c==127)c='?';
@@ -2011,8 +2044,8 @@ static bool PickExecutableFile() {
         if(catalog.Errors())printf("[!] Some paths could not be read.\n");
         consoleUpdate(NULL);
         for(;;) {
-            if(!appletMainLoop())return false;
-            padUpdate(&g_pad);const u64 down=padGetButtonsDown(&g_pad);
+            if(!ContinueApplet())return false;
+            padUpdate(&g_pad);const u64 down=gate.Update(padGetButtons(&g_pad),false).down;
             if(down&(HidNpadButton_B|HidNpadButton_Plus))return false;
             if(down&HidNpadButton_A){g_selectedExePath=files[selection.Selected()];return true;}
             if(down&HidNpadButton_Up){selection.Move(-1);break;}
@@ -2060,12 +2093,13 @@ int main(int argc, char* argv[])
         printf("[!] romfsInit failed: 0x%x\n", rc);
         printf("\nPress PLUS to exit.\n");
         consoleUpdate(NULL);
-        while (appletMainLoop())
+        while (ContinueApplet())
         {
             padUpdate(&g_pad);
             if (padGetButtonsDown(&g_pad) & HidNpadButton_Plus) break;
             consoleUpdate(NULL);
         }
+        if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
         consoleExit(NULL);
         return 0;
     }
@@ -2073,57 +2107,35 @@ int main(int argc, char* argv[])
     printf("=== Switch Recompiler ===\n");
     consoleUpdate(NULL);
 
-    // Выбор исполняемого файла — до переключения в графику, пока консоль
-    // ещё доступна (проще всего показать текстовый список именно тут)
-    if(!PickExecutableFile()) {
-        romfsExit();
-        if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
-        consoleExit(NULL);return 0;
-    }
-    padUpdate(&g_pad);
-    g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad) & HidNpadButton_L);
-    printf("Launching: %s (%s window layer)\n", g_selectedExePath.c_str(), g_useNewUi ? "new" : "legacy");
-    consoleUpdate(NULL);
-
-    // Переключаемся в графику ЗАРАНЕЕ, ОДИН РАЗ, из простого неглубокого
-    // верхнеуровневого кода на ГЛАВНОМ потоке — НОВАЯ гипотеза (после того,
-    // как выяснилось, что без графики вообще краха нет): framebufferCreate
-    // мог иметь скрытую привязку к потоку, который его создал. Раньше мы
-    // создавали его ВНУТРИ игрового потока — теперь создаём здесь, на
-    // главном, а рисовать (framebufferBegin/End) будет уже игровой поток.
-    printf("[+] Switching to graphics output - press PLUS to exit.\n");
-    consoleUpdate(NULL);
-    consoleExit(NULL);
-    cpu::g_consoleAvailable = false;
-    // ZL at launch forces the software reference for recovery/comparison.
-    const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
-    if(!newui::InitializeOutput(requestGpu)) {romfsExit();return 1;}
-    g_graphicsInitialized = true;
-
-    // Запускаем всю игровую логику на отдельном потоке с большим стеком
-    // (2 МБ — щедрый запас).
-    Thread gameThread;
-    constexpr size_t GAME_THREAD_STACK_SIZE = 2 * 1024 * 1024;
-    Result threadRc = threadCreate(&gameThread, GameThreadFunc, nullptr, nullptr,
-                                     GAME_THREAD_STACK_SIZE, 0x2C, -2);
-    if (R_FAILED(threadRc))
-    {
-        // Тут консоль уже закрыта — просто закрываем framebuffer и выходим
-        newui::CloseOutput();
-        romfsExit();
-        return 1;
-    }
-
-    threadRc=threadStart(&gameThread);
-    if(R_FAILED(threadRc)) {
-        threadClose(&gameThread);newui::CloseOutput();
-        g_graphicsInitialized=false;romfsExit();return 1;
-    }
-    threadWaitForExit(&gameThread);
-    threadClose(&gameThread);
-
+    struct SwitchLauncher {
+        bool Alive() {return ContinueApplet();}
+        bool Pick(bool initial) {return PickExecutableFile(initial);}
+        bool BeginOutput() {
+            padUpdate(&g_pad);
+            g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad)&HidNpadButton_L);
+            const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
+            consoleExit(NULL);cpu::g_consoleAvailable=false;
+            g_launchStatus="Could not initialize display. Choose a program to retry.";
+            g_graphicsInitialized=newui::InitializeOutput(requestGpu);
+            return g_graphicsInitialized;
+        }
+        void RunGuest() {
+            Thread worker{};
+            g_launchStatus="Could not create guest thread. Choose a program to retry.";
+            Result rc=threadCreate(&worker,GameThreadFunc,nullptr,nullptr,2*1024*1024,0x2C,-2);
+            if(R_FAILED(rc))return;
+            rc=threadStart(&worker);
+            if(R_SUCCEEDED(rc)) {
+                threadWaitForExit(&worker);
+            } else g_launchStatus="Could not start guest thread. Choose a program to retry.";
+            threadClose(&worker);
+        }
+        void EndOutput() {newui::CloseOutput();g_graphicsInitialized=false;}
+        void RestorePicker() {consoleInit(NULL);cpu::g_consoleAvailable=true;}
+    } launcher;
+    ui::RunLauncher(launcher);
     romfsExit();
-    newui::CloseOutput();
-    if (win32::g_playAudioImpl) audoutExit();
+    if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
+    if(cpu::g_consoleAvailable)consoleExit(NULL);
     return 0;
 }

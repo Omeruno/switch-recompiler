@@ -124,22 +124,14 @@ launch overrides and launch-held input quarantine. This does not change or award
 E8/E9 graphics acceptance.
 
 
-Core-session ownership now has a host regression (F0_SESSION_CORE.md). Deferred
-physical scope also includes normal application exit and startup/load failure
-with the new owned lifetime in GPU and forced software modes. Repeated picker
-return/relaunch remains a future check after GUI/legacy lifetime isolation and
-launch-loop integration; it has not been implemented or accepted by core tests.
-
-
-New USER/GDI lifetime is now covered by 12 sequential host x86 window/DialogBox/
-ChooseColor sessions (F0_GUI_SESSIONS.md), including parked cancellation and owned
-renderer redraw after memory destruction. Physical exit/load-failure smoke must
-use the new lifetime too. Repeated frontend relaunch remains deferred until the
-legacy UI/MFC/input/image-binding gate and actual launch loop are implemented.
-
-
-Legacy session lifetime now has nine sequential public x86/MFC fixture runs
-(F0_LEGACY_SESSIONS.md). Frontend hit/click/touch scratch resets and scoped EXE/
-resource/pump/stack bindings still require the actual Switch smoke with current
-Paint and both render modes. Production return-to-picker is not yet connected;
-repeat-launch hardware acceptance follows that separate frontend integration.
+Core, USER/GDI and legacy/MFC ownership now have sequential public x86 host
+regressions (F0_SESSION_CORE.md, F0_GUI_SESSIONS.md, F0_LEGACY_SESSIONS.md).
+Production return-to-picker is connected (F0_LAUNCH_LOOP.md), but physical
+acceptance is pending. In one NRO run, test normal exit, PLUS abort, failed load
+and DLL initialization, then relaunch the same and different EXEs; alternate
+legacy/new UI and GPU/ZL software modes. Confirm console restoration, single-EXE
+first-only autolaunch, no held A/ZR/PLUS/touch leaking across screens, applet
+shutdown without reopening the picker, current Paint open/save/color/tool
+behavior and stable memory over repeated launches at 1280x720 Switch Lite.
+Inject display/thread initialization failure if a controlled hardware harness is
+available. These are deferred checks, not claimed host/console results.

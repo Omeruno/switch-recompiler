@@ -251,3 +251,33 @@ exceptions. The registry assertion first ran against an already-compiled older
 LegacySession object; only the later fresh full build is the final-tree result.
 Switch-only frontend reset/input and current Paint remain physical/build gates;
 exact new published-SHA CI must be checked after publication.
+
+## 2026-10-23 F0: production frontend launch/return loop
+
+Incoming 421b099 passed all six jobs in CI run 39934544654. Switch main now uses
+the host-tested RunLauncher controller: select, per-launch output/mode binding,
+one joined worker, output teardown, console restoration, selection again. A sole
+EXE autolaunches only on the initial selection. Display/thread/load/DLL failure
+returns to a usable picker, with a bounded status; no automatic broken-EXE retry.
+Applet shutdown is sticky across picker, both UI pumps and periodic execution
+polling, and never restores the console after shutdown. The same periodic path
+allows PLUS abort of CPU-only guests. Held buttons are quarantined on picker
+entry, and legacy joins new UI in startup button/touch quarantine. Host audio and
+ROMFS remain alive across guests; no pending audio storage is freed during a
+launch transition. EGL teardown remains on the owning worker before its join;
+main cleanup is idempotent and also covers partial startup failure.
+
+Fresh complete `COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed: new
+controller failure/shutdown/input test, four core, 12 USER/dialog/color and nine
+legacy/MFC sequential sessions, all six E9 groups, Stage C, both CPU/actual-GL
+composition sizes, input/capture and scripted file/color dialogs. The standalone
+controller test also passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti.
+The full host suite does not compile libnx main: exact published-SHA Switch CI
+and physical repeated console/EGL/legacy/Paint transitions remain separate gates.
+See F0_LAUNCH_LOOP.md and the consolidated STAGE_E_PERFORMANCE.md checklist.
+
+Next independent software block: Stage G bounded interpreter opcode/host-call
+workload profiling with repeatable public fixture measurements, before choosing
+an optimization. No Switch speedup, total memory stability, physical relaunch,
+real Paint or E8/E9 hardware acceptance is claimed. Continue software work while
+the physical checklist remains deferred.
