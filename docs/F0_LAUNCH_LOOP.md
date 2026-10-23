@@ -38,5 +38,11 @@ checklist in STAGE_E_PERFORMANCE.md.
 
 The subsequent G0 census was implemented in STAGE_G_PROFILING.md. After the
 2026-10-23 user-priority audit, F1 persistent SD roots/filesystem contracts were implemented next; the current
-next package is F2 native desktop/theme in F_SHELL_PLAN.md.
+next package is F3 real directory explorer/Start actions in F_SHELL_PLAN.md.
 F0 alone is not desktop/Start/explorer acceptance; hardware checks remain deferred.
+
+
+F2 update: the ordinary picker is now a native idle desktop/executable panel;
+the text picker is retained as an output-failure fallback. Initial sole-EXE
+autolaunch and the launch/join/teardown contract above remain. See
+[F2_DESKTOP.md](F2_DESKTOP.md) for state, controls and the explicit F4 boundary.

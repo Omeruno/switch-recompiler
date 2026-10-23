@@ -1,9 +1,10 @@
 # Stage F: постоянная файловая система и XP-подобная оболочка
 
 Статус: **F1 реализован программно** ([контракт и проверки](F1_FILESYSTEM.md));
-F2–F5 ещё не реализованы. Физическая приёмка остаётся отложенной.
+**F2 idle desktop/theme реализован программно** ([поведение и проверки](F2_DESKTOP.md));
+F3–F5 ещё не реализованы. Физическая приёмка остаётся отложенной.
 База: 03b9fd4. [Аудит всех этапов](PROJECT_AUDIT_2026_10_23.md) объясняет,
-почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F2, native desktop/theme.
+почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F3, реальный directory explorer и действия Start.
 
 Пользовательская цель: реальная файловая структура Switch/SD, синяя панель
 задач и зелёный «Пуск», рабочий стол, программы и проводник в пределах уже
@@ -44,7 +45,7 @@ UNC/unsupported устройства должны иметь явный непо
 | Пакет | Реализация | Проверяемое завершение |
 | --- | --- | --- |
 | **F1: реализован программно** ([F1_FILESYSTEM.md](F1_FILESYSTEM.md)) | Mount/root configuration отдельно от EXE directory/CWD; согласованные guest module/command-line пути, env/special folders, реальные volume/free-space provider и A/W APIs; сохранение старого standalone workflow | Две публичные EXE в разных каталогах видят одни документы; сохранённый файл читается после двух fresh sessions; C/S/R round-trip, неизвестный диск, read-only, traversal, case/Unicode, соседние DLL и failed load покрыты native+real-x86 tests |
-| **F2: native desktop** | Постоянное host-состояние shell, фон, папки/ярлыки и selection, синяя taskbar, зелёный Start, часы реального времени; asset/theme manifest; 1280x720 и общий viewport | Host screenshot/pixel/layout и controller/touch tests; вход/выход shell не создаёт guest Process и не заимствует guest-owned pointers; изменение viewport не рассогласует ввод |
+| **F2: native idle desktop реализован программно** | Постоянное host-состояние shell, фон, папки/ярлыки и selection, синяя taskbar, зелёный Start, часы реального времени; asset/theme manifest; 1280x720 и общий viewport | Host screenshot/pixel/layout и controller/touch tests; вход/выход shell не создаёт guest Process и не заимствует guest-owned pointers; изменение viewport не рассогласует ввод |
 | **F3: функциональный Start и explorer** | Программы из реальных EXE-путей, «Все программы», «Мой компьютер», «Мои документы», «Выполнить», доступные настройки, About и выход из homebrew; дерево/список, адрес, back/up, сортировка/страницы, выбор и открытие EXE/документа | Каждая видимая активная команда выполняет действие; browser читает directory-backed/SD provider с лимитами и честно сообщает truncation/read errors; Start/Explorer/Run приводят к одному launch request; app association проверяет существующую поддержку |
 | **F4: shell ↔ guest** | Повторное использование GuestSession/RunLauncher teardown; ownership shell/taskbar/output при активном приложении, per-launch UI/GPU mode, карантин ввода, активная task button, один guest одновременно | Launch/normal exit/PLUS abort/load error/display error возвращают тот же desktop/selection/path; несколько окон одного приложения корректны; реализация minimize/restore и меню во время работы должна иметь explicit compositor/input route, а не ложную кнопку второго процесса |
 | **F5: пользовательский сценарий** | Согласованные документы/иконки/ярлыки/настройки, app associations, bounded persistence; операции создания/копирования/rename по реальным поддерживаемым API | Из «Пуска» запустить Paint, сохранить в My Documents, вернуться, найти файл в explorer и открыть снова; повторить с публичным guest в host CI, реальный Paint/SD/ввод/GPU проверить в отложенном Switch smoke |
@@ -57,7 +58,7 @@ F2 может сначала показывать desktop только межд�
 Настройки и команды показывают только реализованные возможности; выход —
 возврат из homebrew, не выдуманная эмуляция выключения Windows/Horizon.
 
-## Visual sources: проверено, пока не импортировано
+## Visual sources: закреплённые источники (Tango импортирован в F2)
 
 1. **[XP.css](https://github.com/botoxparty/XP.css)**, проверенный commit
    [`376f42eb274361939eaad3b0943204c053ad26c4`](https://github.com/botoxparty/XP.css/tree/376f42eb274361939eaad3b0943204c053ad26c4).
@@ -79,6 +80,10 @@ F2 может сначала показывать desktop только межд�
    лицензированная font основа. Не добавлять зависимость от Arial/Tahoma/
    Trebuchet только потому, что исходный CSS перечисляет эти шрифты.
 
+F2 импортировал три PNG Tango и их public-domain declaration; manifest/hash и
+генератор native RGBA описаны в [F2_DESKTOP.md](F2_DESKTOP.md). XP.css остаётся
+проверенным источником для будущей адаптации, его код/artwork пока не импортированы.
+
 При импорте каждого файла сохранять pinned source/path/hash/license/attribution
 в asset manifest и notices. При производной native теме сохранять MIT notice
 для адаптированного XP.css artwork/code. Проверять выбранные файлы отдельно от
@@ -93,7 +98,7 @@ Bliss wallpaper и выгрузки shell32.dll в этот набор не вх
 
 ## Очередь и проверки
 
-F1 и его API/loader contract реализованы; далее F2/F3/F4/F5 небольшими
+F1 и F2 idle-shell реализованы программно; далее F3/F4/F5 небольшими
 когерентными пакетами. Файловые недостачи D исправлять внутри соответствующего
 пакета F1; отдельную memory-protection/SEH работу вести без заявления о полном NT.
 G0 не удалять. Продолжение G/H не подменяет недостающий shell.
@@ -112,7 +117,7 @@ tools/run_host_tests.sh`, целевые regressions, Switch build и все 6 j
 [CI 39965068140](https://github.com/Omeruno/switch-recompiler/actions/runs/39965068140)
 — все шесть jobs успешны. Ниже очередь реализации, а не заявление о готовности.
 
-1. **F2 — desktop/theme.** Сначала проследить существующие Surface/font/input/
+1. **F2 — desktop/theme: реализован программно, см. [F2_DESKTOP.md](F2_DESKTOP.md).** Сначала проследить существующие Surface/font/input/
    presentation и picker lifecycle; выбрать общий viewport и независимое от guest
    состояние shell. Затем импортировать минимальный набор закреплённых свободных
    иконок с manifest/notices, реализовать фон, ярлыки, синюю taskbar, зелёный Start,

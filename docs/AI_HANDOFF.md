@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`1d1bd6f4f2fc418aa43899101d6cab3817698253` (2026-10-23).
-[CI 39959927599](https://github.com/Omeruno/switch-recompiler/actions/runs/39959927599)
+`d6a63510af2eab7c409acefd189d6fc04e1e9933` (2026-10-24).
+[CI 39967576903](https://github.com/Omeruno/switch-recompiler/actions/runs/39967576903)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -12,8 +12,9 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 ## Current priority after the 2026-10-23 audit
 
 The user prioritizes a functional XP-like native shell and real Switch/SD-backed
-file structure. **F1 filesystem contracts are implemented; next code package: F2 native
-desktop/theme**, followed by F3–F5 Start/explorer/guest integration. Continue
+file structure. **F1 filesystem contracts and F2 native idle desktop/theme are implemented;
+next code package: F3 real directory explorer and supported Start actions**,
+followed by F4–F5 active-guest integration and save/find/reopen. Continue
 G0 only as retained diagnostics; representative timing/optimization is no longer
 the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
 [F_SHELL_PLAN.md](F_SHELL_PLAN.md) and ACTIVE_ROADMAP.md. Historical next-G/E1 and
@@ -453,3 +454,50 @@ checks, blockers and the next concrete step. Do not promise unattended resumptio
 Local Switch SDK remains unavailable; hardware checks remain deferred, SD closed.
 Validation for this package: Markdown local links/fences and git diff --check;
 runtime source is unchanged. Check CI for the published documentation SHA.
+
+
+## 2026-10-24 F2: native idle desktop/theme
+
+Incoming d6a63510af2eab7c409acefd189d6fc04e1e9933 was fetched with a clean tree;
+CI run 39967576903 passed all six jobs. No newer branch commit was overwritten.
+Implemented host-owned DesktopShell with a fixed 1280x720 canvas, blue desktop/
+taskbar, green Start, device clock, bounded catalog/selection/panel state, actual
+Programs/About/Exit actions and native executable panel. My Computer/Documents/
+Run are disabled pending F3. Imported three pinned Tango public-domain PNGs and
+COPYING declaration with original/decoded/generated hashes; stdlib tooling checks
+the committed native RGBA pixels. Existing Liberation/OFL fonts are retained.
+No XP.css code/artwork or proprietary Microsoft assets were imported.
+
+Switch selection now uses that idle desktop with its own software presentation,
+main-thread input and viewport mapping, closing frames/output before the existing
+guest worker starts. Initial sole-EXE autolaunch, per-launch L/ZL, bounded catalog,
+console fallback, guest teardown and sticky applet shutdown are preserved. Entry
+quarantines held buttons/touch; navigation cancels/quarantines pointer gestures.
+State retains EXE/panel through return if the EXE still exists in the next scan.
+Guest worker join remains blocking: this does not implement F4 active-guest
+compositor/input ownership, minimize/restore or simultaneous applications.
+
+Native strict harness checks menu/disabled/pressed/cancel states, public temporary
+EXE inventory paging/Unicode paths, selection/launch/return and scaled presentation/
+touch/pitch/letterbox guards. Actual native screenshots were visually inspected.
+One initial test incorrectly used Accept on an empty Programs panel whose focus
+was Close; it was corrected to click the disabled Open control directly. No
+runtime behavior was changed to satisfy that test assumption. See F2_DESKTOP.md.
+
+Next code package: F3 real bounded directory provider over F1 plus supported
+Start/Run/explorer actions. Then F4/F5. Local Switch SDK is still unavailable;
+exact published-SHA Switch CI is the compilation gate. No physical shell, Paint,
+GPU/fallback/input/relaunch acceptance is claimed; SD troubleshooting stays closed.
+Final full-suite outcome and exact published-SHA CI must be checked before calling
+this package validated; source-only host results do not compile libnx main.
+
+Final F2 local validation: complete clean `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with the rootless MinGW/Mesa toolchain, including
+new shell/artwork checks, persistent filesystem sessions, all six E9 groups,
+Stage C, both CPU/actual-GL composition sizes, input/dialog and sequential core/
+USER/legacy sessions. The standalone shell harness also passed -Wall -Wextra
+-Werror -fno-exceptions -fno-rtti with the final native renderer and regenerated
+screenshots. Markdown relative links/fences and git diff --check passed. Only
+libnx adapter input-quarantine/comments and documentation changed after the full
+host compile; main.cpp is excluded from that host suite and is checked by Switch
+CI. Exact published-SHA CI remains to be verified after push.

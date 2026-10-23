@@ -13,6 +13,7 @@
 #include <queue>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 
 // Include the main libnx system header, for Switch development
 #include <switch.h>
@@ -37,6 +38,7 @@
 #include "ui/pointer_input.h"
 #include "ui/launcher_loop.h"
 #include "ui/executable_catalog.h"
+#include "ui/desktop_shell.h"
 #include "ui/opengl_presentation.h"
 #include "ui/switch_gpu_output.h"
 #include "win32/user32.h"
@@ -77,8 +79,8 @@ static bool ContinueApplet() {
 }
 static ui::PointerInputGate g_legacyInputGate;
 
-// Путь к выбранному исполняемому файлу — заполняется PickExecutableFile()
-// в main() (см. ниже) ДО создания игрового потока; объявлена здесь так рано
+// Путь к выбранному исполняемому файлу — заполняется PickDesktopExecutable()
+// в main() (native shell или fallback picker) ДО игрового потока; объявлена так рано
 // специально, чтобы GameThreadFunc (которая идёт по файлу раньше, чем сам
 // пикер) могла её использовать.
 // Новая оконная подсистема: для всех программ, кроме Paint (у него на новом
@@ -2018,7 +2020,7 @@ static ui::ExecutableCatalog ListExecutables() {
 
 // Single-file autolaunch is preserved. The picker can always return on applet
 // shutdown or B/PLUS, including while waiting for a new selection edge.
-static bool PickExecutableFile(bool allowAutoLaunch) {
+static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
     padUpdate(&g_pad);
     ui::PointerInputGate gate;gate.Reset(padGetButtons(&g_pad),false);
     const auto catalog=ListExecutables();const auto& files=catalog.Files();
@@ -2065,6 +2067,98 @@ static bool PickExecutableFile(bool allowAutoLaunch) {
         }
     }
     return false;
+}
+
+
+// F2 idle shell owns its frame/input on the main thread. Close it before the
+// existing guest output/worker starts; do not borrow USER state or write guest
+// renderer metrics. Active-guest taskbar/compositor integration remains F4.
+static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
+    const auto catalog=ListExecutables();shell.SetCatalog(catalog);shell.Enter();
+    if(initial && catalog.Files().size()==1 && !catalog.Truncated()) {
+        g_selectedExePath=catalog.Files()[0];return true;
+    }
+    shell.SetStatus(initial?"":g_launchStatus);
+    consoleExit(NULL);cpu::g_consoleAvailable=false;
+    ui::PresentationBuffer<uint32_t> pixels;
+    const bool ready=pixels.Resize(size_t(ui::DesktopShell::Width)*ui::DesktopShell::Height)
+        && newui::InitializeOutput(false);
+    if(!ready) {
+        newui::CloseOutput();consoleInit(NULL);cpu::g_consoleAvailable=true;
+        g_launchStatus="Desktop display unavailable; using text picker.";
+        return PickConsoleExecutableFile(false);
+    }
+    g_graphicsInitialized=true;
+    ui::Surface surface;surface.width=ui::DesktopShell::Width;surface.height=ui::DesktopShell::Height;
+    surface.pitch=surface.width*4;surface.bits=reinterpret_cast<uint8_t*>(pixels.data());
+    ui::SoftwarePresentation software;ui::Presentation presentation(&software);
+    ui::PointerInputGate gate;ui::StickPointerMotion motion;
+    padUpdate(&g_pad);HidTouchScreenState touch{};
+    const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+    gate.Reset(padGetButtons(&g_pad),touching);motion.ResetTime(rt::Clock::NowUs());
+    float x=640,y=360;bool wasTouching=false,pointerHeld=false,keyboard=true,dirty=true,outputFailed=false;
+    std::u16string lastClock;
+    while(ContinueApplet()) {
+        padUpdate(&g_pad);touch={};
+        const bool rawTouch=hidGetTouchScreenStates(&touch,1) && touch.count>0;
+        const auto edges=gate.Update(padGetButtons(&g_pad),rawTouch);
+        const auto stick=padGetStickPos(&g_pad,0);
+        bool moved=motion.Advance(x,y,stick.x,stick.y,rt::Clock::NowUs(),surface.width,surface.height);
+        const auto viewport=ui::FitViewport(surface.width,surface.height,1280,720);
+        bool acceptedTouch=edges.touching;
+        if(acceptedTouch && !wasTouching && !viewport.Contains(touch.touches[0].x,touch.touches[0].y))acceptedTouch=false;
+        if(acceptedTouch) {
+            const int oldX=int(x),oldY=int(y);
+            viewport.ToSource(touch.touches[0].x,touch.touches[0].y,surface.width,surface.height,x,y);
+            moved=moved || oldX!=int(x) || oldY!=int(y);
+        }
+        if(moved || acceptedTouch)keyboard=false;
+        const int oldHover=shell.Hover();shell.PointerMove(int(x),int(y));
+        dirty=dirty || shell.Hover()!=oldHover;
+        const u64 down=edges.down;
+        if(down&HidNpadButton_Plus)break;
+        const u64 navigation=down&(HidNpadButton_R|HidNpadButton_B|HidNpadButton_Up|HidNpadButton_Down|HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_X);
+        if(navigation){shell.CancelPointer();pointerHeld=false;gate.Reset(padGetButtons(&g_pad),rawTouch);}
+        if(down&HidNpadButton_R){shell.ToggleStart();keyboard=true;}
+        if(down&HidNpadButton_B){shell.Back();keyboard=true;}
+        if(down&HidNpadButton_Up){shell.Move(-1);keyboard=true;}
+        if(down&HidNpadButton_Down){shell.Move(1);keyboard=true;}
+        if(down&HidNpadButton_Left){shell.Page(-1);keyboard=true;}
+        if(down&HidNpadButton_Right){shell.Page(1);keyboard=true;}
+        if(down&HidNpadButton_X || (keyboard && (down&HidNpadButton_A)))shell.Accept();
+        const bool contact=!navigation && (acceptedTouch || (!keyboard && (edges.held&HidNpadButton_A)));
+        if(contact && !pointerHeld)shell.PointerDown(int(x),int(y));
+        if(!contact && pointerHeld)shell.PointerUp(int(x),int(y));
+        pointerHeld=contact;
+        dirty=dirty || down || edges.up || acceptedTouch!=wasTouching;wasTouching=acceptedTouch;
+        if(shell.ExitRequested() || !shell.LaunchPath().empty())break;
+        const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";
+        if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);
+        const std::u16string clockText(clock,clock+std::strlen(clock));
+        dirty=dirty || clockText!=lastClock;
+        if(dirty) {
+            shell.Render(surface,clockText);lastClock=clockText;
+            if(!presentation.Submit(surface)){outputFailed=true;break;}
+        }
+        if(dirty || moved) {
+            u32 stride=0;auto* buffer=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
+            const bool rendered=presentation.Render({buffer,1280,720,stride/4,size_t(stride/4)*720},
+                {int(x),int(y),!keyboard});
+            framebufferEnd(&g_fb);
+            if(!rendered){outputFailed=true;break;}
+        }
+        dirty=false;svcSleepThread(16'000'000);
+    }
+    presentation.Detach();newui::CloseOutput();g_graphicsInitialized=false;
+    if(!shell.LaunchPath().empty())g_selectedExePath=shell.LaunchPath();
+    // A console is required only for the text fallback and existing launcher
+    // transition. It is never restored after sticky applet shutdown.
+    if(!g_appletStopped){consoleInit(NULL);cpu::g_consoleAvailable=true;}
+    if(outputFailed && !g_appletStopped) {
+        g_launchStatus="Desktop render unavailable; using text picker.";
+        return PickConsoleExecutableFile(false);
+    }
+    return !shell.LaunchPath().empty() && !g_appletStopped;
 }
 
 int main(int argc, char* argv[])
@@ -2117,8 +2211,9 @@ int main(int argc, char* argv[])
     consoleUpdate(NULL);
 
     struct SwitchLauncher {
+        ui::DesktopShell shell;
         bool Alive() {return ContinueApplet();}
-        bool Pick(bool initial) {return PickExecutableFile(initial);}
+        bool Pick(bool initial) {return PickDesktopExecutable(shell,initial);}
         bool BeginOutput() {
             padUpdate(&g_pad);
             g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad)&HidNpadButton_L);

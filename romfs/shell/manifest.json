@@ -1,0 +1,29 @@
+{
+  "upstream_commit": "41b8f6abd7ebb9d5c35e563c8cd8c410c88f114a",
+  "license": "Public Domain",
+  "notice": "COPYING.tango",
+  "icons": [
+    {
+      "file": "icons/folder.png",
+      "source": "https://raw.githubusercontent.com/stephenc/tango-icon-theme/41b8f6abd7ebb9d5c35e563c8cd8c410c88f114a/32x32/places/folder.png",
+      "sha256": "a140d239439c433c5a841c78b612ab7e49d4d54e1e1879d73b1f5927fe02d6af",
+      "decoded_rgba_sha256": "3b2937e764d86c4142874e1a7c49d9cf010a03a15f56057fe93a4c4a2d87f8ee"
+    },
+    {
+      "file": "icons/computer.png",
+      "source": "https://raw.githubusercontent.com/stephenc/tango-icon-theme/41b8f6abd7ebb9d5c35e563c8cd8c410c88f114a/32x32/devices/computer.png",
+      "sha256": "357c0fdc7e46b0cea655d54317174cea753969919cf9279ef031a93e758f203e",
+      "decoded_rgba_sha256": "66ab3f736081670df4eeb9f81b079fd56d23cede83fb3f16cd36d041a06c2e2a"
+    },
+    {
+      "file": "icons/programs.png",
+      "source": "https://raw.githubusercontent.com/stephenc/tango-icon-theme/41b8f6abd7ebb9d5c35e563c8cd8c410c88f114a/32x32/apps/system-file-manager.png",
+      "sha256": "7d8129a2416cdd341919e04d1542be9d711fd69e53cc5971d8fbbf79a1ae3b5a",
+      "decoded_rgba_sha256": "49106f2be97d40b0a9a551ec30a4b15f94931af08c72d0447f01bd5600f7bfd8"
+    }
+  ],
+  "native_header": "source/ui/shell_icons.h",
+  "native_header_sha256": "bedeb64a8d8f90ce4ba7b4f2aac9199ca962226b85c71be07eb3c8ff39e7f8e9",
+  "theme": "Original native blue/green gradients and project mark; no Microsoft artwork.",
+  "fonts": "../fonts/ (Liberation; OFL.txt)"
+}
