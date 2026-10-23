@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`ae21f9670d848ba2a9d2a820ba44574a65f2913f` (2026-10-23).
-[CI 39914017936](https://github.com/Omeruno/switch-recompiler/actions/runs/39914017936)
+`2742eeac77d6fcde354336f680846804138c3661` (2026-10-23).
+[CI 39940606718](https://github.com/Omeruno/switch-recompiler/actions/runs/39940606718)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -288,3 +288,49 @@ declaration above the interpreter; no input/lifetime behavior changes. Four othe
 CI jobs had already passed. Verify the corrected published SHA, not the failed
 59393c1 Switch build. Local full host validation remains applicable because it
 does not compile main.cpp; Switch build is the direct check for this correction.
+
+## 2026-10-23 G0: measurement foundation
+
+Incoming 2742eeac77d6fcde354336f680846804138c3661 was fetched without resetting
+newer work; GitHub API independently confirms all six jobs in run 39940606718.
+No AGENTS.md was found. This checkout initially held the old import on local
+`work`; the clean checkout was switched to the requested branch at its remote tip.
+
+Added opt-in fixed-storage instruction/host entry census, independent million-
+event budgets and explicit truncation, ordinary-return winrun report and a public
+native x86 fixture with exact counts and semantic checks. There are no per-event
+clocks, allocations, logs or guest pointers. This is frequency, not CPU time.
+The Switch frontend does not enable the collector. See STAGE_G_PROFILING.md for
+fault/REP/host entry denominators, build-local IDs and reproducible instructions.
+
+The current implementation order/gates are recorded in ACTIVE_ROADMAP.md.
+Next: representative public PE workload with checked results, phase measurements
+and enabled/disabled overhead, then select one evidence-backed optimization.
+Do not choose a fast path from synthetic counts or infer Switch speedups.
+SD troubleshooting is closed; the consolidated physical checklist stays deferred.
+Validation and exact new published-SHA CI are recorded after completion below.
+
+G0 local validation: fresh complete `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with GCC 14 Win32 MinGW and Mesa, including
+all six E9 groups, Stage C, both 28-scene CPU/actual-GL comparisons, input,
+dialogs and core/new-USER/legacy sequential sessions. The new native regression
+also passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti. Runner smoke verified
+identical enabled/disabled guest stdout and exit 0, two identical DLL fixture
+profiles (1426 instructions/111 hosts), CRT fixture success with profiling,
+and failed-load exit 3/zero-count report. No code optimization was selected.
+
+The first MinGW full run used POSIX alternatives: crt_basic/crt_cpp failed because
+that compiler introduces unsupported libwinpthread pthread_once. Rootless package
+extraction was corrected to explicit Win32 GCC/G++; a fresh full fixture rebuild
+then passed. This is toolchain selection, not a runtime fix. The initial native
+fixture also assumed last-error context without a bound TEB; its dispatcher
+checks now use context-independent lstrlenA/W rather than expanding HLE behavior.
+
+Tools live outside git in /workspace/setup-tools/deps with a cxx-host wrapper;
+APT signed-index/checksum validation and TLS were retained. The old devkitPro
+HTTP 403 is no longer present (installer URL returns 200), but devkitA64/libnx
+are absent and the official installer needs root; this machine has no sudo.
+Local Switch compilation is unverified; use exact-SHA Switch CI. No current
+Paint, physical GPU/fallback/input, SD or console relaunch test was performed.
+Exact new-SHA CI is pending publication at commit time; check GitHub, not the
+incoming green run, for this package's outcome.

@@ -24,6 +24,8 @@
 #include "source/runtime/process.h"
 #include "source/runtime/guest_execution.h"
 #include "source/runtime/guest_session.h"
+#include "source/runtime/workload_profile.h"
+#include "source/runtime/workload_report.h"
 #include "source/win32/gdi.h"
 #include "source/win32/host_functions.h"
 #include "source/win32/message_loop.h"
@@ -121,13 +123,14 @@ void DumpScreen(const char* path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    bool verbose = false;
+    bool verbose = false, profileEnabled = false;
     std::vector<std::string> libDirs;
     const char* dumpPath = nullptr;
     bool forceLegacy = false, forceNew = false, listMissing = false, probeThreads = false, probeX86Threads = false;
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
+        else if (std::strcmp(argv[i], "--profile-workload") == 0) profileEnabled = true;
         else if (std::strcmp(argv[i], "-L") == 0 && i + 1 < argc) libDirs.push_back(argv[++i]);
         else if (std::strcmp(argv[i], "-f") == 0 && i + 1 < argc) g_frameLimit = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "-d") == 0 && i + 1 < argc) dumpPath = argv[++i];
@@ -173,6 +176,13 @@ int main(int argc, char** argv) {
     }
 
     cpu::g_consoleAvailable = verbose;
+    rt::WorkloadProfile profile;
+    // Report at ordinary exit, after GuestExecution and GuestSession teardown.
+    struct Report {
+        rt::WorkloadProfile* p;
+        ~Report() {if (p) rt::WriteWorkloadReport(stderr, *p);}
+    } report{profileEnabled ? &profile : nullptr};
+    rt::WorkloadProfileScope profileScope(profileEnabled ? &profile : nullptr);
     rt::GuestSession session;
     auto& mem=session.Memory();auto& proc=session.ProcessObject();
     for (const auto& d : libDirs) proc.AddSearchPath(d);

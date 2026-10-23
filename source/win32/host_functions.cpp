@@ -1,3 +1,4 @@
+#include "../runtime/workload_profile.h"
 #include "../runtime/guest_fault.h"
 #include <strings.h>
 #include "mfc42u_abi_table.h"
@@ -5102,6 +5103,7 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
             std::printf("[call] %s!%s(%x, %x, %x, %x)\n", entry.dllName, entry.funcName[0] ? entry.funcName : "#",
                         mem.Read32(cpu.ESP() + 4), mem.Read32(cpu.ESP() + 8), mem.Read32(cpu.ESP() + 12), mem.Read32(cpu.ESP() + 16));
         }
+        if (rt::g_workloadProfile) rt::g_workloadProfile->Host(static_cast<size_t>(idx));
         outOutcome = entry.fn(cpu, mem);
         if (g_traceHostCalls) std::printf("       -> %x\n", outOutcome.returnValue);
         // Выход из процесса мог случиться во вложенном вызове гостя (например,
@@ -5136,6 +5138,7 @@ bool TryHandleHostCall(cpu::CpuState& cpu, cpu::IGuestMemory& mem, HostCallOutco
         if (delta % HOST_FUNCTION_STRIDE == 0) {
             size_t slotIdx = delta / HOST_FUNCTION_STRIDE;
             if (slotIdx < g_mfcStubSlots.size()) {
+                if (rt::g_workloadProfile) rt::g_workloadProfile->Host(rt::WorkloadProfile::HostSlots);
                 outOutcome = Impl_MfcOrdinalStub(cpu, mem, g_mfcStubSlots[slotIdx]);
                 cpu.Get(cpu::Reg32::EAX) = outOutcome.returnValue;
 

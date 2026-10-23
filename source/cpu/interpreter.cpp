@@ -8,6 +8,7 @@
 
 #include "interpreter.h"
 #include "exec_context.h"
+#include "../runtime/workload_profile.h"
 
 #include <cstdio>
 
@@ -228,6 +229,7 @@ StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
         else break;
     }
     x.opcode = op;
+    size_t profileOpcode = x.fetchFault ? 512 : op;
     const uint8_t osz = x.osz;
     uint32_t next = 0; // новый EIP, если инструкция — переход (иначе 0)
     bool jumped = false;
@@ -893,6 +895,7 @@ StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
         // ===== Двухбайтовая карта 0F =====
         case 0x0F: {
             uint8_t op2 = x.Fetch8();
+            profileOpcode = x.fetchFault ? 512 : 256 + op2;
             if (x.fetchFault) break;
             switch (op2) {
                 case 0x0B: x.Raise(EXC_ILLEGAL_INSTRUCTION); break; // UD2
@@ -1151,6 +1154,7 @@ StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
     }
 
 done:
+    if (rt::g_workloadProfile) rt::g_workloadProfile->Instruction(profileOpcode);
     if (outInstr) {
         outInstr->length = static_cast<uint8_t>(x.pos);
         outInstr->rawOpcodeForDebug = x.opcode;
