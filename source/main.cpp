@@ -33,6 +33,7 @@
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
+#include "ui/executable_catalog.h"
 #include "ui/opengl_presentation.h"
 #include "ui/switch_gpu_output.h"
 #include "win32/user32.h"
@@ -83,7 +84,7 @@ bool InitializeOutput(bool gpuRequested);
 void CloseOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
-static std::string g_selectedExePath = "romfs:/winmine.exe"; // безопасный дефолт, если пикер не понадобится/не сработает
+static std::string g_selectedExePath; // set only after an actual picker selection
 
 // НАЙДЕНО ОБРАТНОЙ СВЯЗЬЮ С РЕАЛЬНОГО ЖЕЛЕЗА: тулбар/палитра рисовались
 // поверх Сапёра — оказалось, DrawToolbar/DrawPalette ошибочно
@@ -1950,82 +1951,60 @@ static void PlayAudioImpl(const std::vector<int16_t>& samples) {
 // можно положить и в свою подпапку вместе с её DLL и данными
 // (sdmc:/switch-recompiler/Game/game.exe): так готовый .nro из CI
 // запускает свои программы без пересборки.
-static bool HasExeExtension(const std::string& name) {
-    if (name.size() < 5) return false;
-    std::string ext = name.substr(name.size() - 4);
-    for (auto& c : ext) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
-    return ext == ".exe";
+// Bound inventory work before the guest starts; preserve ROMFS-before-SD order.
+static ui::ExecutableCatalog ListExecutables() {
+    ui::ExecutableCatalog catalog;
+    catalog.ScanRoot("romfs:/",0);
+    catalog.ScanRoot(std::string(win32::kRegistryFolderPath)+"/",1);
+    return catalog;
 }
 
-// Добавляет в result полные пути .exe из dir; depth > 0 — заходить в подпапки
-static void CollectExecutables(const std::string& dir, int depth, std::vector<std::string>& result) {
-    DIR* d = opendir(dir.c_str());
-    if (!d) return;
-    std::vector<std::string> subdirs;
-    while (dirent* entry = readdir(d)) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") continue;
-        std::string full = dir + name;
-        struct stat st;
-        if (stat(full.c_str(), &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) { if (depth > 0) subdirs.push_back(full + "/"); }
-        else if (HasExeExtension(name)) result.push_back(full);
+// Single-file autolaunch is preserved. The picker can always return on applet
+// shutdown or B/PLUS, including while waiting for a new selection edge.
+static bool PickExecutableFile() {
+    const auto catalog=ListExecutables();const auto& files=catalog.Files();
+    if(files.empty()) {
+        printf("[!] No .exe found in romfs or %s/\n",win32::kRegistryFolderPath);
+        printf("B/PLUS: exit\n");consoleUpdate(NULL);
+        while(appletMainLoop()) {
+            padUpdate(&g_pad);
+            if(padGetButtonsDown(&g_pad)&(HidNpadButton_B|HidNpadButton_Plus))break;
+            svcSleepThread(16'000'000);
+        }
+        return false;
     }
-    closedir(d);
-    for (const std::string& sub : subdirs) CollectExecutables(sub, depth - 1, result);
-}
-
-static std::vector<std::string> ListExecutables() {
-    std::vector<std::string> romfs, sd;
-    CollectExecutables("romfs:/", 0, romfs);
-    CollectExecutables(std::string(win32::kRegistryFolderPath) + "/", 1, sd);
-    std::sort(romfs.begin(), romfs.end());
-    std::sort(sd.begin(), sd.end());
-    romfs.insert(romfs.end(), sd.begin(), sd.end());
-    return romfs;
-}
-
-// Текстовый пикер: крестовина/стик вверх-вниз — выбор пункта, A — подтвердить.
-// Если файл всего один — даже не спрашиваем, сразу его и берём.
-static void PickExecutableFile() {
-    std::vector<std::string> files = ListExecutables();
-    if (files.empty()) {
-        printf("[!] No .exe found in romfs or %s/ - using %s by default\n",
-               win32::kRegistryFolderPath, g_selectedExePath.c_str());
-        consoleUpdate(NULL);
-        return;
-    }
-    if (files.size() == 1) {
-        g_selectedExePath = files[0];
-        return; // единственный файл — нечего выбирать
-    }
-
-    int selected = 0;
-    for (;;)
-    {
+    if(files.size()==1 && !catalog.Truncated()) {g_selectedExePath=files[0];return true;}
+    ui::LauncherSelection selection(files.size());
+    while(appletMainLoop()) {
         consoleClear();
         printf("=== Switch Recompiler - choose a program ===\n\n");
-        for (size_t i = 0; i < files.size(); i++) {
-            printf(" %s %s\n", (static_cast<int>(i) == selected) ? ">" : " ", files[i].c_str());
+        for(size_t i=selection.FirstVisible();i<selection.EndVisible();++i) {
+            std::string label=files[i];
+            for(char& c:label)if(static_cast<unsigned char>(c)<32 || c==127)c='?';
+            if(label.size()>68) {
+                size_t start=label.size()-65;
+                while(start<label.size() && (static_cast<unsigned char>(label[start])&0xC0)==0x80)++start;
+                label="..."+label.substr(start);
+            }
+            printf(" %s %s\n",i==selection.Selected()?">":" ",label.c_str());
         }
-        printf("\n(Up/Down - select, A - launch)\n");
+        printf("\n%zu/%zu  Up/Down: select  Left/Right: page\nA: launch  B/PLUS: exit\n",selection.Selected()+1,files.size());
+        if(catalog.Truncated())printf("[!] Scan limit reached; list is incomplete.\n");
+        if(catalog.Errors())printf("[!] Some paths could not be read.\n");
         consoleUpdate(NULL);
-
-        bool chosen = false;
-        while (!chosen)
-        {
-            padUpdate(&g_pad);
-            u64 kDown = padGetButtonsDown(&g_pad);
-            if (kDown & HidNpadButton_Up) { selected = (selected - 1 + static_cast<int>(files.size())) % static_cast<int>(files.size()); break; }
-            if (kDown & HidNpadButton_Down) { selected = (selected + 1) % static_cast<int>(files.size()); break; }
-            if (kDown & HidNpadButton_A) { chosen = true; break; }
-            svcSleepThread(16'000'000); // ~16мс — не крутим цикл вхолостую на 100% CPU
-        }
-        if (chosen) {
-            g_selectedExePath = files[selected];
-            return;
+        for(;;) {
+            if(!appletMainLoop())return false;
+            padUpdate(&g_pad);const u64 down=padGetButtonsDown(&g_pad);
+            if(down&(HidNpadButton_B|HidNpadButton_Plus))return false;
+            if(down&HidNpadButton_A){g_selectedExePath=files[selection.Selected()];return true;}
+            if(down&HidNpadButton_Up){selection.Move(-1);break;}
+            if(down&HidNpadButton_Down){selection.Move(1);break;}
+            if(down&HidNpadButton_Left){selection.Move(-int(ui::LauncherSelection::Rows));break;}
+            if(down&HidNpadButton_Right){selection.Move(int(ui::LauncherSelection::Rows));break;}
+            svcSleepThread(16'000'000);
         }
     }
+    return false;
 }
 
 int main(int argc, char* argv[])
@@ -2078,7 +2057,11 @@ int main(int argc, char* argv[])
 
     // Выбор исполняемого файла — до переключения в графику, пока консоль
     // ещё доступна (проще всего показать текстовый список именно тут)
-    PickExecutableFile();
+    if(!PickExecutableFile()) {
+        romfsExit();
+        if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
+        consoleExit(NULL);return 0;
+    }
     padUpdate(&g_pad);
     g_useNewUi = IsRunningPaint() == static_cast<bool>(padGetButtons(&g_pad) & HidNpadButton_L);
     printf("Launching: %s (%s window layer)\n", g_selectedExePath.c_str(), g_useNewUi ? "new" : "legacy");

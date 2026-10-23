@@ -115,3 +115,10 @@ with tracking enabled and exercise motion coalescing at 800x600 and 1280x720.
 Deferred checklist item 7 now needs actual console raster measurements and a
 separate physical input-to-display method, rather than a missing CPU raster
 counter implementation. Total process/driver memory and hardware E8/E9 remain open.
+
+
+Additional deferred startup smoke after F0: multiple EXEs across pages, long
+labels, ROMFS/SD ordering, single-file autolaunch, empty/incomplete inventory,
+B/PLUS cancellation and applet closure before guest startup. Verify current L/ZL
+launch overrides and launch-held input quarantine. This does not change or award
+E8/E9 graphics acceptance.

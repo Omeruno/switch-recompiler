@@ -123,3 +123,32 @@ session lifetime before adding a desktop shell. The current picker has no entry
 budget and its inner wait loop does not check applet exit. Preserve single-file
 autolaunch and current guest/renderer behavior. Do not add an unused parallel
 shell API or begin multiprocess isolation in this change.
+
+## 2026-10-23 F0: bounded picker integration
+
+E8 continuation d967733be7600af290f5206ae2a3bdb10942889c passed all six CI jobs
+in run 39901899983. The active map is ACTIVE_ROADMAP.md; historical diagnostic
+material is intentionally not duplicated in this technical handoff.
+
+Continued independently into the existing startup picker: ExecutableCatalog
+bounds EXE paths, directory entries, path length and recursion, retaining ROMFS/
+SD priority and normal SD scan depth. The real adapter uses it, paginates 18
+items, reports incomplete/unreadable discovery and supports B/PLUS/applet exit
+inside the input wait loop. Cancellation cleans services before graphics/guest
+startup. Normal single-file autolaunch, L mode and ZL fallback selection remain.
+Native catalog/budget/navigation tests passed with -fno-exceptions/-fno-rtti.
+See F0_LAUNCHER.md for behavior, scope and the actual next lifecycle requirement.
+
+This is not a desktop/taskbar or multi-launch shell. Next: a host regression
+for two sequential one-Process sessions, then explicit repeatable Process/GUI/
+renderer initialization and teardown before enabling return-to-launcher.
+Physical picker behavior joins the existing consolidated deferred smoke list.
+Final complete local suite and exact-SHA CI must be recorded below/after publish.
+
+Final local F0 validation: complete `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with freshly generated MinGW guests and Mesa,
+including the new catalog regression, E8 metrics, both tracked input/capture
+sizes, all six E9 groups, both full-frame CPU/GL composition sizes and scripted
+file/color dialogs. Standalone catalog/navigation test also passed with
+-Wall -Wextra -Werror -fno-exceptions -fno-rtti. The actual libnx menu is a Switch
+build/physical gate; local tests do not certify its pixels or button behavior.

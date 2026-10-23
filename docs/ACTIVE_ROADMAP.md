@@ -10,18 +10,19 @@ references; this short map is the current implementation queue.
 | E7 | Revision-driven snapshots, bounded optional caches, unchanged-tile work tests | Console workload evidence |
 | E8 | CPU raster/upload/draw, asynchronous GPU intervals, transfer/memory counters, bounded real-clock input/output correlation (report v7) | Console CPU/GPU comparison, total driver/process memory and physical input-to-display latency |
 | E9 | Six unattended software groups in one Process, fixture SHA and fail-closed report, CI artifact | Actual Switch GPU/fallback and real Paint smoke |
-| F0 | Next independent block: current startup picker/catalog integration | Bounded enumeration, cancellation and pagination, then launch/return session audit |
+| F0 | Bounded EXE catalog and cancellable paginated picker integrated into startup | Physical picker smoke; repeatable one-Process session lifecycle before launch-return-launch |
 
 E8/E9 hardware acceptance remains deferred. Do not award final graphics-stage
 percentages or claim Switch speedup from host tests. The consolidated checklist
 and measurement definitions are in [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).
 The combined fixture instructions are in [STAGE_E_ACCEPTANCE.md](STAGE_E_ACCEPTANCE.md).
 
-Next concrete step: replace the startup picker's unbounded enumeration with a
-bounded catalog, integrate cancellable paginated selection and preserve the
-existing single-file autolaunch. Before returning from one guest session into a
-future shell, verify the actual process/GUI/renderer teardown and initialization;
-no unused shell API or multiprocess architecture is part of F0.
+Next concrete step: make one-Process guest session initialization/teardown
+repeatable and prove two sequential sessions in a host regression before enabling
+launch-return-launch. The bounded picker is described in [F0_LAUNCHER.md](F0_LAUNCHER.md).
+Current main exits the NRO after one guest thread; static Process/memory and global
+GUI state must be handled deliberately. No desktop-shell or multiprocess
+completion is implied by the startup picker work.
 
 After F0, choose a small reachable desktop/launcher milestone in the one-Process
 model. Stage G CPU profiling/dynarec and Stage H DirectDraw/D3D remain separate
