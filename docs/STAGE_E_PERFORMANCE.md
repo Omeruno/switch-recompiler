@@ -63,3 +63,55 @@ Keep private user logs and proprietary Paint/MFC binaries outside public git.
 
 Next software block is E9 combined unattended acceptance/reporting. Optimize
 further only after the counters or a reproducible benchmark identify excess work.
+
+## v7: CPU raster and observed-input correlation
+
+New-UI sessions enable eight CPU GDI counters: pixel writes, strokes, shapes,
+fills, blits, flood fills, text and readback. Each records outermost call count,
+sum and maximum wall nanoseconds. Counts include rejected/clipped calls and
+synchronous context/clip/font/layout preparation. Nested GDI/helper calls are
+included once in their caller's stage: FrameRect's four FillRect calls, Polygon's
+PolyPolygon, InvertRect's PatBlt and DrawText's TextOut are not added again.
+FillSurface desktop painting is covered. Raw guest DIB writes, direct Surface
+writes outside these entry points, guest instruction time and legacy UI are not
+raster timings. Recording is outside the per-pixel loops. An external SetPixel
+call is still one measured operation; instrumentation overhead must be considered
+for tiny calls. Scopes assume the current synchronous, non-yielding GDI contract.
+
+Input stamps use real steady-clock time, never rt::Clock's accelerated guest
+time. The Switch adapter stamps the HID polling iteration; platform events with
+no stamp get one when the batch is ingested, before hit-test/activation callbacks.
+The stamp stays host-only: the guest 28-byte MSG, GetMessageTime, message ordering,
+coalescing, ownership, key state and 16 ms present throttle remain unchanged.
+Only removal from the input queue records a queue-wait sample. PM_NOREMOVE and
+posted/synthetic messages without a platform stamp do not create samples.
+Coalesced motion retains the newest observation and has a separate counter.
+
+Up to 64 recently removed inputs wait for a successful output adapter completion.
+A sample is completed only if both the CPU change counter and normalized frame
+content serial differ from its removal baseline. A cursor-only/no-op output,
+unchanged content or failed render leaves it pending. GPU-to-software retry may
+complete it only after successful software output. Multiple inputs may share one
+frame; reported sample count is therefore not frame count. Ring overwrites,
+invalid future timestamps and pending/unrendered samples are reported separately.
+Session begin/end resets and disables tracking; no input payload or pointer is
+retained, no per-frame SD log is written, and storage cannot grow.
+
+Fields distinguish observed-to-queued-frame from removed-to-queued-frame. The
+endpoint is successful Swap/framebufferEnd API completion, including CPU snapshot,
+upload/conversion and platform waiting. This is correlation with a later changed
+frame, not proof that a particular DispatchMessage caused its pixels. Applications
+can discard input and draw unrelated content; peer GUI threads can also draw.
+Neither measure includes the delay before host observation or after API queuing,
+so neither is physical input-to-photon latency. No Switch latency value is claimed.
+
+The native metrics regression verifies exact nested timing with a deterministic
+clock, zero clock calls when disabled, bounded ring/drop/reset behavior, and
+pixel equality for measured/unmeasured GDI. Queue/output integration verifies
+peek versus removal, unsuccessful output, changed content and independence from
+100 seconds of guest fast-forward. Existing real-x86 input/capture tests also run
+with tracking enabled and exercise motion coalescing at 800x600 and 1280x720.
+
+Deferred checklist item 7 now needs actual console raster measurements and a
+separate physical input-to-display method, rather than a missing CPU raster
+counter implementation. Total process/driver memory and hardware E8/E9 remain open.

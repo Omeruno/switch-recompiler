@@ -21,6 +21,7 @@
 #include "../ui/gdi.h"
 #include "../ui/region.h"
 #include "../ui/window_layers.h"
+#include "../ui/performance_metrics.h"
 #include "hle_util.h"
 
 namespace win32 {
@@ -126,8 +127,10 @@ struct Window {
 // --- Глобальное состояние --------------------------------------------------
 
 struct Msg {
+    // Host-only timestamp; never changes the guest MSG ABI or message time.
     uint32_t hwnd = 0, message = 0, wParam = 0, lParam = 0, time = 0;
     int x = 0, y = 0;
+    uint64_t observedNs=0;
 };
 
 struct Timer {
@@ -156,6 +159,7 @@ struct ThreadQueue {
 };
 
 struct State {
+    ui::InputFrameMetrics inputFrames;
     bool initialized = false;
     int screenW = 800, screenH = 600;
     ui::OwnedSurface screen;
@@ -334,6 +338,7 @@ struct InputEvent {
     int wheel = 0;
     uint32_t vk = 0;
     uint32_t ch = 0;
+    uint64_t observedNs=0; // optional real host sample time, zero means ingestion
 };
 struct Platform {
     // Ждать ввода не дольше timeoutMs (<0 — без ограничения); события — в out.

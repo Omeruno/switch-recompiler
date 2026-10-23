@@ -1624,6 +1624,7 @@ void BeginPresentation(const char* guestPath) {
     }
     g_presentation.Attach(g_gpuActive?static_cast<ui::PresentationBackend*>(&g_gpu):&g_software);
     g_presentationGuest=guestPath;g_framebufferStats={};
+    ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
     g_havePresented=false;
     g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
     padUpdate(&g_pad);
@@ -1639,7 +1640,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v6\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v7\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1682,8 +1683,26 @@ void EndPresentation() {
         fprintf(log,"GPU screen upload attempted bytes: %llu\nGPU ownership upload attempted bytes: %llu\nGPU layer upload attempted bytes: %llu\nGPU peak logical texture bytes: %zu\n",
             (unsigned long long)t.screenUploadBytes,(unsigned long long)t.ownershipUploadBytes,
             (unsigned long long)t.layerUploadBytes,t.peakTextureBytes);
+        const auto& input=win32::user::S().inputFrames;
+        const auto& latency=input.Stats();
+        auto duration=[&](const char* name,const ui::DurationCounter& d) {
+            fprintf(log,"%s samples: %llu\n%s total ns: %llu\n%s max ns: %llu\n",name,(unsigned long long)d.count,
+                name,(unsigned long long)d.totalNs,name,(unsigned long long)d.maxNs);
+        };
+        for(size_t i=0;i<size_t(ui::RasterStage::Count);++i) {
+            const auto stage=static_cast<ui::RasterStage>(i);char name[64];
+            snprintf(name,sizeof(name),"CPU raster %s",ui::RasterStageName(stage));duration(name,ui::g_rasterMetrics.Stage(stage));
+        }
+        duration("Input queue wait",latency.queueWait);
+        duration("Input observed to queued frame",latency.observedToFrame);
+        duration("Input removed to queued frame",latency.removedToFrame);
+        fprintf(log,"Input measured frames: %llu\nInput coalesced moves: %llu\nInput measurement drops: %llu\nInput invalid timestamps: %llu\nInput pending samples: %zu\n",
+            (unsigned long long)latency.outputFrames,(unsigned long long)latency.coalesced,(unsigned long long)latency.dropped,
+            (unsigned long long)latency.invalid,input.Pending());
+        fprintf(log,"Input timing scope: platform observation / queue removal to later changed CPU frame queued by output; correlation only, not causal dispatch or input-to-photon latency. Raster stages include synchronous host GDI preparation, exclude raw guest writes and interpreter time.\n");
         fclose(log);
     }
+    ui::g_rasterMetrics.Reset(false);win32::user::S().inputFrames.Reset(false);
     g_presentation.Detach();
     win32::user::EnableWindowLayers(false);
     if(g_gpuActive) {g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;}
@@ -1707,6 +1726,7 @@ void Blit() {
         if(swapped) {
             ++g_framebufferStats.gpuFrames;g_framebufferStats.gpuSwapNs+=swapNs;
             g_framebufferStats.maxGpuSwapNs=std::max(g_framebufferStats.maxGpuSwapNs,swapNs);
+            win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
             g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
             g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
             return;
@@ -1730,6 +1750,7 @@ void Blit() {
     g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);
     if(!rendered)g_havePresented=false;
     if(rendered) {
+        win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
         g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
         g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
     }
@@ -1740,19 +1761,19 @@ void Present(const ui::Surface& s) {
     if(submitted)Blit();
 }
 
-void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk) {
+void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk,uint64_t observedNs) {
     win32::user::InputEvent e;
     e.type = down ? win32::user::InputEvent::KeyDown : win32::user::InputEvent::KeyUp;
-    e.vk = vk;
+    e.vk = vk;e.observedNs=observedNs;
     out.push_back(e);
 }
 
-void Mouse(std::vector<win32::user::InputEvent>& out, win32::user::InputEvent::Type t, int button) {
+void Mouse(std::vector<win32::user::InputEvent>& out, win32::user::InputEvent::Type t, int button,uint64_t observedNs) {
     win32::user::InputEvent e;
     e.type = t;
     e.x = static_cast<int>(g_cx);
     e.y = static_cast<int>(g_cy);
-    e.button = button;
+    e.button = button;e.observedNs=observedNs;
     out.push_back(e);
 }
 
@@ -1761,6 +1782,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     uint32_t start = rt::Clock::NowMs();
     for (;;) {
         if (!appletMainLoop()) { IE q; q.type = IE::Quit; out.push_back(q); return true; }
+        const uint64_t observedNs=ui::PerformanceNowNs();
         padUpdate(&g_pad);
         HidTouchScreenState ts = {0};
         const bool rawTouching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
@@ -1786,22 +1808,22 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
             g_lastTouchX = tx;
             g_lastTouchY = ty;
         }
-        if (moved) Mouse(out, IE::MouseMove, 0);
-        if (touching && !g_touching) Mouse(out, IE::MouseDown, 0);
-        if (!touching && g_touching) Mouse(out, IE::MouseUp, 0);
+        if (moved) Mouse(out, IE::MouseMove, 0,observedNs);
+        if (touching && !g_touching) Mouse(out, IE::MouseDown, 0,observedNs);
+        if (!touching && g_touching) Mouse(out, IE::MouseUp, 0,observedNs);
         g_touching = touching;
         // кнопки
-        if (down & HidNpadButton_A) Mouse(out, IE::MouseDown, 0);
-        if (up & HidNpadButton_A) Mouse(out, IE::MouseUp, 0);
-        if (down & HidNpadButton_ZR) Mouse(out, IE::MouseDown, 1);
-        if (up & HidNpadButton_ZR) Mouse(out, IE::MouseUp, 1);
+        if (down & HidNpadButton_A) Mouse(out, IE::MouseDown, 0,observedNs);
+        if (up & HidNpadButton_A) Mouse(out, IE::MouseUp, 0,observedNs);
+        if (down & HidNpadButton_ZR) Mouse(out, IE::MouseDown, 1,observedNs);
+        if (up & HidNpadButton_ZR) Mouse(out, IE::MouseUp, 1,observedNs);
         struct { u64 button; uint32_t vk; } keys[] = {
             {HidNpadButton_Left, 0x25}, {HidNpadButton_Up, 0x26}, {HidNpadButton_Right, 0x27}, {HidNpadButton_Down, 0x28},
             {HidNpadButton_B, 0x1B}, {HidNpadButton_X, 0x0D}, {HidNpadButton_Y, 0x09}, {HidNpadButton_L, 0x12},
             {HidNpadButton_R, 0x71}};
         for (auto& k : keys) {
-            if (down & k.button) Key(out, true, k.vk);
-            if (up & k.button) Key(out, false, k.vk);
+            if (down & k.button) Key(out, true, k.vk,observedNs);
+            if (up & k.button) Key(out, false, k.vk,observedNs);
         }
         if (down & HidNpadButton_Plus) { IE q; q.type = IE::Quit; out.push_back(q); }
         if (moved && out.size() == 1) {

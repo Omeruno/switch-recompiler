@@ -58,6 +58,7 @@ int main(int argc,char** argv) {
     const bool paced=argc==3;rt::Clock::SetFastForward(!paced);
     AbortInput(false);AbortInput(true);
     user::EnableUi(paced?1280:800,paced?720:600);
+    user::S().inputFrames.Reset(true);
     cpu::PagedGuestMemory memory;rt::Process process(memory);rt::g_process=&process;
     std::string error;assert(process.LoadMainExe(argv[1],error));
     assert(process.PrepareMainThread(process.MainThread().cpu,error));
@@ -68,6 +69,7 @@ int main(int argc,char** argv) {
     user::g_platform.present=[](const ui::Surface& surface) {
         assert(presentation.Submit(surface));
         assert(presentation.Render({display.data(),1280,720,1280,display.size(),true}));
+        user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),presentation.ContentSerial());
         ++presented;if(pacedOutput)rt::Clock::Sleep(16);
     };
     user::g_platform.wait=[](int,std::vector<user::InputEvent>& events) {
@@ -82,6 +84,7 @@ int main(int argc,char** argv) {
             event.type=user::InputEvent::Char;event.ch=current==1?'a':'b';events.push_back(event);
         } else if(current==3) {
             event.type=user::InputEvent::MouseMove;event.x=550;event.y=150;events.push_back(event);
+            events.push_back(event); // one coalesced move, without duplicate delivery
         } else if(current==4) {
             // Begin in the capture owner's child, then drag across the peer.
             event.type=user::InputEvent::MouseDown;event.x=440;event.y=80;events.push_back(event);
@@ -113,9 +116,11 @@ int main(int argc,char** argv) {
     for(const auto& item:user::S().queues)assert(!item.second.active && !item.second.focus);
     for(const auto& item:user::S().windows)assert(item.first==user::S().desktop);
     assert(presented>0 && presentation.SourceWidth()==(paced?1280:800));
+    assert(user::S().inputFrames.Stats().queueWait.count>0 && user::S().inputFrames.Stats().coalesced>0);
     // Redraw remains usable after guest shutdown; source is an owned snapshot.
     assert(presentation.Render({display.data(),1280,720,1280,display.size(),true},{0,0,true}));
     presentation.Detach();assert(!presentation.FrameBytes());
+    user::S().inputFrames.Reset();
     user::g_platform.wait={};user::g_platform.present=nullptr;rt::g_process=nullptr;
     if(paced)puts("PASSED: 1280x720 real-clock GUI callbacks through software backend with paced presentation");
     puts("PASSED: foreground input routing from peer poll, capture drag/hover ownership, nested callbacks and host-abort/ExitProcess GUI cleanup");

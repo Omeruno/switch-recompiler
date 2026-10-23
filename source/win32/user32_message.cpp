@@ -54,13 +54,14 @@ uint32_t MouseKeyFlags() {
 
 uint32_t MakeLong(int lo, int hi) { return (static_cast<uint32_t>(lo) & 0xFFFF) | (static_cast<uint32_t>(hi) << 16); }
 
-void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
+void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, uint64_t observedNs) {
     Msg m;
     m.hwnd = hwnd;
     m.message = msg;
     m.wParam = wp;
     m.lParam = lp;
     m.time = NowMs();
+    if(S().inputFrames.Enabled())m.observedNs=observedNs?observedNs:ui::PerformanceNowNs();
     m.x = S().cursorX;
     m.y = S().cursorY;
     const auto* window=Win(hwnd);
@@ -72,7 +73,7 @@ void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
     // движения мыши сливаем: важна последняя позиция
     if ((msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE) && !queue.input.empty()) {
         Msg& last = queue.input.back();
-        if (last.message == msg && last.hwnd == hwnd) { last = m; return; }
+        if (last.message == msg && last.hwnd == hwnd) { S().inputFrames.Coalesced();last = m; return; }
     }
     queue.input.push_back(m);
 }
@@ -108,7 +109,7 @@ void MouseEvent(const InputEvent& e) {
         const auto* foreground=Win(s.foreground);
         const uint32_t focus=foreground?FocusForWindow(foreground->hwnd):0;
         uint32_t f = focus ? focus : hwnd;
-        QueueInput(f, WM_MOUSEWHEEL, MakeLong(static_cast<int>(MouseKeyFlags()), e.wheel), MakeLong(x, y));
+        QueueInput(f, WM_MOUSEWHEEL, MakeLong(static_cast<int>(MouseKeyFlags()), e.wheel), MakeLong(x, y),e.observedNs);
         return;
     }
     bool client = hit == HTCLIENT;
@@ -148,9 +149,9 @@ void MouseEvent(const InputEvent& e) {
     if (!(target = Win(hwnd))) return;
     if (client) {
         int cx = x - ClientOriginX(target), cy = y - ClientOriginY(target);
-        QueueInput(hwnd, msg, MouseKeyFlags(), MakeLong(cx, cy));
+        QueueInput(hwnd, msg, MouseKeyFlags(), MakeLong(cx, cy),e.observedNs);
     } else {
-        QueueInput(hwnd, msg - WM_MOUSEMOVE + WM_NCMOUSEMOVE, hit, MakeLong(x, y));
+        QueueInput(hwnd, msg - WM_MOUSEMOVE + WM_NCMOUSEMOVE, hit, MakeLong(x, y),e.observedNs);
     }
 }
 
@@ -178,7 +179,7 @@ void KeyEvent(const InputEvent& e) {
     if (down && wasDown) lp |= 1u << 30;
     if (!down) lp |= (1u << 30) | (1u << 31);
     uint32_t msg = down ? (sys ? WM_SYSKEYDOWN : WM_KEYDOWN) : (sys ? WM_SYSKEYUP : WM_KEYUP);
-    QueueInput(target, msg, vk, lp);
+    QueueInput(target, msg, vk, lp,e.observedNs);
 }
 
 // Применяет события платформы; false — ввода больше не будет
@@ -192,7 +193,9 @@ bool PollPlatform(int timeoutMs) {
     } else if (timeoutMs > 0) {
         rt::Clock::Sleep(static_cast<uint32_t>(timeoutMs));
     }
-    for (const InputEvent& e : events) {
+    const uint64_t ingestedNs=S().inputFrames.Enabled()?ui::PerformanceNowNs():0;
+    for (InputEvent e : events) {
+        if(!e.observedNs)e.observedNs=ingestedNs;
         switch (e.type) {
         case InputEvent::MouseMove: case InputEvent::MouseDown: case InputEvent::MouseUp: case InputEvent::Wheel:
             MouseEvent(e);
@@ -201,7 +204,7 @@ bool PollPlatform(int timeoutMs) {
             KeyEvent(e);
             break;
         case InputEvent::Char:
-            if (uint32_t t = KeyTarget()) QueueInput(t, WM_CHAR, e.ch, 1);
+            if (uint32_t t = KeyTarget()) QueueInput(t, WM_CHAR, e.ch, 1,e.observedNs);
             break;
         case InputEvent::Quit:
             if (S().foreground) PostMsg(S().foreground, WM_CLOSE, 0, 0);
@@ -306,7 +309,10 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
         for (auto it = queue.input.begin(); it != queue.input.end(); ++it) {
             if (it->message!=WM_QUIT && !MatchesFilter(it->hwnd, it->message, hwnd, min, max)) continue;
             out = *it;
-            if (remove) { queue.input.erase(it); UpdateKeyState(out); }
+            if (remove) {
+                if(S().inputFrames.Enabled())S().inputFrames.Removed(out.observedNs,ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter());
+                queue.input.erase(it); UpdateKeyState(out);
+            }
             return true;
         }
         if (queue.quit) {

@@ -1,6 +1,7 @@
 // gdi.cpp — объекты GDI, контексты устройств и растеризация (см. gdi.h)
 
 #include "gdi.h"
+#include "performance_metrics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -604,6 +605,7 @@ void Gdi::StrokeDevice(Ctx& c, const std::vector<Point>& pts, bool closed, const
 }
 
 bool Gdi::SetPixel(uint32_t hdc, int x, int y, uint32_t colorref) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Pixel);
     Ctx c;
     if (!MakeCtx(hdc, c)) return false;
     Point p = ToDevice(*c.dc, x, y);
@@ -614,6 +616,7 @@ bool Gdi::SetPixel(uint32_t hdc, int x, int y, uint32_t colorref) {
 }
 
 uint32_t Gdi::GetPixel(uint32_t hdc, int x, int y) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Readback);
     DcObj* dc = Dc(hdc);
     Surface* s;
     int ox, oy;
@@ -634,6 +637,7 @@ bool Gdi::MoveTo(uint32_t hdc, int x, int y, Point* old) {
 }
 
 bool Gdi::LineTo(uint32_t hdc, int x, int y) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Stroke);
     DcObj* dc = Dc(hdc);
     if (!dc) return false;
     Ctx c;
@@ -647,6 +651,7 @@ bool Gdi::LineTo(uint32_t hdc, int x, int y) {
 }
 
 bool Gdi::Polyline(uint32_t hdc, const std::vector<Point>& pts) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Stroke);
     Ctx c;
     if (!MakeCtx(hdc, c)) return Dc(hdc) != nullptr;
     std::vector<Point> d;
@@ -656,6 +661,7 @@ bool Gdi::Polyline(uint32_t hdc, const std::vector<Point>& pts) {
 }
 
 bool Gdi::PolyPolygon(uint32_t hdc, const std::vector<Point>& pts, const std::vector<int>& counts) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape);
     Ctx c;
     if (!MakeCtx(hdc, c)) return Dc(hdc) != nullptr;
     std::vector<std::vector<Point>> polys;
@@ -671,6 +677,7 @@ bool Gdi::PolyPolygon(uint32_t hdc, const std::vector<Point>& pts, const std::ve
 }
 
 bool Gdi::Polygon(uint32_t hdc, const std::vector<Point>& pts) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape);
     return PolyPolygon(hdc, pts, {static_cast<int>(pts.size())});
 }
 
@@ -699,9 +706,9 @@ bool ShapeRow(double l, double t, double r, double b, double rx, double ry, int 
 // внутри контура и контур пером (ширина пера внутрь фигуры).
 static void ShapeImpl(Gdi& g, uint32_t hdc, int l, int t, int r, int b, int ew, int eh, bool ellipse);
 
-bool Gdi::Rectangle(uint32_t hdc, int l, int t, int r, int b) { ShapeImpl(*this, hdc, l, t, r, b, 0, 0, false); return Dc(hdc) != nullptr; }
-bool Gdi::RoundRect(uint32_t hdc, int l, int t, int r, int b, int w, int h) { ShapeImpl(*this, hdc, l, t, r, b, w, h, false); return Dc(hdc) != nullptr; }
-bool Gdi::Ellipse(uint32_t hdc, int l, int t, int r, int b) { ShapeImpl(*this, hdc, l, t, r, b, 0, 0, true); return Dc(hdc) != nullptr; }
+bool Gdi::Rectangle(uint32_t hdc, int l, int t, int r, int b) { RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape); ShapeImpl(*this, hdc, l, t, r, b, 0, 0, false); return Dc(hdc) != nullptr; }
+bool Gdi::RoundRect(uint32_t hdc, int l, int t, int r, int b, int w, int h) { RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape); ShapeImpl(*this, hdc, l, t, r, b, w, h, false); return Dc(hdc) != nullptr; }
+bool Gdi::Ellipse(uint32_t hdc, int l, int t, int r, int b) { RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape); ShapeImpl(*this, hdc, l, t, r, b, 0, 0, true); return Dc(hdc) != nullptr; }
 
 // Доступ ShapeImpl к закрытым помощникам — через тонкую обёртку-друга
 struct GdiShapeAccess {
@@ -754,6 +761,7 @@ void Gdi::EllipsePoints(int l, int t, int r, int b, std::vector<Point>& out) {
 }
 
 bool Gdi::ArcLike(uint32_t hdc, int kind, int l, int t, int r, int b, int x1, int y1, int x2, int y2) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Shape);
     Ctx c;
     if (!MakeCtx(hdc, c)) return Dc(hdc) != nullptr;
     Point p0 = ToDevice(*c.dc, l, t), p1 = ToDevice(*c.dc, r, b);
@@ -779,6 +787,7 @@ bool Gdi::ArcLike(uint32_t hdc, int kind, int l, int t, int r, int b, int x1, in
 }
 
 bool Gdi::FillRect(uint32_t hdc, const Rect& r, uint32_t brush) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     Ctx c;
     if (!MakeCtx(hdc, c)) return Dc(hdc) != nullptr;
     BrushObj* b = Brush(brush);
@@ -792,6 +801,7 @@ bool Gdi::FillRect(uint32_t hdc, const Rect& r, uint32_t brush) {
 }
 
 bool Gdi::FrameRect(uint32_t hdc, const Rect& r, uint32_t brush) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     if (r.Empty()) return true;
     FillRect(hdc, Rect(r.left, r.top, r.right, r.top + 1), brush);
     FillRect(hdc, Rect(r.left, r.bottom - 1, r.right, r.bottom), brush);
@@ -801,10 +811,12 @@ bool Gdi::FrameRect(uint32_t hdc, const Rect& r, uint32_t brush) {
 }
 
 bool Gdi::InvertRect(uint32_t hdc, const Rect& r) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     return PatBlt(hdc, r.left, r.top, r.Width(), r.Height(), 0x550009);
 }
 
 bool Gdi::FillRgn(uint32_t hdc, uint32_t rgn, uint32_t brush) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     RegionObj* ro = Rgn(rgn);
     if (!ro) return false;
     for (const Rect& r : ro->rgn.Rects()) FillRect(hdc, r, brush);
@@ -812,6 +824,7 @@ bool Gdi::FillRgn(uint32_t hdc, uint32_t rgn, uint32_t brush) {
 }
 
 bool Gdi::PatBlt(uint32_t hdc, int x, int y, int w, int h, uint32_t rop) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
     return BlitCore(hdc, x, y, w, h, nullptr, false, 0, 0, 0, 0, rop, false, 0);
 }
 
@@ -888,12 +901,14 @@ bool Gdi::BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src,
 }
 
 bool Gdi::BitBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int sx, int sy, uint32_t rop) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
     DcObj* sd = Dc(src);
     if (!sd) return BlitCore(dst, x, y, w, h, nullptr, false, 0, 0, 0, 0, rop, false, 0);
     return StretchBlt(dst, x, y, w, h, src, sx, sy, w, h, rop);
 }
 
 bool Gdi::StretchBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int sx, int sy, int sw, int sh, uint32_t rop) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
     DcObj* sd = Dc(src);
     if (!sd) return BlitCore(dst, x, y, w, h, nullptr, false, 0, 0, 0, 0, rop, false, 0);
     Surface* ss;
@@ -906,6 +921,7 @@ bool Gdi::StretchBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int
 }
 
 bool Gdi::TransparentBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src, int sx, int sy, int sw, int sh, uint32_t key) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
     DcObj* sd = Dc(src);
     if (!sd) return false;
     Surface* ss;
@@ -917,10 +933,12 @@ bool Gdi::TransparentBlt(uint32_t dst, int x, int y, int w, int h, uint32_t src,
 }
 
 bool Gdi::BlitFromSurface(uint32_t dst, int x, int y, int w, int h, const Surface& src, int sx, int sy, int sw, int sh, uint32_t rop) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
     return BlitCore(dst, x, y, w, h, &src, false, sx, sy, sw, sh, rop, false, 0);
 }
 
 bool Gdi::ExtFloodFill(uint32_t hdc, int x, int y, uint32_t colorref, int type) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Flood);
     Ctx c;
     if (!MakeCtx(hdc, c)) return false;
     Point p = ToDevice(*c.dc, x, y);
@@ -978,6 +996,7 @@ Font* Gdi::CurrentFont(uint32_t hdc) {
 
 bool Gdi::TextOut(uint32_t hdc, int x, int y, const std::u16string& text, int options, const Rect* rect,
                   const std::vector<int>* dx) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Text);
     DcObj* dc = Dc(hdc);
     if (!dc) return false;
     Font* font = CurrentFont(hdc);
@@ -1018,6 +1037,7 @@ bool Gdi::TextOut(uint32_t hdc, int x, int y, const std::u16string& text, int op
 }
 
 void FillSurface(Surface& s, const Region& clip, const Rect& r, uint32_t rgb) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     for (const Rect& cr : clip.Rects()) {
         Rect i = cr.Intersect(r).Intersect(Rect(0, 0, s.width, s.height));
         for (int y = i.top; y < i.bottom; ++y)
@@ -1033,6 +1053,7 @@ void Gdi::TextExtent(uint32_t hdc, const std::u16string& text, int& w, int& h) {
 }
 
 int Gdi::DrawText(uint32_t hdc, const std::u16string& textIn, Rect& rect, uint32_t format) {
+    RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Text);
     DcObj* dc = Dc(hdc);
     if (!dc) return 0;
     Font* font = CurrentFont(hdc);
