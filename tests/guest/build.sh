@@ -95,3 +95,25 @@ for part in sync wait_multiple named signalwait timer_contention mixed_apc input
 done
 # shellcheck disable=SC2086
 $cc -O1 "$here/stage_c_acceptance.c" $acceptance_objects -o "$out/stage_c_acceptance.exe" -luser32 -lgdi32 -lkernel32
+
+# E9 combines the same unmodified test bodies, in separate translation units,
+# so static globals and CHECK macros cannot collide. All groups run in one Process.
+for part in stage_c_acceptance gui_presentation gui_composition gui_dialog_subclass gui_choosecolor gui_comdlg; do
+    case "$part" in
+        stage_c_acceptance) entry=stage_c ;;
+        gui_presentation) entry=presentation ;;
+        gui_composition) entry=composition ;;
+        gui_dialog_subclass) entry=dialog ;;
+        gui_choosecolor) entry=color ;;
+        gui_comdlg) entry=comdlg ;;
+    esac
+    $cc -O1 -Dmain=StageE_$entry -c "$here/$part.c" -o "$out/e9_$entry.o"
+done
+revision="${GITHUB_SHA:-$(git -C "$here" rev-parse HEAD 2>/dev/null || echo unknown)}"
+# The macro is a literal identity, never arbitrary shell/compiler input.
+if ! printf '%s\n' "$revision" | grep -Eq '^[0-9a-f]{40}$'; then revision=unknown; fi
+# shellcheck disable=SC2086
+$cc -O1 "-DSR_ACCEPTANCE_BUILD=\"$revision\"" "$here/stage_e_acceptance.c" \
+    "$out/e9_stage_c.o" "$out/e9_presentation.o" "$out/e9_composition.o" \
+    "$out/e9_dialog.o" "$out/e9_color.o" "$out/e9_comdlg.o" "$out/gui_dialog_subclass.res.o" \
+    $acceptance_objects -o "$out/stage_e_acceptance.exe" -luser32 -lgdi32 -lkernel32 -lcomdlg32

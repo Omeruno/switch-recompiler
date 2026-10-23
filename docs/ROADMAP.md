@@ -96,8 +96,9 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
    объёма передач по плоскостям и логической памяти текстур. Область измерений,
    ограничения и общий аппаратный список: [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).
    Растеризация, реальная задержка ввода и Switch CPU/GPU сравнение ещё открыты.
-3. Следующий независимый программный блок — E9: общий автоматический acceptance
-   на базе существующих Stage C, composition, presentation и dialog fixtures.
+3. E9: подготовлен общий автоматический software acceptance из шести групп
+   Stage C, composition, presentation и dialog fixtures: [STAGE_E_ACCEPTANCE.md](STAGE_E_ACCEPTANCE.md).
+   Следующий независимый блок — raster/input-to-submit телеметрия E8.
    Затем выбрать ограниченный независимый блок F/G по свежему handoff.
    Не ждать пользовательских проверок для независимой разработки; не засчитывать
    физическую приёмку, производительность или аппаратные проценты без консоли.

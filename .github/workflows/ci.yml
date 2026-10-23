@@ -30,6 +30,12 @@ jobs:
         with:
           name: stage-e-composition-exe
           path: build-host/guest-run.*/gui_composition.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-e-acceptance-exe
+          path: |
+            build-host/guest-run.*/stage_e_acceptance.exe
+            docs/STAGE_E_ACCEPTANCE.md
 
   gpu-reference:
     name: OpenGL pixels and fallback (EGL/Mesa)

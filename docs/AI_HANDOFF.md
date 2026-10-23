@@ -1,6 +1,6 @@
 # AI development handoff — switch-recompiler
 
-Current incoming base: **fed7668673916242538f68d213ce071c3af0f7c5**, branch `claude/wonderful-hawking-10mpr0` (2026-10-23). E6 retained window/GPU composition and E7 revision-driven snapshots are implemented. Continue from the latest dated entry below and current commits, not the historical E1/common-dialog notes. E8 instrumentation is the current software package; E8 hardware performance and E9 final acceptance remain open. No physical Switch is attached to this environment.
+Current incoming base: **fed7668673916242538f68d213ce071c3af0f7c5**, branch `claude/wonderful-hawking-10mpr0` (2026-10-23). E6 retained window/GPU composition and E7 revision-driven snapshots are implemented. Continue from the latest dated entry below and current commits, not the historical E1/common-dialog notes. E8 instrumentation and the E9 combined software acceptance fixture are implemented in the latest dated entries; E8 hardware performance and E9 final acceptance remain open. No physical Switch is attached to this environment.
 
 ## Agreement between development shifts
 - Active development handoff: Claude finished work on 2026-10-21 and plans to return Friday. ChatGPT continues in the interim. Before EVERY change re-check branch HEAD and recent commits; never assume the SHA above remains current.
@@ -1685,3 +1685,32 @@ Standalone actual EGL/Mesa presentation test passed with -fno-exceptions and
 lifetime regression passed ASan+UBSan with detect_leaks=0. No physical Switch,
 Switch toolchain, local CPU-oracle/multilib or local ARM64/QEMU run is claimed;
 the latter build/oracle/ABI gates remain exact-SHA CI responsibilities.
+
+## 2026-10-23 E9: combined unattended acceptance fixture
+
+E8 implementation commit 291e0711c77992f075c71ae741016e1799dbc8ce passed all six
+CI jobs in run 39896269017, including Switch build, host/MinGW, actual GL,
+CPU oracle, ARM64/QEMU and isolated JIT probe. Physical evidence still absent.
+
+Continued independently with stage_e_acceptance.exe: links the exact existing
+Stage C, common-dialog API, standard-dialog subclass, ChooseColor, presentation
+and 28-scene composition bodies into one guest Process. Entry-point renaming
+preserves translation-unit static state and original checks; the original dialog
+resource is linked. It writes a fail-closed consolidated report with fixture SHA,
+numbered groups and explicit pending hardware/real Paint/performance gates.
+CI builds, executes and publishes the redistributable fixture and instructions.
+See STAGE_E_ACCEPTANCE.md. This is preparation of E9's software gate, not physical
+GPU/scanout acceptance or proof of Paint file selection.
+
+Next independent block after this exact-SHA CI: add raster CPU-stage and
+input-to-submit measurement coverage for E8 (without claiming physical latency),
+then F's bounded one-Process shell/launcher foundation from the global roadmap.
+Keep all deferred hardware checks consolidated; no user wake-up is needed for
+these independent software tasks. Local final validation follows below.
+
+Local E9 validation: complete `COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh`
+passed with freshly built MinGW guests, including the new combined six-group
+fixture, both CPU/GL composition sizes, all Stage C suites and scripted file/
+color dialogs. No component implementation was copied or relaxed. Exact-SHA CI
+for this E9 commit must be read after publication; the earlier 6/6 result is
+specifically for E8 commit 291e071, not an advance claim for E9.
