@@ -18,28 +18,27 @@ constexpr uint32_t HEAP_REALLOC_IN_PLACE_ONLY = 0x10;
 
 // HANDLE кучи -> куча. Хендл — адрес маленького зарезервированного региона,
 // чтобы он был уникальным и «настоящим» указателем, как в Windows.
-std::map<uint32_t, rt::GuestHeap*>& Heaps() {
-    static std::map<uint32_t, rt::GuestHeap*> heaps;
-    return heaps;
-}
-std::vector<std::unique_ptr<rt::GuestHeap>>& OwnedHeaps() {
-    static std::vector<std::unique_ptr<rt::GuestHeap>> owned;
-    return owned;
-}
-uint32_t g_processHeapHandle = 0;
-
+struct HeapState {
+    std::map<uint32_t,rt::GuestHeap*> heaps;
+    std::vector<std::unique_ptr<rt::GuestHeap>> owned;
+    uint32_t processHandle=0;
+};
+HeapState& State() {return rt::LocalState<HeapState>();}
+std::map<uint32_t,rt::GuestHeap*>& Heaps() {return State().heaps;}
+std::vector<std::unique_ptr<rt::GuestHeap>>& OwnedHeaps() {return State().owned;}
 uint32_t ProcessHeapHandle(cpu::IGuestMemory& m) {
-    if (!g_processHeapHandle) {
-        static rt::GuestHeap* heap = nullptr;
-        if (!heap) {
-            OwnedHeaps().push_back(std::make_unique<rt::GuestHeap>(m));
-            heap = OwnedHeaps().back().get();
-            rt::SetProcessHeap(heap);
+    auto& state=State();
+    if(!state.processHandle) {
+        rt::GuestHeap* heap=nullptr;
+        if(rt::g_process)heap=&rt::g_process->Heap();
+        else {
+            if(state.owned.empty())state.owned.push_back(std::make_unique<rt::GuestHeap>(m));
+            heap=state.owned.front().get();rt::SetProcessHeap(heap);
         }
-        g_processHeapHandle = m.Allocate(0x1000, cpu::kProtRead);
-        Heaps()[g_processHeapHandle] = heap;
+        state.processHandle=m.Allocate(0x1000,cpu::kProtRead);
+        if(state.processHandle)state.heaps[state.processHandle]=heap;
     }
-    return g_processHeapHandle;
+    return state.processHandle;
 }
 
 rt::GuestHeap* HeapFromHandle(cpu::IGuestMemory& m, uint32_t h) {
@@ -69,7 +68,7 @@ HostCallOutcome K32_HeapCreate(cpu::CpuState&, cpu::IGuestMemory& m) {
 HostCallOutcome K32_HeapDestroy(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t h = Arg(c, m, 0);
     rt::GuestHeap* heap = HeapFromHandle(m, h);
-    if (!heap || h == g_processHeapHandle) return Ret(0);
+    if (!heap || h == State().processHandle) return Ret(0);
     heap->Destroy();
     Heaps().erase(h);
     return Ret(1);

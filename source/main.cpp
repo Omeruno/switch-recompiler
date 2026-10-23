@@ -30,6 +30,7 @@
 #include "runtime/clock.h"
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
+#include "runtime/guest_session.h"
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
@@ -301,6 +302,8 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
     rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
+    rt::GuestSession guestSession;
+    auto& mem=guestSession.Memory();auto& proc=guestSession.ProcessObject();
     win32::user::PresentationSession presentationScope(g_useNewUi,&newui::EndPresentation);
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
@@ -314,9 +317,6 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         win32::user::EnableWindowLayers(newui::g_gpuActive);
     }
 
-    static cpu::PagedGuestMemory mem;
-    static rt::Process proc(mem);
-    rt::g_process = &proc;
     // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
     // (из каталога программы), если она есть
     if (!g_useNewUi) proc.ForceHle("mfc42u.dll");

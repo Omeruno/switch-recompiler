@@ -165,15 +165,26 @@ HostCallOutcome K32_GetCurrentThreadId(cpu::CpuState&, cpu::IGuestMemory&) {
 }
 
 // --- Обработчик необработанных исключений ---
-uint32_t g_unhandledFilter = 0;
+struct SystemState {
+    uint32_t unhandledFilter=0,errorMode=0,cmdLineA=0,cmdLineW=0,flsNext=1;
+    std::map<uint32_t,uint32_t> fls;
+    std::map<std::string,std::string> env={
+        {"PATH","C:\\WINDOWS\\system32;C:\\WINDOWS"},{"SYSTEMROOT","C:\\WINDOWS"},
+        {"WINDIR","C:\\WINDOWS"},{"TEMP","C:\\TEMP"},{"TMP","C:\\TEMP"},
+        {"USERNAME","Player"},{"COMPUTERNAME","SWITCH"},{"OS","Windows_NT"},
+        {"NUMBER_OF_PROCESSORS","1"},{"PROCESSOR_ARCHITECTURE","x86"}
+    };
+};
+SystemState& System() {return rt::LocalState<SystemState>();}
+
 HostCallOutcome K32_SetUnhandledExceptionFilter(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t old = g_unhandledFilter;
-    g_unhandledFilter = Arg(c, m, 0);
+    uint32_t old = System().unhandledFilter;
+    System().unhandledFilter = Arg(c, m, 0);
     return Ret(old);
 }
 HostCallOutcome K32_UnhandledExceptionFilter(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(1); } // EXCEPTION_EXECUTE_HANDLER
 HostCallOutcome K32_SetErrorMode(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    static uint32_t mode = 0;
+    auto& mode=System().errorMode;
     uint32_t old = mode;
     mode = Arg(c, m, 0);
     return Ret(old);
@@ -185,7 +196,7 @@ HostCallOutcome K32_EncodePointer(cpu::CpuState& c, cpu::IGuestMemory& m) { retu
 HostCallOutcome K32_DecodePointer(cpu::CpuState& c, cpu::IGuestMemory& m) { return Ret(Arg(c, m, 0) ^ 0x5A5A5A5Au); }
 
 // --- Командная строка и окружение ---
-uint32_t g_cmdLineA = 0, g_cmdLineW = 0;
+
 uint32_t AllocGuest(cpu::IGuestMemory& m, uint32_t size) {
     return m.Allocate(size ? size : 1, cpu::kProtRW);
 }
@@ -201,37 +212,24 @@ std::string CommandLineString() {
     return cmd;
 }
 HostCallOutcome K32_GetCommandLineA(cpu::CpuState&, cpu::IGuestMemory& m) {
-    if (!g_cmdLineA) {
+    if (!System().cmdLineA) {
         std::string s = CommandLineString();
-        g_cmdLineA = AllocGuest(m, static_cast<uint32_t>(s.size() + 1));
-        WriteAnsi(m, g_cmdLineA, s, static_cast<uint32_t>(s.size() + 1));
+        System().cmdLineA = AllocGuest(m, static_cast<uint32_t>(s.size() + 1));
+        WriteAnsi(m, System().cmdLineA, s, static_cast<uint32_t>(s.size() + 1));
     }
-    return Ret(g_cmdLineA);
+    return Ret(System().cmdLineA);
 }
 HostCallOutcome K32_GetCommandLineW(cpu::CpuState&, cpu::IGuestMemory& m) {
-    if (!g_cmdLineW) {
+    if (!System().cmdLineW) {
         std::u16string s = AnsiToWide(CommandLineString());
-        g_cmdLineW = AllocGuest(m, static_cast<uint32_t>((s.size() + 1) * 2));
-        WriteWide(m, g_cmdLineW, s, static_cast<uint32_t>(s.size() + 1));
+        System().cmdLineW = AllocGuest(m, static_cast<uint32_t>((s.size() + 1) * 2));
+        WriteWide(m, System().cmdLineW, s, static_cast<uint32_t>(s.size() + 1));
     }
-    return Ret(g_cmdLineW);
+    return Ret(System().cmdLineW);
 }
 
-std::map<std::string, std::string>& Env() {
-    static std::map<std::string, std::string> env = {
-        {"PATH", "C:\\WINDOWS\\system32;C:\\WINDOWS"},
-        {"SYSTEMROOT", "C:\\WINDOWS"},
-        {"WINDIR", "C:\\WINDOWS"},
-        {"TEMP", "C:\\TEMP"},
-        {"TMP", "C:\\TEMP"},
-        {"USERNAME", "Player"},
-        {"COMPUTERNAME", "SWITCH"},
-        {"OS", "Windows_NT"},
-        {"NUMBER_OF_PROCESSORS", "1"},
-        {"PROCESSOR_ARCHITECTURE", "x86"},
-    };
-    return env;
-}
+std::map<std::string,std::string>& Env() {return System().env;}
+
 std::string UpperKey(std::string k) { for (char& ch : k) if (ch >= 'a' && ch <= 'z') ch = static_cast<char>(ch - 32); return k; }
 
 HostCallOutcome K32_GetEnvironmentStringsA(cpu::CpuState&, cpu::IGuestMemory& m) {
@@ -520,9 +518,9 @@ HostCallOutcome K32_GetLocaleInfoA(cpu::CpuState& c, cpu::IGuestMemory& m) { ret
 HostCallOutcome K32_GetLocaleInfoW(cpu::CpuState& c, cpu::IGuestMemory& m) { return LocaleInfoCommon(c, m, true); }
 
 // --- FLS (Vista+, но CRT ищет через GetProcAddress): как TLS ---
-std::map<uint32_t, uint32_t>& Fls() { static std::map<uint32_t, uint32_t> v; return v; }
-uint32_t g_flsNext = 1;
-HostCallOutcome K32_FlsAlloc(cpu::CpuState&, cpu::IGuestMemory&) { Fls()[g_flsNext] = 0; return Ret(g_flsNext++); }
+std::map<uint32_t,uint32_t>& Fls() {return System().fls;}
+
+HostCallOutcome K32_FlsAlloc(cpu::CpuState&, cpu::IGuestMemory&) { Fls()[System().flsNext] = 0; return Ret(System().flsNext++); }
 HostCallOutcome K32_FlsFree(cpu::CpuState& c, cpu::IGuestMemory& m) { Fls().erase(Arg(c, m, 0)); return Ret(1); }
 HostCallOutcome K32_FlsGetValue(cpu::CpuState& c, cpu::IGuestMemory& m) { SetLastError(m, 0); return Ret(Fls()[Arg(c, m, 0)]); }
 HostCallOutcome K32_FlsSetValue(cpu::CpuState& c, cpu::IGuestMemory& m) { Fls()[Arg(c, m, 0)] = Arg(c, m, 1); return Ret(1); }

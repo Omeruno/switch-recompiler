@@ -29,6 +29,7 @@ struct PatchResult {
 void RegisterDataImport(const char* dllName, const char* name, uint32_t (*provider)(cpu::IGuestMemory& mem));
 // Память, в которой провайдеры размещают переменные (выставляет загрузчик).
 void SetImportBindingMemory(cpu::IGuestMemory* mem);
+cpu::IGuestMemory* ImportBindingMemory();
 uint32_t FindDataImportAddress(cpu::IGuestMemory& mem, const std::string& dllName, const std::string& name);
 
 // Адрес для одного импорта из эмулируемой (HLE) DLL: host-функция,

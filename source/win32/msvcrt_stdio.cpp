@@ -41,16 +41,16 @@ struct Fd {
     bool append = false;
     bool eof = false;
 };
-std::vector<Fd>& Fds() {
-    static std::vector<Fd> fds = [] {
-        std::vector<Fd> v(3);
-        v[0] = {rt::FileTable::kStdIn, true, true, false, false};
-        v[1] = {rt::FileTable::kStdOut, true, true, false, false};
-        v[2] = {rt::FileTable::kStdErr, true, true, false, false};
-        return v;
-    }();
-    return fds;
-}
+struct FdTable {
+    std::vector<Fd> fds;
+    FdTable():fds(3) {
+        fds[0]={rt::FileTable::kStdIn,true,true,false,false};
+        fds[1]={rt::FileTable::kStdOut,true,true,false,false};
+        fds[2]={rt::FileTable::kStdErr,true,true,false,false};
+    }
+};
+std::vector<Fd>& Fds() {return rt::LocalState<FdTable>().fds;}
+
 int NewFd(uint32_t handle, bool text, bool append) {
     auto& v = Fds();
     for (size_t i = 3; i < v.size(); ++i) if (!v[i].open) { v[i] = {handle, true, text, append, false}; return static_cast<int>(i); }
@@ -69,10 +69,8 @@ struct Stream {
     int ungot = -1;
     bool ownsStruct = false;
 };
-std::map<uint32_t, Stream>& Streams() {
-    static std::map<uint32_t, Stream> s;
-    return s;
-}
+struct StreamTable {std::map<uint32_t,Stream> streams;};
+std::map<uint32_t,Stream>& Streams() {return rt::LocalState<StreamTable>().streams;}
 Stream* GetStream(cpu::IGuestMemory& m, uint32_t file) {
     auto& s = Streams();
     auto it = s.find(file);
@@ -791,8 +789,12 @@ HostCallOutcome C_fstat(cpu::CpuState& c, cpu::IGuestMemory& m) {
 
 // --- _findfirst/_findnext: struct _finddata_t {attrib, time_create, time_access, time_write, size, name[260]} ---
 struct FindState { std::vector<std::string> names; std::string dir; size_t next = 0; };
-std::map<uint32_t, FindState>& Finds() { static std::map<uint32_t, FindState> f; return f; }
-uint32_t g_nextFind = 0x100;
+struct FindTable {
+    std::map<uint32_t,FindState> finds;
+    uint32_t next=0x100,tmpBuf=0;int tmpFile=0,tmpName=0;
+};
+FindTable& FindData() {return rt::LocalState<FindTable>();}
+std::map<uint32_t,FindState>& Finds() {return FindData().finds;}
 bool Wild(const char* p, const char* s) {
     if (!*p) return !*s;
     if (*p == '*') { for (const char* t = s;; ++t) { if (Wild(p + 1, t)) return true; if (!*t) return false; } }
@@ -823,7 +825,7 @@ HostCallOutcome C_findfirst(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (st.names.empty()) { SetErrno(m, kENOENT); return Ret(static_cast<uint32_t>(-1)); }
     FillFind(m, Arg(c, m, 1), st.dir, st.names[0]);
     st.next = 1;
-    uint32_t h = g_nextFind++;
+    uint32_t h = FindData().next++;
     Finds()[h] = st;
     return Ret(h);
 }
@@ -836,7 +838,7 @@ HostCallOutcome C_findnext(cpu::CpuState& c, cpu::IGuestMemory& m) {
 HostCallOutcome C_findclose(cpu::CpuState& c, cpu::IGuestMemory& m) { Finds().erase(Arg(c, m, 0)); return Ret(0); }
 
 HostCallOutcome C_tmpfile(cpu::CpuState&, cpu::IGuestMemory& m) {
-    static int n = 0;
+    auto& n=FindData().tmpFile;
     std::string name = "C:\\TEMP\\tmp" + std::to_string(n++) + ".tmp";
     mkdir(rt::FileSystem().ToHost("C:\\TEMP").c_str(), 0777);
     ModeInfo mi = ParseMode("w+b");
@@ -846,8 +848,8 @@ HostCallOutcome C_tmpfile(cpu::CpuState&, cpu::IGuestMemory& m) {
     return Ret(NewFileStruct(m, fd, mi));
 }
 HostCallOutcome C_tmpnam(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    static int n = 0;
-    static uint32_t buf = 0;
+    auto& n=FindData().tmpName;
+    auto& buf=FindData().tmpBuf;
     if (!buf) buf = Malloc(m, 260, true);
     uint32_t out = Arg(c, m, 0) ? Arg(c, m, 0) : buf;
     WriteAnsi(m, out, "\\s" + std::to_string(n++) + ".", 260);

@@ -1,6 +1,7 @@
 // heap.cpp — куча гостя (см. heap.h)
 
 #include "heap.h"
+#include "process.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,7 @@ GuestHeap* g_processHeap = nullptr;
 }
 
 GuestHeap& ProcessHeap() {
+    if(g_process)return g_process->Heap();
     if (!g_processHeap) {
         std::fprintf(stderr, "[FATAL] куча процесса не создана\n");
         std::exit(1);

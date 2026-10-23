@@ -242,6 +242,16 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             failed=1
         fi
     done
+    # Same host process, reused object storage and guest addresses: no fork-based
+    # reset may hide stale CRT/heap/TLS/FD/environment state between these runs.
+    if $cxx $flags "$root/tests/test_guest_sessions.cpp" $src -o "$out/test_guest_sessions" &&
+       "$out/test_guest_sessions" "$guestRoot/gui_session_core.exe" > "$out/guest_sessions.log" 2>&1; then
+        tail -n 1 "$out/guest_sessions.log"
+    else
+        echo "   sequential guest sessions: FAILED"
+        tail -n 30 "$out/guest_sessions.log"
+        failed=1
+    fi
     # End-to-end dialog test: open an existing file, then save a new file.
     # The virtual 800x600 desktop centers a 530x390 dialog. Script a click
     # on the dialog Open/Save button at approximately (575,420).

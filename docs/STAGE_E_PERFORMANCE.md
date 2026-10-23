@@ -122,3 +122,10 @@ labels, ROMFS/SD ordering, single-file autolaunch, empty/incomplete inventory,
 B/PLUS cancellation and applet closure before guest startup. Verify current L/ZL
 launch overrides and launch-held input quarantine. This does not change or award
 E8/E9 graphics acceptance.
+
+
+Core-session ownership now has a host regression (F0_SESSION_CORE.md). Deferred
+physical scope also includes normal application exit and startup/load failure
+with the new owned lifetime in GPU and forced software modes. Repeated picker
+return/relaunch remains a future check after GUI/legacy lifetime isolation and
+launch-loop integration; it has not been implemented or accepted by core tests.

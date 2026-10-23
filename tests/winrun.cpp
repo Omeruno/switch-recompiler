@@ -23,6 +23,7 @@
 #include "source/cpu/interpreter.h"
 #include "source/runtime/process.h"
 #include "source/runtime/guest_execution.h"
+#include "source/runtime/guest_session.h"
 #include "source/win32/gdi.h"
 #include "source/win32/host_functions.h"
 #include "source/win32/message_loop.h"
@@ -172,9 +173,8 @@ int main(int argc, char** argv) {
     }
 
     cpu::g_consoleAvailable = verbose;
-    cpu::PagedGuestMemory mem;
-    rt::Process proc(mem);
-    rt::g_process = &proc;
+    rt::GuestSession session;
+    auto& mem=session.Memory();auto& proc=session.ProcessObject();
     for (const auto& d : libDirs) proc.AddSearchPath(d);
     proc.SetCommandLine(cmd);
 

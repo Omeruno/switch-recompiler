@@ -379,8 +379,8 @@ struct FindState {
     std::string dir;
     size_t next = 0;
 };
-std::map<uint32_t, FindState>& Finds() { static std::map<uint32_t, FindState> f; return f; }
-uint32_t g_nextFind = 0x00F10000u;
+struct FindTable {std::map<uint32_t,FindState> finds;uint32_t next=0x00F10000u;};
+std::map<uint32_t,FindState>& Finds() {return rt::LocalState<FindTable>().finds;}
 
 void FillFindData(cpu::IGuestMemory& m, uint32_t p, const std::string& dir, const std::string& name, bool wide) {
     struct stat st{};
@@ -415,7 +415,7 @@ HostCallOutcome FindFirstCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wid
     if (st.names.empty()) { SetLastError(m, ERROR_FILE_NOT_FOUND); return Ret(INVALID_HANDLE); }
     FillFindData(m, data, st.dir, st.names[0], wide);
     st.next = 1;
-    uint32_t h = (g_nextFind += 4);
+    uint32_t h = (rt::LocalState<FindTable>().next += 4);
     Finds()[h] = st;
     return Ret(h);
 }

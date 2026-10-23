@@ -184,17 +184,18 @@ HostCallOutcome C_splitpath_s(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (!Arg(c, m, 0)) return Ret(22); // EINVAL
     return SplitPath<W>(m, Arg(c, m, 0), out, cap, true);
 }
-uint32_t g_strtokNext = 0;
+struct StringState {uint32_t strtokNext=0,errorBuf=0;};
+StringState& Strings() {return rt::LocalState<StringState>();}
 HostCallOutcome C_strtok(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t s = Arg(c, m, 0);
     std::string delim = ReadAnsi(m, Arg(c, m, 1));
-    if (!s) s = g_strtokNext;
+    if (!s) s = Strings().strtokNext;
     if (!s) return Ret(0);
     while (m.Read8(s) && delim.find(static_cast<char>(m.Read8(s))) != std::string::npos) ++s;
-    if (!m.Read8(s)) { g_strtokNext = 0; return Ret(0); }
+    if (!m.Read8(s)) { Strings().strtokNext = 0; return Ret(0); }
     uint32_t start = s;
     while (m.Read8(s) && delim.find(static_cast<char>(m.Read8(s))) == std::string::npos) ++s;
-    if (m.Read8(s)) { m.Write8(s, 0); g_strtokNext = s + 1; } else g_strtokNext = 0;
+    if (m.Read8(s)) { m.Write8(s, 0); Strings().strtokNext = s + 1; } else Strings().strtokNext = 0;
     return Ret(start);
 }
 HostCallOutcome C_strdup(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -230,7 +231,7 @@ HostCallOutcome C_strset(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(p);
 }
 HostCallOutcome C_strerror(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    static uint32_t buf = 0;
+    auto& buf=Strings().errorBuf;
     if (!buf) buf = Malloc(m, 96, true);
     int e = static_cast<int>(Arg(c, m, 0));
     const char* msg;

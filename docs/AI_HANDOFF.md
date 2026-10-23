@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`e86a3773ea06225e85a0c503b1fdad20dc3812b7` (2026-10-23).
-[CI 39896893772](https://github.com/Omeruno/switch-recompiler/actions/runs/39896893772)
+`c58871ab31b80227c052683076bea8d48d559fde` (2026-10-23).
+[CI 39902527062](https://github.com/Omeruno/switch-recompiler/actions/runs/39902527062)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -115,15 +115,6 @@ only invocation explicitly skipped unavailable guest tools; only the later clean
 MinGW/Mesa invocation is the complete local-suite result. New exact-SHA CI still
 must be checked after publication. No physical console result is added here.
 
-## Concrete next independent block
-
-F0: integrate bounded executable enumeration and cancellable/paginated selection
-into the existing startup picker, then audit the actual one-Process launch/return
-session lifetime before adding a desktop shell. The current picker has no entry
-budget and its inner wait loop does not check applet exit. Preserve single-file
-autolaunch and current guest/renderer behavior. Do not add an unused parallel
-shell API or begin multiprocess isolation in this change.
-
 ## 2026-10-23 F0: bounded picker integration
 
 E8 continuation d967733be7600af290f5206ae2a3bdb10942889c passed all six CI jobs
@@ -152,3 +143,38 @@ sizes, all six E9 groups, both full-frame CPU/GL composition sizes and scripted
 file/color dialogs. Standalone catalog/navigation test also passed with
 -Wall -Wextra -Werror -fno-exceptions -fno-rtti. The actual libnx menu is a Switch
 build/physical gate; local tests do not certify its pixels or button behavior.
+
+## 2026-10-23 F0: owned core guest sessions
+
+The incoming picker commit c58871a passed all six CI jobs in run 39902527062.
+GuestSession now owns fresh Process/memory in Switch RunInterpreter and winrun.
+Default/additional heaps, VFS, CRT globals/atexit/random/string/time/locale caches,
+environment/command lines, dynamic TLS/FLS and descriptor/stream/find state are
+Process-owned. Native context bindings and legacy scalar guest addresses are
+captured/cleared/restored across scope lifetime. Standalone no-Process HLE tests
+retain historical fallback behavior. No production relaunch loop is enabled.
+
+The new real-x86 regression deliberately reuses native Process/memory storage and
+guest addresses through normal exit/restart/host-abort/restart. It verifies fresh
+heap/CRT/TLS/environment/FD state, file flush/delete, discarded abort atexit
+callbacks and drained continuations. It also covers failed-load destruction and
+nested native ownership/binding restoration. Initial fixture diagnosis incorrectly
+expected no pre-main exception filter; MinGW installs one, so the test permits it
+while rejecting the deliberately dirty previous-session marker. Runtime behavior
+was not changed to satisfy that incorrect expectation.
+
+See F0_SESSION_CORE.md for ownership/order and limits. GUI/legacy singletons are
+still a gate: next isolate class/window/menu/image/GDI and legacy control/MFC
+resources, then add sequential real-x86 GUI/dialog exit+abort coverage before
+connecting return-to-picker. Do not claim general full-session reset from core
+state isolation. Hardware E8/E9, current Paint, picker and later relaunch smoke
+remain in the one consolidated STAGE_E_PERFORMANCE.md checklist.
+
+Final local validation: the complete clean `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with freshly generated MinGW guests and Mesa.
+This includes the new core-session regression, all six E9 groups, both 28-scene
+CPU/actual-GL composition runs, real-x86 input/capture and scripted file/color
+dialogs. GuestSession compiled with -Wall -Wextra -Werror -fno-exceptions
+-fno-rtti; the other migrated HLE modules also passed no-exception/no-RTTI
+compilation. Exact published-SHA CI must be checked after publication. No Switch
+or proprietary Paint result was produced in this block.

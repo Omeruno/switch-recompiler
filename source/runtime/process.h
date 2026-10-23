@@ -23,6 +23,8 @@
 #include "../cpu/cpu_state.h"
 #include "../cpu/guest_memory.h"
 #include "guest_thread.h"
+#include "heap.h"
+#include "process_local_state.h"
 #include "guest_scheduler.h"
 #include "handle_table.h"
 #include "../loader/pe_parser.h"
@@ -72,6 +74,8 @@ public:
     explicit Process(cpu::PagedGuestMemory& mem);
 
     cpu::PagedGuestMemory& Memory() { return mem_; }
+    GuestHeap& Heap() {return defaultHeap_;}
+    template<class T> T& LocalState() {return localState_.Get<T>();}
 
     // Каталоги для поиска DLL (после каталога EXE).
     void AddSearchPath(const std::string& dir) { searchPaths_.push_back(dir); }
@@ -193,6 +197,8 @@ private:
     bool collectingModules_ = false;
 
     cpu::PagedGuestMemory& mem_;
+    GuestHeap defaultHeap_;
+    ProcessLocalState localState_;
     std::vector<std::unique_ptr<Module>> modules_;
     std::vector<Module*> initializationOrder_;
     uint32_t loaderOwner_ = 0;
@@ -216,6 +222,13 @@ private:
 
 // Текущий процесс — для HLE-функций (LoadLibrary, GetProcAddress, ...).
 extern Process* g_process;
+// Standalone legacy/native harnesses without a Process keep their historical
+// singleton behavior. Production HLE and sequential-session tests bind Process.
+template<class T> T& LocalState() {
+    if(g_process)return g_process->LocalState<T>();
+    static T standalone;
+    return standalone;
+}
 
 // Адрес host-функции «возврат из точки входа EXE» (выход из процесса с
 // кодом из EAX). Кладётся на стек как адрес возврата главного потока.

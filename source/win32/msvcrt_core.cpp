@@ -26,9 +26,15 @@ namespace crt {
 using namespace hle;
 
 namespace {
-Globals g_globals;
-bool g_globalsReady = false;
-std::vector<uint32_t> g_atexit;   // функции atexit/_onexit (вызываются в обратном порядке)
+struct CoreState {
+    Globals globals;
+    bool ready=false;
+    std::vector<uint32_t> atexit;
+    std::map<int,uint32_t> signals;
+    uint32_t newHandler=0,randSeed=1,tmBuf=0,timeStrBuf=0,lconv=0,locale=0;
+    bool clockStarted=false;std::chrono::steady_clock::time_point clockStart;
+};
+CoreState& Core() {return rt::LocalState<CoreState>();}
 }
 
 uint32_t NewString(cpu::IGuestMemory& m, const std::string& s) {
@@ -112,9 +118,9 @@ void BuildCtypeTable(cpu::IGuestMemory& m, uint32_t table) {
 } // namespace
 
 Globals& G(cpu::IGuestMemory& m) {
-    if (g_globalsReady) return g_globals;
-    g_globalsReady = true;
-    Globals& g = g_globals;
+    if (Core().ready) return Core().globals;
+    Core().ready = true;
+    Globals& g = Core().globals;
     uint32_t block = m.Allocate(0x2000, cpu::kProtRW);
     uint32_t p = block;
     auto take = [&](uint32_t n) { uint32_t r = p; p += (n + 15) & ~15u; return r; };
@@ -262,24 +268,24 @@ HostCallOutcome C_initterm_e(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome C_onexit(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t fn = Arg(c, m, 0);
-    g_atexit.push_back(fn);
+    Core().atexit.push_back(fn);
     return Ret(fn);
 }
 HostCallOutcome C_atexit(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    g_atexit.push_back(Arg(c, m, 0));
+    Core().atexit.push_back(Arg(c, m, 0));
     return Ret(0);
 }
 // _onexit_t __dllonexit(_onexit_t func, PVFV** pbegin, PVFV** pend)
 HostCallOutcome C_dllonexit(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t fn = Arg(c, m, 0);
-    g_atexit.push_back(fn);
+    Core().atexit.push_back(fn);
     return Ret(fn);
 }
 
 void RunAtExit(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    while (!g_atexit.empty()) {
-        uint32_t fn = g_atexit.back();
-        g_atexit.pop_back();
+    while (!Core().atexit.empty()) {
+        uint32_t fn = Core().atexit.back();
+        Core().atexit.pop_back();
         if (fn) CallCdecl(c, m, fn, {});
     }
     FlushAll(m);
@@ -445,23 +451,23 @@ HostCallOutcome C_longjmp(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 
 // ===== Сигналы =====
-std::map<int, uint32_t> g_signals;
+
 HostCallOutcome C_signal(cpu::CpuState& c, cpu::IGuestMemory& m) {
     int sig = static_cast<int>(Arg(c, m, 0));
-    uint32_t old = g_signals[sig];
-    g_signals[sig] = Arg(c, m, 1);
+    uint32_t old = Core().signals[sig];
+    Core().signals[sig] = Arg(c, m, 1);
     return Ret(old);
 }
 HostCallOutcome C_raise(cpu::CpuState& c, cpu::IGuestMemory& m) {
     int sig = static_cast<int>(Arg(c, m, 0));
-    uint32_t h = g_signals[sig];
+    uint32_t h = Core().signals[sig];
     if (h == 1) return Ret(0); // SIG_IGN
     if (h == 0) { // SIG_DFL
         if (sig == 22) return C_abort(c, m); // SIGABRT
         FlushAll(m);
         return ExitWith(3);
     }
-    g_signals[sig] = 0;
+    Core().signals[sig] = 0;
     CallCdecl(c, m, h, {static_cast<uint32_t>(sig)});
     return Ret(0);
 }
@@ -499,19 +505,19 @@ HostCallOutcome C_expand(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 HostCallOutcome C_heapchk(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(static_cast<uint32_t>(-2)); } // _HEAPOK
 HostCallOutcome C_get_heap_handle(cpu::CpuState&, cpu::IGuestMemory& m) { return Ret(HleProcessHeapHandle(m)); }
-uint32_t g_newHandler = 0;
+
 HostCallOutcome C_set_new_handler(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t old = g_newHandler;
-    g_newHandler = Arg(c, m, 0);
+    uint32_t old = Core().newHandler;
+    Core().newHandler = Arg(c, m, 0);
     return Ret(old);
 }
-HostCallOutcome C_query_new_handler(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(g_newHandler); }
+HostCallOutcome C_query_new_handler(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(Core().newHandler); }
 HostCallOutcome C_set_new_mode(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
 HostCallOutcome C_operator_new(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t size = Arg(c, m, 0);
     uint32_t p = Malloc(m, size);
-    while (!p && g_newHandler) {
-        if (!CallCdecl(c, m, g_newHandler, {size})) break;
+    while (!p && Core().newHandler) {
+        if (!CallCdecl(c, m, Core().newHandler, {size})) break;
         p = Malloc(m, size);
     }
     return Ret(p);
@@ -554,11 +560,11 @@ HostCallOutcome C_bsearch(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 
 // ===== Случайные числа (тот же генератор, что в msvcrt) =====
-uint32_t g_randSeed = 1;
-HostCallOutcome C_srand(cpu::CpuState& c, cpu::IGuestMemory& m) { g_randSeed = Arg(c, m, 0); return Ret(0); }
+
+HostCallOutcome C_srand(cpu::CpuState& c, cpu::IGuestMemory& m) { Core().randSeed = Arg(c, m, 0); return Ret(0); }
 HostCallOutcome C_rand(cpu::CpuState&, cpu::IGuestMemory&) {
-    g_randSeed = g_randSeed * 214013u + 2531011u;
-    return Ret((g_randSeed >> 16) & 0x7FFF);
+    Core().randSeed = Core().randSeed * 214013u + 2531011u;
+    return Ret((Core().randSeed >> 16) & 0x7FFF);
 }
 
 // ===== Простая арифметика =====
@@ -759,7 +765,7 @@ HostCallOutcome C_itow(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 
 // ===== Время =====
-uint32_t g_tmBuf = 0, g_timeStrBuf = 0;
+
 int64_t NowSeconds() {
     return static_cast<int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count());
@@ -777,9 +783,10 @@ HostCallOutcome C_time64(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(static_cast<uint32_t>(t));
 }
 HostCallOutcome C_clock(cpu::CpuState&, cpu::IGuestMemory&) {
-    static auto start = std::chrono::steady_clock::now();
+    auto& state=Core();
+    if(!state.clockStarted){state.clockStart=std::chrono::steady_clock::now();state.clockStarted=true;}
     return Ret(static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count())); // CLOCKS_PER_SEC = 1000
+        std::chrono::steady_clock::now() - state.clockStart).count())); // CLOCKS_PER_SEC = 1000
 }
 void WriteTm(cpu::IGuestMemory& m, uint32_t p, const std::tm& t) {
     m.Write32(p + 0, static_cast<uint32_t>(t.tm_sec));
@@ -806,7 +813,7 @@ std::tm ReadTm(cpu::IGuestMemory& m, uint32_t p) {
     return t;
 }
 HostCallOutcome TmCommon(cpu::IGuestMemory& m, int64_t secs, bool local) {
-    if (!g_tmBuf) g_tmBuf = Malloc(m, 40, true);
+    if (!Core().tmBuf) Core().tmBuf = Malloc(m, 40, true);
     std::time_t tt = static_cast<std::time_t>(secs);
     std::tm t{};
 #if defined(_WIN32)
@@ -814,8 +821,8 @@ HostCallOutcome TmCommon(cpu::IGuestMemory& m, int64_t secs, bool local) {
 #else
     if (local) localtime_r(&tt, &t); else gmtime_r(&tt, &t);
 #endif
-    WriteTm(m, g_tmBuf, t);
-    return Ret(g_tmBuf);
+    WriteTm(m, Core().tmBuf, t);
+    return Ret(Core().tmBuf);
 }
 HostCallOutcome C_localtime(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return TmCommon(m, static_cast<int32_t>(m.Read32(Arg(c, m, 0))), true);
@@ -852,7 +859,7 @@ HostCallOutcome C_strftime(cpu::CpuState& c, cpu::IGuestMemory& m) {
     return Ret(static_cast<uint32_t>(n));
 }
 HostCallOutcome C_ctime(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    if (!g_timeStrBuf) g_timeStrBuf = Malloc(m, 32, true);
+    if (!Core().timeStrBuf) Core().timeStrBuf = Malloc(m, 32, true);
     std::time_t tt = static_cast<int32_t>(m.Read32(Arg(c, m, 0)));
     std::tm t{};
 #if defined(_WIN32)
@@ -862,27 +869,27 @@ HostCallOutcome C_ctime(cpu::CpuState& c, cpu::IGuestMemory& m) {
 #endif
     char buf[32];
     std::strftime(buf, sizeof(buf), "%a %b %d %H:%M:%S %Y\n", &t);
-    WriteAnsi(m, g_timeStrBuf, buf, 32);
-    return Ret(g_timeStrBuf);
+    WriteAnsi(m, Core().timeStrBuf, buf, 32);
+    return Ret(Core().timeStrBuf);
 }
 HostCallOutcome C_tzset(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(0); }
 
 // ===== Локаль =====
-uint32_t g_lconv = 0;
+
 HostCallOutcome C_setlocale(cpu::CpuState&, cpu::IGuestMemory& m) {
-    static uint32_t c = 0;
-    if (!c) c = NewString(m, "C");
-    return Ret(c);
+    auto& locale=Core().locale;
+    if(!locale)locale=NewString(m,"C");
+    return Ret(locale);
 }
 HostCallOutcome C_localeconv(cpu::CpuState&, cpu::IGuestMemory& m) {
-    if (!g_lconv) {
-        g_lconv = Malloc(m, 64, true);
+    if (!Core().lconv) {
+        Core().lconv = Malloc(m, 64, true);
         uint32_t dot = NewString(m, "."), empty = NewString(m, "");
-        m.Write32(g_lconv + 0, dot); // decimal_point
-        for (uint32_t i = 4; i < 40; i += 4) m.Write32(g_lconv + i, empty);
-        for (uint32_t i = 40; i < 48; ++i) m.Write8(g_lconv + i, 0x7F); // CHAR_MAX
+        m.Write32(Core().lconv + 0, dot); // decimal_point
+        for (uint32_t i = 4; i < 40; i += 4) m.Write32(Core().lconv + i, empty);
+        for (uint32_t i = 40; i < 48; ++i) m.Write8(Core().lconv + i, 0x7F); // CHAR_MAX
     }
-    return Ret(g_lconv);
+    return Ret(Core().lconv);
 }
 
 // ===== Регистрация =====

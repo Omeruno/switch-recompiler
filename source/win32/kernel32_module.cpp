@@ -370,14 +370,15 @@ HostCallOutcome K32_GetLastError(cpu::CpuState&, cpu::IGuestMemory& m) { return 
 HostCallOutcome K32_SetLastError(cpu::CpuState& c, cpu::IGuestMemory& m) { SetLastError(m, Arg(c, m, 0)); return Ret(0); }
 
 // --- TLS: TEB+0xE10, 64 слота ---
-bool g_tlsUsed[64] = {};
+struct DynamicTlsState {bool used[64]={};};
+auto& TlsUsed() {return rt::LocalState<DynamicTlsState>().used;}
 constexpr uint32_t kTlsSlotsOffset = 0xE10;
 
 HostCallOutcome K32_TlsAlloc(cpu::CpuState&, cpu::IGuestMemory& m) {
     for (uint32_t i = 0; i < 64; ++i) {
         // слоты, занятые статическим TLS модулей, тут не пересекаются: это другой массив
-        if (!g_tlsUsed[i]) {
-            g_tlsUsed[i] = true;
+        if (!TlsUsed()[i]) {
+            TlsUsed()[i] = true;
             if (CurrentHleTeb()) m.Write32(CurrentHleTeb() + kTlsSlotsOffset + i * 4, 0);
             return Ret(i);
         }
@@ -387,19 +388,19 @@ HostCallOutcome K32_TlsAlloc(cpu::CpuState&, cpu::IGuestMemory& m) {
 }
 HostCallOutcome K32_TlsFree(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t i = Arg(c, m, 0);
-    if (i >= 64 || !g_tlsUsed[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
-    g_tlsUsed[i] = false;
+    if (i >= 64 || !TlsUsed()[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
+    TlsUsed()[i] = false;
     return Ret(1);
 }
 HostCallOutcome K32_TlsGetValue(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t i = Arg(c, m, 0);
-    if (i >= 64 || !g_tlsUsed[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
+    if (i >= 64 || !TlsUsed()[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
     SetLastError(m, ERROR_SUCCESS);
     return Ret(CurrentHleTeb() ? m.Read32(CurrentHleTeb() + kTlsSlotsOffset + i * 4) : 0);
 }
 HostCallOutcome K32_TlsSetValue(cpu::CpuState& c, cpu::IGuestMemory& m) {
     uint32_t i = Arg(c, m, 0), v = Arg(c, m, 1);
-    if (i >= 64 || !g_tlsUsed[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
+    if (i >= 64 || !TlsUsed()[i]) { SetLastError(m, ERROR_INVALID_PARAMETER); return Ret(0); }
     if (CurrentHleTeb()) m.Write32(CurrentHleTeb() + kTlsSlotsOffset + i * 4, v);
     return Ret(1);
 }

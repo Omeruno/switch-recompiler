@@ -65,6 +65,7 @@ uint32_t FindDataImportAddress(cpu::IGuestMemory& mem, const std::string& dllNam
 }
 
 void SetImportBindingMemory(cpu::IGuestMemory* mem) { g_bindMemory = mem; }
+cpu::IGuestMemory* ImportBindingMemory() {return g_bindMemory;}
 
 uint32_t ResolveHostImport(const std::string& dllName, const pe::ImportedFunction& func,
                            uint32_t crtGlobalsBase, bool& implemented) {

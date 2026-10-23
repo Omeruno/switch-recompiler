@@ -1,6 +1,7 @@
 // files.cpp — файловая система гостя (см. files.h)
 
 #include "files.h"
+#include "process.h"
 
 #include <cctype>
 #include <cstring>
@@ -49,8 +50,7 @@ std::vector<std::string> SplitPath(const std::string& p) {
 } // namespace
 
 Vfs& FileSystem() {
-    static Vfs vfs;
-    return vfs;
+    return LocalState<Vfs>();
 }
 
 FileTable& Files() {

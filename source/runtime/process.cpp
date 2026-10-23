@@ -86,7 +86,7 @@ uint32_t EntryReturnAddress() {
     return win32::IndexToHostAddress(idx);
 }
 
-Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem) {
+Process::Process(cpu::PagedGuestMemory& mem) : mem_(mem),defaultHeap_(mem) {
     win32::SetImportBindingMemory(&mem_);
     scheduler_.SetTimerCallbacks([this] { PollWaitableTimers(handles_,&scheduler_); },
         [this] { return HasActiveWaitableTimers(handles_); });
