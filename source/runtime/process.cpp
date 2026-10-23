@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 #include "files.h"
+#include "command_line.h"
 #include "../win32/crt_globals.h"
 #include "../win32/host_functions.h"
 #include "../win32/iat_patcher.h"
@@ -702,6 +703,22 @@ bool Process::SetupStaticTls(Module* m, std::string& error) {
     return true;
 }
 
+std::string Process::GuestCommandLine() const {
+    if(!main_)return commandLine_;
+    const auto& native=main_->path;const auto& cmd=commandLine_;
+    // Existing native-path callers may leave the executable unquoted, even if
+    // its name contains spaces. Replace only the complete known executable.
+    const auto prefix=native;
+    if(cmd.compare(0,prefix.size(),prefix)==0 &&
+       (cmd.size()==prefix.size() || cmd[prefix.size()]==' ' || cmd[prefix.size()]=='\t'))
+        return QuoteCommandArgument(FileSystem().ToGuest(native))+cmd.substr(prefix.size());
+    const auto quoted=QuoteCommandArgument(native);
+    if(cmd.compare(0,quoted.size(),quoted)==0 &&
+       (cmd.size()==quoted.size() || cmd[quoted.size()]==' ' || cmd[quoted.size()]=='\t'))
+        return QuoteCommandArgument(FileSystem().ToGuest(native))+cmd.substr(quoted.size());
+    return cmd;
+}
+
 bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     if (!main_) { error = "EXE не загружен"; return false; }
 
@@ -729,7 +746,7 @@ bool Process::PrepareMainThread(cpu::CpuState& cpu, std::string& error) {
     if (!crtGlobals_ || !mfcState || !heap || !tlsArray_) { error = "нет места под служебные области"; return false; }
     mainThread_.memoryRegions.emplace_back(tlsArray_,kTlsSlots*4u);
     if (commandLine_.empty()) commandLine_ = main_->path;
-    win32::InitCrtGlobals(mem_, crtGlobals_, commandLine_.c_str());
+    if(!win32::InitCrtGlobals(mem_,crtGlobals_,GuestCommandLine().c_str())) {error="invalid or oversized command line";return false;}
     win32::g_mfcStateBase = mfcState;
     win32::g_heapBase = heap;
     win32::g_heapNext = heap;

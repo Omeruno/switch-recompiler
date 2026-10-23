@@ -139,6 +139,7 @@ public:
     // умолчанию — путь к EXE.
     void SetCommandLine(const std::string& cmd) { commandLine_ = cmd; }
     const std::string& CommandLine() const { return commandLine_; }
+    std::string GuestCommandLine() const;
 
     uint32_t TebAddress() const { return mainThread_.teb ? mainThread_.teb : kTebAddress; }
     uint32_t CurrentThreadId() const {

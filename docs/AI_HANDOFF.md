@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`12c11372896cded9b19cd98bc41cab79cf84c351` (2026-10-24).
-[CI 40027919660](https://github.com/Omeruno/switch-recompiler/actions/runs/40027919660)
+`12f0114fd53e6f5d042a76a75d3feca5b41c5338` (2026-10-24).
+[CI 40031884729](https://github.com/Omeruno/switch-recompiler/actions/runs/40031884729)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -13,7 +13,8 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
 The user prioritizes a functional XP-like native shell and real Switch/SD-backed
 file structure. **F1/F2 and F3a real directory browser/path-only launch are implemented;
-next code package: F3b document arguments/associations and remaining supported Start actions**,
+F3b document arguments/application choice are implemented;
+next code package: F3c preferences/settings and remaining shell refinements**,
 followed by F4–F5 active-guest integration and save/find/reopen. Continue
 G0 only as retained diagnostics; representative timing/optimization is no longer
 the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
@@ -591,3 +592,60 @@ passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti. Changed Markdown local
 links/fences and git diff --check passed. The incoming branch was fetched again
 at unchanged 12c1137 before publishing; no force/reset is used. Exact new-SHA CI
 must be checked following push; local host builds do not compile libnx main.
+
+
+## 2026-10-24 F3b: document application choice and full argument transport
+
+Incoming clean 12f0114fd53e6f5d042a76a75d3feca5b41c5338 matches the fetched branch;
+CI run 40031884729 passed all six jobs. No newer changes/AGENTS.md were found.
+Added typed arguments/encoded guest command line to ShellLaunchRequest; production
+selection clears/copies that transport per launch and passes it into Process.
+Run supports explicit EXE + arguments, directory/document paths and strict quote
+errors; no PATH/native shell execution or guessed executable-prefix search.
+
+Explorer Open on an unassociated document prompts for an explicit guest EXE;
+Choose application can replace it. Extension mappings are bounded (32 types,
+1–16 ASCII extension chars), remembered across GuestSession teardown in the
+host shell and cleared on homebrew exit/successful root reconfiguration. No
+on-disk preferences or guessed/verified Paint association is claimed. Generated
+document arguments are absolute guest paths; missing applications/documents fail
+and clear requests. Cancellation preserves mappings and view. No-extension files
+can use one-shot Open With. Remaining settings/tree work is F3c, not F complete.
+
+The shared bounded Windows quote/backslash codec covers 64 arguments/16 KiB,
+empty/space/quote/slash/Unicode values. Process::GuestCommandLine unifies bootstrap
+and Kernel32 strings while preserving legacy native-exe callers. Found and fixed
+bootstrap CRT's former 63-byte/argc=1 limitation with bounded 128 KiB storage and
+full pointers/arrays; existing data-import slots stay stable. MSVCRT wide argv
+now decodes UTF-8, and CommandLineToArgvW returns parsed UTF-16 in one LocalFree-
+compatible process heap block. winrun quotes each host argument. This is bridge
+UTF-8 and tested canonical Windows quoting, not complete ACP/all CRT quirks.
+
+Native codec/browser tests cover quoting, limits, chooser/cancel, remembered and
+uppercase types, full tables and missing apps. The public shell_document MinGW
+reader passed four actual-x86 Run/chooser/remembered/reopen sessions in a targeted
+harness, checking A/W command line >63 chars, narrow/wide CRT argv, bootstrap
+arrays, CommandLineToArgvW/LocalFree and real Unicode/space/emoji document bytes.
+It reads an existing public document; it does not certify Paint save/reopen.
+
+Initial runtime build caught a missing files.h declaration in the new command-
+line API source; fixed directly. The first fixture build used MinGW-private
+startup declarations unavailable in its public headers; the test now declares
+the existing __wgetmainargs ABI explicitly. No runtime compatibility workaround
+was added for that compiler issue. The complete clean release suite on the final
+source/fixture tree is required before publication. See F3_DOCUMENTS.md.
+Local Switch SDK remains unavailable, so exact published-SHA Switch CI is the
+libnx compile gate. Physical keyboard/Paint/GPU/fallback/input/relaunch checks
+stay deferred; no SD diagnosis is reopened. Next: F3c preferences/association
+management and remaining supported Start/settings/tree actions, then F4/F5.
+
+Final F3b local validation: complete clean MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final source and
+public fixture tree. This includes the four new actual-x86 document sessions,
+existing four filesystem sessions, core/USER/legacy lifetime regressions, Stage C,
+all six E9 software groups, CPU/actual-GL composition at both sizes and input/
+dialogs. Native quote/browser tests and strict command API/bootstrap compilation
+passed -Wall -Wextra -Werror -fno-exceptions -fno-rtti. The native associated-file
+render was inspected; Markdown relative links/fences and git diff --check passed.
+Fetched unchanged 12f0114 again before commit. Exact published-SHA CI remains to
+be verified after push; no local Switch SDK or physical acceptance is implied.

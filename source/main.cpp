@@ -98,6 +98,7 @@ bool InitializeOutput(bool gpuRequested);
 void CloseOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
+static std::string g_selectedCommandLine;
 static std::string g_selectedExePath; // set only after an actual picker selection
 
 // НАЙДЕНО ОБРАТНОЙ СВЯЗЬЮ С РЕАЛЬНОГО ЖЕЛЕЗА: тулбар/палитра рисовались
@@ -345,7 +346,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
     // (из каталога программы), если она есть
     if (!g_useNewUi) proc.ForceHle("mfc42u.dll");
-    proc.SetCommandLine(g_selectedExePath);
+    proc.SetCommandLine(g_selectedCommandLine.empty()?g_selectedExePath:g_selectedCommandLine);
 
     std::string err;
     if(!rt::FileSystem().ConfigurePersistent("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",err)) {
@@ -2021,6 +2022,7 @@ static ui::ExecutableCatalog ListExecutables() {
 // Single-file autolaunch is preserved. The picker can always return on applet
 // shutdown or B/PLUS, including while waiting for a new selection edge.
 static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
+    g_selectedCommandLine.clear();
     padUpdate(&g_pad);
     ui::PointerInputGate gate;gate.Reset(padGetButtons(&g_pad),false);
     const auto catalog=ListExecutables();const auto& files=catalog.Files();
@@ -2074,6 +2076,7 @@ static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
 // existing guest output/worker starts; do not borrow USER state or write guest
 // renderer metrics. Active-guest taskbar/compositor integration remains F4.
 static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
+    g_selectedCommandLine.clear();
     if(!shell.FilesystemReady()) {
         std::string error;
         shell.ConfigureFilesystem("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",error);
@@ -2139,11 +2142,12 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
         if(shell.PendingTextInput()!=ui::DesktopShell::TextInput::None) {
             // Shell keyboard uses no guest USER state or newui::Blit binding.
             const bool address=shell.PendingTextInput()==ui::DesktopShell::TextInput::Address;
+            const bool openWith=shell.PendingTextInput()==ui::DesktopShell::TextInput::OpenWith;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,address?"Путь к папке":"Путь к EXE или папке");
-                swkbdConfigSetGuideText(&config,"C:\\, S:\\ или R:\\; без аргументов командной строки");
+                swkbdConfigSetHeaderText(&config,address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetGuideText(&config,openWith?"Для расширения выбор запомнится до выхода из оболочки.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,500);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
                 accepted=R_SUCCEEDED(swkbdShow(&config,text,sizeof(text)));
@@ -2178,7 +2182,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
         dirty=false;svcSleepThread(16'000'000);
     }
     presentation.Detach();newui::CloseOutput();g_graphicsInitialized=false;
-    if(!shell.LaunchPath().empty())g_selectedExePath=shell.LaunchPath();
+    if(!shell.LaunchPath().empty()){g_selectedExePath=shell.LaunchPath();g_selectedCommandLine=shell.LaunchRequest().commandLine;}
     // A console is required only for the text fallback and existing launcher
     // transition. It is never restored after sticky applet shutdown.
     if(!g_appletStopped){consoleInit(NULL);cpu::g_consoleAvailable=true;}

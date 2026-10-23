@@ -15,9 +15,9 @@ public:
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25};
     enum class Panel {Desktop,Programs,About,Explorer};
-    enum class TextInput {None,Address,Run};
+    enum class TextInput {None,Address,Run,OpenWith};
     bool ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error);
     bool FilesystemReady() const {return browser_.Ready();}
     const ShellBrowser& Browser() const {return browser_;}
@@ -55,11 +55,13 @@ private:
     void Activate(int target);
     void OpenBrowser(const std::string& path);
     void LaunchProgram();
+    void OpenCurrent();
+    void ChooseApplication(const std::string&);
     void FocusBrowserSelection();
     size_t First() const {return selected_/Rows*Rows;}
     std::vector<int> FocusOrder() const;
     std::vector<std::string> files_;
-    std::string status_,initialText_;
+    std::string status_,initialText_,pendingDocument_;
     ShellBrowser browser_;
     ShellLaunchRequest request_;
     TextInput textInput_=TextInput::None;

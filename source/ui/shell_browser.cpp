@@ -27,6 +27,7 @@ ShellBrowser::ShellBrowser(size_t items,size_t scanned)
 bool ShellBrowser::Configure(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
     if(!vfs_.ConfigurePersistent(system,sd,rom,error))return Fail(Error::NotReady);
     ready_=true;path_.clear();history_.clear();entries_.clear();selected_=0;
+    associations_.clear();unassociatedDocument_.clear();
     return Refresh();
 }
 bool ShellBrowser::Mounted(char drive) const {
@@ -37,6 +38,9 @@ std::string ShellBrowser::DocumentsPath() const {return vfs_.ProfileDirectory()+
 const char16_t* ShellBrowser::ErrorText(Error error) {
     switch(error) {
     case Error::None:return u"";
+    case Error::InvalidCommand:return u"Неверные кавычки или слишком длинная команда.";
+    case Error::AssociationLimit:return u"Лимит типов файлов. Используйте Выполнить для запуска приложения.";
+    case Error::MissingApplication:return u"Приложение недоступно. Выберите другое через Открыть с помощью.";
     case Error::ResolutionLimit:return u"Лимит поиска пути. Укажите точное имя папки или файла.";
     case Error::NotReady:return u"Файловая система недоступна.";
     case Error::InvalidPath:return u"Недопустимый путь или неподключённый диск.";
@@ -44,7 +48,7 @@ const char16_t* ShellBrowser::ErrorText(Error error) {
     case Error::NotDirectory:return u"Укажите путь к папке.";
     case Error::AccessDenied:return u"Нет доступа к пути.";
     case Error::ReadFailed:return u"Не удалось прочитать каталог.";
-    case Error::UnsupportedFile:return u"Для этого файла пока нет приложения. Поддержан запуск EXE.";
+    case Error::UnsupportedFile:return u"Выберите приложение для этого типа файла.";
     }
     return u"Ошибка файловой системы.";
 }
@@ -161,7 +165,7 @@ bool ShellBrowser::ResolveExecutable(const std::string& path,ShellLaunchRequest&
     if(!S_ISREG(st.st_mode) || !IsExecutable(full))return Fail(Error::UnsupportedFile);
     // Recheck readability now; a later load failure still returns through F0.
     FILE* file=std::fopen(native.c_str(),"rb");if(!file)return FailErrno();std::fclose(file);
-    out.guestPath=full;out.nativePath=native;error_=Error::None;return true;
+    out.guestPath=full;out.nativePath=native;return AttachArguments({},out);
 }
 bool ShellBrowser::ResolveCatalogExecutable(const std::string& native,ShellLaunchRequest& out) {
     const auto input=native;out.Clear();if(!ready_)return Fail(Error::NotReady);
@@ -170,19 +174,89 @@ bool ShellBrowser::ResolveCatalogExecutable(const std::string& native,ShellLaunc
     return ResolveExecutable(guest,out);
 }
 bool ShellBrowser::CanOpenSelected() const {
-    return selected_<entries_.size() && (entries_[selected_].kind!=Kind::File || IsExecutable(entries_[selected_].path));
+    return selected_<entries_.size();
 }
 bool ShellBrowser::OpenPath(const std::string& path,ShellLaunchRequest& out) {
-    const auto input=path;out.Clear();if(!ready_)return Fail(Error::NotReady);
+    const auto input=path;out.Clear();unassociatedDocument_.clear();if(!ready_)return Fail(Error::NotReady);
     if(input.empty())return Fail(Error::InvalidPath);
     const auto full=vfs_.FullGuestPath(input);if(full.empty())return FailErrno();
     size_t caseBudget=scanLimit_;const auto native=vfs_.ToHost(full,false,&caseBudget);
     if(native.empty())return FailErrno();
     struct stat st{};if(stat(native.c_str(),&st)!=0)return FailErrno();
-    return S_ISDIR(st.st_mode)?Navigate(full):ResolveExecutable(full,out);
+    if(S_ISDIR(st.st_mode))return Navigate(full);
+    if(IsExecutable(full))return ResolveExecutable(full,out);
+    std::string document;if(!Document(full,document))return false;
+    const auto app=ApplicationFor(document);if(app.empty()){unassociatedDocument_=document;return Fail(Error::UnsupportedFile);}
+    if(!ResolveExecutable(app,out))return Fail(Error::MissingApplication);
+    return AttachArguments({document},out);
 }
 bool ShellBrowser::OpenSelected(ShellLaunchRequest& out) {
     out.Clear();if(selected_>=entries_.size())return false;
     return OpenPath(entries_[selected_].path,out);
+}
+
+std::string ShellBrowser::Extension(const std::string& path) {
+    const auto dot=path.find_last_of('.'),slash=path.find_last_of("\\/");
+    if(dot==std::string::npos || (slash!=std::string::npos && dot<slash) || dot+1==path.size() || path.size()-dot>17)return {};
+    std::string ext;
+    for(size_t i=dot+1;i<path.size();++i) {
+        const char c=Lower(path[i]);
+        if(!((c>='a'&&c<='z') || (c>='0'&&c<='9') || c=='_' || c=='-'))return {};
+        ext+=c;
+    }
+    return ext=="exe"?std::string():ext;
+}
+std::string ShellBrowser::SelectedDocument() const {return CanChooseApplication()?entries_[selected_].path:std::string();}
+bool ShellBrowser::CanChooseApplication() const {
+    return selected_<entries_.size() && entries_[selected_].kind==Kind::File && !IsExecutable(entries_[selected_].path);
+}
+std::string ShellBrowser::ApplicationFor(const std::string& path) const {
+    const auto ext=Extension(path);if(ext.empty())return {};
+    for(const auto& item:associations_)if(item.extension==ext)return item.application;
+    return {};
+}
+bool ShellBrowser::Document(const std::string& path,std::string& full) {
+    if(!ready_)return Fail(Error::NotReady);
+    full=vfs_.FullGuestPath(path);if(full.empty())return FailErrno();
+    size_t budget=scanLimit_;const auto native=vfs_.ToHost(full,false,&budget);
+    if(native.empty())return FailErrno();
+    struct stat st{};if(stat(native.c_str(),&st)!=0)return FailErrno();
+    if(!S_ISREG(st.st_mode) || IsExecutable(full))return Fail(Error::UnsupportedFile);
+    FILE* f=std::fopen(native.c_str(),"rb");if(!f)return FailErrno();std::fclose(f);return true;
+}
+bool ShellBrowser::AttachArguments(const std::vector<std::string>& args,ShellLaunchRequest& out) {
+    std::vector<std::string> all{out.guestPath};all.insert(all.end(),args.begin(),args.end());
+    if(!rt::BuildCommandLine(all,out.commandLine)){out.Clear();return Fail(Error::InvalidCommand);}
+    out.arguments=args;error_=Error::None;return true;
+}
+bool ShellBrowser::OpenWith(const std::string& path,const std::string& application,ShellLaunchRequest& out) {
+    const auto input=path,app=application;out.Clear();std::string document;
+    if(!Document(input,document) || !ResolveExecutable(app,out))return false;
+    if(!AttachArguments({document},out))return false;
+    const auto ext=Extension(document);
+    if(!ext.empty()) {
+        auto it=std::find_if(associations_.begin(),associations_.end(),[&](const Association& a){return a.extension==ext;});
+        if(it!=associations_.end())it->application=out.guestPath;
+        else {
+            if(associations_.size()==MaxAssociations){out.Clear();return Fail(Error::AssociationLimit);}
+            associations_.push_back({ext,out.guestPath});
+        }
+    }
+    return true;
+}
+bool ShellBrowser::RunCommand(const std::string& command,ShellLaunchRequest& out) {
+    const auto input=command;out.Clear();unassociatedDocument_.clear();
+    if(!ready_)return Fail(Error::NotReady);
+    std::vector<std::string> args;
+    if(!rt::ParseCommandLine(input,args,true) || args.empty() || args[0].empty())return Fail(Error::InvalidCommand);
+    // Preserve F3a literal paths with spaces. Explicit quoting is required when
+    // adding arguments; no progressively longer executable-prefix guessing.
+    if(args.size()>1 && input.front()!='"') {
+        size_t budget=scanLimit_;const auto host=vfs_.ToHost(input,false,&budget);struct stat st{};
+        if(!host.empty() && stat(host.c_str(),&st)==0)args={input};
+    }
+    if(args.size()==1)return OpenPath(args[0],out);
+    if(!ResolveExecutable(args[0],out))return false;
+    args.erase(args.begin());return AttachArguments(args,out);
 }
 } // namespace ui

@@ -59,7 +59,7 @@ int main(int argc,char** argv) {
     assert(browser.OpenSelected(request) && request.nativePath==app.string());
     assert(request.guestPath=="S:\\Apps\\Unicode 文件\\PuBlic.EXE");
     assert(browser.Back() && browser.Entries()[browser.Selected()].name=="Unicode 文件");
-    browser.Select(Find(browser,"notes.txt"));assert(!browser.CanOpenSelected());
+    browser.Select(Find(browser,"notes.txt"));assert(browser.CanOpenSelected());
     assert(!browser.OpenSelected(request) && request.nativePath.empty() && browser.LastError()==Browser::Error::UnsupportedFile);
     browser.Select(Find(browser,"notes.txt"));browser.CycleSort();assert(browser.Entries()[browser.Selected()].name=="notes.txt");
     browser.CycleSort();assert(browser.Entries()[0].kind==Browser::Kind::Directory && browser.Entries()[1].name=="large.bin");
@@ -137,6 +137,29 @@ int main(int argc,char** argv) {
     // Y/NextFocus reaches toolbar and quick roots without moving the selected row.
     bool addressReached=false;for(unsigned i=0;i<30;++i){shell.NextFocus();if(shell.Focus()==Shell::Address)addressReached=true;}
     assert(addressReached);
+    // Arguments and explicit document associations are shell-owned across Enter.
+    shell.ToggleStart();Input(shell,Shell::MenuRun,"\"S:\\Apps\\Unicode 文件\\PuBlic.EXE\" \"space value\" \"\" \"slash\\\\\"");
+    assert(shell.LaunchRequest().arguments==std::vector<std::string>({"space value","","slash\\"}));
+    shell.Enter();Input(shell,Shell::Address,"S:\\Apps");
+    Click(shell,Shell::BrowserRowBase+int(Find(shell.Browser(),"notes.txt")));shell.Accept();
+    assert(shell.PendingTextInput()==Shell::TextInput::OpenWith && shell.LaunchPath().empty());
+    shell.CompleteTextInput(false,"");assert(shell.LaunchPath().empty() && shell.Browser().ApplicationFor("a.txt").empty());
+    Click(shell,Shell::OpenWith);shell.CompleteTextInput(true,"S:\\Apps\\Unicode 文件\\PuBlic.EXE");
+    assert(shell.LaunchRequest().arguments==std::vector<std::string>{"S:\\Apps\\notes.txt"});
+    shell.Enter();shell.Accept();assert(shell.LaunchRequest().arguments.size()==1 && !shell.LaunchPath().empty());
+    Screenshot(shell,prefix,"associated-document");
+    shell.Enter();shell.ToggleStart();Input(shell,Shell::MenuRun,"\"bad quote");assert(shell.LaunchPath().empty());
+    Browser associations;assert(associations.Configure(system.string(),sd.string(),rom.string(),error));
+    for(size_t i=0;i<Browser::MaxAssociations;++i) {
+        const auto name="type.t"+std::to_string(i);std::ofstream(sd/name)<<"data";
+        assert(associations.OpenWith("S:\\"+name,"S:\\Apps\\Unicode 文件\\PuBlic.EXE",request));
+    }
+    std::ofstream(sd/"type.extra")<<"data";
+    assert(!associations.OpenWith("S:\\type.extra","S:\\Apps\\Unicode 文件\\PuBlic.EXE",request));
+    assert(associations.LastError()==Browser::Error::AssociationLimit && request.nativePath.empty());
+    std::ofstream(sd/"UPPER.T0")<<"data";assert(associations.OpenPath("S:\\UPPER.T0",request));
+    fs::remove(app);assert(!associations.OpenPath("S:\\UPPER.T0",request) && request.nativePath.empty());
+    assert(associations.LastError()==Browser::Error::MissingApplication);std::ofstream(app)<<"fixture restored";
     // A Start action whose backing folder disappeared preserves visible focus.
     Click(shell,Shell::Close);fs::remove(doc);fs::remove_all(system/"Documents and Settings/Player/My Documents");
     const int previousFocus=shell.Focus();shell.ToggleStart();Click(shell,Shell::MenuDocuments);

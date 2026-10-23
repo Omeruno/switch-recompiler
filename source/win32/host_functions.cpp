@@ -1,3 +1,4 @@
+#include "command_line_api.h"
 #include "../runtime/workload_profile.h"
 #include "../runtime/guest_fault.h"
 #include <strings.h>
@@ -247,8 +248,8 @@ HostCallOutcome Impl_GetMainArgs(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     // args 3 (_DoWildCard) и 4 (_StartupInfo) сознательно игнорируем —
     // не влияют на геймплей-корректность в нашем случае
 
-    mem.Write32(pArgc, 1); // argc = 1 (только имя программы, без аргументов)
-    mem.Write32(pArgv, g_crtGlobalsBase + CRT_OFFSET_ARGV);
+    mem.Write32(pArgc,mem.Read32(g_crtGlobalsBase+CRT_OFFSET_ARGC));
+    mem.Write32(pArgv,mem.Read32(g_crtGlobalsBase+CRT_OFFSET_ARGV_PTR));
     mem.Write32(pEnv, g_crtGlobalsBase + CRT_OFFSET_ENV);
 
     HostCallOutcome result;
@@ -265,8 +266,8 @@ HostCallOutcome Impl_WGetMainArgs(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t pArgv = ReadArg(cpu, mem, 1);
     uint32_t pEnv  = ReadArg(cpu, mem, 2);
 
-    mem.Write32(pArgc, 1); // argc = 1 (только имя программы)
-    mem.Write32(pArgv, g_crtGlobalsBase + CRT_OFFSET_WARGV);
+    mem.Write32(pArgc,mem.Read32(g_crtGlobalsBase+CRT_OFFSET_ARGC));
+    mem.Write32(pArgv,mem.Read32(g_crtGlobalsBase+CRT_OFFSET_WARGV_PTR));
     mem.Write32(pEnv, g_crtGlobalsBase + CRT_OFFSET_WENV);
 
     HostCallOutcome result;
@@ -1162,37 +1163,15 @@ HostCallOutcome Impl_CLSIDFromString(cpu::CpuState& cpu, cpu::IGuestMemory& mem)
 
 // LPWSTR GetCommandLineW(void) — уже готовая строка (см. InitCrtGlobals /
 // CRT_OFFSET_WCMDLINE_STR), просто возвращаем на неё указатель.
-HostCallOutcome Impl_GetCommandLineW(cpu::CpuState&, cpu::IGuestMemory&) {
+HostCallOutcome Impl_GetCommandLineW(cpu::CpuState&, cpu::IGuestMemory& mem) {
     HostCallOutcome result;
-    result.returnValue = g_crtGlobalsBase + CRT_OFFSET_WCMDLINE_STR;
+    result.returnValue=mem.Read32(g_crtGlobalsBase+CRT_OFFSET_WCMDLINE_PTR);
     return result;
 }
 
-// LPWSTR* CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs) — у нас
-// командная строка всегда простая: одно "слово" (имя программы), без
-// пробелов/кавычек — упрощённый, но честный разбор именно этого случая:
-// argv[0] = сама строка целиком, argc=1. Выделяем через уже готовый
-// SimpleGuestAlloc (тот же, что и для _wcsdup) — и саму копию строки, и
-// массив указателей.
-HostCallOutcome Impl_CommandLineToArgvW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t pCmdLine = ReadArg(cpu, mem, 0);
-    uint32_t pNumArgs = ReadArg(cpu, mem, 1);
-
-    uint32_t len = 0;
-    if (pCmdLine != 0) while (mem.Read16(pCmdLine + len * 2) != 0) len++;
-
-    uint32_t pArgStr = SimpleGuestAlloc((len + 1) * 2);
-    for (uint32_t i = 0; i <= len; i++) mem.Write16(pArgStr + i * 2, mem.Read16(pCmdLine + i * 2));
-
-    uint32_t pArgv = SimpleGuestAlloc(8); // char*[2] = { &строка, NULL }
-    mem.Write32(pArgv, pArgStr);
-    mem.Write32(pArgv + 4, 0);
-
-    if (pNumArgs != 0) mem.Write32(pNumArgs, 1);
-
-    HostCallOutcome result;
-    result.returnValue = pArgv;
-    return result;
+// Shared bounded UTF-16 parser; one LocalFree-compatible allocation.
+HostCallOutcome Impl_CommandLineToArgvW(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    return ParseCommandLineWide(c,m);
 }
 
 // MFC42u.DLL ординал 3516 — судя по контексту вызова (аргументы похожи на

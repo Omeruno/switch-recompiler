@@ -1,6 +1,8 @@
 # F3a: real directory explorer and direct path launch
 
-Implemented software package after F2 (`12c1137`). This is the first F3 package,
+Implemented F3a baseline after F2 (`12c1137`). Subsequent [F3b](F3_DOCUMENTS.md)
+adds document applications and arguments; path-only behavior below describes the
+original F3a package. This is the first F3 package,
 not completion of all F3/F4/F5 requirements. Physical checks remain deferred in
 [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md); SD diagnosis is closed.
 
@@ -101,7 +103,8 @@ checks still run. Required suite: `COMPOSITION_GL_TEST=1 sh tools/run_host_tests
 Host tests do not execute libnx keyboard, framebuffer and physical input; exact
 published-SHA Switch CI and later physical acceptance remain separate.
 
-Next F3b: document associations with explicit guest argument transport/public
-fixture, remaining supported Start/settings actions, and directory-tree refinements.
+F3b now implements document application choice and explicit guest arguments.
+Next F3c: persisted preferences/association management, supported Start/settings
+actions and directory-tree refinements.
 F4 active-guest taskbar/compositor/input ownership and F5 save/find/reopen/persistence
 remain open. No hardware Paint/GPU/fallback/input/relaunch result is added here.

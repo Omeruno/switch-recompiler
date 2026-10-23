@@ -85,6 +85,7 @@ Rect DesktopShell::Bounds(int t) {
     case Launch:return {954,578,1138,614};
     case Previous:return {240,578,364,614};
     case Next:return {374,578,498,614};
+    case OpenWith:return {752,578,944,614};
     case NavBack:return {240,150,326,178};
     case NavUp:return {332,150,406,178};
     case Refresh:return {412,150,516,178};
@@ -118,7 +119,7 @@ bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::stri
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
 void DesktopShell::Enter() {
-    request_.Clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
+    request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
     focus_=panel_==Panel::Programs && !files_.empty()?RowBase+int(selected_%Rows):panel_==Panel::Desktop?Programs:Close;
 }
@@ -130,6 +131,7 @@ bool DesktopShell::Enabled(int t) const {
     if(t==NavBack)return browser_.CanBack();
     if(t==NavUp)return browser_.CanUp();
     if(t>=BrowserRowBase && t<BrowserRowBase+Rows)return browser_.Selected()/Rows*Rows+size_t(t-BrowserRowBase)<browser_.Entries().size();
+    if(t==OpenWith)return panel_==Panel::Explorer && browser_.CanChooseApplication();
     if(t==Launch)return panel_==Panel::Explorer?browser_.CanOpenSelected():!files_.empty() && browser_.Ready();
     if(t==Previous)return panel_==Panel::Explorer?browser_.Selected()/Rows>0:First()>0;
     if(t==Next)return panel_==Panel::Explorer?(browser_.Selected()/Rows+1)*Rows<browser_.Entries().size():First()+Rows<files_.size();
@@ -146,7 +148,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(panel_==Panel::Explorer) {
         std::vector<int> out;
         if(!browser_.Entries().empty())out.push_back(BrowserRowBase+int(browser_.Selected()%Rows));
-        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,Previous,Next,Launch,Close,Start})
+        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,Previous,Next,OpenWith,Launch,Close,Start})
             if(Enabled(t))out.push_back(t);
         return out;
     }
@@ -174,18 +176,29 @@ void DesktopShell::OpenBrowser(const std::string& path) {
 void DesktopShell::LaunchProgram() {
     request_.Clear();if(selected_<files_.size())browser_.ResolveCatalogExecutable(files_[selected_],request_);
 }
+void DesktopShell::ChooseApplication(const std::string& document) {
+    pendingDocument_=document;textInput_=TextInput::OpenWith;initialText_=browser_.ApplicationFor(document);
+}
+void DesktopShell::OpenCurrent() {
+    if(!browser_.OpenSelected(request_) && browser_.LastError()==ShellBrowser::Error::UnsupportedFile && !browser_.UnassociatedDocument().empty())
+        ChooseApplication(browser_.UnassociatedDocument());
+    FocusBrowserSelection();
+}
 void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
     const auto purpose=textInput_;textInput_=TextInput::None;
-    if(!accepted || purpose==TextInput::None)return;
-    request_.Clear();std::string path=input;
-    if(path.size()>=2 && path.front()=='"' && path.back()=='"')path=path.substr(1,path.size()-2);
-    if(path.empty()) { // Empty address is My Computer; Run requires an explicit path.
-        if(purpose==TextInput::Address)OpenBrowser("");
-        else browser_.OpenPath("",request_);
+    if(!accepted || purpose==TextInput::None){pendingDocument_.clear();return;}
+    request_.Clear();
+    if(purpose==TextInput::Run) {
+        if(browser_.RunCommand(input,request_) && request_.nativePath.empty()){panel_=Panel::Explorer;FocusBrowserSelection();}
+        else if(browser_.LastError()==ShellBrowser::Error::UnsupportedFile && !browser_.UnassociatedDocument().empty())
+            ChooseApplication(browser_.UnassociatedDocument());
         return;
     }
-    if(purpose==TextInput::Address)OpenBrowser(path);
-    else if(browser_.OpenPath(path,request_) && request_.nativePath.empty()){panel_=Panel::Explorer;FocusBrowserSelection();}
+    std::string path=input;
+    if(path.size()>=2 && path.front()=='"' && path.back()=='"')path=path.substr(1,path.size()-2);
+    if(purpose==TextInput::OpenWith) {
+        const auto document=pendingDocument_;pendingDocument_.clear();browser_.OpenWith(document,path,request_);
+    } else OpenBrowser(path);
 }
 void DesktopShell::ToggleStart() {
     pressed_=None;
@@ -228,7 +241,7 @@ int DesktopShell::HitTest(int x,int y) const {
     if(panel_!=Panel::Desktop) {
         if(Bounds(Close).Contains(x,y))return Close;
         if(panel_==Panel::Explorer) {
-            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,Launch,Previous,Next})if(Bounds(t).Contains(x,y))return t;
+            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next})if(Bounds(t).Contains(x,y))return t;
             for(int i=0;i<Rows;++i)if(Bounds(BrowserRowBase+i).Contains(x,y))return BrowserRowBase+i;
         }
         if(panel_==Panel::Programs) {
@@ -258,7 +271,7 @@ void DesktopShell::PointerUp(int x,int y) {
 }
 void DesktopShell::Activate(int target) {
     if(!Enabled(target))return;
-    if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));browser_.OpenSelected(request_);FocusBrowserSelection();return;}
+    if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));OpenCurrent();return;}
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     switch(target) {
     case Start:ToggleStart();return;
@@ -278,7 +291,8 @@ void DesktopShell::Activate(int target) {
     case Close:panel_=Panel::Desktop;focus_=Programs;break;
     case Previous:Page(-1);break;
     case Next:Page(1);break;
-    case Launch:if(panel_==Panel::Explorer){browser_.OpenSelected(request_);FocusBrowserSelection();}else LaunchProgram();break;
+    case OpenWith:ChooseApplication(browser_.SelectedDocument());break;
+    case Launch:if(panel_==Panel::Explorer)OpenCurrent();else LaunchProgram();break;
     case Exit:exit_=true;break;
     default:break;
     }
@@ -362,10 +376,14 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             else {
                 if(browser_.Truncated())note+=u"Лимит просмотра: список неполный. ";
                 if(browser_.Errors())note+=u"Некоторые записи недоступны. ";
-                if(note.empty() && !entries.empty() && !browser_.CanOpenSelected())note=ShellBrowser::ErrorText(ShellBrowser::Error::UnsupportedFile);
-                if(note.empty())note=browser_.Path().empty()?u"Для томов показано доступное место. R: только чтение.":browser_.ReadOnly()?u"Только чтение. Адресная строка открывает ввод пути.":u"Адрес: путь к папке. Для документов пока нет приложения.";
+                if(note.empty() && browser_.CanChooseApplication()) {
+                    const auto app=browser_.ApplicationFor(browser_.SelectedDocument());
+                    note=app.empty()?u"Открыть: выбрать приложение. Тип запоминается до выхода.":u"Приложение: "+Wide(app.substr(app.find_last_of('\\')+1))+u" (до выхода из оболочки)";
+                }
+                if(note.empty())note=browser_.Path().empty()?u"Для томов показано доступное место. R: только чтение.":browser_.ReadOnly()?u"Только чтение. Адресная строка открывает ввод пути.":u"Документы: Открыть или Выбрать приложение. Тип запоминается до выхода.";
             }
             Text(s,{240,556,1138,577},note,browser_.LastError()!=ShellBrowser::Error::None?0xA33C22:0x5A6574,13);
+            control(OpenWith,u"Выбрать приложение",Bounds(OpenWith));
             control(Previous,u"← Страница",Bounds(Previous));control(Next,u"Страница →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
             char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",entries.empty()?0:browser_.Selected()+1,entries.size());
             Text(s,{522,584,750,610},Wide(count),0x42576B,16);
@@ -398,7 +416,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             if(hot){Fill(s,r,pressed_==t?0x1D4C99:0x316AC5);Frame(s,r,0x204DA0);}
             Text(s,{r.left+10,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,17,t==MenuPrograms);
         }
-        Text(s,{258,538,466,602},browser_.Ready()?u"Выполнить: EXE / папка":u"Файлы недоступны",0x8397AB,13);
+        Text(s,{258,538,466,602},browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
         Gradient(s,{2,622,478,678},0x3282D6,0x1C61B5);control(Exit,u"Выйти в Homebrew",Bounds(Exit));
     }
 }

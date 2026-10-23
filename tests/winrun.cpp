@@ -1,3 +1,4 @@
+#include "source/runtime/command_line.h"
 // winrun.cpp — запуск Windows-программы на хосте через наш рантайм.
 //
 //   winrun [-v] [-L каталог] [-f кадров] [-c кадр:x:y]... [-d снимок.ppm] [-s кадр снимок.ppm]
@@ -161,7 +162,7 @@ int main(int argc, char** argv) {
     }
     std::string exe = argv[i];
     std::string cmd = exe;
-    for (int k = i + 1; k < argc; ++k) { cmd += " "; cmd += argv[k]; }
+    for(int k=i+1;k<argc;++k){cmd+=" ";cmd+=rt::QuoteCommandArgument(argv[k]);}
 
     // Оконная подсистема: Сапёр и Paint пока работают на прежнем HLE окон
     // (он подогнан под них), остальные программы — на новом USER32/GDI32.

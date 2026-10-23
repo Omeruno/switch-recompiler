@@ -1,20 +1,22 @@
 #pragma once
 #include "../runtime/files.h"
+#include "../runtime/command_line.h"
 #include <string>
 #include <vector>
 
 namespace ui {
 struct ShellLaunchRequest {
-    std::string guestPath,nativePath;
-    void Clear() {guestPath.clear();nativePath.clear();}
+    std::string guestPath,nativePath,commandLine;
+    std::vector<std::string> arguments;
+    void Clear() {guestPath.clear();nativePath.clear();commandLine.clear();arguments.clear();}
 };
 // Independent host VFS metadata over the same F1 roots as each GuestSession.
 // No global cwd, borrowed Process or file handles survive an operation.
 class ShellBrowser {
 public:
-    static constexpr size_t MaxItems=256,MaxScanned=4096,MaxHistory=32;
+    static constexpr size_t MaxItems=256,MaxScanned=4096,MaxHistory=32,MaxAssociations=32;
     enum class Kind {Drive,Directory,File};
-    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,ResolutionLimit};
+    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,ResolutionLimit,InvalidCommand,AssociationLimit,MissingApplication};
     enum class Sort {Name,NameDescending,SizeDescending};
     struct Entry {
         std::string name,path;
@@ -43,6 +45,12 @@ public:
     bool OpenSelected(ShellLaunchRequest&);
     bool OpenPath(const std::string& guestPath,ShellLaunchRequest&);
     bool CanOpenSelected() const;
+    bool CanChooseApplication() const;
+    std::string SelectedDocument() const;
+    const std::string& UnassociatedDocument() const {return unassociatedDocument_;}
+    std::string ApplicationFor(const std::string& path) const;
+    bool OpenWith(const std::string& document,const std::string& application,ShellLaunchRequest&);
+    bool RunCommand(const std::string& command,ShellLaunchRequest&);
     bool ResolveExecutable(const std::string& guestPath,ShellLaunchRequest&);
     bool ResolveCatalogExecutable(const std::string& nativePath,ShellLaunchRequest&);
     void CycleSort();
@@ -55,6 +63,7 @@ public:
     static bool IsExecutable(const std::string& path);
     static const char16_t* ErrorText(Error);
 private:
+    struct Association {std::string extension,application;};
     struct Location {std::string path,selectedPath;};
     struct Listing {
         std::vector<Entry> entries;
@@ -67,11 +76,15 @@ private:
     std::string SelectedPath() const;
     bool Fail(Error error) {error_=error;return false;}
     bool FailErrno();
+    static std::string Extension(const std::string&);
+    bool AttachArguments(const std::vector<std::string>&,ShellLaunchRequest&);
+    bool Document(const std::string& path,std::string& full);
     rt::Vfs vfs_;
     bool ready_=false,readOnly_=false,truncated_=false;
-    std::string path_;
+    std::string path_,unassociatedDocument_;
     std::vector<Entry> entries_;
     std::vector<Location> history_;
+    std::vector<Association> associations_;
     size_t selected_=0,errors_=0,scanned_=0,itemLimit_,scanLimit_;
     Error error_=Error::None;
     Sort sort_=Sort::Name;

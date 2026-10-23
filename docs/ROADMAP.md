@@ -10,7 +10,7 @@
 - Производительность: сначала эталонный интерпретатор, затем опциональный dynarec, GPU backend. Ускорение НЕ должно менять семантику приложений.
 
 ## Подтверждённые факты / текущая точка
-- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: F1 постоянный SD-backed корень/тома и F2 native idle desktop/theme реализованы; F3a добавил реальный проводник/path-only Run; следующий пакет — F3b, аргументы/ассоциации документов и оставшиеся действия «Пуска». См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
+- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: F1 постоянный SD-backed корень/тома и F2 native idle desktop/theme реализованы; F3a добавил реальный проводник/path-only Run; F3b добавил приложения документов/аргументы; следующий пакет — F3c, настройки и оставшиеся действия «Пуска». См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
 - Принятая реализация: `6aacc4e013e55be84a6f7860dfb34e810c6fbda0`; все пять CI jobs прошли в [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Пользователь запустил standalone input и combined acceptance v2 на Switch и прислал отчёты: PASS 1–8, `PASS: ALL 8 SUITES`, `input passed`, без FAIL. [Запись приёмки](STAGE_C_ACCEPTANCE.md#результат-приёмки-2026-10-22).
 - Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
 - Дополнительная аппаратная проверка пользователем: Paint на NRO `8b0ad70` работает без изменений/регрессии (2026-10-22). Это проверка Paint, а не всех новых loader/concurrency-сценариев.
@@ -66,8 +66,8 @@ E3. Native Switch GPU backend только после проверки дост�
 E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software если несовместимый путь.
 Критерий: пиксельное сравнение CPU и GPU вывода на GDI-сценах + Paint visual regression.
 
-## Этап F — XP-подобная оболочка [F0/F1/F2 idle-shell программно реализованы; F3a browser реализован; F3b/F4/F5 следующий приоритет]
-- Общий SD-backed root/mount/path/volume contract и idle desktop/F3a browser реализованы; далее F3b/F4/F5 по [F_SHELL_PLAN.md](F_SHELL_PLAN.md).
+## Этап F — XP-подобная оболочка [F0/F1/F2 idle-shell программно реализованы; F3a browser реализован; F3c/F4/F5 следующий приоритет]
+- Общий SD-backed root/mount/path/volume contract и idle desktop/F3a browser реализованы; далее F3c/F4/F5 по [F_SHELL_PLAN.md](F_SHELL_PLAN.md).
 - Свой desktop-shell host UI: фон, taskbar, Start menu, часы, shortcuts, запуск и переключение EXE, сохранение на SD, управление Joy-Con/тач.
 - Собственный файловый менеджер. Настоящий explorer.exe — необязательная отдельная цель с огромными зависимостями.
 - Процессы: начать с одного адресного пространства/нескольких окон, затем полноценная изоляция нескольких экземпляров с отдельными Process и ресурсами.
@@ -95,7 +95,7 @@ E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software 
 1. **F1 реализован:** постоянные C/S/R, per-drive CWD/readonly, согласованные
    loader/CRT/dialog/profile пути и реальные statvfs space APIs. Контракт,
    совместимость старых запусков и пределы — [F1_FILESYSTEM.md](F1_FILESYSTEM.md).
-2. **F3b/F4/F5:** аргументы и ассоциации документов поверх F3a browser, действия Start,
+2. **F3c/F4/F5:** постоянные настройки и действия Start поверх F3a/F3b,
    integration shell/один guest, сохранение/поиск/повторное открытие документа.
    F0 session/picker foundation не означает готовую оболочку.
 3. **D:** файловые недостачи, нужные F1; отдельно page-permission enforcement,

@@ -3,9 +3,10 @@
 Статус: **F1 реализован программно** ([контракт и проверки](F1_FILESYSTEM.md));
 **F2 idle desktop/theme реализован программно** ([поведение и проверки](F2_DESKTOP.md));
 **F3a real directory/path launch реализован программно** ([контракт](F3_EXPLORER.md));
-F3b/F4/F5 ещё не реализованы. Физическая приёмка остаётся отложенной.
+**F3b document applications/arguments реализован программно** ([контракт](F3_DOCUMENTS.md));
+F3c/F4/F5 ещё не реализованы. Физическая приёмка остаётся отложенной.
 База: 03b9fd4. [Аудит всех этапов](PROJECT_AUDIT_2026_10_23.md) объясняет,
-почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F3b: аргументы/ассоциации документов и оставшиеся действия Start.
+почему F0 не означает готовый рабочий стол. Следующий кодовый пакет — F3c: постоянные настройки/управление ассоциациями и оставшиеся действия Start/tree.
 
 Пользовательская цель: реальная файловая структура Switch/SD, синяя панель
 задач и зелёный «Пуск», рабочий стол, программы и проводник в пределах уже
@@ -47,7 +48,7 @@ UNC/unsupported устройства должны иметь явный непо
 | --- | --- | --- |
 | **F1: реализован программно** ([F1_FILESYSTEM.md](F1_FILESYSTEM.md)) | Mount/root configuration отдельно от EXE directory/CWD; согласованные guest module/command-line пути, env/special folders, реальные volume/free-space provider и A/W APIs; сохранение старого standalone workflow | Две публичные EXE в разных каталогах видят одни документы; сохранённый файл читается после двух fresh sessions; C/S/R round-trip, неизвестный диск, read-only, traversal, case/Unicode, соседние DLL и failed load покрыты native+real-x86 tests |
 | **F2: native idle desktop реализован программно** | Постоянное host-состояние shell, фон, папки/ярлыки и selection, синяя taskbar, зелёный Start, часы реального времени; asset/theme manifest; 1280x720 и общий viewport | Host screenshot/pixel/layout и controller/touch tests; вход/выход shell не создаёт guest Process и не заимствует guest-owned pointers; изменение viewport не рассогласует ввод |
-| **F3: F3a реализован; F3b остаётся** | Программы из реальных EXE-путей, «Все программы», «Мой компьютер», «Мои документы», «Выполнить», доступные настройки, About и выход из homebrew; дерево/список, адрес, back/up, сортировка/страницы, выбор и открытие EXE/документа | Каждая видимая активная команда выполняет действие; browser читает directory-backed/SD provider с лимитами и честно сообщает truncation/read errors; Start/Explorer/Run приводят к одному launch request; app association проверяет существующую поддержку |
+| **F3: F3a/F3b реализованы; F3c остаётся** | Программы из реальных EXE-путей, «Все программы», «Мой компьютер», «Мои документы», «Выполнить», доступные настройки, About и выход из homebrew; дерево/список, адрес, back/up, сортировка/страницы, выбор и открытие EXE/документа | Каждая видимая активная команда выполняет действие; browser читает directory-backed/SD provider с лимитами и честно сообщает truncation/read errors; Start/Explorer/Run приводят к одному launch request; app association проверяет существующую поддержку |
 | **F4: shell ↔ guest** | Повторное использование GuestSession/RunLauncher teardown; ownership shell/taskbar/output при активном приложении, per-launch UI/GPU mode, карантин ввода, активная task button, один guest одновременно | Launch/normal exit/PLUS abort/load error/display error возвращают тот же desktop/selection/path; несколько окон одного приложения корректны; реализация minimize/restore и меню во время работы должна иметь explicit compositor/input route, а не ложную кнопку второго процесса |
 | **F5: пользовательский сценарий** | Согласованные документы/иконки/ярлыки/настройки, app associations, bounded persistence; операции создания/копирования/rename по реальным поддерживаемым API | Из «Пуска» запустить Paint, сохранить в My Documents, вернуться, найти файл в explorer и открыть снова; повторить с публичным guest в host CI, реальный Paint/SD/ввод/GPU проверить в отложенном Switch smoke |
 
@@ -99,7 +100,7 @@ Bliss wallpaper и выгрузки shell32.dll в этот набор не вх
 
 ## Очередь и проверки
 
-F1/F2 и F3a browser/path-only launch реализованы программно; далее F3b/F4/F5 небольшими
+F1/F2 и F3a browser/path-only launch реализованы программно; далее F3c/F4/F5 небольшими
 когерентными пакетами. Файловые недостачи D исправлять внутри соответствующего
 пакета F1; отдельную memory-protection/SEH работу вести без заявления о полном NT.
 G0 не удалять. Продолжение G/H не подменяет недостающий shell.
@@ -127,7 +128,7 @@ tools/run_host_tests.sh`, целевые regressions, Switch build и все 6 j
    render/screenshot, layout и hit-test на 1280x720 и другом размере, управление
    контроллером/касанием и отсутствие зависимости от времени жизни guest Process.
    Действия Start, ещё не реализованные в F3, не показывать активными.
-2. **F3 — реальные действия и проводник: F3a реализован, F3b остаётся.** Общая модель launch request для Start,
+2. **F3 — реальные действия и проводник: F3a/F3b реализованы, F3c остаётся.** Общая модель launch request для Start,
    списка программ, Run и explorer; provider поверх F1, без второй схемы путей.
    Реальные C/S/R, My Documents, переходы back/up, адрес и ограниченные списки с
    сортировкой/страницами и явными ошибками. Затем All Programs, About, доступные

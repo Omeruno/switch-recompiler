@@ -1,3 +1,4 @@
+#include "../runtime/command_line.h"
 // msvcrt_core.cpp — msvcrt.dll: запуск и завершение программы, куча,
 // errno, управление FPU, setjmp/longjmp, сигналы, сортировка, случайные
 // числа, окружение, преобразования строк в числа, время.
@@ -59,35 +60,6 @@ void Free(cpu::IGuestMemory& m, uint32_t p) {
 }
 
 namespace {
-
-// Командная строка Windows -> argv (правила CommandLineToArgv: кавычки, \")
-std::vector<std::string> SplitCommandLine(const std::string& cmd) {
-    std::vector<std::string> out;
-    size_t i = 0;
-    while (i < cmd.size()) {
-        while (i < cmd.size() && (cmd[i] == ' ' || cmd[i] == '\t')) ++i;
-        if (i >= cmd.size()) break;
-        std::string arg;
-        bool quoted = false;
-        while (i < cmd.size() && (quoted || (cmd[i] != ' ' && cmd[i] != '\t'))) {
-            if (cmd[i] == '\\') {
-                size_t n = 0;
-                while (i < cmd.size() && cmd[i] == '\\') { ++n; ++i; }
-                if (i < cmd.size() && cmd[i] == '"') {
-                    arg.append(n / 2, '\\');
-                    if (n % 2) { arg.push_back('"'); ++i; }
-                } else {
-                    arg.append(n, '\\');
-                }
-                continue;
-            }
-            if (cmd[i] == '"') { quoted = !quoted; ++i; continue; }
-            arg.push_back(cmd[i++]);
-        }
-        out.push_back(arg);
-    }
-    return out;
-}
 
 std::string GuestCommandLine(cpu::CpuState& c, cpu::IGuestMemory& m) {
     int idx = FindHostFunction("KERNEL32.dll", "GetCommandLineA");
@@ -164,14 +136,14 @@ Globals& G(cpu::IGuestMemory& m) {
     std::string cmd = GuestCommandLine(tmp, m);
     uint32_t a = NewString(m, cmd);
     m.Write32(g.acmdln, a);
-    m.Write32(g.wcmdln, NewWString(m, AnsiToWide(cmd)));
-    std::vector<std::string> args = SplitCommandLine(cmd);
+    m.Write32(g.wcmdln, NewWString(m, Utf8PathToWide(cmd)));
+    std::vector<std::string> args;rt::ParseCommandLine(cmd,args);
     if (args.empty()) args.push_back("app.exe");
     uint32_t argv = Malloc(m, static_cast<uint32_t>((args.size() + 1) * 4));
     uint32_t wargv = Malloc(m, static_cast<uint32_t>((args.size() + 1) * 4));
     for (size_t i = 0; i < args.size(); ++i) {
         m.Write32(argv + static_cast<uint32_t>(i * 4), NewString(m, args[i]));
-        m.Write32(wargv + static_cast<uint32_t>(i * 4), NewWString(m, AnsiToWide(args[i])));
+        m.Write32(wargv + static_cast<uint32_t>(i * 4), NewWString(m, Utf8PathToWide(args[i])));
     }
     m.Write32(argv + static_cast<uint32_t>(args.size() * 4), 0);
     m.Write32(wargv + static_cast<uint32_t>(args.size() * 4), 0);

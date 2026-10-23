@@ -216,13 +216,7 @@ uint32_t AllocGuest(cpu::IGuestMemory& m, uint32_t size) {
 }
 std::string CommandLineString() {
     if (!rt::g_process) return "app.exe";
-    // путь EXE в командной строке — как его видит гость (C:\name.exe)
-    std::string cmd = rt::g_process->CommandLine();
-    std::string exe = rt::g_process->MainModule() ? rt::g_process->MainModule()->path : "";
-    if (!exe.empty() && cmd.compare(0, exe.size(), exe) == 0) {
-        cmd = "\"" + rt::FileSystem().ToGuest(exe) + "\"" + cmd.substr(exe.size());
-    }
-    return cmd;
+    return rt::g_process->GuestCommandLine();
 }
 HostCallOutcome K32_GetCommandLineA(cpu::CpuState&, cpu::IGuestMemory& m) {
     if (!System().cmdLineA) {
