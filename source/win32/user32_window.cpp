@@ -16,10 +16,13 @@ using namespace hle;
 
 Platform g_platform;
 
-State& S() {
-    static State s;
-    return s;
+namespace {
+std::unique_ptr<State>& StateStorage() {
+    static auto state=std::make_unique<State>();return state;
 }
+}
+State& S() {return *StateStorage();}
+void ExchangeGuiState(std::unique_ptr<State>& other) {StateStorage().swap(other);}
 
 GuestCtx& G() {
     static GuestCtx g;
@@ -557,7 +560,7 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
     constexpr int kDefault = static_cast<int>(0x80000000u);
     bool overlapped = !(style & (WS_CHILD | WS_POPUP));
     if (overlapped) style |= WS_CLIPSIBLINGS | WS_CAPTION;
-    static int cascade = 0;
+    auto& cascade=S().cascade;
     if (x == kDefault) {
         if (style & WS_CHILD) { x = y = 0; }
         else { x = 24 + (cascade % 8) * 24; y = 24 + (cascade % 8) * 24; ++cascade; }
@@ -1058,7 +1061,7 @@ StackBuffer::~StackBuffer() { G().c->ESP() = savedEsp_; }
 namespace {
 
 uint32_t SysBrush(int index) {
-    static uint32_t brushes[31] = {};
+    auto& brushes=S().systemBrushes;
     if (index < 0 || index >= 31) return 0;
     if (!brushes[index]) {
         ui::BrushObj b;

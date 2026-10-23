@@ -1,3 +1,4 @@
+#include "../runtime/process.h"
 // user32_hook.cpp — USER32: хуки (SetWindowsHookEx) нового слоя окон.
 //
 // Поток один, поэтому хуки потока и глобальные — одна цепочка на тип.
@@ -23,12 +24,9 @@ struct Hook {
     uint32_t proc;
     bool removed = false;
 };
-std::vector<Hook>& Hooks() {
-    static std::vector<Hook> h;
-    return h;
-}
-uint32_t g_nextHook = 0x00A00010;
-int g_hookDepth = 0;
+struct HookState {std::vector<Hook> hooks;uint32_t next=0x00A00010;int depth=0;};
+HookState& HookData(){return rt::LocalState<HookState>();}
+std::vector<Hook>& Hooks(){return HookData().hooks;}
 
 // Следующий живой хук того же типа после позиции pos (цепочка: новые первыми)
 int NextHook(int id, int pos) {
@@ -39,10 +37,10 @@ int NextHook(int id, int pos) {
 }
 uint32_t CallHookAt(int i, int code, uint32_t wp, uint32_t lp) {
     uint32_t proc = Hooks()[i].proc;
-    ++g_hookDepth;
+    ++HookData().depth;
     uint32_t r = CallGuestFunctionStdcall(*G().c, *G().m, proc, {static_cast<uint32_t>(code), wp, lp}, g_tebAddr, g_tebAddr,
                                           0x7FFFFFFF);
-    if (--g_hookDepth == 0) {
+    if (--HookData().depth == 0) {
         std::vector<Hook>& h = Hooks();
         h.erase(std::remove_if(h.begin(), h.end(), [](const Hook& k) { return k.removed; }), h.end());
     }
@@ -58,7 +56,7 @@ FN(SetWindowsHookExA) {
     int id = static_cast<int32_t>(Arg(c, m, 0));
     uint32_t proc = Arg(c, m, 1);
     if (!proc || id < -1 || id > 14) { SetLastError(m, 1426); return Ret(0); } // ERROR_INVALID_HOOK_FILTER
-    uint32_t h = g_nextHook += 4;
+    uint32_t h = HookData().next += 4;
     Hooks().insert(Hooks().begin(), Hook{h, id, proc});
     return Ret(h);
 }
@@ -68,7 +66,7 @@ FN(UnhookWindowsHookEx) {
     for (Hook& k : Hooks())
         if (k.handle == h && !k.removed) {
             k.removed = true;
-            if (!g_hookDepth) Hooks().erase(std::find_if(Hooks().begin(), Hooks().end(), [h](const Hook& x) { return x.handle == h; }));
+            if (!HookData().depth) Hooks().erase(std::find_if(Hooks().begin(), Hooks().end(), [h](const Hook& x) { return x.handle == h; }));
             return Ret(1);
         }
     SetLastError(m, 1404); // ERROR_INVALID_HOOK_HANDLE

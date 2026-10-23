@@ -252,6 +252,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         tail -n 30 "$out/guest_sessions.log"
         failed=1
     fi
+    if $cxx $flags "$root/tests/test_gui_sessions.cpp" $src -o "$out/test_gui_sessions" &&
+       "$out/test_gui_sessions" "$guestRoot/gui_session_ui.exe" "$guestRoot/gui_dialog_subclass.exe" "$guestRoot/gui_choosecolor.exe" > "$out/gui_sessions.log" 2>&1; then
+        tail -n 1 "$out/gui_sessions.log"
+    else
+        echo "   SEQUENTIAL GUI SESSIONS FAILED"
+        tail -n 30 "$out/gui_sessions.log" 2>/dev/null || true
+        failed=1
+    fi
+
     # End-to-end dialog test: open an existing file, then save a new file.
     # The virtual 800x600 desktop centers a 530x390 dialog. Script a click
     # on the dialog Open/Save button at approximately (575,420).

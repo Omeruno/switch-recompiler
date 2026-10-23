@@ -233,6 +233,9 @@ private:
     bool BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src, bool srcMono, int sx, int sy, int sw, int sh,
                   uint32_t rop, bool useKey, uint32_t key, uint32_t srcBkRgb = 0xFFFFFFFFu);
 
+    friend uint32_t SysColor(int index);
+    friend void SetSysColor(int index,uint32_t color);
+    uint32_t sysColors_[31]={};
     std::vector<Slot> slots_;
     std::vector<uint32_t> free_;
     uint32_t stock_[20] = {};

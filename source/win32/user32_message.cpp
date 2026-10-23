@@ -232,7 +232,7 @@ void UpdateKeyState(const Msg& m) {
     }
 }
 
-uint32_t g_lastPollMs = 0;
+
 
 } // namespace
 
@@ -294,8 +294,8 @@ bool FetchMessage(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool remo
         PresentIfNeeded(false);
         // ввод с платформы — не чаще раза в несколько мс (PeekMessage в цикле игры)
         uint32_t now = NowMs();
-        if (now - g_lastPollMs >= 4) {
-            g_lastPollMs = now;
+        if (now - S().lastPollMs >= 4) {
+            S().lastPollMs = now;
             PollPlatform(0);
         }
         QueueStatusBits(); // observe timer/paint transitions before marking input old

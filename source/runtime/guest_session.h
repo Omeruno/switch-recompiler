@@ -1,10 +1,12 @@
 #pragma once
 #include "process.h"
 
+namespace win32::user {class GuiSession;}
+
 namespace rt {
 // Top-level sequential guest scope. Declare before GuestExecution and renderer
 // cleanup: native continuations and presentation must drain before its teardown.
-// This owns core Process/memory; GUI/legacy singleton reset is a separate gate.
+// This owns Process/memory and new USER/GDI. Legacy/MFC reset is a separate gate.
 class GuestSession {
 public:
     GuestSession();
@@ -28,5 +30,6 @@ private:
     Context previous_;
     cpu::PagedGuestMemory memory_;
     Process process_;
+    std::unique_ptr<win32::user::GuiSession> gui_;
 };
 } // namespace rt

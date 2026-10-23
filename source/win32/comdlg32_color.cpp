@@ -29,7 +29,7 @@ struct ColorRequest {
     int selected=-1,nextCustom=0;
     bool wide=false,done=false,accepted=false,expanded=false,inHook=false;
 };
-std::map<uint32_t,ColorRequest*>& Colors() {static std::map<uint32_t,ColorRequest*> requests;return requests;}
+std::map<uint32_t,ColorRequest*>& Colors() {auto& requests=rt::LocalState<std::map<uint32_t,ColorRequest*>>();return requests;}
 bool Alive(const ColorRequest& r) {return Win(r.hwnd) && !g_guestExitRequested && rt::GuestExecution::Checkpoint();}
 uint32_t Hook(ColorRequest& r,uint32_t message,uint32_t wp,uint32_t lp) {
     if(!r.hook || r.inHook || !Alive(r))return 0;

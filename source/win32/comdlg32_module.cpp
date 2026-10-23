@@ -1,3 +1,4 @@
+#include "../runtime/process.h"
 // comdlg32_module.cpp — basic Windows XP-style common file dialogs for ui2.
 // Implements OPENFILENAMEA/W, guest VFS browsing, cancellation and extended errors.
 // No Paint-specific offsets or UI assumptions.
@@ -28,7 +29,8 @@ constexpr uint32_t OFN_OVERWRITEPROMPT = 0x0002;
 constexpr uint32_t OFN_NOCHANGEDIR = 0x0008;
 constexpr uint32_t WS_CHILD_VISIBLE = WS_CHILD | WS_VISIBLE;
 constexpr uint32_t BTN_ID_OK = 1001, BTN_ID_CANCEL = 1002, LIST_ID = 1003, EDIT_ID = 1004;
-uint32_t g_extendedError = 0;
+struct CommonError {uint32_t value=0;};
+uint32_t& CommonErrorValue(){return rt::LocalState<CommonError>().value;}
 
 // Host-only opt-in trace for scripted regression tests; never touch
 // Nintendo Switch's closed text console during graphics rendering.
@@ -60,7 +62,7 @@ struct Request {
     std::vector<std::string> listNames;
 };
 std::map<uint32_t, Request*>& Dialogs() {
-    static std::map<uint32_t, Request*> dialogs;
+    auto& dialogs=rt::LocalState<std::map<uint32_t,Request*>>();
     return dialogs;
 }
 std::string Lower(std::string s) {
@@ -172,7 +174,7 @@ bool PutResult(Request& r, std::string full) {
     if (len + 1 > r.maxFile) {
         // OFN contract: required character count in first WORD of lpstrFile.
         if (r.maxFile >= 2 && r.filePtr) m.Write16(r.filePtr, static_cast<uint16_t>(std::min<uint32_t>(len + 1, 0xFFFF)));
-        g_extendedError = FNERR_BUFFERTOOSMALL;
+        CommonErrorValue() = FNERR_BUFFERTOOSMALL;
         return false;
     }
     if (r.wide) WriteWide(m, r.filePtr, wfull, r.maxFile);
@@ -213,7 +215,7 @@ void Accept(Request& r) {
     // refuse overwriting instead of silently destroying files.
     if (r.save && (r.flags & OFN_OVERWRITEPROMPT) && Exists(full, false)) return;
     r.accepted = PutResult(r, full);
-    if (r.accepted || g_extendedError) r.done = true;
+    if (r.accepted || CommonErrorValue()) r.done = true;
 }
 uint32_t DialogProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t, bool) {
     auto it = Dialogs().find(hwnd);
@@ -317,11 +319,11 @@ bool ShowDialog(Request& r) {
     return true;
 }
 HostCallOutcome FileDialog(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bool save) {
-    g_extendedError = 0;
+    CommonErrorValue() = 0;
     uint32_t p = Arg(c, m, 0);
-    if (!p) { g_extendedError = CDERR_INITIALIZATION; return Ret(0); }
+    if (!p) { CommonErrorValue() = CDERR_INITIALIZATION; return Ret(0); }
     uint32_t sz = m.Read32(p);
-    if (sz != 76 && sz != 88) { g_extendedError = CDERR_STRUCTSIZE; return Ret(0); }
+    if (sz != 76 && sz != 88) { CommonErrorValue() = CDERR_STRUCTSIZE; return Ret(0); }
     Request r;
     r.memory = &m; r.ofn = p; r.wide = wide; r.save = save;
     r.owner = m.Read32(p + 4);
@@ -335,7 +337,7 @@ HostCallOutcome FileDialog(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bo
     uint32_t filterIndex = m.Read32(p + 24);
     if (filterIndex >= 1 && filterIndex <= r.patterns.size())
         std::rotate(r.patterns.begin(), r.patterns.begin() + filterIndex - 1, r.patterns.end());
-    if (!r.filePtr || !r.maxFile) { g_extendedError = CDERR_INITIALIZATION; return Ret(0); }
+    if (!r.filePtr || !r.maxFile) { CommonErrorValue() = CDERR_INITIALIZATION; return Ret(0); }
     std::string initial = wide ? Narrow(ReadWide(m, m.Read32(p + 44))) : ReadAnsi(m, m.Read32(p + 44));
     r.directory = initial.empty() ? rt::FileSystem().CurrentDirectory() : rt::FileSystem().FullGuestPath(initial);
     if (!Exists(r.directory, true)) r.directory = rt::FileSystem().CurrentDirectory();
@@ -350,14 +352,14 @@ HostCallOutcome FileDialog(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bo
     }
     r.initialFile = file;
     G().c = &c; G().m = &m;
-    if (!ShowDialog(r)) { g_extendedError = CDERR_INITIALIZATION; return Ret(0); }
+    if (!ShowDialog(r)) { CommonErrorValue() = CDERR_INITIALIZATION; return Ret(0); }
     return Ret(r.accepted ? 1 : 0);
 }
 HostCallOutcome GetOpenFileNameA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,false,false); }
 HostCallOutcome GetOpenFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,true,false); }
 HostCallOutcome GetSaveFileNameA(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,false,true); }
 HostCallOutcome GetSaveFileNameW(cpu::CpuState& c, cpu::IGuestMemory& m) { return FileDialog(c,m,true,true); }
-HostCallOutcome CommDlgExtendedError(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(g_extendedError); }
+HostCallOutcome CommDlgExtendedError(cpu::CpuState&, cpu::IGuestMemory&) { return Ret(CommonErrorValue()); }
 
 // short WINAPI GetFileTitleA/W(LPCTSTR path, LPTSTR title, WORD cchSize).
 // Unlike GetOpenFileName, GetFileTitle does not open a modal window or access
@@ -406,5 +408,5 @@ const HostFunctionEntry kCoreEntries[] = {
 const bool kRegisteredCore = RegisterHostFunctions(kCoreEntries, sizeof(kCoreEntries)/sizeof(kCoreEntries[0]));
 const bool kRegistered = RegisterHostFunctionsLayer(kEntries, sizeof(kEntries)/sizeof(kEntries[0]), kUiLayer);
 } // namespace
-void SetCommonDialogError(uint32_t error) {g_extendedError=error;}
+void SetCommonDialogError(uint32_t error) {CommonErrorValue()=error;}
 } // namespace win32

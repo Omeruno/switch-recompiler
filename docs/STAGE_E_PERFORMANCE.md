@@ -129,3 +129,10 @@ physical scope also includes normal application exit and startup/load failure
 with the new owned lifetime in GPU and forced software modes. Repeated picker
 return/relaunch remains a future check after GUI/legacy lifetime isolation and
 launch-loop integration; it has not been implemented or accepted by core tests.
+
+
+New USER/GDI lifetime is now covered by 12 sequential host x86 window/DialogBox/
+ChooseColor sessions (F0_GUI_SESSIONS.md), including parked cancellation and owned
+renderer redraw after memory destruction. Physical exit/load-failure smoke must
+use the new lifetime too. Repeated frontend relaunch remains deferred until the
+legacy UI/MFC/input/image-binding gate and actual launch loop are implemented.

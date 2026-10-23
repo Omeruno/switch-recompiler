@@ -182,6 +182,9 @@ struct State {
     int lastClickX = 0, lastClickY = 0;
     uint64_t presentedChanges = 0;
     uint32_t lastPresentMs = 0;
+    int cascade=0;
+    uint32_t systemBrushes[31]={},lastPollMs=0;
+    std::u16string clipboard;
     uint32_t defWindowProcA = 0, defWindowProcW = 0; // host-адреса DefWindowProc
 };
 

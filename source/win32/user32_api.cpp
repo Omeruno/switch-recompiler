@@ -194,16 +194,12 @@ FN(SetWindowPos) {
 }
 // DeferWindowPos: позиции копятся и применяются разом в EndDeferWindowPos
 struct DeferredPos { uint32_t hwnd, after; int x, y, cx, cy; uint32_t flags; };
-std::map<uint32_t, std::vector<DeferredPos>>& Deferred() {
-    static std::map<uint32_t, std::vector<DeferredPos>> d;
-    return d;
-}
+struct DeferredState {std::map<uint32_t,std::vector<DeferredPos>> positions;uint32_t next=0x00D00000;};
+std::map<uint32_t,std::vector<DeferredPos>>& Deferred(){return rt::LocalState<DeferredState>().positions;}
 FN(BeginDeferWindowPos) {
-    (void)c; (void)m;
-    static uint32_t next = 0x00D00000;
-    next += 4;
-    Deferred()[next];
-    return Ret(next);
+    (void)c;(void)m;
+    auto& next=rt::LocalState<DeferredState>().next;next+=4;
+    Deferred()[next];return Ret(next);
 }
 FN(DeferWindowPos) {
     ENTER;
@@ -1220,11 +1216,11 @@ AW(SystemParametersInfo)
 
 // --- Курсор, клавиатура ---
 
-uint32_t g_cursor = 0;
-int g_cursorShow = 0;
-FN(SetCursor) { ENTER; uint32_t old = g_cursor; g_cursor = A(c, m, 0); return Ret(old); }
-FN(GetCursor) { ENTER; return Ret(g_cursor); }
-FN(ShowCursor) { ENTER; g_cursorShow += A(c, m, 0) ? 1 : -1; return Ret(static_cast<uint32_t>(g_cursorShow)); }
+struct CursorState {uint32_t cursor=0;int show=0;};
+CursorState& CursorData(){return rt::LocalState<CursorState>();}
+FN(SetCursor) { ENTER; uint32_t old = CursorData().cursor; CursorData().cursor = A(c, m, 0); return Ret(old); }
+FN(GetCursor) { ENTER; return Ret(CursorData().cursor); }
+FN(ShowCursor) { ENTER; CursorData().show += A(c, m, 0) ? 1 : -1; return Ret(static_cast<uint32_t>(CursorData().show)); }
 FN(GetCursorPos) {
     ENTER;
     if (A(c, m, 0)) { m.Write32(A(c, m, 0), static_cast<uint32_t>(S().cursorX)); m.Write32(A(c, m, 0) + 4, static_cast<uint32_t>(S().cursorY)); }

@@ -27,15 +27,16 @@ struct Icon {
     bool cursor = false;
     bool shared = false;
 };
-std::map<uint32_t, std::unique_ptr<Icon>>& Icons() {
-    static std::map<uint32_t, std::unique_ptr<Icon>> m;
-    return m;
-}
-uint32_t g_nextIcon = 0x00090010;
+struct IconState {
+    std::map<uint32_t,std::unique_ptr<Icon>> icons;
+    std::map<uint32_t,uint32_t> system;uint32_t next=0x00090010;
+};
+IconState& IconData(){return rt::LocalState<IconState>();}
+std::map<uint32_t,std::unique_ptr<Icon>>& Icons(){return IconData().icons;}
 
 uint32_t AddIcon(std::unique_ptr<Icon> ic) {
-    uint32_t h = g_nextIcon;
-    g_nextIcon += 4;
+    uint32_t h = IconData().next;
+    IconData().next += 4;
     Icons()[h] = std::move(ic);
     return h;
 }
@@ -254,7 +255,7 @@ uint32_t IconFromResource(rt::Module* mod, const rt::ResId& name, bool cursor, i
 
 // Системные иконки: простые рисунки в духе Windows
 uint32_t SystemIcon(uint32_t id) {
-    static std::map<uint32_t, uint32_t> cache;
+    auto& cache=IconData().system;
     auto it = cache.find(id);
     if (it != cache.end()) return it->second;
     std::unique_ptr<Icon> ic(new Icon);

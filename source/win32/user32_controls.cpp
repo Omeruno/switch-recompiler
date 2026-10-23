@@ -504,7 +504,7 @@ constexpr uint32_t ES_CENTER = 0x1, ES_RIGHT = 0x2, ES_MULTILINE = 0x4, ES_UPPER
                    ES_PASSWORD = 0x20, ES_NOHIDESEL = 0x100, ES_READONLY = 0x800, ES_WANTRETURN = 0x1000,
                    ES_NUMBER = 0x2000;
 
-std::u16string g_clipboard;
+
 
 std::u16string Shown(Window* w, Ctl* c) {
     if (!(w->style & ES_PASSWORD)) return w->text;
@@ -833,7 +833,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
     }
     case WM_COPY: {
         size_t s0 = std::min(c->caret, c->anchor), s1 = std::max(c->caret, c->anchor);
-        if (!(w->style & ES_PASSWORD) && s1 > s0) g_clipboard = w->text.substr(s0, s1 - s0);
+        if (!(w->style & ES_PASSWORD) && s1 > s0) S().clipboard = w->text.substr(s0, s1 - s0);
         return 0;
     }
     case WM_CUT:
@@ -844,7 +844,7 @@ uint32_t EditProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool un
         return 0;
     case WM_PASTE:
         if (readonly) return 0;
-        ReplaceSel(hwnd, g_clipboard);
+        ReplaceSel(hwnd, S().clipboard);
         Changed(hwnd);
         return 0;
     case WM_CLEAR:

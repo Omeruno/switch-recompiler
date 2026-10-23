@@ -10,21 +10,20 @@ references; this short map is the current implementation queue.
 | E7 | Revision-driven snapshots, bounded optional caches, unchanged-tile work tests | Console workload evidence |
 | E8 | CPU raster/upload/draw, asynchronous GPU intervals, transfer/memory counters, bounded real-clock input/output correlation (report v7) | Console CPU/GPU comparison, total driver/process memory and physical input-to-display latency |
 | E9 | Six unattended software groups in one Process, fixture SHA and fail-closed report, CI artifact | Actual Switch GPU/fallback and real Paint smoke |
-| F0 | Bounded startup picker; owned core Process/memory/HLE state; sequential x86 exit/abort/restart regression | GUI/legacy resource isolation before launch-return-launch; physical picker/session smoke |
+| F0 | Bounded startup picker; owned core and new USER/GDI sessions; sequential x86 window/dialog/color restart regressions | Legacy UI/MFC and frontend launch lifetime before launch-return-launch; physical picker/session smoke |
 
 E8/E9 hardware acceptance remains deferred. Do not award final graphics-stage
 percentages or claim Switch speedup from host tests. The consolidated checklist
 and measurement definitions are in [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).
 The combined fixture instructions are in [STAGE_E_ACCEPTANCE.md](STAGE_E_ACCEPTANCE.md).
 
-Next concrete step: audit/isolate GUI and legacy window/class/menu/image/GDI
-resources, then prove sequential real-x86 window and dialog sessions with normal
-exit and host cancellation. Core Process/memory/heap/CRT/file state is now owned
-per session and tested at reused native and guest addresses; see
-[F0_SESSION_CORE.md](F0_SESSION_CORE.md). The NRO still exits after one guest:
-return-to-launcher remains gated on GUI teardown. The bounded picker is described
-in [F0_LAUNCHER.md](F0_LAUNCHER.md). No desktop-shell or multiprocess completion is
-implied by this work.
+Next concrete step: isolate remaining legacy UI/MFC state in host_functions,
+window registry/message loop and frontend image/input bindings; add sequential
+legacy guest exit/abort/failure coverage. Core ownership is described in
+[F0_SESSION_CORE.md](F0_SESSION_CORE.md), new USER/GDI ownership and the 12-session
+regression in [F0_GUI_SESSIONS.md](F0_GUI_SESSIONS.md). The NRO still exits after
+one guest: only connect return-to-launcher after those remaining lifetime gates.
+No desktop-shell or multiprocess completion is implied by this work.
 
 After F0, choose a small reachable desktop/launcher milestone in the one-Process
 model. Stage G CPU profiling/dynarec and Stage H DirectDraw/D3D remain separate

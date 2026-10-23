@@ -1,3 +1,4 @@
+#include "../runtime/process.h"
 // comctl32_status.cpp — COMCTL32: строка состояния (msctls_statusbar32).
 //
 // Части (SB_SETPARTS) с текстом и стилем рамки, простой режим (SB_SIMPLE),
@@ -37,7 +38,7 @@ struct StatusBar {
     uint32_t bk = 0xFFFFFFFFu; // CLR_DEFAULT
 };
 std::map<uint32_t, StatusBar>& Bars() {
-    static std::map<uint32_t, StatusBar> b;
+    auto& b=rt::LocalState<std::map<uint32_t,StatusBar>>();
     return b;
 }
 

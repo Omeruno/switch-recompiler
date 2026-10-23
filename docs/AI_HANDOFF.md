@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`c58871ab31b80227c052683076bea8d48d559fde` (2026-10-23).
-[CI 39902527062](https://github.com/Omeruno/switch-recompiler/actions/runs/39902527062)
+`67dee0818b8b6b1d795db6af08679db1d024dca1` (2026-10-23).
+[CI 39908725480](https://github.com/Omeruno/switch-recompiler/actions/runs/39908725480)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -178,3 +178,38 @@ dialogs. GuestSession compiled with -Wall -Wextra -Werror -fno-exceptions
 -fno-rtti; the other migrated HLE modules also passed no-exception/no-RTTI
 compilation. Exact published-SHA CI must be checked after publication. No Switch
 or proprietary Paint result was produced in this block.
+
+## 2026-10-23 F0: new USER/GDI lifetime
+
+Incoming 67dee08 passed all six CI jobs in run 39908725480. GuestSession now
+exchanges owned USER State and active new/legacy GDI stores, discarding resources
+before guest memory and restoring native outer context. USER State itself must
+never move: retained layer captures point into its slots. GDI system colors,
+USER brush/cascade/clipboard/poll state are scoped. Menus/popups/accelerators,
+icons, hooks, scrollbars, deferred position/cursor metadata, standard/common
+file/color dialog metadata and status bars are Process-owned. Native host thunk
+registry and named-message namespace intentionally remain host infrastructure.
+
+The new public x86 fixture leaves resources and callbacks for teardown. A single
+host process reuses GuestSession storage through four painted window sessions,
+four DialogBox sessions and four ChooseColor sessions, alternating normal or
+callback ExitProcess and parked host cancellation. The regression checks fresh
+class/hook/DIB/color/error state, complete continuation/focus/capture cleanup,
+failed-load cleanup, stable nested capture ownership and pixel-identical renderer
+redraw after the old memory/windows/layers disappear. See F0_GUI_SESSIONS.md.
+
+Next independent block: legacy UI/MFC globals, window registry/message loop,
+frontend image/resource/input bindings and a real sequential legacy guest fixture.
+The legacy GDI store is scoped but legacy application state is not yet isolated.
+No production launch-return-launch loop is enabled. Connect the loop only after
+that remaining gate. Hardware/Paint/picker/fallback checks stay consolidated in
+STAGE_E_PERFORMANCE.md; no physical result is claimed.
+
+Final local validation for this block: complete clean
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed after the status-bar
+migration and GUI failed-load regression. All 12 sequential GUI sessions, four
+core restarts, six E9 software groups, CPU/actual-GL composition at both sizes,
+input/capture and scripted file/color dialogs passed. New scope compiled with
+-Wall -Wextra -Werror -fno-exceptions -fno-rtti; migrated USER/dialog modules
+also compiled without exceptions/RTTI. Exact new published-SHA CI still needs
+checking after publication; earlier six green jobs certify incoming 67dee08 only.

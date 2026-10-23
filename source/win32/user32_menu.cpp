@@ -40,11 +40,13 @@ struct Menu {
     int barHeight = kMenuH;
 };
 
-std::map<uint32_t, std::unique_ptr<Menu>>& Menus() {
-    static std::map<uint32_t, std::unique_ptr<Menu>> m;
-    return m;
-}
-uint32_t g_nextMenu = 0x00060010;
+struct MenuState {
+    std::map<uint32_t,std::unique_ptr<Menu>> menus;
+    std::map<uint32_t,uint32_t> system;
+    uint32_t next=0x00060010,font=0;bool registered=false;
+};
+MenuState& MenuData(){return rt::LocalState<MenuState>();}
+std::map<uint32_t,std::unique_ptr<Menu>>& Menus(){return MenuData().menus;}
 
 Menu* M(uint32_t h) {
     auto it = Menus().find(h);
@@ -52,8 +54,8 @@ Menu* M(uint32_t h) {
 }
 
 uint32_t NewMenu(bool popup) {
-    uint32_t h = g_nextMenu;
-    g_nextMenu += 4;
+    uint32_t h = MenuData().next;
+    MenuData().next += 4;
     Menus()[h].reset(new Menu);
     Menus()[h]->popup = popup;
     return h;
@@ -157,7 +159,7 @@ uint32_t LoadMenuTemplate(const uint8_t* p, size_t size) {
 // --- Отрисовка ---
 
 uint32_t MenuFont() {
-    static uint32_t f = 0;
+    auto& f=MenuData().font;
     if (!f) {
         ui::FontDesc d;
         d.face = "Tahoma";
@@ -231,13 +233,11 @@ struct PopupState {
     uint32_t hwnd = 0;
     int selected = -1;
 };
-std::vector<PopupState> g_popups;   // открытые выпадающие меню (каскад)
-uint32_t g_menuOwner = 0;
-uint32_t g_menuBar = 0;              // меню полосы (0 — контекстное)
-int g_barSelected = -1;
-bool g_menuDone = false;
-uint32_t g_menuResult = 0;
-bool g_returnCmd = false;            // TPM_RETURNCMD
+struct PopupSession {
+    std::vector<PopupState> popups;uint32_t owner=0,bar=0,result=0;
+    int selected=-1;bool done=false,returnCmd=false;
+};
+PopupSession& PopupData(){return rt::LocalState<PopupSession>();}
 
 constexpr int kItemH = 17, kSepH = 9, kCheckW = 17, kArrowW = 17, kPopupBorder = 3;
 
@@ -262,7 +262,7 @@ void LayoutPopup(Menu* m, int& w, int& h) {
 
 void PaintPopup(uint32_t hwnd) {
     PopupState* ps = nullptr;
-    for (auto& p : g_popups) if (p.hwnd == hwnd) ps = &p;
+    for (auto& p : PopupData().popups) if (p.hwnd == hwnd) ps = &p;
     Window* w = Win(hwnd);
     Menu* m = ps ? M(ps->hmenu) : nullptr;
     if (!w || !m) return;
@@ -330,7 +330,7 @@ uint32_t PopupProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool u
 }
 
 uint32_t PopupClassAtom() {
-    static bool registered = false;
+    auto& registered=MenuData().registered;
     if (!registered) {
         registered = true;
         WndClass wc;
@@ -348,28 +348,28 @@ uint32_t PopupClassAtom() {
 
 void ClosePopupsFrom(size_t level) {
     Rect exposed;
-    while (g_popups.size() > level) {
-        uint32_t h = g_popups.back().hwnd;
+    while (PopupData().popups.size() > level) {
+        uint32_t h = PopupData().popups.back().hwnd;
         if(auto* w=Win(h)) {
             const auto r=ScreenRect(w);
             if(exposed.Empty())exposed=r;
             else exposed=Rect(std::min(exposed.left,r.left),std::min(exposed.top,r.top),
                               std::max(exposed.right,r.right),std::max(exposed.bottom,r.bottom));
         }
-        g_popups.pop_back();
+        PopupData().popups.pop_back();
         DestroyWindowInternal(h);
     }
     // Modal menu input can keep WM_PAINT queued indefinitely. Restore exposed
     // windows now, using their real paint procedures rather than stale savebits.
     UpdateExposedWindows(exposed);
-    if(g_menuOwner && !Win(g_menuOwner))g_menuDone=true;
+    if(PopupData().owner && !Win(PopupData().owner))PopupData().done=true;
 }
 
 void OpenPopup(uint32_t hmenu, int x, int y, int alignRightX = -1) {
     Menu* m = M(hmenu);
     if (!m) return;
-    if (g_menuOwner) {
-        SendMsg(g_menuOwner, WM_INITMENUPOPUP, hmenu, 0);
+    if (PopupData().owner) {
+        SendMsg(PopupData().owner, WM_INITMENUPOPUP, hmenu, 0);
         if (!(m = M(hmenu))) return;
     }
     int w, h;
@@ -383,7 +383,7 @@ void OpenPopup(uint32_t hmenu, int x, int y, int alignRightX = -1) {
     PopupState ps;
     ps.hmenu = hmenu;
     ps.hwnd = hwnd;
-    g_popups.push_back(ps);
+    PopupData().popups.push_back(ps);
     if (Window* pw = Win(hwnd)) {
         pw->style |= WS_VISIBLE;
         SetWindowPosInternal(hwnd, 0xFFFFFFFFu, x, y, w, h, 0x10 | 0x40);
@@ -394,11 +394,11 @@ void OpenPopup(uint32_t hmenu, int x, int y, int alignRightX = -1) {
 }
 
 void RedrawPopup(size_t level) {
-    if (level < g_popups.size()) PaintPopup(g_popups[level].hwnd);
+    if (level < PopupData().popups.size()) PaintPopup(PopupData().popups[level].hwnd);
 }
 
 void RedrawBar() {
-    if (Window* w = Win(g_menuOwner)) if (g_menuBar) DrawNonClient(w);
+    if (Window* w = Win(PopupData().owner)) if (PopupData().bar) DrawNonClient(w);
 }
 
 // Полоса меню: прямоугольник пункта в координатах экрана
@@ -410,14 +410,14 @@ Rect BarItemScreenRect(Window* w, Menu* m, int i) {
 }
 
 void SelectBarItem(int i, bool open) {
-    Window* w = Win(g_menuOwner);
-    Menu* bar = M(g_menuBar);
+    Window* w = Win(PopupData().owner);
+    Menu* bar = M(PopupData().bar);
     if (!w || !bar) return;
     ClosePopupsFrom(0);
     // Exposed-window painting can invoke guest code and destroy the owner/menu.
-    w=Win(g_menuOwner);bar=M(g_menuBar);
+    w=Win(PopupData().owner);bar=M(PopupData().bar);
     if(!rt::GuestExecution::Checkpoint() || !w || !bar)return;
-    g_barSelected = i;
+    PopupData().selected = i;
     RedrawBar();
     if (open && i >= 0 && static_cast<size_t>(i) < bar->items.size()) {
         MenuItem& it = bar->items[static_cast<size_t>(i)];
@@ -428,16 +428,16 @@ void SelectBarItem(int i, bool open) {
 }
 
 void FinishMenu(uint32_t cmd, bool sys) {
-    g_menuDone = true;
-    g_menuResult = cmd;
-    if (cmd && g_menuOwner && !g_returnCmd) PostMsg(g_menuOwner, sys ? WM_SYSCOMMAND : WM_COMMAND, cmd, 0);
+    PopupData().done = true;
+    PopupData().result = cmd;
+    if (cmd && PopupData().owner && !PopupData().returnCmd) PostMsg(PopupData().owner, sys ? WM_SYSCOMMAND : WM_COMMAND, cmd, 0);
 }
 
 // Пункт под точкой экрана: уровень каскада и индекс
 bool HitPopup(int x, int y, size_t& level, int& index) {
-    for (size_t l = g_popups.size(); l-- > 0;) {
-        Window* w = Win(g_popups[l].hwnd);
-        Menu* m = M(g_popups[l].hmenu);
+    for (size_t l = PopupData().popups.size(); l-- > 0;) {
+        Window* w = Win(PopupData().popups[l].hwnd);
+        Menu* m = M(PopupData().popups[l].hmenu);
         if (!w || !m) continue;
         Rect sr = ScreenRect(w);
         if (!sr.Contains(x, y)) continue;
@@ -451,8 +451,8 @@ bool HitPopup(int x, int y, size_t& level, int& index) {
 }
 
 int HitBar(int x, int y) {
-    Window* w = Win(g_menuOwner);
-    Menu* bar = M(g_menuBar);
+    Window* w = Win(PopupData().owner);
+    Menu* bar = M(PopupData().bar);
     if (!w || !bar) return -1;
     for (size_t i = 0; i < bar->items.size(); ++i)
         if (BarItemScreenRect(w, bar, static_cast<int>(i)).Contains(x, y)) return static_cast<int>(i);
@@ -460,16 +460,16 @@ int HitBar(int x, int y) {
 }
 
 void ActivateItem(size_t level, int index) {
-    if(level>=g_popups.size())return;
-    Menu* m = M(g_popups[level].hmenu);
+    if(level>=PopupData().popups.size())return;
+    Menu* m = M(PopupData().popups[level].hmenu);
     if (!m || index < 0 || static_cast<size_t>(index) >= m->items.size()) return;
     MenuItem& it = m->items[static_cast<size_t>(index)];
     if (it.flags & (MF_SEPARATOR | MF_GRAYED | MF_DISABLED)) return;
     if (it.flags & MF_POPUP) {
         const uint32_t subMenu=it.subMenu;
         ClosePopupsFrom(level + 1);
-        if(!rt::GuestExecution::Checkpoint() || level>=g_popups.size())return;
-        Window* pw = Win(g_popups[level].hwnd);
+        if(!rt::GuestExecution::Checkpoint() || level>=PopupData().popups.size())return;
+        Window* pw = Win(PopupData().popups[level].hwnd);
         if(!pw)return;
         Rect sr = ScreenRect(pw);
         Rect ir = it.rect.Offset(sr.left + kPopupBorder, sr.top + kPopupBorder);
@@ -480,27 +480,27 @@ void ActivateItem(size_t level, int index) {
 }
 
 void HoverPopup(size_t level, int index) {
-    if(level>=g_popups.size())return;
-    if (g_popups[level].selected == index) return;
-    g_popups[level].selected = index;
+    if(level>=PopupData().popups.size())return;
+    if (PopupData().popups[level].selected == index) return;
+    PopupData().popups[level].selected = index;
     ClosePopupsFrom(level + 1);
-    if(!rt::GuestExecution::Checkpoint() || level>=g_popups.size())return;
+    if(!rt::GuestExecution::Checkpoint() || level>=PopupData().popups.size())return;
     RedrawPopup(level);
-    if (Window* w = Win(g_menuOwner)) {
-        Menu* m = M(g_popups[level].hmenu);
+    if (Window* w = Win(PopupData().owner)) {
+        Menu* m = M(PopupData().popups[level].hmenu);
         uint32_t id = (index >= 0 && m && static_cast<size_t>(index)<m->items.size()) ? m->items[static_cast<size_t>(index)].id : 0;
-        SendMsg(w->hwnd, WM_MENUSELECT, (id & 0xFFFF), g_popups[level].hmenu);
+        SendMsg(w->hwnd, WM_MENUSELECT, (id & 0xFFFF), PopupData().popups[level].hmenu);
     }
 }
 
 // Модальный цикл меню. Возвращает выбранную команду (0 — отмена).
 uint32_t MenuLoop() {
-    g_menuDone = false;
-    g_menuResult = 0;
+    PopupData().done = false;
+    PopupData().result = 0;
     State& s = S();
-    if (g_menuOwner) SendMsg(g_menuOwner, WM_ENTERMENULOOP, g_menuBar ? 0 : 1, 0);
+    if (PopupData().owner) SendMsg(PopupData().owner, WM_ENTERMENULOOP, PopupData().bar ? 0 : 1, 0);
     bool buttonWasDown = (s.asyncKeys[1] & 0x80) != 0;
-    while (!g_menuDone && !g_guestExitRequested) {
+    while (!PopupData().done && !g_guestExitRequested) {
         Msg msg;
         if (!FetchMessage(msg, 0, 0, 0, true, true)) continue;
         if (msg.message == WM_QUIT) { PostQuit(msg.wParam); break; }
@@ -515,8 +515,8 @@ uint32_t MenuLoop() {
             int index;
             if (HitPopup(x, y, level, index)) {
                 HoverPopup(level, index);
-                if(!rt::GuestExecution::Checkpoint() || g_menuDone || level>=g_popups.size())continue;
-                Menu* hovered=M(g_popups[level].hmenu);
+                if(!rt::GuestExecution::Checkpoint() || PopupData().done || level>=PopupData().popups.size())continue;
+                Menu* hovered=M(PopupData().popups[level].hmenu);
                 const bool validItem=hovered && index>=0 && static_cast<size_t>(index)<hovered->items.size();
                 if (up || (down && !buttonWasDown)) {
                     if (up && buttonWasDown && validItem && (hovered->items[static_cast<size_t>(index)].flags & MF_POPUP)) {
@@ -525,10 +525,10 @@ uint32_t MenuLoop() {
                         ActivateItem(level, index);
                     }
                 }
-            } else if (g_menuBar && HitBar(x, y) >= 0) {
+            } else if (PopupData().bar && HitBar(x, y) >= 0) {
                 int i = HitBar(x, y);
-                if (down && i == g_barSelected && !g_popups.empty()) { FinishMenu(0, false); }
-                else if (i != g_barSelected || down) SelectBarItem(i, true);
+                if (down && i == PopupData().selected && !PopupData().popups.empty()) { FinishMenu(0, false); }
+                else if (i != PopupData().selected || down) SelectBarItem(i, true);
             } else if (down) {
                 FinishMenu(0, false); // щелчок мимо меню
             }
@@ -537,12 +537,12 @@ uint32_t MenuLoop() {
             continue;
         }
         if (msg.message == WM_KEYDOWN || msg.message == WM_SYSKEYDOWN) {
-            size_t level = g_popups.empty() ? 0 : g_popups.size() - 1;
-            Menu* m = g_popups.empty() ? nullptr : M(g_popups[level].hmenu);
+            size_t level = PopupData().popups.empty() ? 0 : PopupData().popups.size() - 1;
+            Menu* m = PopupData().popups.empty() ? nullptr : M(PopupData().popups[level].hmenu);
             auto step = [&](int dir) {
                 if (!m || m->items.empty()) return;
                 int n = static_cast<int>(m->items.size());
-                int i = g_popups[level].selected;
+                int i = PopupData().popups[level].selected;
                 for (int k = 0; k < n; ++k) {
                     i = (i + dir + n) % n;
                     if (!(m->items[static_cast<size_t>(i)].flags & MF_SEPARATOR)) break;
@@ -551,22 +551,22 @@ uint32_t MenuLoop() {
             };
             switch (msg.wParam) {
             case 0x1B: // Esc
-                if (g_popups.size() > 1) ClosePopupsFrom(g_popups.size() - 1);
+                if (PopupData().popups.size() > 1) ClosePopupsFrom(PopupData().popups.size() - 1);
                 else FinishMenu(0, false);
                 break;
             case 0x26: step(-1); break;
             case 0x28: step(1); break;
-            case 0x0D: if (m) ActivateItem(level, g_popups[level].selected); break;
+            case 0x0D: if (m) ActivateItem(level, PopupData().popups[level].selected); break;
             case 0x25: case 0x27: // влево/вправо
-                if (msg.wParam == 0x27 && m && g_popups[level].selected >= 0 &&
-                    (m->items[static_cast<size_t>(g_popups[level].selected)].flags & MF_POPUP)) {
-                    ActivateItem(level, g_popups[level].selected);
-                } else if (msg.wParam == 0x25 && g_popups.size() > 1) {
-                    ClosePopupsFrom(g_popups.size() - 1);
-                } else if (g_menuBar) {
-                    Menu* bar = M(g_menuBar);
+                if (msg.wParam == 0x27 && m && PopupData().popups[level].selected >= 0 &&
+                    (m->items[static_cast<size_t>(PopupData().popups[level].selected)].flags & MF_POPUP)) {
+                    ActivateItem(level, PopupData().popups[level].selected);
+                } else if (msg.wParam == 0x25 && PopupData().popups.size() > 1) {
+                    ClosePopupsFrom(PopupData().popups.size() - 1);
+                } else if (PopupData().bar) {
+                    Menu* bar = M(PopupData().bar);
                     int n = static_cast<int>(bar->items.size());
-                    if (n) SelectBarItem((g_barSelected + (msg.wParam == 0x27 ? 1 : -1) + n) % n, true);
+                    if (n) SelectBarItem((PopupData().selected + (msg.wParam == 0x27 ? 1 : -1) + n) % n, true);
                 }
                 break;
             case 0x12: case 0x79: // Alt, F10
@@ -576,10 +576,10 @@ uint32_t MenuLoop() {
             continue;
         }
         if (msg.message == WM_CHAR || msg.message == WM_SYSCHAR || msg.message == WM_KEYUP || msg.message == WM_SYSKEYUP) {
-            if ((msg.message == WM_CHAR || msg.message == WM_SYSCHAR) && !g_popups.empty()) {
+            if ((msg.message == WM_CHAR || msg.message == WM_SYSCHAR) && !PopupData().popups.empty()) {
                 // мнемоника: &X
-                size_t level = g_popups.size() - 1;
-                Menu* m = M(g_popups[level].hmenu);
+                size_t level = PopupData().popups.size() - 1;
+                Menu* m = M(PopupData().popups[level].hmenu);
                 char16_t want = static_cast<char16_t>(msg.wParam);
                 if (want >= 'a' && want <= 'z') want = static_cast<char16_t>(want - 32);
                 for (size_t i = 0; m && i < m->items.size(); ++i) {
@@ -600,20 +600,18 @@ uint32_t MenuLoop() {
         }
     }
     ClosePopupsFrom(0);
-    g_barSelected = -1;
+    PopupData().selected = -1;
     RedrawBar();
-    if (g_menuOwner) SendMsg(g_menuOwner, WM_EXITMENULOOP, g_menuBar ? 0 : 1, 0);
-    return g_menuResult;
+    if (PopupData().owner) SendMsg(PopupData().owner, WM_EXITMENULOOP, PopupData().bar ? 0 : 1, 0);
+    return PopupData().result;
 }
 
 // --- Ускорители ---
 
 struct AccelEntry { uint8_t fVirt; uint16_t key, cmd; };
-std::map<uint32_t, std::vector<AccelEntry>>& Accels() {
-    static std::map<uint32_t, std::vector<AccelEntry>> a;
-    return a;
-}
-uint32_t g_nextAccel = 0x00070010;
+struct AccelState {std::map<uint32_t,std::vector<AccelEntry>> entries;uint32_t next=0x00070010;};
+AccelState& AccelData(){return rt::LocalState<AccelState>();}
+std::map<uint32_t,std::vector<AccelEntry>>& Accels(){return AccelData().entries;}
 
 } // namespace
 
@@ -625,7 +623,7 @@ void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar) {
     for (size_t i = 0; i < m->items.size(); ++i) {
         const MenuItem& it = m->items[i];
         Rect r = it.rect.Offset(bar.left, bar.top);
-        bool sel = g_menuBar == w->menu && g_menuOwner == w->hwnd && static_cast<int>(i) == g_barSelected;
+        bool sel = PopupData().bar == w->menu && PopupData().owner == w->hwnd && static_cast<int>(i) == PopupData().selected;
         if (sel) {
             // классическая тема: нажатый пункт — утопленная рамка
             ui::g_gdi.FillRect(hdc, Rect(r.left, r.top, r.right - 1, r.top + 1), SysColorBrush(16));
@@ -645,17 +643,17 @@ uint32_t LoadMenuFromMemory(const uint8_t* p, size_t size) { return p ? LoadMenu
 // Вызывается из DefWindowProc: щелчок по полосе меню / Alt / F10
 void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard) {
     Window* w = Win(hwnd);
-    if (!w || !M(w->menu) || !g_popups.empty()) return;
-    g_menuOwner = hwnd;
-    g_menuBar = w->menu;
-    g_returnCmd = false;
+    if (!w || !M(w->menu) || !PopupData().popups.empty()) return;
+    PopupData().owner = hwnd;
+    PopupData().bar = w->menu;
+    PopupData().returnCmd = false;
     SendMsg(hwnd, WM_INITMENU, w->menu, 0);
     int i = keyboard ? 0 : HitBar(screenX, screenY);
-    if (i < 0) { g_menuBar = 0; g_menuOwner = 0; return; }
+    if (i < 0) { PopupData().bar = 0; PopupData().owner = 0; return; }
     SelectBarItem(i, true);
     MenuLoop();
-    g_menuBar = 0;
-    g_menuOwner = 0;
+    PopupData().bar = 0;
+    PopupData().owner = 0;
 }
 
 namespace {
@@ -919,7 +917,7 @@ FN(GetMenuItemRect) {
         LayoutBar(mm, w->rect.Width() - 2 * b);
         r = BarItemScreenRect(w, mm, static_cast<int>(i));
     } else {
-        for (auto& p : g_popups) if (p.hmenu == A(c, m, 1)) if (Window* pw = Win(p.hwnd)) r = mm->items[i].rect.Offset(ScreenRect(pw).left + kPopupBorder, ScreenRect(pw).top + kPopupBorder);
+        for (auto& p : PopupData().popups) if (p.hmenu == A(c, m, 1)) if (Window* pw = Win(p.hwnd)) r = mm->items[i].rect.Offset(ScreenRect(pw).left + kPopupBorder, ScreenRect(pw).top + kPopupBorder);
     }
     m.Write32(out, static_cast<uint32_t>(r.left));
     m.Write32(out + 4, static_cast<uint32_t>(r.top));
@@ -931,7 +929,7 @@ FN(GetMenuInfo) { ENTER; return Ret(1); }
 FN(SetMenuInfo) { ENTER; return Ret(1); }
 FN(GetSystemMenu) {
     ENTER;
-    static std::map<uint32_t, uint32_t> sys;
+    auto& sys=MenuData().system;
     uint32_t hwnd = A(c, m, 0);
     if (A(c, m, 1)) { sys.erase(hwnd); return Ret(0); }
     auto it = sys.find(hwnd);
@@ -954,10 +952,10 @@ FN(TrackPopupMenu) {
     ENTER;
     uint32_t hm = A(c, m, 0), flags = A(c, m, 1), hwnd = A(c, m, 6);
     int x = static_cast<int32_t>(A(c, m, 2)), y = static_cast<int32_t>(A(c, m, 3));
-    if (!M(hm) || !g_popups.empty()) return Ret(0);
-    g_menuOwner = hwnd;
-    g_menuBar = 0;
-    g_returnCmd = (flags & 0x100) != 0;
+    if (!M(hm) || !PopupData().popups.empty()) return Ret(0);
+    PopupData().owner = hwnd;
+    PopupData().bar = 0;
+    PopupData().returnCmd = (flags & 0x100) != 0;
     SendMsg(hwnd, WM_INITMENU, hm, 0);
     int w, h;
     LayoutPopup(M(hm), w, h);
@@ -967,17 +965,17 @@ FN(TrackPopupMenu) {
     else if (flags & 0x10) y -= h / 2;  // TPM_VCENTERALIGN
     OpenPopup(hm, x, y);
     uint32_t r = MenuLoop();
-    g_menuOwner = 0;
-    return Ret(g_returnCmd ? r : (r ? 1 : 0));
+    PopupData().owner = 0;
+    return Ret(PopupData().returnCmd ? r : (r ? 1 : 0));
 }
 FN(TrackPopupMenuEx) {
     ENTER;
     uint32_t hm = A(c, m, 0), flags = A(c, m, 1), hwnd = A(c, m, 4);
     int x = static_cast<int32_t>(A(c, m, 2)), y = static_cast<int32_t>(A(c, m, 3));
-    if (!M(hm) || !g_popups.empty()) return Ret(0);
-    g_menuOwner = hwnd;
-    g_menuBar = 0;
-    g_returnCmd = (flags & 0x100) != 0;
+    if (!M(hm) || !PopupData().popups.empty()) return Ret(0);
+    PopupData().owner = hwnd;
+    PopupData().bar = 0;
+    PopupData().returnCmd = (flags & 0x100) != 0;
     SendMsg(hwnd, WM_INITMENU, hm, 0);
     int w, h;
     LayoutPopup(M(hm), w, h);
@@ -985,10 +983,10 @@ FN(TrackPopupMenuEx) {
     if (flags & 0x20) y -= h;
     OpenPopup(hm, x, y);
     uint32_t r = MenuLoop();
-    g_menuOwner = 0;
-    return Ret(g_returnCmd ? r : (r ? 1 : 0));
+    PopupData().owner = 0;
+    return Ret(PopupData().returnCmd ? r : (r ? 1 : 0));
 }
-FN(EndMenu) { ENTER; if (!g_popups.empty()) FinishMenu(0, false); return Ret(1); }
+FN(EndMenu) { ENTER; if (!PopupData().popups.empty()) FinishMenu(0, false); return Ret(1); }
 FN(MenuItemFromPoint) {
     ENTER;
     Window* w = Win(A(c, m, 0));
@@ -1016,8 +1014,8 @@ HostCallOutcome LoadAcceleratorsImpl(cpu::CpuState& c, cpu::IGuestMemory& m, boo
         v.push_back(e);
         if (p[off] & 0x80) break;
     }
-    uint32_t h = g_nextAccel;
-    g_nextAccel += 4;
+    uint32_t h = AccelData().next;
+    AccelData().next += 4;
     Accels()[h] = v;
     return Ret(h);
 }
@@ -1027,8 +1025,8 @@ HostCallOutcome CreateAcceleratorTableImpl(cpu::CpuState& c, cpu::IGuestMemory& 
     std::vector<AccelEntry> v;
     for (uint32_t i = 0; i < n && i < 1000; ++i)
         v.push_back(AccelEntry{m.Read8(p + i * 6), m.Read16(p + i * 6 + 2), m.Read16(p + i * 6 + 4)});
-    uint32_t h = g_nextAccel;
-    g_nextAccel += 4;
+    uint32_t h = AccelData().next;
+    AccelData().next += 4;
     Accels()[h] = v;
     return Ret(h);
 }

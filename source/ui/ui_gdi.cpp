@@ -83,24 +83,22 @@ const uint32_t kSysColorsDefault[31] = {
     0x808080, 0x808080, 0x000000, 0xC8D0D4, 0xFFFFFF, 0x404040, 0xC8D0D4, 0x000000,
     0xE1FFFF, 0xB5B5B5, 0x800000, 0xF0CAA6, 0xC0C0C0, 0xC56A31, 0xD8E9EC,
 }; // COLORREF (0x00BBGGRR)
-uint32_t g_sysColors[31];
-bool g_sysColorsInit = false;
+
 
 } // namespace
 
 uint32_t SysColor(int index) {
-    if (!g_sysColorsInit) { std::memcpy(g_sysColors, kSysColorsDefault, sizeof(g_sysColors)); g_sysColorsInit = true; }
-    return (index >= 0 && index < 31) ? g_sysColors[index] : 0;
+    return (index >= 0 && index < 31) ? g_gdi.sysColors_[index] : 0;
 }
 void SetSysColor(int index, uint32_t c) {
-    SysColor(0);
-    if (index >= 0 && index < 31) g_sysColors[index] = c & 0xFFFFFF;
+    if (index >= 0 && index < 31) g_gdi.sysColors_[index] = c & 0xFFFFFF;
 }
 
 // ---------------------------------------------------------------------------
 // Объекты
 
 Gdi::Gdi() {
+    std::memcpy(sysColors_,kSysColorsDefault,sizeof(sysColors_));
     slots_.resize(1); // индекс 0 не используется
     auto brush = [&](uint32_t c, int style = 0) { BrushObj b; b.color = c; b.style = style; return CreateBrush(b); };
     stock_[0] = brush(0xFFFFFF);

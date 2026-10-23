@@ -41,12 +41,12 @@ constexpr uint32_t DM_GETDEFID = 0x400, DM_SETDEFID = 0x401, WM_NEXTDLGCTL = 0x2
 
 
 
-DialogInfo* g_pendingInfo = nullptr; // диалог в процессе создания (до появления хендла)
-
-std::map<uint32_t, DialogInfo>& Dialogs() {
-    static std::map<uint32_t, DialogInfo> d;
-    return d;
-}
+struct DialogState {
+    DialogInfo* pending=nullptr;
+    std::map<uint32_t,DialogInfo> dialogs;uint32_t aboutIcon=0;
+};
+DialogState& DialogData(){return rt::LocalState<DialogState>();}
+std::map<uint32_t,DialogInfo>& Dialogs(){return DialogData().dialogs;}
 DialogInfo* Dlg(uint32_t hwnd) {
     auto it = Dialogs().find(hwnd);
     return it == Dialogs().end() ? nullptr : &it->second;
@@ -232,8 +232,8 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
     {
         struct PendingScope {
             DialogInfo* previous;
-            PendingScope(DialogInfo* info):previous(g_pendingInfo){g_pendingInfo=info;}
-            ~PendingScope(){g_pendingInfo=previous;}
+            PendingScope(DialogInfo* info):previous(DialogData().pending){DialogData().pending=info;}
+            ~PendingScope(){DialogData().pending=previous;}
         } pending(&info);
         hwnd=CreateWindowInternal(exStyle,cls,t.clsOrd,t.title,style,x,y,w,h,owner,hMenu,hInst,param,unicode,0,0);
     }
@@ -273,14 +273,14 @@ uint32_t CreateFromTemplate(const DlgTemplate& t, uint32_t hInst, uint32_t owner
 } // namespace
 
 void InitializeDialogWindow(uint32_t hwnd) {
-    if(!g_pendingInfo || g_pendingInfo->creationHwnd)return;
+    if(!DialogData().pending || DialogData().pending->creationHwnd)return;
     auto* window=Win(hwnd);if(!window)return;
-    g_pendingInfo->creationHwnd=hwnd;
-    Dialogs()[hwnd]=*g_pendingInfo;
-    if(window->extra.size()>=8)std::memcpy(window->extra.data()+4,&g_pendingInfo->dlgProc,4);
+    DialogData().pending->creationHwnd=hwnd;
+    Dialogs()[hwnd]=*DialogData().pending;
+    if(window->extra.size()>=8)std::memcpy(window->extra.data()+4,&DialogData().pending->dlgProc,4);
     if(window->cls && window->cls->name==u"#32770") {
-        window->wndProc=DefDlgProcAddress(g_pendingInfo->unicode);
-        window->unicode=g_pendingInfo->unicode;
+        window->wndProc=DefDlgProcAddress(DialogData().pending->unicode);
+        window->unicode=DialogData().pending->unicode;
     }
 }
 void ForgetDialogWindow(uint32_t hwnd) {Dialogs().erase(hwnd);}
@@ -761,12 +761,12 @@ FN(WinHelpA) { ENTER; return Ret(1); }
 // szApp: «Заголовок#Первая строка» (или просто имя программы), szOtherStuff —
 // дополнительная строка, hIcon — иконка (0 — значок Windows).
 
-uint32_t g_aboutIcon = 0;
+
 
 uint32_t AboutDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t, bool) {
     if (msg == WM_INITDIALOG) {
         for (uint32_t c : Controls(hwnd))
-            if (Window* x = Win(c)) if ((x->id & 0xFFFF) == 100) SendMsg(c, 0x170 /* STM_SETICON */, g_aboutIcon, 0);
+            if (Window* x = Win(c)) if ((x->id & 0xFFFF) == 100) SendMsg(c, 0x170 /* STM_SETICON */, DialogData().aboutIcon, 0);
         return 1;
     }
     if (msg == WM_COMMAND && ((wp & 0xFFFF) == 1 || (wp & 0xFFFF) == 2)) {
@@ -789,7 +789,7 @@ HostCallOutcome ShellAboutImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unic
     size_t hash = app.find(u'#');
     if (hash != std::u16string::npos) { title = app.substr(0, hash); first = app.substr(hash + 1); }
     title = u"О программе «" + title + u"»";
-    g_aboutIcon = A(c, m, 3) ? A(c, m, 3) : SystemIconHandle(32512);
+    DialogData().aboutIcon = A(c, m, 3) ? A(c, m, 3) : SystemIconHandle(32512);
 
     DlgTemplate t;
     t.style = DS_MODALFRAME | DS_CENTER | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU;

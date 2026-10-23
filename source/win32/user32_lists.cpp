@@ -1,3 +1,4 @@
+#include "../runtime/process.h"
 // user32_lists.cpp — списки (ListBox), комбинированные списки (ComboBox) и
 // полосы прокрутки USER32 (слой "ui2"): элемент ScrollBar и полосы в рамке
 // окна (WS_VSCROLL/WS_HSCROLL, SetScrollInfo и т.п.), их отрисовка и
@@ -19,21 +20,18 @@ namespace {
 
 struct SbData { int min = 0, max = 100, page = 0, pos = 0, track = 0; uint32_t disabled = 0; };
 struct WinScroll { SbData bar[2]; };
-std::map<uint32_t, WinScroll>& Scrolls() {
-    static std::map<uint32_t, WinScroll> s;
-    return s;
-}
+struct ScrollState {std::map<uint32_t,WinScroll> bars;SbData temporary;uint32_t brush=0;};
+ScrollState& ScrollData(){return rt::LocalState<ScrollState>();}
+std::map<uint32_t,WinScroll>& Scrolls(){return ScrollData().bars;}
 
 // Данные полосы: окна (SB_HORZ 0 / SB_VERT 1) или элемента (SB_CTL 2)
 SbData* Bar(uint32_t hwnd, int which, bool create = true) {
     Window* w = Win(hwnd);
     if (!w) return nullptr;
     if (which == 2) {
-        static std::map<uint32_t, SbData> ctl;
         Ctl* c = C(w);
-        static SbData tmp;
+        auto& tmp=ScrollData().temporary;
         tmp.min = c->sbMin; tmp.max = c->sbMax; tmp.page = c->sbPage; tmp.pos = c->sbPos; tmp.track = c->sbTrack;
-        (void)ctl;
         return &tmp;
     }
     if (which != 0 && which != 1) return nullptr;
@@ -50,7 +48,7 @@ void StoreCtl(uint32_t hwnd, const SbData& d) {
 }
 
 uint32_t TrackBrush() {
-    static uint32_t b = 0;
+    auto& b=ScrollData().brush;
     if (!b) {
         ui::BrushObj br;
         br.style = 5;
