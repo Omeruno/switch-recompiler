@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`67dee0818b8b6b1d795db6af08679db1d024dca1` (2026-10-23).
-[CI 39908725480](https://github.com/Omeruno/switch-recompiler/actions/runs/39908725480)
+`ae21f9670d848ba2a9d2a820ba44574a65f2913f` (2026-10-23).
+[CI 39914017936](https://github.com/Omeruno/switch-recompiler/actions/runs/39914017936)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -213,3 +213,41 @@ input/capture and scripted file/color dialogs passed. New scope compiled with
 -Wall -Wextra -Werror -fno-exceptions -fno-rtti; migrated USER/dialog modules
 also compiled without exceptions/RTTI. Exact new published-SHA CI still needs
 checking after publication; earlier six green jobs certify incoming 67dee08 only.
+
+## 2026-10-23 F0: legacy/MFC and frontend bindings
+
+Incoming ae21f96 passed all six CI jobs in run 39914017936. LegacySession exchanges
+legacy windows/classes, queue/paint/quit/timers, image/resource bindings, dynamic
+MFC stubs, menu/dialog/about and pending Paint CDC/View/tool/color fields. Native
+outer context and callback/layer/stack bindings are restored on teardown. Private
+MFC guest-address maps, empty CString, current MSG/focus/capture, CDC vtable,
+frame class/system brush caches and fallback nesting depth are Process-owned.
+Registry values stay host-owned; transient open HKEY handles are exchanged.
+
+RunInterpreter scopes its pump/stack marker, chooses the UI layer each launch
+and resets legacy frontend rectangles/menu/tool/color/cursor/touch/click ownership
+and throttle state on entry/exit. Host devices remain frontend-owned. The public
+x86 legacy fixture covers nine sequential normal/abort/callback ExitProcess/
+parked DialogBox/ShellAbout cases at reused document/native addresses, valid
+CString/CDC state, document/view isolation, WndProc dispatch, menu resources,
+failed loading and restoration of outer metadata/registry values/handles.
+An initial unsupported legacy SetFocus call in the fixture was replaced by the
+already implemented MFC CWnd::SetFocus; runtime compatibility was not expanded.
+See F0_LEGACY_SESSIONS.md for exact scope and limitations.
+
+Next independent step: real frontend launch-return-picker integration with mode/
+output rebind, failed-load recovery and startup-held button/touch quarantine for
+both UI paths. The NRO still exits after one guest; no production launch loop,
+physical relaunch, real Paint or hardware performance acceptance is claimed.
+Keep the one combined Switch checklist in STAGE_E_PERFORMANCE.md.
+
+Final local validation: a fresh complete `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed with MinGW/Mesa after registry-handle isolation.
+It includes all nine legacy cases, four core restarts, 12 USER/dialog/color
+sessions, Stage C/E acceptance, both CPU/actual-GL composition sizes, input/
+capture and scripted file/color dialogs. LegacySession passed -Wall -Wextra
+-Werror -fno-exceptions -fno-rtti; legacy host HLE also compiled without RTTI/
+exceptions. The registry assertion first ran against an already-compiled older
+LegacySession object; only the later fresh full build is the final-tree result.
+Switch-only frontend reset/input and current Paint remain physical/build gates;
+exact new published-SHA CI must be checked after publication.

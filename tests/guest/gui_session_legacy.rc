@@ -1,0 +1,15 @@
+#include <windows.h>
+101 DIALOG 0,0,150,70
+STYLE WS_POPUP | WS_CAPTION | DS_MODALFRAME
+CAPTION "Legacy session dialog"
+BEGIN
+    LTEXT "Public lifecycle fixture",-1,8,8,130,10
+    DEFPUSHBUTTON "OK",IDOK,80,48,50,14
+END
+102 MENU
+BEGIN
+    POPUP "Session"
+    BEGIN
+        MENUITEM "Test",77
+    END
+END

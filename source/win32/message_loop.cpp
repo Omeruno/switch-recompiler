@@ -113,7 +113,8 @@ bool TimerRegistry::CheckDue(uint32_t nowTick, uint32_t& outHwnd, uint32_t& outT
 // зациклится сам на себя (например, через UpdateWindow/InvalidateRect
 // внутри обработки клика), это исчерпает даже большой стек. Ловим это
 // ЯВНО, с понятным сообщением, вместо аппаратного краха.
-static int g_nestedCallDepth = 0;
+struct LegacyCallDepth {int value=0;};
+int& LegacyDepth(){return rt::LocalState<LegacyCallDepth>().value;}
 constexpr int kMaxNestedCallDepth = 32;
 
 // Базовый адрес стека игрового потока — выставляется один раз в main.cpp.
@@ -129,9 +130,9 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
     uint32_t fallbackDepth=0;
     // Unscheduled v1 callbacks retain their existing recursion accounting.
     uint32_t* depth=owner ? &owner->callbackDepth : &fallbackDepth;
-    if (!owner) fallbackDepth=static_cast<uint32_t>(g_nestedCallDepth);
+    if (!owner) fallbackDepth=static_cast<uint32_t>(LegacyDepth());
     ++*depth;
-    if (!owner) g_nestedCallDepth=static_cast<int>(*depth);
+    if (!owner) LegacyDepth()=static_cast<int>(*depth);
     if (*depth > kMaxNestedCallDepth) {
         cpu::FatalError(
             "CallGuestFunctionStdcall: превышена максимальная глубина вложенности "
@@ -276,7 +277,7 @@ uint32_t CallGuestFunctionStdcall(cpu::CpuState& cpu, cpu::IGuestMemory& mem,
     }
 
     --*depth;
-    if (!owner) g_nestedCallDepth=static_cast<int>(*depth);
+    if (!owner) LegacyDepth()=static_cast<int>(*depth);
     return cpu.Get(cpu::Reg32::EAX);
 }
 

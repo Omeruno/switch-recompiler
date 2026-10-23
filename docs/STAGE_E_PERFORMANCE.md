@@ -136,3 +136,10 @@ ChooseColor sessions (F0_GUI_SESSIONS.md), including parked cancellation and own
 renderer redraw after memory destruction. Physical exit/load-failure smoke must
 use the new lifetime too. Repeated frontend relaunch remains deferred until the
 legacy UI/MFC/input/image-binding gate and actual launch loop are implemented.
+
+
+Legacy session lifetime now has nine sequential public x86/MFC fixture runs
+(F0_LEGACY_SESSIONS.md). Frontend hit/click/touch scratch resets and scoped EXE/
+resource/pump/stack bindings still require the actual Switch smoke with current
+Paint and both render modes. Production return-to-picker is not yet connected;
+repeat-launch hardware acceptance follows that separate frontend integration.

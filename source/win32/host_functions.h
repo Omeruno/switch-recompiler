@@ -158,6 +158,10 @@ extern int32_t g_lastWindowH;
 // клике по кнопкам. У нас нет настоящего системного USER32-диалога, но
 // DialogBoxParamW теперь реально блокирует выполнение (свой мини message
 // loop) и вызывает DlgProc гостевого кода — как и положено по-настоящему.
+extern uint32_t g_requestedToolId,g_requestedForegroundColor,g_requestedBackgroundColor;
+extern uint32_t g_paintCDC,g_paintView;
+extern bool g_dialogEndRequested;
+extern int32_t g_dialogEndResult;
 extern bool g_dialogActive;
 extern ParsedDialog g_currentDialog;
 extern uint32_t g_dialogHwnd;

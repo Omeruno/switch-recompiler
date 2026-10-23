@@ -230,6 +230,8 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     for exe in "$guestRoot"/*.exe; do
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
+        # The legacy/MFC fixture is executed repeatedly by its dedicated harness.
+        [ "$(basename "$exe")" = "gui_session_legacy.exe" ] && continue
         # Intentionally exits with 55; all six modes are checked by the
         # post-exit inspector above, including retained DLL state and code.
         [ "$(basename "$exe")" = "gui_last_thread_exit.exe" ] && continue
@@ -258,6 +260,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   SEQUENTIAL GUI SESSIONS FAILED"
         tail -n 30 "$out/gui_sessions.log" 2>/dev/null || true
+        failed=1
+    fi
+
+    if $cxx $flags "$root/tests/test_legacy_sessions.cpp" $src -o "$out/test_legacy_sessions" &&
+       "$out/test_legacy_sessions" "$guestRoot/gui_session_legacy.exe" > "$out/legacy_sessions.log" 2>&1; then
+        tail -n 1 "$out/legacy_sessions.log"
+    else
+        echo "   SEQUENTIAL LEGACY SESSIONS FAILED"
+        tail -n 30 "$out/legacy_sessions.log" 2>/dev/null || true
         failed=1
     fi
 

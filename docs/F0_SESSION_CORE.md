@@ -46,8 +46,9 @@ The public C fixture also runs alone in the ordinary guest suite.
 
 The original core package did not certify full GUI-session acceptance. The
 new USER/GDI follow-up is implemented and covered by a 12-session x86 regression;
-see [F0_GUI_SESSIONS.md](F0_GUI_SESSIONS.md). The remaining gate is legacy UI/MFC
-and frontend image/input lifetime, followed by launch-loop integration. A core
+see [F0_GUI_SESSIONS.md](F0_GUI_SESSIONS.md). Legacy UI/MFC and image-binding lifetime is also covered by
+[F0_LEGACY_SESSIONS.md](F0_LEGACY_SESSIONS.md). The remaining gate is the actual
+frontend launch loop, per-launch output/mode rebind and held-input quarantine. A core
 restart alone must not authorize a production relaunch loop.
 
 No Switch memory/timing, Paint acceptance or physical repeated-launch result is

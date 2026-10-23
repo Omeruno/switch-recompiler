@@ -65,16 +65,14 @@ are destroyed and compared over the whole output. The software renderer is
 reused across the four sessions. Existing full CPU/actual-GL composition and
 fallback tests remain mandatory; the new regression is not physical GPU evidence.
 
-## Remaining gate
+## Remaining frontend gate
 
-This does not enable picker-return-picker. Legacy UI/MFC in host_functions.cpp,
-window registry/message loop/application singleton state, legacy Paint callbacks,
-frontend input/layer selection and image/resource bindings need the next explicit
-lifetime audit/reset and sequential legacy fixture coverage. The legacy GDI store
-is scoped, but that alone does not reset the rest of legacy UI. Do not claim full
-application relaunch acceptance from this new USER/GDI result.
+The legacy UI/MFC and image/callback lifetime follow-up is now implemented; see
+[F0_LEGACY_SESSIONS.md](F0_LEGACY_SESSIONS.md). It adds nine sequential legacy
+fixture runs and scopes the remaining runtime/frontend scratch bindings. The
+next gate is the actual bounded picker-return-picker launch loop, per-launch
+mode/output setup and held-input quarantine. This document's USER/GDI regression
+does not itself enable that loop or certify physical relaunch/Paint behavior.
 
-After legacy isolation, connect a bounded one-Process launch loop and verify load
-failure, normal return and cancellation in the actual frontend. Keep physical
-GPU/forced software/Lite input/Paint checks in STAGE_E_PERFORMANCE.md. No physical
-Switch, real Paint or hardware memory/latency measurement is added here.
+Keep the physical GPU/forced software/Lite input/Paint checks in
+STAGE_E_PERFORMANCE.md. No physical memory/timing result is added here.

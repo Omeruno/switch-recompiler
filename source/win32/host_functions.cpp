@@ -100,6 +100,28 @@ uint32_t SimpleGuestAlloc(uint32_t bytes) {
 
 namespace {
 
+// These caches contain addresses/handles from one guest address space.
+struct LegacyPrivateState {
+    uint32_t g_theAppPtr=0;
+    uint32_t g_emptyCStringData=0;
+    uint32_t g_nextFakeFontHandle=0xF0170000u;
+    uint32_t g_errorMode=0;
+    uint32_t g_lastError=0;
+    std::unordered_map<uint32_t,uint32_t> g_documentToView;
+    std::unordered_map<uint32_t,uint32_t> g_hwndToObject;
+    std::unordered_map<uint32_t,uint32_t> g_objectToMsgMapEntries;
+    uint32_t g_currentMsgAddr=0;
+    uint32_t g_activeWindowHwnd=0;
+    uint32_t g_currentFocusHwnd=0;
+    std::unordered_map<uint32_t,std::pair<int,int>> g_lastMousePos;
+    uint32_t g_safeCdcVtable=0;
+    uint32_t g_currentCursor=0;
+    uint32_t g_captureWindow=0;
+    bool classRegistered=false;
+    std::unordered_map<uint32_t,uint32_t> sysBrushes;
+};
+LegacyPrivateState& LegacyPrivate(){return rt::LocalState<LegacyPrivateState>();}
+
 // stdcall/cdecl на входе в host-функцию выглядят одинаково: ESP указывает на
 // адрес возврата, [esp+4] — первый аргумент, [esp+8] — второй, и т.д.
 // Разница проявляется только при "возврате" (см. TryHandleHostCall).
@@ -376,8 +398,8 @@ HostCallOutcome Impl_Mfc415_Ctor(cpu::CpuState& cpu, cpu::IGuestMemory&) {
 // классический паттерн "сначала базовый конструктор"). Такой подход
 // переносим на ЛЮБОЕ MFC-приложение той же версии MFC42u.DLL, а не только
 // на этот конкретный скомпилированный paint.exe.
-uint32_t g_theAppPtr = 0;
-uint32_t g_emptyCStringData = 0; // общий буфер под "пустой" CString — см. Impl_Mfc561_Ctor
+
+ // общий буфер под "пустой" CString — см. Impl_Mfc561_Ctor
 
 HostCallOutcome Impl_Mfc561_Ctor(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     // Захватываем "this" ДИНАМИЧЕСКИ — это и есть theApp (см. комментарий
@@ -386,7 +408,7 @@ HostCallOutcome Impl_Mfc561_Ctor(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     // объектами — последний вызов должен быть самым надёжным кандидатом,
     // т.к. в подавляющем большинстве MFC-программ theApp конструируется
     // только один раз, ровно как мы и подтвердили для paint.exe).
-    g_theAppPtr = cpu.Get(cpu::Reg32::ECX);
+    LegacyPrivate().g_theAppPtr = cpu.Get(cpu::Reg32::ECX);
 
     // ЭКСПЕРИМЕНТ (эта сессия, продолжение): дизассемблирование показало, что
     // `theApp+0x168` guest-код сам умеет безопасно проверить на NULL
@@ -396,13 +418,13 @@ HostCallOutcome Impl_Mfc561_Ctor(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     // который разыменовывается БЕЗ null-проверки (`mov eax,[esi]; cmp
     // [eax-8],edi` — крэш `addr=0xfffffff8`, т.е. чтение [NULL-8]). Ему
     // нужен тот же "пустой, но валидный" CString, что и 0x16c/0x170.
-    if (g_emptyCStringData == 0) {
+    if (LegacyPrivate().g_emptyCStringData == 0) {
         uint32_t buf = SimpleGuestAlloc(16);
-        g_emptyCStringData = buf + 8;
+        LegacyPrivate().g_emptyCStringData = buf + 8;
     }
-    mem.Write32(g_theAppPtr + 0x168, 0); // честный NULL — guest-код сам проверяет
+    mem.Write32(LegacyPrivate().g_theAppPtr + 0x168, 0); // честный NULL — guest-код сам проверяет
     for (uint32_t off : {0x158u, 0x16cu, 0x170u}) {
-        mem.Write32(g_theAppPtr + off, g_emptyCStringData);
+        mem.Write32(LegacyPrivate().g_theAppPtr + off, LegacyPrivate().g_emptyCStringData);
     }
 
     HostCallOutcome result;
@@ -581,11 +603,8 @@ HostCallOutcome Impl_Mfc2028_ConnectTemplate(cpu::CpuState& cpu, cpu::IGuestMemo
 // сессию, не всегда снизу вверх).
 HostCallOutcome Impl_Mfc1090_AddView(cpu::CpuState& cpu, cpu::IGuestMemory& mem);
 HostCallOutcome Impl_AfxWndProc(cpu::CpuState& cpu, cpu::IGuestMemory& mem);
-extern std::unordered_map<uint32_t, uint32_t> g_hwndToObject;
 void UpdateCurrentMessage(cpu::IGuestMemory& mem, uint32_t hwnd, uint32_t message,
                            uint32_t wParam, uint32_t lParam);
-extern std::unordered_map<uint32_t, uint32_t> g_objectToMsgMapEntries;
-extern uint32_t g_captureWindow;
 // (extern-объявления g_paintCDC/g_paintView отсюда убраны — настоящие
 // определения теперь ВЫШЕ по файлу, до анонимного namespace, и уже
 // видны здесь напрямую; оставлять их здесь было ошибкой — создавало
@@ -655,7 +674,7 @@ HostCallOutcome Impl_Mfc4604_OnFileNew(cpu::CpuState& cpu, cpu::IGuestMemory& me
     // ресурса меню — честно переиспользуем.
     LoadMenuById(static_cast<uint16_t>(nIDResource));
 
-    static bool s_classRegistered = false;
+    auto& s_classRegistered=LegacyPrivate().classRegistered;
     if (!s_classRegistered) {
         win32::WindowClassInfo info;
         // Настоящий AfxWndProc-эквивалент (эта сессия) — маршрутизирует
@@ -672,7 +691,7 @@ HostCallOutcome Impl_Mfc4604_OnFileNew(cpu::CpuState& cpu, cpu::IGuestMemory& me
     uint32_t hwnd = win32::g_windowManager.CreateWindow("MfcFrameOrView", 0, 0, 640, 360, theApp);
     if (hwnd != 0 && pFrame != 0) {
         mem.Write32(pFrame + 0x4, hwnd); // CWnd::m_hWnd — подтверждено экспериментально (DragAcceptFiles)
-        g_hwndToObject[hwnd] = pFrame;
+        LegacyPrivate().g_hwndToObject[hwnd] = pFrame;
 
         // Message map CMainFrame — тем же честным способом, что и для view:
         // реальный вызов GetMessageMap() (0x101e2d5, найден в vtable
@@ -682,7 +701,7 @@ HostCallOutcome Impl_Mfc4604_OnFileNew(cpu::CpuState& cpu, cpu::IGuestMemory& me
         uint32_t frameMsgMapPtr = win32::CallGuestFunctionStdcall(cpu, mem, 0x101e2d5u, {}, g_tebAddr, g_tebAddr, 100);
         cpu.Get(cpu::Reg32::ECX) = ecxSaveF;
         if (frameMsgMapPtr != 0) {
-            g_objectToMsgMapEntries[pFrame] = mem.Read32(frameMsgMapPtr + 4);
+            LegacyPrivate().g_objectToMsgMapEntries[pFrame] = mem.Read32(frameMsgMapPtr + 4);
         }
 
         // Реальная отправка WM_CREATE/WM_SIZE фрейму — тем же путём, что и
@@ -739,7 +758,7 @@ HostCallOutcome Impl_Mfc4604_OnFileNew(cpu::CpuState& cpu, cpu::IGuestMemory& me
     uint32_t viewHwnd = win32::g_windowManager.CreateWindow("MfcFrameOrView", 0, 0, 640, 360, theApp, hwnd);
     if (viewHwnd != 0 && pView != 0) {
         mem.Write32(pView + 0x4, viewHwnd); // CWnd::m_hWnd для view
-        g_hwndToObject[viewHwnd] = pView;
+        LegacyPrivate().g_hwndToObject[viewHwnd] = pView;
 
         // Message map view — получаем ЧЕСТНЫМ вызовом реального
         // GetMessageMap() (0x1020b03, найден в vtable CPaintView), а не
@@ -750,7 +769,7 @@ HostCallOutcome Impl_Mfc4604_OnFileNew(cpu::CpuState& cpu, cpu::IGuestMemory& me
         uint32_t msgMapPtr = win32::CallGuestFunctionStdcall(cpu, mem, 0x1020b03u, {}, g_tebAddr, g_tebAddr, 100);
         cpu.Get(cpu::Reg32::ECX) = ecxSave2;
         if (msgMapPtr != 0) {
-            g_objectToMsgMapEntries[pView] = mem.Read32(msgMapPtr + 4);
+            LegacyPrivate().g_objectToMsgMapEntries[pView] = mem.Read32(msgMapPtr + 4);
         }
 
         // Реальная отправка WM_CREATE и WM_SIZE через уже готовый
@@ -1504,22 +1523,22 @@ HostCallOutcome Impl_SystemParametersInfoW(cpu::CpuState& cpu, cpu::IGuestMemory
 // для фейковых хендлов диалоговых контролов в другом месте проекта).
 // DeleteObject на таком хендле — безопасный no-op (см. существующую
 // реализацию DeleteObject, она уже терпимо относится к неизвестным хендлам).
-uint32_t g_nextFakeFontHandle = 0xF0170000u; // "FONT" в адресе, для узнаваемости в отладке
+ // "FONT" в адресе, для узнаваемости в отладке
 HostCallOutcome Impl_CreateFontIndirectW(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_nextFakeFontHandle++;
+    result.returnValue = LegacyPrivate().g_nextFakeFontHandle++;
     return result;
 }
 
 // UINT SetErrorMode(UINT uMode) — управляет отображением системных
 // диалогов ошибок. У нас таких диалогов нет и быть не может — просто
 // честно храним значение и возвращаем ПРЕДЫДУЩЕЕ (таков контракт функции).
-uint32_t g_errorMode = 0;
+
 HostCallOutcome Impl_SetErrorMode(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t newMode = ReadArg(cpu, mem, 0);
     HostCallOutcome result;
-    result.returnValue = g_errorMode;
-    g_errorMode = newMode;
+    result.returnValue = LegacyPrivate().g_errorMode;
+    LegacyPrivate().g_errorMode = newMode;
     return result;
 }
 
@@ -1692,7 +1711,7 @@ HostCallOutcome Impl_FillRect(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {     
     uint32_t hdc = ReadArg(cpu, mem, 0), lprc = ReadArg(cpu, mem, 1), hbr = ReadArg(cpu, mem, 2);
     // Win32: hbr может быть не хендлом, а "COLOR_xxx + 1" (значения 1..31)
     if (hbr != 0 && hbr <= 31) {
-        static std::unordered_map<uint32_t, uint32_t> s_sysBrushes;
+        auto& s_sysBrushes=LegacyPrivate().sysBrushes;
         auto it = s_sysBrushes.find(hbr);
         if (it == s_sysBrushes.end())
             it = s_sysBrushes.emplace(hbr, gdi::g_gdi.CreateBrushObj(gdi::ColorRefToArgb(SysColorRef(hbr - 1)))).first;
@@ -1761,11 +1780,11 @@ HostCallOutcome Impl_InterlockedExchange(cpu::CpuState& cpu, cpu::IGuestMemory& 
 // (ERROR_SUCCESS) по умолчанию — честный, безопасный дефолт. Если в
 // будущем какому-то коду понадобится конкретный код ошибки от конкретного
 // вызова — добавим SetLastError в нужные места по мере необходимости.
-uint32_t g_lastError = 0;
+
 
 HostCallOutcome Impl_GetLastError(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_lastError;
+    result.returnValue = LegacyPrivate().g_lastError;
     return result;
 }
 
@@ -2453,7 +2472,7 @@ HostCallOutcome Impl_CoCreateInstance(cpu::CpuState& cpu, cpu::IGuestMemory& mem
 // достаточно внутренней самосогласованности между этими тремя. Для SDI
 // (один документ — один view, как в Paint) храним просто ОДИН указатель
 // на view на документ; POSITION — ненулевой сентинел, если view есть.
-std::unordered_map<uint32_t, uint32_t> g_documentToView;
+
 
 // ============================================================================
 // Честная маршрутизация сообщений (AfxWndProc-эквивалент)
@@ -2478,10 +2497,10 @@ std::unordered_map<uint32_t, uint32_t> g_documentToView;
 // sig=0x31=49 для реальных обработчиков мыши CPaintView).
 
 // hwnd -> C++ объект (CWnd*), для обратного поиска "кому доставить сообщение"
-std::unordered_map<uint32_t, uint32_t> g_hwndToObject;
+
 // C++ объект -> адрес массива записей его message map (entries, БЕЗ заголовка
 // AFX_MSGMAP — то есть уже [pMsgMap+4], разыменованный)
-std::unordered_map<uint32_t, uint32_t> g_objectToMsgMapEntries;
+
 
 // Извлекает x/y как знаковые 16-битные половины lParam (стандартная
 // упаковка Windows для мышиных сообщений)
@@ -2566,17 +2585,17 @@ bool DispatchViaMessageMap(cpu::CpuState& cpu, cpu::IGuestMemory& mem, uint32_t 
 // прямые параметры для координат мыши, а читают их через
 // CWnd::GetCurrentMessage() (ординал 3016) — честный MSG в стиле реальной
 // AfxGetCurrentMessage(), обновляем перед КАЖДОЙ доставкой сообщения.
-uint32_t g_currentMsgAddr = 0;
+
 void UpdateCurrentMessage(cpu::IGuestMemory& mem, uint32_t hwnd, uint32_t message,
                            uint32_t wParam, uint32_t lParam) {
-    if (g_currentMsgAddr == 0) g_currentMsgAddr = SimpleGuestAlloc(28); // sizeof(MSG)
-    mem.Write32(g_currentMsgAddr + 0, hwnd);
-    mem.Write32(g_currentMsgAddr + 4, message);
-    mem.Write32(g_currentMsgAddr + 8, wParam);
-    mem.Write32(g_currentMsgAddr + 12, lParam);
-    mem.Write32(g_currentMsgAddr + 16, 0); // time
-    mem.Write32(g_currentMsgAddr + 20, lParam & 0xFFFF);        // pt.x (из lParam, как в реальной MSG для мыши)
-    mem.Write32(g_currentMsgAddr + 24, (lParam >> 16) & 0xFFFF); // pt.y
+    if (LegacyPrivate().g_currentMsgAddr == 0) LegacyPrivate().g_currentMsgAddr = SimpleGuestAlloc(28); // sizeof(MSG)
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 0, hwnd);
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 4, message);
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 8, wParam);
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 12, lParam);
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 16, 0); // time
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 20, lParam & 0xFFFF);        // pt.x (из lParam, как в реальной MSG для мыши)
+    mem.Write32(LegacyPrivate().g_currentMsgAddr + 24, (lParam >> 16) & 0xFFFF); // pt.y
 }
 
 // void InflateRect(LPRECT lprc, int dx, int dy) — сдвигает left/top на
@@ -2638,27 +2657,27 @@ HostCallOutcome Impl_IntersectRect(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
 // HWND GetCapture() — честно переиспользуем уже существующий g_captureWindow.
 HostCallOutcome Impl_GetCapture(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_captureWindow;
+    result.returnValue = LegacyPrivate().g_captureWindow;
     return result;
 }
 
 // HWND SetActiveWindow(HWND hWnd) — честно отслеживаем "активное окно"
 // (похожий паттерн на SetFocus/SetCursor), возвращаем предыдущее.
-uint32_t g_activeWindowHwnd = 0;
+
 HostCallOutcome Impl_SetActiveWindow(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t hwnd = ReadArg(cpu, mem, 0);
     HostCallOutcome result;
-    result.returnValue = g_activeWindowHwnd;
-    g_activeWindowHwnd = hwnd;
+    result.returnValue = LegacyPrivate().g_activeWindowHwnd;
+    LegacyPrivate().g_activeWindowHwnd = hwnd;
     return result;
 }
 
 // HWND GetFocus() — честно отслеживаем текущий фокус (тот же паттерн, что
 // и SetCursor).
-uint32_t g_currentFocusHwnd = 0;
+
 HostCallOutcome Impl_GetFocus(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_currentFocusHwnd;
+    result.returnValue = LegacyPrivate().g_currentFocusHwnd;
     return result;
 }
 
@@ -2669,8 +2688,8 @@ HostCallOutcome Impl_GetFocus(cpu::CpuState&, cpu::IGuestMemory&) {
 HostCallOutcome Impl_Mfc2859_FromHandle(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t hwnd = ReadArg(cpu, mem, 0);
     HostCallOutcome result;
-    auto it = g_hwndToObject.find(hwnd);
-    result.returnValue = (it != g_hwndToObject.end()) ? it->second : 0;
+    auto it = LegacyPrivate().g_hwndToObject.find(hwnd);
+    result.returnValue = (it != LegacyPrivate().g_hwndToObject.end()) ? it->second : 0;
     return result;
 }
 
@@ -2681,11 +2700,11 @@ HostCallOutcome Impl_Mfc2859_FromHandle(cpu::CpuState& cpu, cpu::IGuestMemory& m
 HostCallOutcome Impl_Mfc5977_SetFocus(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t pWnd = cpu.Get(cpu::Reg32::ECX);
     uint32_t newHwnd = mem.Read32(pWnd + 0x4);
-    uint32_t oldHwnd = g_currentFocusHwnd;
-    g_currentFocusHwnd = newHwnd;
+    uint32_t oldHwnd = LegacyPrivate().g_currentFocusHwnd;
+    LegacyPrivate().g_currentFocusHwnd = newHwnd;
     HostCallOutcome result;
-    auto it = g_hwndToObject.find(oldHwnd);
-    result.returnValue = (it != g_hwndToObject.end()) ? it->second : 0;
+    auto it = LegacyPrivate().g_hwndToObject.find(oldHwnd);
+    result.returnValue = (it != LegacyPrivate().g_hwndToObject.end()) ? it->second : 0;
     return result;
 }
 
@@ -2695,7 +2714,7 @@ HostCallOutcome Impl_Mfc5977_SetFocus(cpu::CpuState& cpu, cpu::IGuestMemory& mem
 // вызывается из Impl_AfxWndProc на каждую доставку сообщения).
 HostCallOutcome Impl_Mfc3016_GetCurrentMessage(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_currentMsgAddr;
+    result.returnValue = LegacyPrivate().g_currentMsgAddr;
     return result;
 }
 
@@ -2717,7 +2736,7 @@ HostCallOutcome Impl_Mfc3016_GetCurrentMessage(cpu::CpuState&, cpu::IGuestMemory
 //
 // [0x103d74c] — НАСТОЯЩИЙ текущий инструмент (не хардкод!) — тот же
 // глобальный указатель, что использует сам paint.exe.
-std::unordered_map<uint32_t, std::pair<int,int>> g_lastMousePos; // hwnd -> (x,y)
+ // hwnd -> (x,y)
 // (g_paintCDC/g_paintView перенесены в начало файла, до анонимного
 // namespace — см. комментарий там; здесь оставлять их было ошибкой:
 // не ломало сборку раньше только потому, что ничего СНАРУЖИ файла к ним
@@ -2803,7 +2822,7 @@ HostCallOutcome Impl_AfxWndProc(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     if (message == 0x0201 || message == 0x0204) { // WM_LBUTTONDOWN / WM_RBUTTONDOWN
         int curX = static_cast<int16_t>(lParam & 0xFFFF);
         int curY = static_cast<int16_t>((lParam >> 16) & 0xFFFF);
-        g_lastMousePos[hwnd] = {curX, curY};
+        LegacyPrivate().g_lastMousePos[hwnd] = {curX, curY};
 
         // Пипетка (эта сессия): срабатывает уже на само нажатие, не
         // только на последующее движение — реальный Eyedropper в Paint
@@ -2823,12 +2842,12 @@ HostCallOutcome Impl_AfxWndProc(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     if (message == 0x0200 && (wParam & 0x3) != 0 && g_paintCDC != 0 && g_paintView != 0) {
         int curX = static_cast<int16_t>(lParam & 0xFFFF);
         int curY = static_cast<int16_t>((lParam >> 16) & 0xFFFF);
-        auto it = g_lastMousePos.find(hwnd);
-        int prevX = (it != g_lastMousePos.end()) ? it->second.first : curX;
-        int prevY = (it != g_lastMousePos.end()) ? it->second.second : curY;
+        auto it = LegacyPrivate().g_lastMousePos.find(hwnd);
+        int prevX = (it != LegacyPrivate().g_lastMousePos.end()) ? it->second.first : curX;
+        int prevY = (it != LegacyPrivate().g_lastMousePos.end()) ? it->second.second : curY;
         bool leftButton = (wParam & 0x1) != 0;
         DrawStrokeSegment(cpu, mem, g_paintView, prevX, prevY, curX, curY, leftButton);
-        g_lastMousePos[hwnd] = {curX, curY};
+        LegacyPrivate().g_lastMousePos[hwnd] = {curX, curY};
 
         // Перерисовать экран настоящим OnDraw+BitBlt, чтобы штрих
         // сразу стал виден.
@@ -2862,12 +2881,12 @@ HostCallOutcome Impl_AfxWndProc(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     // hwnd незнаком — как и раньше, просто нет обработчика (аналог
     // DefWindowProc), но рисование ВЫШЕ уже отработало независимо от этого.
     HostCallOutcome result;
-    auto objIt = g_hwndToObject.find(hwnd);
-    if (objIt == g_hwndToObject.end()) { result.returnValue = 0; return result; }
+    auto objIt = LegacyPrivate().g_hwndToObject.find(hwnd);
+    if (objIt == LegacyPrivate().g_hwndToObject.end()) { result.returnValue = 0; return result; }
     uint32_t pWnd = objIt->second;
 
-    auto mapIt = g_objectToMsgMapEntries.find(pWnd);
-    uint32_t entriesAddr = (mapIt != g_objectToMsgMapEntries.end()) ? mapIt->second : 0;
+    auto mapIt = LegacyPrivate().g_objectToMsgMapEntries.find(pWnd);
+    uint32_t entriesAddr = (mapIt != LegacyPrivate().g_objectToMsgMapEntries.end()) ? mapIt->second : 0;
 
     uint32_t r = 0;
     if (DispatchViaMessageMap(cpu, mem, pWnd, entriesAddr, message, wParam, lParam, r)) {
@@ -2881,7 +2900,7 @@ HostCallOutcome Impl_AfxWndProc(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
 HostCallOutcome Impl_Mfc1090_AddView(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t pDocument = cpu.Get(cpu::Reg32::ECX);
     uint32_t pView = ReadArg(cpu, mem, 0);
-    g_documentToView[pDocument] = pView;
+    LegacyPrivate().g_documentToView[pDocument] = pView;
     mem.Write32(pView + 0x44, pDocument); // CView::m_pDocument — подтверждённое смещение
     HostCallOutcome result;
     return result;
@@ -2890,8 +2909,8 @@ HostCallOutcome Impl_Mfc1090_AddView(cpu::CpuState& cpu, cpu::IGuestMemory& mem)
 HostCallOutcome Impl_Mfc3193_GetFirstViewPosition(cpu::CpuState& cpu, cpu::IGuestMemory&) {
     uint32_t pDocument = cpu.Get(cpu::Reg32::ECX);
     HostCallOutcome result;
-    auto it = g_documentToView.find(pDocument);
-    result.returnValue = (it != g_documentToView.end() && it->second != 0) ? 1u : 0u; // POSITION-сентинел
+    auto it = LegacyPrivate().g_documentToView.find(pDocument);
+    result.returnValue = (it != LegacyPrivate().g_documentToView.end() && it->second != 0) ? 1u : 0u; // POSITION-сентинел
     return result;
 }
 
@@ -2899,8 +2918,8 @@ HostCallOutcome Impl_Mfc3449_GetNextView(cpu::CpuState& cpu, cpu::IGuestMemory& 
     uint32_t pDocument = cpu.Get(cpu::Reg32::ECX);
     uint32_t posRef = ReadArg(cpu, mem, 0); // POSITION& (адрес переменной вызывающего)
     HostCallOutcome result;
-    auto it = g_documentToView.find(pDocument);
-    uint32_t view = (it != g_documentToView.end()) ? it->second : 0;
+    auto it = LegacyPrivate().g_documentToView.find(pDocument);
+    uint32_t view = (it != LegacyPrivate().g_documentToView.end()) ? it->second : 0;
     if (posRef != 0) mem.Write32(posRef, 0); // единственный view в SDI — следующей позиции нет
     result.returnValue = view;
     return result;
@@ -2925,9 +2944,9 @@ HostCallOutcome Impl_SafeCdcVtableSlot(cpu::CpuState&, cpu::IGuestMemory&) {
 // CDC-обёртками) — 32 слота по 4 байта, все указывают на безопасную
 // заглушку выше. С запасом (реально видели только +0x2c, но лучше
 // перекрыть больше, чем гадать заново при следующем похожем крахе).
-uint32_t g_safeCdcVtable = 0;
+
 uint32_t GetOrCreateSafeCdcVtable(cpu::IGuestMemory& mem) {
-    if (g_safeCdcVtable != 0) return g_safeCdcVtable;
+    if (LegacyPrivate().g_safeCdcVtable != 0) return LegacyPrivate().g_safeCdcVtable;
     constexpr int kSlots = 32;
     uint32_t vt = SimpleGuestAlloc(kSlots * 4);
     int idx = FindHostFunction("INTERNAL", "SafeCdcVtableSlot");
@@ -2935,7 +2954,7 @@ uint32_t GetOrCreateSafeCdcVtable(cpu::IGuestMemory& mem) {
     for (int i = 0; i < kSlots; i++) {
         mem.Write32(vt + i * 4, stubAddr);
     }
-    g_safeCdcVtable = vt;
+    LegacyPrivate().g_safeCdcVtable = vt;
     return vt;
 }
 
@@ -3182,7 +3201,7 @@ HostCallOutcome Impl_Mfc4458_CViewOnCreate(cpu::CpuState&, cpu::IGuestMemory&) {
 
 HostCallOutcome Impl_Mfc1172_AfxGetThread(cpu::CpuState&, cpu::IGuestMemory&) {
     HostCallOutcome result;
-    result.returnValue = g_theAppPtr;
+    result.returnValue = LegacyPrivate().g_theAppPtr;
     return result;
 }
 
@@ -3230,12 +3249,12 @@ HostCallOutcome Impl_LoadCursorW(cpu::CpuState&, cpu::IGuestMemory&) {
 // У нас нет реального рендеринга курсора (пока), но честно отслеживаем
 // хендл и возвращаем предыдущий — этого достаточно для guest-кода, который
 // обычно просто использует возврат для восстановления курсора позже.
-uint32_t g_currentCursor = 0;
+
 HostCallOutcome Impl_SetCursor(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t hCursor = ReadArg(cpu, mem, 0);
     HostCallOutcome result;
-    result.returnValue = g_currentCursor;
-    g_currentCursor = hCursor;
+    result.returnValue = LegacyPrivate().g_currentCursor;
+    LegacyPrivate().g_currentCursor = hCursor;
     return result;
 }
 
@@ -4273,16 +4292,16 @@ HostCallOutcome Impl_Probe_Ordinal1569(cpu::CpuState& cpu, cpu::IGuestMemory& me
     HostCallOutcome result;
     result.returnValue = 1;
 
-    if (g_theAppPtr == 0) {
+    if (LegacyPrivate().g_theAppPtr == 0) {
         if (cpu::g_consoleAvailable) {
             std::printf("[AfxWinMain] theApp не захвачен (ординал 561 ещё не вызывался?) — используем заглушку\n");
         }
         return result;
     }
 
-    uint32_t vtable = mem.Read32(g_theAppPtr);
+    uint32_t vtable = mem.Read32(LegacyPrivate().g_theAppPtr);
     if (vtable == 0) {
-        if (cpu::g_consoleAvailable) std::printf("[AfxWinMain] theApp=0x%x, но vtable пуста\n", g_theAppPtr);
+        if (cpu::g_consoleAvailable) std::printf("[AfxWinMain] theApp=0x%x, но vtable пуста\n", LegacyPrivate().g_theAppPtr);
         return result;
     }
 
@@ -4295,10 +4314,10 @@ HostCallOutcome Impl_Probe_Ordinal1569(cpu::CpuState& cpu, cpu::IGuestMemory& me
 
     if (cpu::g_consoleAvailable) {
         std::printf("[AfxWinMain] Вызываем InitInstance() по 0x%x (theApp=0x%x, vtable=0x%x)\n",
-                     initInstanceAddr, g_theAppPtr, vtable);
+                     initInstanceAddr, LegacyPrivate().g_theAppPtr, vtable);
     }
 
-    cpu.Get(cpu::Reg32::ECX) = g_theAppPtr; // "this" для __thiscall
+    cpu.Get(cpu::Reg32::ECX) = LegacyPrivate().g_theAppPtr; // "this" для __thiscall
     uint32_t initResult = win32::CallGuestFunctionStdcall(cpu, mem, initInstanceAddr, {}, g_tebAddr, g_tebAddr);
 
     if (cpu::g_consoleAvailable) {
@@ -4322,7 +4341,7 @@ HostCallOutcome Impl_Probe_Ordinal1569(cpu::CpuState& cpu, cpu::IGuestMemory& me
         if (cpu::g_consoleAvailable) {
             std::printf("[AfxWinMain] Вызываем Run() по 0x%x\n", runAddr);
         }
-        cpu.Get(cpu::Reg32::ECX) = g_theAppPtr;
+        cpu.Get(cpu::Reg32::ECX) = LegacyPrivate().g_theAppPtr;
         uint32_t runResult = win32::CallGuestFunctionStdcall(cpu, mem, runAddr, {}, g_tebAddr, g_tebAddr);
         if (cpu::g_consoleAvailable) {
             std::printf("[AfxWinMain] Run() вернул %u\n", runResult);
@@ -4393,20 +4412,20 @@ HostCallOutcome Impl_ShellAboutW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
 // все события мыши и так адресуются ровно в него (см. GetLastCreatedWindow),
 // так что реального "перенаправления" делать не нужно — но контракт
 // (вернуть ПРЕДЫДУЩЕЕ захватившее окно) соблюдаем честно.
-uint32_t g_captureWindow = 0;
+
 
 // HWND SetCapture(HWND hWnd)
 HostCallOutcome Impl_SetCapture(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     uint32_t hwnd = ReadArg(cpu, mem, 0);
     HostCallOutcome result;
-    result.returnValue = g_captureWindow; // предыдущее захватившее окно
-    g_captureWindow = hwnd;
+    result.returnValue = LegacyPrivate().g_captureWindow; // предыдущее захватившее окно
+    LegacyPrivate().g_captureWindow = hwnd;
     return result;
 }
 
 // BOOL ReleaseCapture(void)
 HostCallOutcome Impl_ReleaseCapture(cpu::CpuState&, cpu::IGuestMemory&) {
-    g_captureWindow = 0;
+    LegacyPrivate().g_captureWindow = 0;
     HostCallOutcome result;
     result.returnValue = 1; // TRUE
     return result;

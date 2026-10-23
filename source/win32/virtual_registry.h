@@ -37,6 +37,10 @@ struct RegValue {
 
 class VirtualRegistry {
 public:
+    // Values belong to the host registry; transient HKEYs belong to a guest
+    // session. Exchange only handles so application settings survive relaunch.
+    void ExchangeOpenHandles(std::vector<std::string>& handles) {openHandles_.swap(handles);}
+
     // Открывает ключ, создавая его при отсутствии. existed=true, если ключ
     // уже был (для правильного REG_CREATED_NEW_KEY/REG_OPENED_EXISTING_KEY)
     uint32_t CreateOrOpenKey(uint32_t hKeyParent, const std::string& subKey, bool& existed);

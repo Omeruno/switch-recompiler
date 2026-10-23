@@ -299,11 +299,18 @@ static void SaveGuestStopReport(const char* reason, const char* exeName,
     fclose(log);
 }
 
+static void ResetLegacyFrontend();
+static win32::HostFrameResult PumpHostFrame();
 static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
 {
     rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
     rt::GuestSession guestSession;
     auto& mem=guestSession.Memory();auto& proc=guestSession.ProcessObject();
+    win32::EnableHostLayer(win32::kUiLayer,g_useNewUi);
+    struct FrontendCleanup {bool legacy;~FrontendCleanup(){if(legacy)ResetLegacyFrontend();}} frontendCleanup{!g_useNewUi};
+    if(!g_useNewUi)ResetLegacyFrontend();
+    int stackMarker=0;win32::g_threadStackBase=&stackMarker;
+    win32::g_pumpHostFrame=&PumpHostFrame;
     win32::user::PresentationSession presentationScope(g_useNewUi,&newui::EndPresentation);
     // Процесс гостя: EXE и его DLL по своим адресам, TEB/PEB, стек, куча
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
@@ -1281,6 +1288,18 @@ static uint32_t g_lastTouchX = 0, g_lastTouchY = 0;
 // ПРО ТАЧ: настоящая причина прошлых крашей — 10 недостающих опкодов x86
 // декодера (нашли и починили отдельно), а НЕ тач-API — любой клик тогда
 // падал одинаково, независимо от способа ввода. Так что тач возвращаем.
+struct LegacyPumpState {
+    int s_frameThrottle = 0;
+    bool s_aGameClickActive = false;
+    bool s_zrGameClickActive = false;
+    uint32_t s_aHwnd = 0, s_aLParam = 0;
+    uint32_t s_zrHwnd = 0, s_zrLParam = 0;
+    int s_moveThrottle = 0;
+    int s_moveThrottleZr = 0;
+    bool s_touchStartedOnMenu = false;
+    int s_touchMoveThrottle = 0;
+};
+static LegacyPumpState g_legacyPump;
 static win32::HostFrameResult PumpHostFrame()
 {
     win32::HostFrameResult result;
@@ -1346,9 +1365,9 @@ static win32::HostFrameResult PumpHostFrame()
 
     // Держим экран живым (не каждый тик ожидания, а раз в 10 — разумная
     // защита от лишних вызовов графики без реальной необходимости)
-    static int s_frameThrottle = 0;
-    if (++s_frameThrottle >= 10) {
-        s_frameThrottle = 0;
+
+    if (++g_legacyPump.s_frameThrottle >= 10) {
+        g_legacyPump.s_frameThrottle = 0;
         DrawGdiScreenIntoFramebuffer(g_fb, g_cursorX, g_cursorY);
     }
 
@@ -1361,11 +1380,6 @@ static win32::HostFrameResult PumpHostFrame()
     u64 kHeld = padGetButtons(&g_pad);
     bool aHeldNow = (kHeld & HidNpadButton_A) != 0;
     bool zrHeldNow = (kHeld & HidNpadButton_ZR) != 0;
-
-    static bool s_aGameClickActive = false; // true, если ТЕКУЩЕЕ нажатие A реально дошло до игры (не перехвачено меню)
-    static bool s_zrGameClickActive = false;
-    static uint32_t s_aHwnd = 0, s_aLParam = 0;
-    static uint32_t s_zrHwnd = 0, s_zrLParam = 0;
 
     // Клик по нажатию A (джойкон) — сначала диалог (если открыт — модальный,
     // забирает ВСЕ клики), потом меню, и только если ни то ни другое не
@@ -1385,18 +1399,18 @@ static win32::HostFrameResult PumpHostFrame()
             uint32_t hwnd = win32::g_windowManager.GetLastCreatedWindow();
             uint32_t lParam = ((static_cast<uint32_t>(g_cursorY) & 0xFFFFu) << 16) | (static_cast<uint32_t>(g_cursorX) & 0xFFFFu); // маскируем до 16 бит каждую координату — критично теперь, когда курсор может быть отрицательным (тулбар/меню слева/сверху), иначе OR ломает верхние 16 бит
             win32::g_messageQueue.Post(hwnd, win32::WM_LBUTTONDOWN, 1, lParam);
-            s_aHwnd = hwnd;
-            s_aLParam = lParam;
-            s_aGameClickActive = true;
+            g_legacyPump.s_aHwnd = hwnd;
+            g_legacyPump.s_aLParam = lParam;
+            g_legacyPump.s_aGameClickActive = true;
         }
     }
-    else if (!aHeldNow && s_aGameClickActive)
+    else if (!aHeldNow && g_legacyPump.s_aGameClickActive)
     {
         // Кнопку реально отпустили — только теперь шлём UP
-        win32::g_messageQueue.Post(s_aHwnd, win32::WM_LBUTTONUP, 0, s_aLParam);
-        s_aGameClickActive = false;
+        win32::g_messageQueue.Post(g_legacyPump.s_aHwnd, win32::WM_LBUTTONUP, 0, g_legacyPump.s_aLParam);
+        g_legacyPump.s_aGameClickActive = false;
     }
-    else if (aHeldNow && s_aGameClickActive)
+    else if (aHeldNow && g_legacyPump.s_aGameClickActive)
     {
         // Кнопка ВСЁ ЕЩЁ удерживается — реальная мышь в этот момент шлёт
         // WM_MOUSEMOVE (с зажатой левой кнопкой в wParam), и, похоже, именно
@@ -1404,11 +1418,11 @@ static win32::HostFrameResult PumpHostFrame()
         // (например, предпросмотр соседних клеток) — просто DOWN...UP без
         // этих промежуточных сообщений визуально неотличим от быстрого тапа,
         // даже если сам UP теперь реально приходит с задержкой.
-        static int s_moveThrottle = 0;
-        if (++s_moveThrottle >= 3) {
-            s_moveThrottle = 0;
+
+        if (++g_legacyPump.s_moveThrottle >= 3) {
+            g_legacyPump.s_moveThrottle = 0;
             uint32_t lParam = ((static_cast<uint32_t>(g_cursorY) & 0xFFFFu) << 16) | (static_cast<uint32_t>(g_cursorX) & 0xFFFFu); // маскируем до 16 бит каждую координату — критично теперь, когда курсор может быть отрицательным (тулбар/меню слева/сверху), иначе OR ломает верхние 16 бит
-            win32::g_messageQueue.Post(s_aHwnd, win32::WM_MOUSEMOVE, 1 /*MK_LBUTTON*/, lParam);
+            win32::g_messageQueue.Post(g_legacyPump.s_aHwnd, win32::WM_MOUSEMOVE, 1 /*MK_LBUTTON*/, lParam);
         }
     }
 
@@ -1432,23 +1446,23 @@ static win32::HostFrameResult PumpHostFrame()
             uint32_t hwnd = win32::g_windowManager.GetLastCreatedWindow();
             uint32_t lParam = ((static_cast<uint32_t>(g_cursorY) & 0xFFFFu) << 16) | (static_cast<uint32_t>(g_cursorX) & 0xFFFFu); // маскируем до 16 бит каждую координату — критично теперь, когда курсор может быть отрицательным (тулбар/меню слева/сверху), иначе OR ломает верхние 16 бит
             win32::g_messageQueue.Post(hwnd, win32::WM_RBUTTONDOWN, 2, lParam); // MK_RBUTTON
-            s_zrHwnd = hwnd;
-            s_zrLParam = lParam;
-            s_zrGameClickActive = true;
+            g_legacyPump.s_zrHwnd = hwnd;
+            g_legacyPump.s_zrLParam = lParam;
+            g_legacyPump.s_zrGameClickActive = true;
         }
     }
-    else if (!zrHeldNow && s_zrGameClickActive)
+    else if (!zrHeldNow && g_legacyPump.s_zrGameClickActive)
     {
-        win32::g_messageQueue.Post(s_zrHwnd, win32::WM_RBUTTONUP, 0, s_zrLParam);
-        s_zrGameClickActive = false;
+        win32::g_messageQueue.Post(g_legacyPump.s_zrHwnd, win32::WM_RBUTTONUP, 0, g_legacyPump.s_zrLParam);
+        g_legacyPump.s_zrGameClickActive = false;
     }
-    else if (zrHeldNow && s_zrGameClickActive)
+    else if (zrHeldNow && g_legacyPump.s_zrGameClickActive)
     {
-        static int s_moveThrottleZr = 0;
-        if (++s_moveThrottleZr >= 3) {
-            s_moveThrottleZr = 0;
+
+        if (++g_legacyPump.s_moveThrottleZr >= 3) {
+            g_legacyPump.s_moveThrottleZr = 0;
             uint32_t lParam = ((static_cast<uint32_t>(g_cursorY) & 0xFFFFu) << 16) | (static_cast<uint32_t>(g_cursorX) & 0xFFFFu); // маскируем до 16 бит каждую координату — критично теперь, когда курсор может быть отрицательным (тулбар/меню слева/сверху), иначе OR ломает верхние 16 бит
-            win32::g_messageQueue.Post(s_zrHwnd, win32::WM_MOUSEMOVE, 2 /*MK_RBUTTON*/, lParam);
+            win32::g_messageQueue.Post(g_legacyPump.s_zrHwnd, win32::WM_MOUSEMOVE, 2 /*MK_RBUTTON*/, lParam);
         }
     }
 
@@ -1456,7 +1470,6 @@ static win32::HostFrameResult PumpHostFrame()
     HidTouchScreenState touchState = {0};
     bool isTouchingNow = false;
     uint32_t touchX = 0, touchY = 0;
-    static bool s_touchStartedOnMenu = false; // весь текущий тач "принадлежит" меню?
 
     if (hidGetTouchScreenStates(&touchState, 1) && touchState.count > 0)
     {
@@ -1470,7 +1483,7 @@ static win32::HostFrameResult PumpHostFrame()
         {
             // Самый первый тик касания — сначала about-бокс, потом диалог,
             // потом меню, до пересчёта в виртуальные координаты
-            s_touchStartedOnMenu = win32::g_aboutBoxActive
+            g_legacyPump.s_touchStartedOnMenu = win32::g_aboutBoxActive
                 ? HandleAboutBoxClick(static_cast<int>(realX), static_cast<int>(realY))
                 : win32::g_dialogActive
                 ? HandleDialogClick(static_cast<int>(realX), static_cast<int>(realY))
@@ -1479,7 +1492,7 @@ static win32::HostFrameResult PumpHostFrame()
                   || HandlePaletteClick(static_cast<int>(realX), static_cast<int>(realY), false);
         }
 
-        if (!s_touchStartedOnMenu)
+        if (!g_legacyPump.s_touchStartedOnMenu)
         {
             // Обратное преобразование той же трансформации (масштаб + сдвиг
             // под центрирование), что использует отрисовка — иначе палец
@@ -1504,7 +1517,7 @@ static win32::HostFrameResult PumpHostFrame()
     }
 
     uint32_t hwnd = win32::g_windowManager.GetLastCreatedWindow();
-    if (!s_touchStartedOnMenu)
+    if (!g_legacyPump.s_touchStartedOnMenu)
     {
         if (isTouchingNow && !g_wasTouching)
         {
@@ -1527,9 +1540,9 @@ static win32::HostFrameResult PumpHostFrame()
             // кнопкой в wParam — без этого Paint (и вообще любой код,
             // ожидающий WM_MOUSEMOVE во время "перетаскивания") никогда
             // не узнаёт о движении пальца. Троттлинг — как у кнопки A.
-            static int s_touchMoveThrottle = 0;
-            if (++s_touchMoveThrottle >= 3) {
-                s_touchMoveThrottle = 0;
+
+            if (++g_legacyPump.s_touchMoveThrottle >= 3) {
+                g_legacyPump.s_touchMoveThrottle = 0;
                 win32::g_messageQueue.Post(hwnd, win32::WM_MOUSEMOVE, 1 /*MK_LBUTTON*/,
                                             (touchY << 16) | touchX);
             }
@@ -1540,6 +1553,16 @@ static win32::HostFrameResult PumpHostFrame()
     if (isTouchingNow) { g_lastTouchX = touchX; g_lastTouchY = touchY; }
 
     return result;
+}
+
+static void ResetLegacyFrontend() {
+    g_contentScale=2.0f;g_contentOffsetX=g_contentOffsetY=g_contentBaseX=g_contentBaseY=0;
+    g_menuBarRects.clear();g_dropdownRects.clear();g_openMenuIndex=-1;
+    g_selectedToolIndex=6;g_currentForegroundColor=0xFF000000u;g_currentBackgroundColor=0xFFFFFFFFu;
+    g_toolbarButtonRects.clear();g_paletteSwatchRects.clear();g_dialogButtonRects.clear();
+    g_dialogOffsetX=g_dialogOffsetY=0;g_aboutOkButtonRect={0,0,0,0};
+    g_cursorX=320;g_cursorY=180;g_cursorXf=320.0f;g_cursorYf=180.0f;
+    g_wasTouching=false;g_lastTouchX=g_lastTouchY=0;g_legacyPump={};
 }
 
 // Вся "тяжёлая" логика — на ОТДЕЛЬНОМ потоке с явно большим стеком (см.
@@ -1882,11 +1905,6 @@ static void GameThreadFunc(void* arg)
 {
     (void)arg;
 
-    // ПРЯМАЯ ДИАГНОСТИКА (оставляем — пригодилась): адрес стека этого потока.
-    int stackMarker = 0;
-    win32::g_threadStackBase = (void*)&stackMarker;
-
-    win32::g_pumpHostFrame = &PumpHostFrame;
     // Лимит шагов теперь по сути "неограниченный" — реальный выход
     // происходит по кнопке + (через PumpHostFrame -> GetMessage -> WM_QUIT),
     // а не по счётчику инструкций.
