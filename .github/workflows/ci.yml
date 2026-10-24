@@ -45,6 +45,11 @@ jobs:
             build-host/guest-run.*/shell_bitmap.exe
             build-host/guest-run.*/shell_document.exe
             build-host/guest-run.*/shell_workspace.exe
+            build-host/guest-run.*/shell_busy.exe
+            docs/F_TEXT_DOCUMENTS.md
+            docs/F_IMAGE_DOCUMENTS.md
+            docs/F1_FILESYSTEM.md
+            docs/STAGE_E_PERFORMANCE.md
             docs/F_ACCEPTANCE.md
             docs/F3C_SHORTCUTS_TREE.md
             docs/F4C_WORKSPACE_LAYERS.md
