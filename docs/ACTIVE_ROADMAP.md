@@ -1,5 +1,7 @@
 # Active implementation map — 2026-10-25
 
+Current task: close every remaining programmatic baseline F gate in [F_ACCEPTANCE.md](F_ACCEPTANCE.md), then audit the full map. Do not stop after a single small package.
+
 User-facing global status: [Где находится проект](PROJECT_STATUS_RU.md).
 
 Current user priority: develop a real usable system before further visual polish.
@@ -40,7 +42,7 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: F5 guest file-save flush/access/error correctness
+## Active whole-F task: tree/shortcuts, retained planes, integrated acceptance
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -103,8 +105,4 @@ exact published SHA. Documentation-only packages use source/link/diff checks;
 CI status must still be reported against their exact SHA without invented passes.
 
 
-Concrete F5 audit finding: K32_FlushFileBuffers currently ignores fflush errors,
-always reports success (including invalid handles) and omits fsync. Next fix real
-HANDLE/access/flush behavior with fault/public-x86 coverage; inspect write/close/
-size/truncate errors and alias lifetime. Native TXT checks do not certify those
-guest APIs. The BMP happy path is a software slice, not full F5/hardware acceptance.
+[F5 synchronous file-save APIs](F5_FILE_SAVE.md) now check read/write/flush/fsync/size/truncate errors and HANDLE/access/alias behavior. The whole-F task continues through the ledger: tree/shortcuts, retained workspace planes and integrated acceptance; the BMP happy path alone does not close F5 or physical gates.

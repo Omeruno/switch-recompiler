@@ -1248,3 +1248,31 @@ screenshot inspected with real-font assertion, six docs/99 relative links,
 balanced fences and git diff --check passed. Incoming six-job CI was independently
 reverified for 3536ec4. Final normal push/exact new-SHA CI must follow; no hardware
 acceptance is implied. Next: F5 real guest file-save flush/access/error behavior.
+
+
+## Whole-F closure task: first package, real guest file saving
+
+User explicitly requests closing all F, not ending after individual small
+features. Clean b0858f0/FETCH_HEAD, no AGENTS/newer work; exact incoming CI
+40136047193 was verified six jobs. F_ACCEPTANCE.md now lists every baseline
+programmatic gate and keeps separate deferred physical and installer/archive
+extension work. Continue the whole task after this package, do not declare F
+complete from corrected file APIs alone. Next: tree/shortcuts, retained planes
+and integrated F acceptance.
+
+KERNEL32 synchronous read/write uses 8 KiB buffers, checked guest ranges/counts,
+explicit unsupported OVERLAPPED, short/failed native I/O and append seek errors.
+FlushFileBuffers now checks actual HANDLE/type/write access, fflush and fsync,
+instead of unconditional success. Size and truncate propagate actual flush/stat/
+position/truncate failure. NUL/EOF and console line translation remain explicit.
+Duplicate HANDLE/file-object lifetime is unchanged; CloseHandle is handle closure,
+not a durable-save promise. F5_FILE_SAVE.md defines supported subset/limits.
+
+New dispatcher regression with real Process/TEB checks actual >8 KiB bytes,
+invalid/zero/massive buffers, counts/errors, readonly/invalid/stale/alias HANDLE,
+size/truncate and genuine /dev/full delayed write failures. Public x86 BMP writer
+now calls corrected FlushFileBuffers; actual native/fresh-x86 pixel reopening
+still passes. Complete clean rootless MinGW/Mesa suite passed final runtime and
+fixture tree, all previous F/C/six E9 and both real EGL oracles included. Strict
+API compilation/native harness passed; exact new-SHA six-job CI follows normal
+publication. Local SDK absent, physical gates deferred, SD closed.

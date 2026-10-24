@@ -2,6 +2,7 @@
 // rt::Files). Хендлы консоли (stdin/stdout/stderr) — тоже здесь.
 
 #include <cctype>
+#include <array>
 #include <cerrno>
 #include <map>
 #include <vector>
@@ -40,6 +41,7 @@ uint32_t ErrnoToWin() {
         case ENOTDIR: return ERROR_PATH_NOT_FOUND;
         case EXDEV: return 17; // ERROR_NOT_SAME_DEVICE
         case ENOSPC: return 112; // ERROR_DISK_FULL
+        case EBADF: return 6;
         case EIO: return 1117; // ERROR_IO_DEVICE
         case EBUSY: return 32; // ERROR_SHARING_VIOLATION
         case EACCES: case EPERM: return ERROR_ACCESS_DENIED;
@@ -124,53 +126,67 @@ HostCallOutcome CreateFileCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wi
 HostCallOutcome K32_CreateFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return CreateFileCommon(c, m, false); }
 HostCallOutcome K32_CreateFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return CreateFileCommon(c, m, true); }
 
-// BOOL ReadFile(HANDLE, LPVOID buf, DWORD n, LPDWORD read, LPOVERLAPPED)
+// Synchronous bounded data transfer. No guest-sized temporary allocation and no
+// silent OVERLAPPED emulation. CPU page permissions remain a separate D gate.
+bool FileBuffer(cpu::IGuestMemory& m,uint32_t buffer,uint32_t count,uint32_t result,uint32_t overlapped) {
+    if(result && !m.IsRangeMapped(result,4)){SetLastError(m,998);return false;}
+    if(result)m.Write32(result,0);
+    if(overlapped){SetLastError(m,50);return false;}
+    if(count && (!buffer || uint64_t(buffer)+count>0x100000000ull || !m.IsRangeMapped(buffer,count))){SetLastError(m,998);return false;}
+    return true;
+}
 HostCallOutcome K32_ReadFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t h = Arg(c, m, 0), buf = Arg(c, m, 1), n = Arg(c, m, 2), readPtr = Arg(c, m, 3);
-    auto f = rt::Files().Get(h);
-    if (readPtr) m.Write32(readPtr, 0);
-    if (!f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
-    if (!HandleAccess(m,h,1) || !f->canRead) { SetLastError(m,5);return Ret(0); }
-    std::vector<uint8_t> tmp(n);
-    size_t got = 0;
-    if (f->kind == rt::OpenFile::Disk && f->f) got = std::fread(tmp.data(), 1, n, f->f);
-    else if (f->kind == rt::OpenFile::ConsoleIn && cpu::g_consoleAvailable) {
-        // построчно, как консоль Windows
-        while (got < n) {
-            int ch = std::fgetc(stdin);
-            if (ch == EOF) break;
-            if (ch == '\n' && got + 1 < n) tmp[got++] = '\r';
-            tmp[got++] = static_cast<uint8_t>(ch);
-            if (ch == '\n') break;
+    const uint32_t h=Arg(c,m,0),buf=Arg(c,m,1),n=Arg(c,m,2),out=Arg(c,m,3);
+    if(!FileBuffer(m,buf,n,out,Arg(c,m,4)))return Ret(0);
+    auto f=rt::Files().Get(h);
+    if(!f){SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0);}
+    if(!HandleAccess(m,h,1) || !f->canRead){SetLastError(m,ERROR_ACCESS_DENIED);return Ret(0);}
+    if(f->kind==rt::OpenFile::Null)return Ret(1);
+    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleIn){SetLastError(m,6);return Ret(0);}
+    FILE* stream=f->kind==rt::OpenFile::ConsoleIn?(cpu::g_consoleAvailable?stdin:nullptr):f->f;
+    if(!stream){if(f->kind==rt::OpenFile::ConsoleIn)return Ret(1);SetLastError(m,6);return Ret(0);}
+    std::clearerr(stream);std::array<uint8_t,8192> bytes;uint32_t total=0;int error=0;
+    while(total<n) {
+        const size_t want=std::min<size_t>(bytes.size(),n-total);size_t got=0;errno=0;
+        if(f->kind==rt::OpenFile::Disk)got=std::fread(bytes.data(),1,want,stream);
+        else {
+            while(got<want){const int ch=std::fgetc(stream);if(ch==EOF)break;if(ch=='\n' && got+1<want)bytes[got++]='\r';bytes[got++]=uint8_t(ch);if(ch=='\n')break;}
         }
+        if(got)m.LoadBytes(buf+total,bytes.data(),got);
+        total+=uint32_t(got);
+        if(std::ferror(stream)){error=errno?errno:EIO;break;}
+        if(got<want || f->kind==rt::OpenFile::ConsoleIn)break;
     }
-    m.LoadBytes(buf, tmp.data(), got);
-    if (readPtr) m.Write32(readPtr, static_cast<uint32_t>(got));
+    if(out)m.Write32(out,total);
+    if(error){errno=error;SetLastError(m,ErrnoToWin());return Ret(0);}
     return Ret(1);
 }
-
 HostCallOutcome K32_WriteFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    uint32_t h = Arg(c, m, 0), buf = Arg(c, m, 1), n = Arg(c, m, 2), written = Arg(c, m, 3);
-    if (written) m.Write32(written,0);
-    const auto* entry=rt::Handles().Entry(h);
-    if(!entry || entry->object->type!=rt::ObjectKind::File) { SetLastError(m,6);return Ret(0); }
-    if(!(entry->access&6)) { SetLastError(m,5);return Ret(0); }
-    std::string s(n, '\0');
-    m.ReadBytes(buf, reinterpret_cast<uint8_t*>(&s[0]), n);
-    if (written) m.Write32(written, 0);
-    if (HleConsoleWrite(h, s.data(), s.size())) {
-        if (written) m.Write32(written, n);
-        return Ret(1);
+    const uint32_t h=Arg(c,m,0),buf=Arg(c,m,1),n=Arg(c,m,2),out=Arg(c,m,3);
+    if(!FileBuffer(m,buf,n,out,Arg(c,m,4)))return Ret(0);
+    const auto* entry=rt::Handles().Entry(h);auto f=rt::Files().Get(h);
+    if(!entry || !f){SetLastError(m,6);return Ret(0);}
+    if(!(entry->access&6) || !f->canWrite){SetLastError(m,5);return Ret(0);}
+    if(f->kind==rt::OpenFile::Null){if(out)m.Write32(out,n);return Ret(1);}
+    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleOut && f->kind!=rt::OpenFile::ConsoleErr){SetLastError(m,6);return Ret(0);}
+    if(f->kind==rt::OpenFile::Disk) {
+        if(!f->f){SetLastError(m,6);return Ret(0);}
+        if((f->append || !(entry->access&2)) && fseeko(f->f,0,SEEK_END)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+        std::clearerr(f->f);
     }
-    auto f = rt::Files().Get(h);
-    if (!f || !f->canWrite) { SetLastError(m, f ? ERROR_ACCESS_DENIED : ERROR_INVALID_HANDLE); return Ret(0); }
-    size_t put = n;
-    if (f->kind == rt::OpenFile::Disk && f->f) {
-        if (f->append || !(entry->access&2)) std::fseek(f->f, 0, SEEK_END);
-        put = std::fwrite(s.data(), 1, n, f->f);
+    std::array<char,8192> bytes;uint32_t total=0;int error=0;
+    while(total<n) {
+        const size_t want=std::min<size_t>(bytes.size(),n-total);m.ReadBytes(buf+total,reinterpret_cast<uint8_t*>(bytes.data()),want);errno=0;
+        size_t put=0;
+        if(f->kind==rt::OpenFile::Disk)put=std::fwrite(bytes.data(),1,want,f->f);
+        else if(HleConsoleWrite(h,bytes.data(),want))put=want;
+        else if(f->f)put=std::fwrite(bytes.data(),1,want,f->f);
+        else {error=EBADF;break;}
+        total+=uint32_t(put);if(put!=want){error=errno?errno:EIO;break;}
     }
-    if (written) m.Write32(written, static_cast<uint32_t>(put));
-    return Ret(put == n ? 1 : 0);
+    if(out)m.Write32(out,total);
+    if(error){errno=error;SetLastError(m,ErrnoToWin());return Ret(0);}
+    return Ret(1);
 }
 
 // DWORD SetFilePointer(HANDLE, LONG lo, PLONG hi, DWORD method)
@@ -198,36 +214,43 @@ HostCallOutcome K32_SetFilePointerEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (outPtr) Write64(m, outPtr, static_cast<uint64_t>(ftello(f->f)));
     return Ret(1);
 }
-int64_t FileSize(rt::OpenFile& f) {
-    if (!f.f) return 0;
-    std::fflush(f.f);
-    struct stat st;
-    if (fstat(fileno(f.f), &st) != 0) return 0;
-    return static_cast<int64_t>(st.st_size);
+bool FileSize(rt::OpenFile& file,int64_t& size) {
+    if(file.kind!=rt::OpenFile::Disk || !file.f){errno=EBADF;return false;}
+    if(file.canWrite && std::fflush(file.f)!=0)return false;
+    struct stat st{};if(fstat(fileno(file.f),&st)!=0)return false;
+    size=static_cast<int64_t>(st.st_size);return true;
 }
 HostCallOutcome K32_GetFileSize(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto f = rt::Files().Get(Arg(c, m, 0));
-    if (!f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0xFFFFFFFFu); }
-    int64_t sz = FileSize(*f);
-    if (Arg(c, m, 1)) m.Write32(Arg(c, m, 1), static_cast<uint32_t>(static_cast<uint64_t>(sz) >> 32));
-    return Ret(static_cast<uint32_t>(sz));
+    auto f=rt::Files().Get(Arg(c,m,0));const auto high=Arg(c,m,1);
+    if(high && !m.IsRangeMapped(high,4)){SetLastError(m,998);return Ret(0xffffffffu);}
+    if(!f){SetLastError(m,6);return Ret(0xffffffffu);}
+    int64_t size=0;if(!FileSize(*f,size)){SetLastError(m,errno==EBADF?6:ErrnoToWin());return Ret(0xffffffffu);}
+    if(high)m.Write32(high,uint32_t(uint64_t(size)>>32));
+    SetLastError(m,0);return Ret(uint32_t(size));
 }
 HostCallOutcome K32_GetFileSizeEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto f = rt::Files().Get(Arg(c, m, 0));
-    if (!f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
-    Write64(m, Arg(c, m, 1), static_cast<uint64_t>(FileSize(*f)));
-    return Ret(1);
+    auto f=rt::Files().Get(Arg(c,m,0));const auto out=Arg(c,m,1);
+    if(!out || !m.IsRangeMapped(out,8)){SetLastError(m,998);return Ret(0);}
+    if(!f){SetLastError(m,6);return Ret(0);}
+    int64_t size=0;if(!FileSize(*f,size)){SetLastError(m,errno==EBADF?6:ErrnoToWin());return Ret(0);}
+    Write64(m,out,uint64_t(size));return Ret(1);
 }
 HostCallOutcome K32_SetEndOfFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto f = rt::Files().Get(Arg(c, m, 0));
-    if (!f || !f->f) { SetLastError(m, ERROR_INVALID_HANDLE); return Ret(0); }
-    if (!HandleAccess(m,Arg(c,m,0),2)) return Ret(0);
-    std::fflush(f->f);
-    return Ret(ftruncate(fileno(f->f), ftello(f->f)) == 0 ? 1 : 0);
+    const auto h=Arg(c,m,0);auto f=rt::Files().Get(h);
+    if(!f || f->kind!=rt::OpenFile::Disk || !f->f){SetLastError(m,6);return Ret(0);}
+    if(!HandleAccess(m,h,2) || !f->canWrite){SetLastError(m,5);return Ret(0);}
+    if(std::fflush(f->f)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+    const auto position=ftello(f->f);
+    if(position<0 || ftruncate(fileno(f->f),position)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+    return Ret(1);
 }
 HostCallOutcome K32_FlushFileBuffers(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    auto f = rt::Files().Get(Arg(c, m, 0));
-    if (f && f->f) std::fflush(f->f);
+    const auto h=Arg(c,m,0);auto f=rt::Files().Get(h);
+    if(!f){SetLastError(m,6);return Ret(0);}
+    if(!HandleAccess(m,h,2) || !f->canWrite){SetLastError(m,5);return Ret(0);}
+    if(f->kind!=rt::OpenFile::Disk || !f->f){SetLastError(m,50);return Ret(0);}
+    if(std::fflush(f->f)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+    if(fsync(fileno(f->f))!=0){SetLastError(m,errno==EINVAL?50:ErrnoToWin());return Ret(0);}
     return Ret(1);
 }
 HostCallOutcome K32_GetFileType(cpu::CpuState& c, cpu::IGuestMemory& m) {
