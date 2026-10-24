@@ -15,8 +15,11 @@ the browser model. [Native Copy/Paste](F_FILE_PASTE.md) now runs in bounded work
 steps with real byte progress and cancellation. [Explorer context menus](F_CONTEXT_ACTIONS.md)
 now route object/current-folder actions through pointer, Menu key and controller
 focus. [Persisted sorting/associations and management](F3C_PREFERENCES.md) are now
-implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; the remaining baseline tree/shortcuts and retained planes are now implemented. Next: exact-SHA acceptance verification, then D compatibility and measured G work.
-Luna visual refinement and G optimization are deferred. See the
+implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; the remaining baseline tree/shortcuts and retained planes are now implemented. Exact-SHA F CI passed six jobs at `50ec505` (run 40139298651).
+Current next stage is [G1 public PE phase/overhead measurement](G1_MEASUREMENTS.md),
+following the user's Paint/large-Minesweeper slowdown report. GPU output already
+exists; canonical GDI is still CPU rasterized. Measured GDI/GPU and interpreter
+work precedes speedup claims; Luna visual fidelity remains open. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 
@@ -39,7 +42,7 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; [native/guest retained planes](F4C_WORKSPACE_LAYERS.md) now integrated |
 | **Functional F: software baseline complete** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | [22-group integrated acceptance](F_ACCEPTANCE.md); physical acceptance pending, extension below still planned |
 | Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Installer compatibility/integration with existing real desktop/Start shortcuts, ZIP then RAR/other formats; installation/extraction gates remain open |
-| G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
+| G0/G1 | Bounded opt-in opcode/host-entry census; [public actual-PE phase/overhead experiment](G1_MEASUREMENTS.md), three workloads/four modes, checked full pixels and reports | Actual console workload attribution; measured optimization; coherent GPU GDI blit/fill/readback contract and oracle; census is not speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
 ## Current boundary: software F complete, physical F pending
@@ -82,8 +85,9 @@ replacing the current file/document queue.
 
 1. Preserve F1 mount/path/readonly/CWD/volume and cross-session x86 regressions;
    existing standalone host launches keep the legacy one-C-per-EXE default.
-2. Preserve F2/F3a/F3b shell/browser/document checks. Preserve F4b.1/F4b.2 input/output ownership. Implement real file operations and input,
-   F3c preferences/settings/tree and TXT/image workflows.
+2. Preserve F2/F3a/F3b shell/browser/document checks, F4b.1/F4b.2 input/output
+   ownership and the completed file operations, F3c tree/links/preferences,
+   TXT/BMP and F5 checked-save workflows.
 3. F4/F5: shell/guest output and input ownership, active task handling in the
    one-Process model, return after errors/abort, Paint save/find/reopen workflow.
    Idle shell screenshots alone do not certify taskbar integration while a guest runs.
@@ -104,3 +108,17 @@ CI status must still be reported against their exact SHA without invented passes
 
 
 [F5 synchronous file-save APIs](F5_FILE_SAVE.md) now check read/write/flush/fsync/size/truncate errors and HANDLE/access/alias behavior. The tree/shortcuts, retained workspace planes and integrated 22-group acceptance are implemented; only the software baseline is closed. Physical gates are still pending.
+
+
+## Active next stage: measured performance after software F
+
+G1 adds public actual-x86 CPU/tile/stroke workloads with independent pixel/result
+checks, startup/execution/teardown wall phases and repeated census/raster overhead
+controls. No production rendering policy changed; this is not GPU GDI or console
+FPS acceptance. CI publishes exact-revision source/fixture/runner identities and
+raw samples. Next: console opt-in attribution, then a measured interpreter or
+blit/fill candidate, with a coherent GPU/CPU readback contract before GPU GDI.
+Keep CPU pixel/ROP, retained layers and software fallback as regression oracles.
+User-observed visual distance from XP remains open Luna refinement. Pinball x86's
+first host failure is missing RegCreateKeyExA, separate D work; no compatibility
+claim or user binary is committed.

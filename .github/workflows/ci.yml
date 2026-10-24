@@ -32,6 +32,13 @@ jobs:
           path: build-host/guest-run.*/gui_composition.exe
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-g-host-measurement
+          path: |
+            build-host/stage-g-measurement.json
+            build-host/guest-run.*/graphics_workload.exe
+            docs/G1_MEASUREMENTS.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-e-acceptance-exe
           path: |
             build-host/guest-run.*/stage_e_acceptance.exe

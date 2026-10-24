@@ -1349,3 +1349,59 @@ overhead before optimization. Preserve the exact-SHA public F/NRO evidence and
 consolidated deferred Paint/GPU/fallback/Lite/input/relaunch checklist. Local
 devkitA64/libnx remains absent, SD closed. Do not claim physical acceptance or
 universal installer/ZIP/RAR support from the programmatic baseline.
+
+
+## 2026-10-25 G1: measured public PE phases after software F
+
+Fetched clean 50ec505/FETCH_HEAD on the requested branch; incoming exact CI
+40139298651 passed all six jobs and its clean F report/NRO were verified. User
+reports slowdown in Paint and high-complexity Minesweeper, requests direct GPU
+drawing and the next stage. Existing OpenGL already composites/presents retained
+planes; GDI raster and x86 remain CPU. Do not promise GPU GDI from output alone.
+
+New CRT-free graphics_workload.c runs CPU recurrence, 3,840 tile blits, or 2,048
+strokes through real PE/interpreter/HLE. benchmark_guest checks exit/completion,
+independent checksum, every destination pixel and full-screen RGB hash before
+reporting load/prepare/run/teardown phases and G0/raster counters. Python runner
+checks warm-ups plus five rotating-order repetitions in four instrumentation
+modes, matching histograms/quanta/pixels, exact raster counts and bounded runs;
+failed evidence removes/does not publish a success report. Complete samples,
+source dirty state, fixture/runner hashes and host identity are in the report.
+No clocks were added per instruction or production behavior changed. G1 report
+is a host experiment without presentation/GPU/swap/FPS, not Switch acceptance.
+See G1_MEASUREMENTS.md for nesting, guards and rounded initial observations.
+
+A development tile variant initially exhausted G0's one-million-instruction cap
+because it filled its source on every cell. It now initializes two genuine source
+tiles once and reuses them, so the fixture exercises blits rather than repeated
+guest source generation. Default production census limits are unchanged. Initial
+targeted strict checks and repeated experiment pass; final full suite and exact
+published-SHA CI are required before completion. Local Switch SDK remains absent;
+CI builds NRO. No physical acceptance is inferred and SD diagnosis stays closed.
+
+Next: opt-in console attribution of representative workloads, measured GDI or
+interpreter candidate, coherent GPU GDI readback/ROP/batching contract and EGL
+oracle before activation. Luna visual fidelity stays open. Pinball x86 user
+archive was checked outside git: host reproducibly stops before window creation
+at missing ADVAPI32!RegCreateKeyExA; other static API imports are not proof of
+reachability. That is separate D compatibility work, not GPU or SD diagnosis.
+
+
+G1 integration correction: the first full suite passed the dedicated G1 experiment
+and all previous tests, but its generic no-argument EXE sweep also launched the
+parameterized graphics_workload fixture, which correctly rejected missing mode.
+It is now excluded from that sweep like other dedicated-harness fixtures; the
+three explicit modes still run 72 checked invocations in the G1 experiment. A
+complete fresh suite was restarted after this runner-only correction. Strict
+no-exceptions/no-RTTI host harness and strict MinGW fixture compiled; a negative
+PE32+ input failed and removed an old report as intended.
+
+Final G1 local validation: the complete fresh rootless MinGW/Mesa suite passed
+on the final harness/fixture/runner tree, including all 72 G1 checked invocations,
+22 F evidence groups, Stage C, six E9 groups, actual workspace EGL and both
+28-scene CPU/actual-GL oracles. No runtime source changed in this package. Strict
+host/MinGW checks, Python syntax, negative wrong-architecture/stale-report test,
+shell syntax, six-job workflow/artifact validation, Markdown links/fences and
+git diff --check passed. Only documentation followed the final full suite.
+Normal branch publication and exact new-SHA six-job CI/artifact verification
+follow; local precommit report is explicitly dirty, not published evidence.

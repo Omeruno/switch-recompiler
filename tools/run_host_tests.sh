@@ -18,6 +18,7 @@ src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $ro
 
 mkdir -p "$out"
 rm -f "$out/stage-f-acceptance.json"
+rm -f "$out/stage-g-measurement.json"
 failed=0
 
 # Verify pinned artwork and committed native RGBA conversion.
@@ -92,6 +93,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    if $cxx $flags "$root/tests/benchmark_guest.cpp" $src -o "$out/benchmark_guest" &&
+       python3 "$root/tools/benchmark_guest.py" "$out/benchmark_guest" "$guestRoot/graphics_workload.exe" \
+           "$out/stage-g-measurement.json" > "$out/stage-g-measurement.log" 2>&1; then
+        tail -n 1 "$out/stage-g-measurement.log"
+    else
+        echo "   G1 PUBLIC PE MEASUREMENT FAILED"
+        tail -n 25 "$out/stage-g-measurement.log" 2>/dev/null || true
+        failed=1
+    fi
     if $cxx $flags "$root/tests/test_workspace_output.cpp" $src -o "$out/test_workspace_output" &&
        (cd "$root" && "$out/test_workspace_output" "$guestRoot/shell_busy.exe") > "$out/workspace_output.log" 2>&1; then
         tail -n 1 "$out/workspace_output.log"
@@ -300,6 +310,8 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "shell_workspace.exe" ] && continue
         [ "$(basename "$exe")" = "shell_document.exe" ] && continue
         [ "$(basename "$exe")" = "shell_bitmap.exe" ] && continue
+        # Requires an explicit workload; all modes/pixels are checked above.
+        [ "$(basename "$exe")" = "graphics_workload.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
         # The legacy/MFC fixture is executed repeatedly by its dedicated harness.
