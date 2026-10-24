@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`9c6e4d450d52aa7c28b6c0ad618a7fa4f3d750dd` (2026-10-24).
-[CI 40036571514](https://github.com/Omeruno/switch-recompiler/actions/runs/40036571514)
+`df54bdc5fb112b3eaabd730da5764037ad9db01a` (2026-10-24).
+[CI 40039274735](https://github.com/Omeruno/switch-recompiler/actions/runs/40039274735)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -11,15 +11,16 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
 ## Current priority after the 2026-10-23 audit
 
-The user prioritizes a functional XP-like native shell and real Switch/SD-backed
-file structure. **F1/F2 and F3a real directory browser/path-only launch are implemented;
-F3b document arguments/application choice are implemented;
-the user now prioritizes Paint new UI by default, active-guest workspace and XP-like visuals. F4a shared desktop/taskbar/input is implemented; next: F4b retained workspace layers and interaction/visual refinement**, then F3c preferences/settings/tree and F5 save/find/reopen. See [F4_WORKSPACE.md](F4_WORKSPACE.md). Continue
-G0 only as retained diagnostics; representative timing/optimization is no longer
-the next package. See [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md),
-[F_SHELL_PLAN.md](F_SHELL_PLAN.md) and ACTIVE_ROADMAP.md. Historical next-G/E1 and
-pre-integration F0 notes below do not override this instruction. F0 is implemented
-software, not completion of F or hardware relaunch acceptance.
+Latest steering: prioritize real system functionality and verifiable operations;
+return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 adds
+independent native input service, bounded deferred guest events, physical async
+state and owner-queue window commands. Next: persistent output/desktop lifecycle
+and retained composition, then actual file operations/properties, coherent L/R
+click and controller actions, preferences/TXT/images and F5 save/find/reopen.
+See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), ACTIVE_ROADMAP.md and
+F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
+protection/unwind/API compatibility remain separate open work. No fake successful
+operation, forced guest callback or guessed application compatibility is allowed.
 
 ## Working agreement
 
@@ -711,3 +712,59 @@ test-harness compile errors; another was stopped when native revision fields
 changed, avoiding mixed-header objects. Neither is the final validation result.
 Fetched unchanged 9c6e4d4 before publication. Verify the exact new published SHA's
 six CI jobs after push; no local Switch SDK or physical acceptance is implied.
+
+
+## F4b.1: independent native input and real owner-window requests
+
+Incoming df54bdc was clean and matches the fetched working branch. Its CI run
+40039274735 completed all six jobs successfully; the preceding 5/6 report was
+only an earlier check during MinGW installation. No AGENTS.md/newer work found.
+
+The user requests functional system work before further visual polish. Switch
+now services ShellSession on the same worker between executor quanta, gated at
+8 ms of monotonic time. It handles native input/presentation without calling
+guest WndProc. A fixed 256-event ring retains guest input until the ordinary
+USER pump; only adjacent motion coalesces. Overflow is explicit and cancels via
+normal drain/return, never silently losing a release and continuing as success.
+Physical async keys/cursor update at observation. Host-only metadata preserves
+message modifiers/Alt/repeat/point/time so late delivery cannot rewind physical
+state. Left/right modifier aggregation preserves the still-held side.
+
+Task minimize/restore validates <=64 owners and posts actual WM_SYSCOMMAND to
+their queues. It does not call guest code from the unbound host stack. One group
+intent is pending at a time, with native awaiting feedback; only actual observed
+window state confirms it. A busy/refusing app remains pending, while native
+Start/Explorer continue. No process/thread is fabricated, forcibly minimized or
+reported as responding because native controls work. USER-path Quit preserves
+WM_CLOSE; independent host Quit/source closure/overflow have explicit statuses.
+
+The public busy fixture covers seven x86 sessions including pure CPU spin,
+async-only polling, a worker-owned window with main parked in HANDLE wait,
+normal resume/command dispatch, pending abort, overflow, Quit and fresh restart.
+A native input test checks modifier snapshots, repeat/points, ring wrap and EOF.
+The old two-window test dispatches real x86 posted system commands before
+inspecting geometry. Its immediate native-change assumption is intentionally
+removed. A first new harness bug re-read an HWND after the guest destroyed it;
+fixed in the harness, with no runtime workaround. Early test compile/name and
+format warnings were corrected; only the final clean suite counts as validation.
+
+Still open: output teardown/reinitialization between sessions, retained native/
+guest GPU planes, folder/file mutations/properties, context menus and document
+tools. A non-yielding host API can still stall service; no physical latency or
+Switch/Paint acceptance is claimed. Local Switch SDK remains unavailable, so
+exact new-SHA Switch CI is required. Hardware checks remain deferred; SD closed.
+Concrete next: persistent frontend/output lifetime, then real file operations.
+
+Final F4b.1 local validation: complete clean MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final source,
+headers and public fixture tree, including the pending-label readability fix.
+New native physical-input/ring tests, seven actual-x86 busy-shell sessions,
+two-window workspace, F1/F3b filesystem/document sessions, core/USER/legacy
+lifetimes, Stage C, all six E9 groups, both CPU/actual-GL composition sizes and
+input/dialog regressions passed. New ShellSession, USER input module, native
+renderer and test harnesses compiled with -Wall -Wextra -Werror -fno-exceptions
+-fno-rtti. Markdown links/fences and git diff --check passed. Fetched unchanged
+df54bdc again before publication. Earlier intermediate runs had harness compile/
+post-destruction inspection failures; only the final clean run is the package
+result. Verify all six CI jobs for the exact published SHA after push. Local
+Switch SDK/hardware limitations above still apply.

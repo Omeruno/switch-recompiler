@@ -1,5 +1,6 @@
 #pragma once
 #include "user32.h"
+#include <array>
 #include "../ui/desktop_shell.h"
 #include "../ui/presentation_memory.h"
 
@@ -12,6 +13,13 @@ public:
     ~ShellSession();
     bool Attach(const std::string& label);
     bool Ready() const {return ready_;}
+    enum class HostStatus {Running,Quit,SourceClosed,InputOverflow};
+    static constexpr size_t MaxGuestInput=256;
+    // Called on the owner native thread between executor quanta. Never invokes
+    // a guest procedure; raw guest events wait for its ordinary USER pump.
+    HostStatus ServiceHost();
+    HostStatus Status() const {return status_;}
+    size_t PendingGuestInput() const {return inputCount_;}
     const ui::Surface& Compose(const ui::Surface& guest);
     void SetClock(const std::u16string& clock);
     bool Filter(const InputEvent& event);
@@ -20,6 +28,11 @@ public:
     ShellSession& operator=(const ShellSession&)=delete;
 private:
     void Refresh();
+    bool ReadHost(int timeoutMs,bool independent=false);
+    bool WaitGuest(int timeoutMs,std::vector<InputEvent>& out);
+    bool QueueGuest(InputEvent event);
+    bool ObserveTask();
+    bool PostTask(const std::vector<uint32_t>& handles,bool minimize);
     bool ShellPoint(int x,int y) const;
     void ToggleTask();
     ui::DesktopShell& shell_;
@@ -27,7 +40,11 @@ private:
     ui::PresentationBuffer<uint32_t> background_,chrome_,output_;
     ui::Surface backgroundSurface_,chromeSurface_,outputSurface_;
     std::u16string clock_;
-    std::vector<uint32_t> minimized_;
+    std::vector<uint32_t> minimized_,pendingTask_;
+    std::array<InputEvent,MaxGuestInput> guestInput_{};
+    size_t inputFirst_=0,inputCount_=0;
+    HostStatus status_=HostStatus::Running;
+    bool pendingMinimize_=false,reading_=false;
     bool ready_=false,keyboard_=false,taskPressed_=false;
     bool shellButtons_[3]={},guestButtons_[3]={},shellKeys_[256]={};
     int previousWorkBottom_=0;

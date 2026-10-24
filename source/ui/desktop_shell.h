@@ -29,6 +29,7 @@ public:
     void SetGuestActive(const std::string& label);
     void EndGuest();
     bool GuestActive() const {return guestActive_;}
+    void SetGuestTaskPending(bool value) {guestTaskPending_=value;}
     void SetGuestMinimized(bool value) {guestMinimized_=value;}
     void Enter(); // Cancel transient presses/menu on return, retain panel/selection.
     void ToggleStart();
@@ -71,7 +72,7 @@ private:
     TextInput textInput_=TextInput::None;
     size_t selected_=0,errors_=0;
     std::string guestLabel_;
-    bool guestActive_=false,guestMinimized_=false;
+    bool guestActive_=false,guestMinimized_=false,guestTaskPending_=false;
     Panel returnPanel_=Panel::Desktop;
     int returnFocus_=Programs;
     bool truncated_=false,startOpen_=false,exit_=false;

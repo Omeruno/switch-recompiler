@@ -33,9 +33,10 @@ native controls and guest windows. X/Y/arrows/B operate native panels while they
 have focus. Clicking a guest window returns keyboard routing to it. Start can
 open the real Computer/Documents provider and About during execution. Address
 input uses the native keyboard; launch confirmation is quarantined until release.
-Shell interaction is cooperative with the guest USER input/message pump. A
-CPU-only or non-pumping application retains the existing periodic PLUS abort;
-bounded native-shell responsiveness for such workloads remains F4b.
+F4b.1 supersedes the original pump dependency: native service now runs between
+executor quanta; guest events and owner-window commands wait for real USER
+dispatch. See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md). This still does not
+preempt host APIs that never yield.
 Run, document association changes and homebrew exit are disabled while an app
 runs. Launching another EXE is blocked in both pointer and keyboard paths; folder
 navigation remains usable. PLUS retains the existing guest-close/abort route.
@@ -93,7 +94,7 @@ Paint/GPU/fallback/Lite/input/relaunch physical checks remain deferred in
 
 ## Remaining order
 
-F4b retained shell/window layers and complete interaction/visual refinement;
-F3c persisted preferences/association management and supported settings/tree;
-F5 public save/find/reopen. G profiling remains available, optimization deferred.
+Latest priority: persistent frontend/output lifetime and retained composition;
+real file operations/properties and context/input actions; F3c preferences and
+TXT/image tools; F5 public save/find/reopen. Visual Luna refinement is deferred. G profiling remains available, optimization deferred.
 F4a does not complete Stage F, arbitrary EXE compatibility or full Windows XP.

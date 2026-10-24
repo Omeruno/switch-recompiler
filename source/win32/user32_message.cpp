@@ -54,7 +54,7 @@ uint32_t MouseKeyFlags() {
 
 uint32_t MakeLong(int lo, int hi) { return (static_cast<uint32_t>(lo) & 0xFFFF) | (static_cast<uint32_t>(hi) << 16); }
 
-void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, uint64_t observedNs) {
+void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, uint64_t observedNs,int x,int y) {
     Msg m;
     m.hwnd = hwnd;
     m.message = msg;
@@ -62,8 +62,7 @@ void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, uint64_t 
     m.lParam = lp;
     m.time = NowMs();
     if(S().inputFrames.Enabled())m.observedNs=observedNs?observedNs:ui::PerformanceNowNs();
-    m.x = S().cursorX;
-    m.y = S().cursorY;
+    m.x=x;m.y=y;
     const auto* window=Win(hwnd);
     if (!window || !window->threadId) return;
     auto& queue=QueueFor(window->threadId);
@@ -80,12 +79,7 @@ void QueueInput(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, uint64_t 
 
 void MouseEvent(const InputEvent& e) {
     State& s = S();
-    s.cursorX = std::max(0, std::min(e.x, s.screenW - 1));
-    s.cursorY = std::max(0, std::min(e.y, s.screenH - 1));
-    int x = s.cursorX, y = s.cursorY;
-    uint32_t vk = e.button == 1 ? VK_RBUTTON : e.button == 2 ? VK_MBUTTON : VK_LBUTTON;
-    if (e.type == InputEvent::MouseDown) s.asyncKeys[vk] = 0x80;
-    if (e.type == InputEvent::MouseUp) s.asyncKeys[vk] = 0;
+    const int x=std::max(0,std::min(e.x,s.screenW-1)),y=std::max(0,std::min(e.y,s.screenH-1));
 
     Window* target=WindowFromPoint(x,y);
     const auto* capture=Win(s.capture);
@@ -109,7 +103,7 @@ void MouseEvent(const InputEvent& e) {
         const auto* foreground=Win(s.foreground);
         const uint32_t focus=foreground?FocusForWindow(foreground->hwnd):0;
         uint32_t f = focus ? focus : hwnd;
-        QueueInput(f, WM_MOUSEWHEEL, MakeLong(static_cast<int>(MouseKeyFlags()), e.wheel), MakeLong(x, y),e.observedNs);
+        QueueInput(f, WM_MOUSEWHEEL, MakeLong(static_cast<int>(e.mouseFlags), e.wheel), MakeLong(x, y),e.observedNs,e.x,e.y);
         return;
     }
     bool client = hit == HTCLIENT;
@@ -149,9 +143,9 @@ void MouseEvent(const InputEvent& e) {
     if (!(target = Win(hwnd))) return;
     if (client) {
         int cx = x - ClientOriginX(target), cy = y - ClientOriginY(target);
-        QueueInput(hwnd, msg, MouseKeyFlags(), MakeLong(cx, cy),e.observedNs);
+        QueueInput(hwnd, msg, e.mouseFlags, MakeLong(cx, cy),e.observedNs,e.x,e.y);
     } else {
-        QueueInput(hwnd, msg - WM_MOUSEMOVE + WM_NCMOUSEMOVE, hit, MakeLong(x, y),e.observedNs);
+        QueueInput(hwnd, msg - WM_MOUSEMOVE + WM_NCMOUSEMOVE, hit, MakeLong(x, y),e.observedNs,e.x,e.y);
     }
 }
 
@@ -162,24 +156,18 @@ uint32_t KeyTarget() {
 }
 
 void KeyEvent(const InputEvent& e) {
-    State& s = S();
-    uint32_t vk = e.vk & 0xFF;
-    bool down = e.type == InputEvent::KeyDown;
-    bool wasDown = (s.asyncKeys[vk] & 0x80) != 0;
-    s.asyncKeys[vk] = down ? 0x80 : 0;
-    if (vk == 0xA0 || vk == 0xA1) s.asyncKeys[VK_SHIFT] = s.asyncKeys[vk];
-    if (vk == 0xA2 || vk == 0xA3) s.asyncKeys[VK_CONTROL] = s.asyncKeys[vk];
-    if (vk == 0xA4 || vk == 0xA5) s.asyncKeys[VK_MENU] = s.asyncKeys[vk];
+    uint32_t vk=e.vk&0xFF;
+    const bool down=e.type==InputEvent::KeyDown,wasDown=e.wasDown;
     uint32_t target = KeyTarget();
     if (!target) return;
-    bool alt = (s.asyncKeys[VK_MENU] & 0x80) != 0;
-    bool sys = (alt && !(s.asyncKeys[VK_CONTROL] & 0x80)) || vk == VK_F10 || vk == VK_MENU;
+    bool alt=e.altDown;
+    bool sys = (alt && !(e.mouseFlags & 8)) || vk == VK_F10 || vk == VK_MENU;
     uint32_t lp = 1 | ((e.vk >> 8 & 0xFF) << 16);
     if (alt) lp |= 1u << 29;
     if (down && wasDown) lp |= 1u << 30;
     if (!down) lp |= (1u << 30) | (1u << 31);
     uint32_t msg = down ? (sys ? WM_SYSKEYDOWN : WM_KEYDOWN) : (sys ? WM_SYSKEYUP : WM_KEYUP);
-    QueueInput(target, msg, vk, lp,e.observedNs);
+    QueueInput(target, msg, vk, lp,e.observedNs,e.x,e.y);
 }
 
 // Применяет события платформы; false — ввода больше не будет
@@ -197,6 +185,7 @@ bool PollPlatform(int timeoutMs) {
     for (InputEvent e : events) {
         if(g_platform.filterInput && g_platform.filterInput(g_platform.shellContext,e))continue;
         if(!e.observedNs)e.observedNs=ingestedNs;
+        if(!e.physicalObserved)ObservePhysicalInput(e);
         switch (e.type) {
         case InputEvent::MouseMove: case InputEvent::MouseDown: case InputEvent::MouseUp: case InputEvent::Wheel:
             MouseEvent(e);
@@ -205,7 +194,7 @@ bool PollPlatform(int timeoutMs) {
             KeyEvent(e);
             break;
         case InputEvent::Char:
-            if (uint32_t t = KeyTarget()) QueueInput(t, WM_CHAR, e.ch, 1,e.observedNs);
+            if (uint32_t t = KeyTarget()) QueueInput(t, WM_CHAR, e.ch, 1,e.observedNs,e.x,e.y);
             break;
         case InputEvent::Quit:
             if (S().foreground) PostMsg(S().foreground, WM_CLOSE, 0, 0);
@@ -236,6 +225,27 @@ void UpdateKeyState(const Msg& m) {
 
 
 } // namespace
+
+void ObservePhysicalInput(InputEvent& e) {
+    auto& s=S();
+    if(e.type==InputEvent::MouseMove || e.type==InputEvent::MouseDown || e.type==InputEvent::MouseUp || e.type==InputEvent::Wheel) {
+        e.x=s.cursorX=std::max(0,std::min(e.x,s.screenW-1));
+        e.y=s.cursorY=std::max(0,std::min(e.y,s.screenH-1));
+        const auto vk=e.button==1?VK_RBUTTON:e.button==2?VK_MBUTTON:VK_LBUTTON;
+        if(e.type==InputEvent::MouseDown)s.asyncKeys[vk]=0x80;
+        if(e.type==InputEvent::MouseUp)s.asyncKeys[vk]=0;
+    } else {
+        e.x=s.cursorX;e.y=s.cursorY;
+        if(e.type==InputEvent::KeyDown || e.type==InputEvent::KeyUp) {
+            const auto vk=e.vk&255;e.wasDown=(s.asyncKeys[vk]&0x80)!=0;
+            s.asyncKeys[vk]=e.type==InputEvent::KeyDown?0x80:0;
+            if(vk==0xA0 || vk==0xA1)s.asyncKeys[VK_SHIFT]=s.asyncKeys[0xA0]|s.asyncKeys[0xA1];
+            if(vk==0xA2 || vk==0xA3)s.asyncKeys[VK_CONTROL]=s.asyncKeys[0xA2]|s.asyncKeys[0xA3];
+            if(vk==0xA4 || vk==0xA5)s.asyncKeys[VK_MENU]=s.asyncKeys[0xA4]|s.asyncKeys[0xA5];
+        }
+    }
+    e.mouseFlags=MouseKeyFlags();e.altDown=(s.asyncKeys[VK_MENU]&0x80)!=0;e.physicalObserved=true;
+}
 
 void PostQuit(uint32_t code) {
     auto& queue=Q();queue.quit=true;queue.quitCode=code;queue.changed|=0x108;

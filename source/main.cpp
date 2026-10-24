@@ -432,7 +432,22 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     ui::PointerInputGate stopInput;
     padUpdate(&g_pad);stopInput.Reset(padGetButtons(&g_pad),false);
     unsigned appletPoll=0;
+    uint64_t nativePollNs=0;
     while (steps<maxSteps && !execution.Stopped()) {
+        if(shellSession) {
+            const uint64_t now=ui::PerformanceNowNs();
+            if(now-nativePollNs>=8'000'000ull) {
+                nativePollNs=now;
+                const auto status=shellSession->ServiceHost();
+                if(status!=win32::user::ShellSession::HostStatus::Running) {
+                    stopReason=status==win32::user::ShellSession::HostStatus::InputOverflow
+                        ?"native input queue overflow":status==win32::user::ShellSession::HostStatus::Quit
+                        ?"host cancelled guest":"native input source closed";
+                    break;
+                }
+                win32::user::PresentIfNeeded(false);
+            }
+        }
         if((++appletPoll%4096)==0) {
             if(!ContinueApplet()) {stopReason="applet shutdown";break;}
             padUpdate(&g_pad);

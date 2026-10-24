@@ -19,7 +19,11 @@ static std::function<void()> inspection;
 static void Send(IE::Type type,int x=0,int y=0,uint32_t vk=0) {
     IE e;e.type=type;e.x=x;e.y=y;e.vk=vk;pending.push_back(e);
 }
-static void Flush(){user::PollQueueEvents();}
+static void Flush(){
+    user::PollQueueEvents();user::Msg msg;
+    while(user::FetchMessage(msg,0,user::WM_SYSCOMMAND,user::WM_SYSCOMMAND,true,false))
+        user::SendMsg(msg.hwnd,msg.message,msg.wParam,msg.lParam);
+}
 static void Click(int target){const auto r=Shell::Bounds(target);const int x=(r.left+r.right)/2,y=(r.top+r.bottom)/2;Send(IE::MouseDown,x,y);Send(IE::MouseUp,x,y);Flush();}
 static void Start(){Send(IE::KeyDown,0,0,0x5B);Send(IE::KeyUp,0,0,0x5B);Flush();}
 static void Snapshot(const ui::Surface& s,const char* path) {
@@ -33,7 +37,7 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
     {
         rt::GuestSession guest;auto& p=guest.ProcessObject();auto& m=guest.Memory();
         user::PresentationSession platform(true,nullptr);
-        user::g_platform.wait=[](int,std::vector<IE>& out){if(inspection)inspection();out.swap(pending);return true;};
+        user::g_platform.wait=[](int,std::vector<IE>& out){out.swap(pending);return true;};
         user::EnableUi(1280,720);
         user::ShellSession bridge(shell);CHECK(bridge.Attach("Public workspace application"));bridge.SetClock(u"14:32");
         CHECK(user::EnableWindowLayers(true)); // background writes also invalidate canonical ownership
@@ -85,6 +89,7 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
             }
         };
         rt::GuestExecution execution(p,[&](rt::GuestThread& t) {
+            if(inspection)inspection();
             win32::HostCallOutcome outcome;if(win32::TryHandleHostCall(t.cpu,m,outcome))return !outcome.requestExit;
             cpu::Interpreter interpreter(m,t.teb,t.teb);CHECK(interpreter.Step(t.cpu)==cpu::StepResult::Continue);return true;
         },rt::GuestExecution::Startup::InitializeModules);

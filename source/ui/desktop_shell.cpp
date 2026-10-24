@@ -120,7 +120,7 @@ bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::stri
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
 void DesktopShell::SetGuestActive(const std::string& label) {
-    returnPanel_=panel_;returnFocus_=focus_;guestActive_=true;guestMinimized_=false;
+    returnPanel_=panel_;returnFocus_=focus_;guestActive_=true;guestMinimized_=false;guestTaskPending_=false;
     guestLabel_=label.substr(0,240);panel_=Panel::Desktop;Enter();
 }
 void DesktopShell::EndGuest() {
@@ -426,7 +426,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         Gradient(s,task,guestMinimized_?0x5E9CF0:0x174DAA,guestMinimized_?0x397DE0:0x2562BB);
         Frame(s,task,guestMinimized_?0x91B8F2:0x103C8C);
         Icon(s,task.left+3,task.top,shell_art::programs);
-        Text(s,{task.left+40,task.top+7,task.right-8,task.bottom},Wide(guestLabel_),0xFFFFFF,14,true);
+        Text(s,{task.left+40,task.top+7,task.right-8,task.bottom},(guestTaskPending_?u"Ожидание · ":u"")+Wide(guestLabel_),0xFFFFFF,14,true);
     }
     Gradient(s,{1158,682,1280,720},0x2598DE,0x127BBD);
     Text(s,{1180,689,1272,716},clock,0xFFFFFF,17);

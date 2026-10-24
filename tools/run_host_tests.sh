@@ -64,7 +64,7 @@ for cpp in $src; do
 done
 src="$objects"
 
-for t in test_command_line test_shell_browser test_desktop_shell test_vfs_mounts test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
+for t in test_host_input test_command_line test_shell_browser test_desktop_shell test_vfs_mounts test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
@@ -91,6 +91,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    if $cxx $flags "$root/tests/test_shell_busy.cpp" $src -o "$out/test_shell_busy" &&
+       (cd "$root" && "$out/test_shell_busy" "$guestRoot/shell_busy.exe") > "$out/shell_busy.log" 2>&1; then
+        tail -n 1 "$out/shell_busy.log"
+    else
+        echo "   INDEPENDENT SHELL INPUT FAILED"
+        tail -n 35 "$out/shell_busy.log" 2>/dev/null || true
+        failed=1
+    fi
+
     if $cxx $flags "$root/tests/test_shell_workspace.cpp" $src -o "$out/test_shell_workspace" &&
        (cd "$root" && "$out/test_shell_workspace" "$guestRoot/shell_workspace.exe") > "$out/shell_workspace.log" 2>&1; then
         tail -n 1 "$out/shell_workspace.log"
@@ -259,6 +268,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     fi
     for exe in "$guestRoot"/*.exe; do
         [ "$(basename "$exe")" = "filesystem_mounts.exe" ] && continue
+        [ "$(basename "$exe")" = "shell_busy.exe" ] && continue
         [ "$(basename "$exe")" = "shell_workspace.exe" ] && continue
         [ "$(basename "$exe")" = "shell_document.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue

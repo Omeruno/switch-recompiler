@@ -346,6 +346,9 @@ struct InputEvent {
     uint32_t vk = 0;
     uint32_t ch = 0;
     uint64_t observedNs=0; // optional real host sample time, zero means ingestion
+    // Host-only physical snapshot; queued delivery must not rewind async state.
+    bool physicalObserved=false,wasDown=false,altDown=false;
+    uint32_t mouseFlags=0;
 };
 struct Platform {
     void* shellContext=nullptr;
@@ -361,6 +364,7 @@ struct Platform {
     bool (*textInput)(const std::u16string& initial, bool multiline, bool password, std::u16string& out) = nullptr;
 };
 extern Platform g_platform;
+void ObservePhysicalInput(InputEvent& event); // no guest callback
 Rect WorkArea();
 
 // Включает слой "ui2" (вызывать до загрузки EXE). screenW/H — размер экрана.

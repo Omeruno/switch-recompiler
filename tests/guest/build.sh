@@ -55,6 +55,7 @@ $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 "$here/initfault_module.c" "$
 $cc -O1 -shared -nostdlib -e _DllMainCRTStartup@12 -DINITFAULT_ID=2 "$here/initfault_module.c" "$out/initfault_control.dll" -o "$out/initfault_child.dll" -lkernel32
 $cc -O1 "$here/gui_initfault_dynamic.c" "$out/initfault_control.dll" -o "$out/gui_initfault_dynamic.exe" -lkernel32
 $cc -O1 -nostdlib -e _start@0 "$here/gui_initfault_startup.c" "$out/initfault_module.dll" "$out/initfault_control.dll" -o "$out/gui_initfault_startup.exe" -lkernel32
+$cc -O1 "$here/shell_busy.c" -o "$out/shell_busy.exe" -luser32 -lgdi32
 $cc -O1 "$here/shell_workspace.c" -o "$out/shell_workspace.exe" -luser32 -lgdi32
 $cc -O1 "$here/shell_document.c" -o "$out/shell_document.exe" -lshell32
 $cc -O1 "$here/filesystem_mounts.c" -o "$out/filesystem_mounts.exe" -lshell32 -lcomdlg32
