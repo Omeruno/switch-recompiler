@@ -38,6 +38,10 @@ uint32_t ErrnoToWin() {
         case EINVAL: return 123;
         case EROFS: return 19;
         case ENOTDIR: return ERROR_PATH_NOT_FOUND;
+        case EXDEV: return 17; // ERROR_NOT_SAME_DEVICE
+        case ENOSPC: return 112; // ERROR_DISK_FULL
+        case EIO: return 1117; // ERROR_IO_DEVICE
+        case EBUSY: return 32; // ERROR_SHARING_VIOLATION
         case EACCES: case EPERM: return ERROR_ACCESS_DENIED;
         case EEXIST: return ERROR_ALREADY_EXISTS;
         case ENOTEMPTY: return ERROR_DIR_NOT_EMPTY;
@@ -305,22 +309,16 @@ HostCallOutcome PathOp(cpu::IGuestMemory& m, int r) {
 }
 enum class PathMutation {Delete,Mkdir,Rmdir};
 HostCallOutcome MutatePath(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide,PathMutation op) {
-    const auto host=rt::FileSystem().ToHost(ReadPath(m,Arg(c,m,0),wide),true);
-    if(host.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
-    const int result=op==PathMutation::Delete?std::remove(host.c_str()):
-                     op==PathMutation::Mkdir?mkdir(host.c_str(),0777):rmdir(host.c_str());
-    return PathOp(m,result);
+    const auto path=ReadPath(m,Arg(c,m,0),wide);const auto& fs=rt::FileSystem();
+    const bool ok=op==PathMutation::Delete?fs.DeleteFile(path):
+                  op==PathMutation::Mkdir?fs.CreateDirectory(path):fs.RemoveDirectory(path);
+    return PathOp(m,ok?0:-1);
 }
 HostCallOutcome K32_DeleteFileA(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,false,PathMutation::Delete);}
 HostCallOutcome K32_DeleteFileW(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,true,PathMutation::Delete);}
 HostCallOutcome MoveCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide, bool replace) {
-    std::string a = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide),true);
-    if(a.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
-    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide),true);
-    if(b.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
-    struct stat st;
-    if (!replace && StatHost(b, st)) { SetLastError(m, ERROR_ALREADY_EXISTS); return Ret(0); }
-    return PathOp(m, std::rename(a.c_str(), b.c_str()));
+    return PathOp(m,rt::FileSystem().Move(ReadPath(m,Arg(c,m,0),wide),
+                                        ReadPath(m,Arg(c,m,1),wide),replace)?0:-1);
 }
 HostCallOutcome K32_MoveFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return MoveCommon(c, m, false, false); }
 HostCallOutcome K32_MoveFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return MoveCommon(c, m, true, false); }

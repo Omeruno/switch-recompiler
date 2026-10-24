@@ -38,6 +38,11 @@ std::string ShellBrowser::DocumentsPath() const {return vfs_.ProfileDirectory()+
 const char16_t* ShellBrowser::ErrorText(Error error) {
     switch(error) {
     case Error::None:return u"";
+    case Error::AlreadyExists:return u"Файл или папка с таким именем уже существует.";
+    case Error::ReadOnly:return u"Том доступен только для чтения.";
+    case Error::NotEmpty:return u"Папка не пуста. Рекурсивное удаление не поддерживается.";
+    case Error::Busy:return u"Корень подключённого тома нельзя изменить.";
+    case Error::OperationFailed:return u"Операция файловой системы не выполнена.";
     case Error::InvalidCommand:return u"Неверные кавычки или слишком длинная команда.";
     case Error::AssociationLimit:return u"Лимит типов файлов. Используйте Выполнить для запуска приложения.";
     case Error::MissingApplication:return u"Приложение недоступно. Выберите другое через Открыть с помощью.";
@@ -53,7 +58,8 @@ const char16_t* ShellBrowser::ErrorText(Error error) {
     return u"Ошибка файловой системы.";
 }
 bool ShellBrowser::FailErrno() {
-    return Fail(errno==EOVERFLOW?Error::ResolutionLimit:errno==ENOENT?Error::NotFound:errno==ENOTDIR?Error::NotDirectory:
+    return Fail(errno==EEXIST?Error::AlreadyExists:errno==EROFS?Error::ReadOnly:
+                errno==ENOTEMPTY?Error::NotEmpty:errno==EBUSY?Error::Busy:errno==EOVERFLOW?Error::ResolutionLimit:errno==ENOENT?Error::NotFound:errno==ENOTDIR?Error::NotDirectory:
                 errno==EACCES || errno==EPERM?Error::AccessDenied:
                 errno==EINVAL || errno==ENODEV?Error::InvalidPath:Error::ReadFailed);
 }
@@ -156,6 +162,47 @@ void ShellBrowser::Page(int delta,size_t rows) {
 void ShellBrowser::CycleSort() {
     const auto selected=SelectedPath();sort_=Sort((int(sort_)+1)%3);SortEntries(selected);
 }
+bool ShellBrowser::ValidLeaf(const std::string& name) {
+    if(name.empty() || name.size()>255 || name=="." || name==".." || name.back()=='.' || name.back()==' ')return false;
+    for(unsigned char c:name)if(c<32 || c==127 || c=='<' || c=='>' || c==':' || c=='"' ||
+        c=='/' || c=='\\' || c=='|' || c=='?' || c=='*')return false;
+    return true;
+}
+ShellBrowser::MutationResult ShellBrowser::FinishMutation(bool ok,const std::string& selected) {
+    operationErrno_=ok?0:errno;
+    if(!ok){FailErrno();if(error_==Error::ReadFailed)error_=Error::OperationFailed;return MutationResult::Failed;}
+    return Load(path_,selected)?MutationResult::Applied:MutationResult::AppliedViewStale;
+}
+ShellBrowser::MutationResult ShellBrowser::CreateFolder(const std::string& name) {
+    if(!ready_ || path_.empty() || !ValidLeaf(name)) {
+        errno=!ready_?ENODEV:EINVAL;return FinishMutation(false,{});
+    }
+    const auto target=Join(path_,name);size_t budget=scanLimit_;
+    return FinishMutation(vfs_.CreateDirectory(target,&budget),target);
+}
+ShellBrowser::MutationResult ShellBrowser::RenameSelected(const std::string& name) {
+    const auto selected=SelectedPath();
+    if(!ready_ || path_.empty() || selected.empty() || !ValidLeaf(name)) {
+        errno=!ready_?ENODEV:EINVAL;return FinishMutation(false,{});
+    }
+    const auto target=Join(path_,name);size_t budget=scanLimit_;
+    return FinishMutation(vfs_.Move(selected,target,false,&budget),target);
+}
+ShellBrowser::MutationResult ShellBrowser::DeleteSelected() {
+    const auto selected=SelectedPath();
+    if(!ready_ || selected.empty()){errno=!ready_?ENODEV:EINVAL;return FinishMutation(false,{});}
+    size_t budget=scanLimit_;rt::FileProperties props;
+    if(!vfs_.QueryProperties(selected,props,&budget))return FinishMutation(false,{});
+    return FinishMutation(props.kind==rt::FileProperties::Kind::Directory?
+        vfs_.RemoveDirectory(selected,&budget):vfs_.DeleteFile(selected,&budget),{});
+}
+bool ShellBrowser::SelectedProperties(rt::FileProperties& out) {
+    out={};const auto path=SelectedPath();
+    if(!ready_ || path.empty()){errno=!ready_?ENODEV:EINVAL;operationErrno_=errno;return FailErrno();}
+    size_t budget=scanLimit_;const bool ok=vfs_.QueryProperties(path,out,&budget);
+    operationErrno_=ok?0:errno;if(!ok)return FailErrno();error_=Error::None;return true;
+}
+
 bool ShellBrowser::ResolveExecutable(const std::string& path,ShellLaunchRequest& out) {
     const auto input=path;out.Clear();if(!ready_)return Fail(Error::NotReady);
     const auto full=vfs_.FullGuestPath(input);if(full.empty())return FailErrno();

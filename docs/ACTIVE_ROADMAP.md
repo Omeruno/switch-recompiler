@@ -4,7 +4,8 @@ Current user priority: develop a real usable system before further visual polish
 F1/F2/F3a/F3b and F4a are implemented. **F4b.1 now services native input between
 executor quanta independently of a guest USER pump**, with bounded deferred input
 and asynchronous owner-window commands. **F4b.2 now keeps one frontend worker
-and output device across guest sessions.** Next: real file operations/properties,
+and output device across guest sessions.** Shared file mutations/properties now exist in the provider/browser model;
+next: expose native actions/confirmation/properties UI and implement checked copy,
 coherent Switch input, TXT/images and the F5 workflow.
 Luna visual refinement and G optimization are deferred. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
@@ -25,12 +26,12 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F3b | [Document applications and arguments](F3_DOCUMENTS.md), Open/Choose application, remembered session types, full A/W/CRT argument transport and public x86 reader | On-disk preferences/association management remain F3c; no default or verified Paint association |
 | F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; flat native overlay composition still needs F4b retained-layer integration and visual/interaction refinement |
 | F4b.1 | [Independent native input](F4B_INPUT_SERVICE.md), bounded deferred guest events, physical async state, real owner-queue task commands and pending feedback | Physical acceptance; a host API that never yields remains a responsiveness limit |
-| F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Exact-SHA Switch build/physical acceptance; explicit mode/failure transitions can recreate the device; native/guest retained planes remain open |
-| **Functional F: next** | Persistent filesystem, native shell and independent guest sessions/input/output ownership | Real file operations/properties → input/context menus → preferences/TXT/images → save/find/reopen |
+| F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; native/guest retained planes remain open |
+| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; persistent shell/session/input/output | Native operation UI/confirmation/properties and checked copy → input/context menus → preferences/TXT/images → save/find/reopen |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: real file operations and properties
+## Next concrete package: native file actions and properties UI
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -40,11 +41,13 @@ absolute C paths from the former per-EXE mapping may need reselection through S.
 F4b.1 removes dependence on the guest message pump for native Start/folder input
 at executor boundaries. It preserves real guest command delivery and explicitly
 shows pending requests instead of fabricating a minimized window. F4b.2 now separates frontend/device lifetime from guest lifetime; see
-[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Folder/file mutations and TXT/image
-tools remain open.
+[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file-action UI and TXT/image tools remain open.
 
-Implement the common real file-operation provider and properties, followed by
-usable context/menu/controller actions. Retained native/guest GPU planes remain
+The common real create/rename/delete/properties provider and browser model are
+implemented; see [the exact scope](F_FILE_OPERATIONS.md). New actions are not yet
+exposed by DesktopShell. Implement native name entry, explicit permanent-delete
+confirmation, a stat-backed properties view and usable context/controller actions.
+Copy still needs checked I/O and safe destination handling before exposure. Retained native/guest GPU planes remain
 an explicit graphics integration boundary. Implement
 persisted associations/settings and actual document tools before further Luna
 polish. F3/F4/F5 and general Win32 compatibility remain incomplete.

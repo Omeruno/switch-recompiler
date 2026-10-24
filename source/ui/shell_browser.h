@@ -16,7 +16,7 @@ class ShellBrowser {
 public:
     static constexpr size_t MaxItems=256,MaxScanned=4096,MaxHistory=32,MaxAssociations=32;
     enum class Kind {Drive,Directory,File};
-    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,ResolutionLimit,InvalidCommand,AssociationLimit,MissingApplication};
+    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,ResolutionLimit,InvalidCommand,AssociationLimit,MissingApplication,AlreadyExists,ReadOnly,NotEmpty,Busy,OperationFailed};
     enum class Sort {Name,NameDescending,SizeDescending};
     struct Entry {
         std::string name,path;
@@ -53,6 +53,14 @@ public:
     bool RunCommand(const std::string& command,ShellLaunchRequest&);
     bool ResolveExecutable(const std::string& guestPath,ShellLaunchRequest&);
     bool ResolveCatalogExecutable(const std::string& nativePath,ShellLaunchRequest&);
+    // A successful mutation is never reported as failed merely because a later
+    // listing refresh failed. Callers must not retry AppliedViewStale.
+    enum class MutationResult {Failed,Applied,AppliedViewStale};
+    MutationResult CreateFolder(const std::string& name);
+    MutationResult RenameSelected(const std::string& name);
+    MutationResult DeleteSelected(); // permanent; UI must confirm before calling
+    bool SelectedProperties(rt::FileProperties&);
+    int OperationErrno() const {return operationErrno_;}
     void CycleSort();
     Sort Ordering() const {return sort_;}
     bool ReadOnly() const {return readOnly_;}
@@ -76,6 +84,9 @@ private:
     std::string SelectedPath() const;
     bool Fail(Error error) {error_=error;return false;}
     bool FailErrno();
+    static bool ValidLeaf(const std::string&);
+    MutationResult FinishMutation(bool ok,const std::string& selected);
+    int operationErrno_=0;
     static std::string Extension(const std::string&);
     bool AttachArguments(const std::vector<std::string>&,ShellLaunchRequest&);
     bool Document(const std::string& path,std::string& full);

@@ -29,6 +29,15 @@ struct VolumeInfo {
     std::string label, fileSystem;
 };
 
+// Snapshot of one object, not recursive directory totals or Windows birth time.
+struct FileProperties {
+    enum class Kind {File,Directory};
+    Kind kind=Kind::File;
+    uint64_t size=0;
+    int64_t modifiedSeconds=0,accessedSeconds=0;
+    bool mountReadOnly=false,ownerWriteBit=false;
+};
+
 class Vfs {
 public:
     Vfs();
@@ -53,7 +62,15 @@ public:
     std::string ToHost(const std::string& guestPath,bool write=false,size_t* caseBudget=nullptr) const;
     std::string ToGuest(const std::string& hostPath,size_t* caseBudget=nullptr) const;
     std::string ProfileDirectory() const;
+    // Real synchronous operations; false preserves host errno. No recursive
+    // deletion, replacement-by-default, global cwd or retained native handles.
+    bool QueryProperties(const std::string&,FileProperties&,size_t* caseBudget=nullptr) const;
+    bool CreateDirectory(const std::string&,size_t* caseBudget=nullptr) const;
+    bool DeleteFile(const std::string&,size_t* caseBudget=nullptr) const;
+    bool RemoveDirectory(const std::string&,size_t* caseBudget=nullptr) const;
+    bool Move(const std::string& from,const std::string& to,bool replace=false,size_t* caseBudget=nullptr) const;
 private:
+    bool MutationPath(const std::string&,std::string& host,size_t*) const;
     struct MountPoint {std::string root,cwd;bool readOnly=false;uint32_t type=0;};
     std::array<MountPoint,26> mounts_{};
     std::string cwd_="C:\\";

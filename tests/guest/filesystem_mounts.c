@@ -46,6 +46,22 @@ int main(int argc,char**argv) {
     CHECK(!DeleteFileW(L"R:\\locked.txt") && GetLastError()==ERROR_WRITE_PROTECT);
     CHECK(!CreateDirectoryA("R:\\bad",NULL) && GetLastError()==ERROR_WRITE_PROTECT);
     CHECK(!MoveFileA("R:\\locked.txt","C:\\moved.txt") && GetLastError()==ERROR_WRITE_PROTECT);
+    // Shared mutation provider: real A/W and CRT entry points, not mock calls.
+    CHECK(CreateDirectoryW(L"C:\\TEMP\\ops-\x6587",NULL));
+    CHECK(!DeleteFileW(L"C:\\TEMP\\ops-\x6587") && GetLastError()==ERROR_ACCESS_DENIED);
+    CHECK(GetFileAttributesW(L"C:\\TEMP\\ops-\x6587")&FILE_ATTRIBUTE_DIRECTORY);
+    CHECK(MoveFileW(L"C:\\TEMP\\ops-\x6587",L"C:\\TEMP\\ops-renamed"));
+    CHECK(CreateDirectoryA("C:\\TEMP\\ops-existing",NULL));
+    CHECK(!MoveFileA("C:\\TEMP\\ops-renamed","C:\\TEMP\\ops-existing") && GetLastError()==ERROR_ALREADY_EXISTS);
+    CHECK(remove("C:\\TEMP\\ops-renamed")==-1);
+    CHECK(RemoveDirectoryA("C:\\TEMP\\ops-renamed"));
+    CHECK(RemoveDirectoryA("C:\\TEMP\\ops-existing"));
+    FILE* ops=fopen("C:\\TEMP\\ops-file.txt","wb");CHECK(ops!=NULL);
+    if(ops){CHECK(fwrite("actual",1,6,ops)==6);CHECK(fclose(ops)==0);}
+    CHECK(rename("C:\\TEMP\\ops-file.txt","C:\\TEMP\\ops-renamed.txt")==0);
+    ops=fopen("C:\\TEMP\\ops-renamed.txt","rb");CHECK(ops!=NULL);
+    if(ops){char content[7]={0};CHECK(fread(content,1,6,ops)==6 && strcmp(content,"actual")==0);fclose(ops);}
+    CHECK(DeleteFileW(L"C:\\TEMP\\ops-renamed.txt"));
     FILE* ro=fopen("R:\\locked.txt","r+b");CHECK(ro==NULL && errno==EACCES);if(ro)fclose(ro);
     CHECK(_wremove(L"R:\\locked.txt")==-1);
     CHECK(SetCurrentDirectoryW(L"C:\\TEMP"));

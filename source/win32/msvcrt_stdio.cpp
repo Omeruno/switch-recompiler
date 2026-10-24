@@ -715,23 +715,20 @@ HostCallOutcome C_commit(cpu::CpuState& c, cpu::IGuestMemory& m) {
 }
 
 // --- Файлы по имени ---
-HostCallOutcome PathResult(cpu::IGuestMemory& m, int r) {
-    if (r != 0) { SetErrno(m, errno == ENOENT ? kENOENT : kEACCES); return Ret(static_cast<uint32_t>(-1)); }
-    return Ret(0);
-}
 std::string HostOf(cpu::IGuestMemory& m, uint32_t p, bool wide = false, bool write = false) {
     return rt::FileSystem().ToHost(wide ? WideToUtf8(ReadWide(m, p)) : ReadAnsi(m, p),write);
 }
 enum class CrtMutation {Remove,Mkdir,Rmdir,Rename};
 HostCallOutcome CrtMutate(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide,CrtMutation op) {
-    const auto a=HostOf(m,Arg(c,m,0),wide,true);
-    if(a.empty()){SetErrno(m,kEACCES);return Ret(uint32_t(-1));}
-    if(op==CrtMutation::Rename) {
-        const auto b=HostOf(m,Arg(c,m,1),wide,true);
-        if(b.empty()){SetErrno(m,kEACCES);return Ret(uint32_t(-1));}
-        return PathResult(m,std::rename(a.c_str(),b.c_str()));
+    const auto path=wide?WideToUtf8(ReadWide(m,Arg(c,m,0))):ReadAnsi(m,Arg(c,m,0));
+    const auto& fs=rt::FileSystem();
+    const bool ok=op==CrtMutation::Rename?fs.Move(path,ReadAnsi(m,Arg(c,m,1))):
+        op==CrtMutation::Remove?fs.DeleteFile(path):op==CrtMutation::Mkdir?fs.CreateDirectory(path):fs.RemoveDirectory(path);
+    if(!ok) {
+        SetErrno(m,errno==ENOENT?kENOENT:errno==EEXIST?kEEXIST:errno==EINVAL?kEINVAL:kEACCES);
+        return Ret(uint32_t(-1));
     }
-    return PathResult(m,op==CrtMutation::Remove?std::remove(a.c_str()):op==CrtMutation::Mkdir?mkdir(a.c_str(),0777):rmdir(a.c_str()));
+    return Ret(0);
 }
 HostCallOutcome C_remove(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,false,CrtMutation::Remove);}
 HostCallOutcome C_wremove(cpu::CpuState& c,cpu::IGuestMemory& m){return CrtMutate(c,m,true,CrtMutation::Remove);}

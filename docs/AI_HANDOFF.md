@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`450f1d3d84feaef5f4448f08a49121b3bb679293` (2026-10-24).
-[CI 40081220508](https://github.com/Omeruno/switch-recompiler/actions/runs/40081220508)
+`975f393b19a8c503f3d4a2c94b9bf8b6385a84aa` (2026-10-24).
+[CI 40085203929](https://github.com/Omeruno/switch-recompiler/actions/runs/40085203929)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -14,8 +14,9 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 Latest steering: prioritize real system functionality and verifiable operations;
 return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 adds
 independent native input service, bounded deferred guest events, physical async
-state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Next: actual
-file operations/properties, coherent L/R
+state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Shared real file mutations/properties now exist in VFS and the browser model
+([scope](F_FILE_OPERATIONS.md)); next: native operation UI/confirmation/properties
+and checked copy, coherent L/R
 click and controller actions, preferences/TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
@@ -833,3 +834,44 @@ renderer failure latching remains scoped to newui::Blit. The complete common
 runtime/fixture host suite is unchanged and remains passed; main.cpp is excluded
 from it. Verify the corrected exact SHA's Switch build and all six jobs, not the
 failed 82ae340. No physical acceptance is added.
+
+
+## Functional F: shared real file operations and properties
+
+Fetched clean 975f393/FETCH_HEAD on the requested branch; no newer changes or
+AGENTS.md found. Exact incoming CI 40085203929 is successful. Rootless host
+MinGW/Mesa tools remain available; devkitA64/libnx is still absent locally.
+
+VFS now owns actual create/delete-file/remove-empty-directory/move/property
+operations. Win32 A/W and CRT mutations share them with ShellBrowser. DeleteFile
+and CRT remove no longer accidentally delete an empty directory through POSIX
+remove. Default rename rejects collisions; explicit replacement is file-only.
+Mounted roots/ancestors are protected even through the overlapping SD alias.
+Properties use actual stat kind/file bytes/access+modification times and separate
+mount readonly/owner-mode-bit metadata, with no fabricated birth time or recursive
+folder size. Errors and optional cumulative path-lookup budget propagate.
+
+Browser model operations revalidate selection and distinguish actual mutation
+failure from success followed by listing-refresh failure. **No new DesktopShell
+buttons/context menu/properties dialog are connected yet.** Public native tests
+inspect real bytes and rejection paths; the existing four-session x86 filesystem
+fixture now also tests actual Win32/CRT mutations and wrong-type/collision errors.
+See F_FILE_OPERATIONS.md for limitations, including case-only rename, non-atomic
+no-replace versus native writers and existing cwd/handle sharing boundaries.
+CopyFile's old unchecked I/O remains open; implement checked copy before shell
+exposure. Next concrete package: usable native name/actions/confirmation/properties
+UI with pointer/controller routing, followed by persistence/TXT/images/F5.
+Host full-suite and exact new-SHA CI results must be verified before completion;
+no local Switch build or physical acceptance is inferred. SD diagnosis is closed.
+
+
+Final local validation for this foundation: complete clean rootless
+MinGW/Mesa `COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed, including
+shared file operations, all four extended actual-x86 mounted filesystem sessions,
+output/input/workspace, core/USER/legacy sessions, Stage C, six E9 groups and
+both real EGL pixel comparisons. Final extended native mutation assertions also
+passed strict -Wall -Wextra -Werror -fno-exceptions -fno-rtti compilation and
+execution. The first standalone command incorrectly named a nonexistent
+command_line.cpp (its implementation is header-only); corrected command passed.
+Markdown local links/fences and git diff --check passed. No local Switch or
+physical result is claimed. Verify exact published-SHA six-job CI after push.

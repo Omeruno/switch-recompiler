@@ -218,6 +218,53 @@ bool Vfs::QueryVolume(const std::string& path,VolumeInfo& out) const {
     out.readOnly=out.readOnly || (st.f_flag&ST_RDONLY)!=0;return true;
 }
 
+bool Vfs::QueryProperties(const std::string& path,FileProperties& out,size_t* budget) const {
+    out={};const auto full=FullGuestPath(path);if(full.empty())return false;
+    const auto host=ToHost(full,false,budget);if(host.empty())return false;
+    struct stat st{};if(stat(host.c_str(),&st)!=0)return false;
+    if(!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)){errno=ENOTSUP;return false;}
+    out.kind=S_ISDIR(st.st_mode)?FileProperties::Kind::Directory:FileProperties::Kind::File;
+    // Directory st_size is provider metadata, not the size of its contents.
+    out.size=S_ISREG(st.st_mode) && st.st_size>0?uint64_t(st.st_size):0;
+    out.modifiedSeconds=int64_t(st.st_mtime);out.accessedSeconds=int64_t(st.st_atime);
+    out.mountReadOnly=mounts_[size_t(Drive(full[0]))].readOnly;
+    out.ownerWriteBit=(st.st_mode&S_IWUSR)!=0;return true;
+}
+bool Vfs::MutationPath(const std::string& path,std::string& host,size_t* budget) const {
+    if(path.empty()){errno=EINVAL;return false;}
+    host=ToHost(path,true,budget);if(host.empty())return false;
+    // Protect roots even through overlapping C/S aliases, and ancestors whose
+    // rename would invalidate a mounted root. Native races remain the F1 limit.
+    for(const auto& m:mounts_)if(!m.root.empty() && Within(m.root,host)){errno=EBUSY;return false;}
+    return true;
+}
+bool Vfs::CreateDirectory(const std::string& path,size_t* budget) const {
+    std::string host;if(!MutationPath(path,host,budget))return false;
+    return mkdir(host.c_str(),0777)==0;
+}
+bool Vfs::DeleteFile(const std::string& path,size_t* budget) const {
+    std::string host;if(!MutationPath(path,host,budget))return false;
+    struct stat st{};if(stat(host.c_str(),&st)!=0)return false;
+    if(!S_ISREG(st.st_mode)){errno=EACCES;return false;}
+    return unlink(host.c_str())==0;
+}
+bool Vfs::RemoveDirectory(const std::string& path,size_t* budget) const {
+    std::string host;if(!MutationPath(path,host,budget))return false;
+    return rmdir(host.c_str())==0;
+}
+bool Vfs::Move(const std::string& from,const std::string& to,bool replace,size_t* budget) const {
+    std::string a,b;if(!MutationPath(from,a,budget) || !MutationPath(to,b,budget))return false;
+    struct stat src{},dst{};if(stat(a.c_str(),&src)!=0)return false;
+    if(!S_ISREG(src.st_mode) && !S_ISDIR(src.st_mode)){errno=ENOTSUP;return false;}
+    if(stat(b.c_str(),&dst)==0) {
+        if(!replace){errno=EEXIST;return false;}
+        if(!S_ISREG(src.st_mode) || !S_ISREG(dst.st_mode)){errno=EACCES;return false;}
+    } else if(errno!=ENOENT)return false;
+    // No cross-device copy/delete fallback. No atomic no-replace guarantee
+    // against another native writer; same trusted-host boundary as F1.
+    return std::rename(a.c_str(),b.c_str())==0;
+}
+
 OpenFile::~OpenFile() {
     if (f) std::fclose(f);
     if (deleteOnClose && !hostPath.empty()) std::remove(hostPath.c_str());
