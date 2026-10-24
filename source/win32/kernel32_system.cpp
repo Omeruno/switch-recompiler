@@ -182,6 +182,7 @@ SystemState& System() {
     // Add defaults lazily once; guest SetEnvironmentVariable remains authoritative.
     if(rt::FileSystem().Persistent() && !state.profileInitialized) {
         const auto profile=rt::FileSystem().ProfileDirectory();
+        state.env["PROGRAMFILES"]="C:\\Programs";
         state.env["USERPROFILE"]=profile;state.env["HOMEDRIVE"]="C:";
         state.env["HOMEPATH"]=profile.substr(2);
         state.env["APPDATA"]=profile+"\\Application Data";

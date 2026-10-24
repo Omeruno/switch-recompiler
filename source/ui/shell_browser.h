@@ -8,9 +8,9 @@
 
 namespace ui {
 struct ShellLaunchRequest {
-    std::string guestPath,nativePath,commandLine;
+    std::string guestPath,nativePath,commandLine,workingDirectory;
     std::vector<std::string> arguments;
-    void Clear() {guestPath.clear();nativePath.clear();commandLine.clear();arguments.clear();}
+    void Clear() {guestPath.clear();nativePath.clear();commandLine.clear();workingDirectory.clear();arguments.clear();}
 };
 // Independent host VFS metadata over the same F1 roots as each GuestSession.
 // No global cwd, borrowed Process or file handles survive an operation.
@@ -18,7 +18,7 @@ class ShellBrowser {
 public:
     static constexpr size_t MaxItems=256,MaxScanned=4096,MaxHistory=32,MaxAssociations=32;
     enum class Kind {Drive,Directory,File};
-    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,ResolutionLimit,InvalidCommand,AssociationLimit,MissingApplication,AlreadyExists,ReadOnly,NotEmpty,Busy,OperationFailed};
+    enum class Error {None,NotReady,InvalidPath,NotFound,NotDirectory,AccessDenied,ReadFailed,UnsupportedFile,InvalidShortcut,ResolutionLimit,InvalidCommand,AssociationLimit,MissingApplication,AlreadyExists,ReadOnly,NotEmpty,Busy,OperationFailed};
     enum class Sort {Name,NameDescending,SizeDescending};
     struct Entry {
         std::string name,path;
@@ -40,6 +40,8 @@ public:
     const std::string& Path() const {return path_;}
     std::string DocumentsPath() const;
     bool Mounted(char drive) const;
+    std::vector<Entry> ListAt(const std::string&,bool* truncated=nullptr,size_t* errors=nullptr);
+    bool CreateShortcut(const std::string& command,bool startMenu);
     const std::vector<Entry>& Entries() const {return entries_;}
     size_t Selected() const {return selected_;}
     void Select(size_t index);

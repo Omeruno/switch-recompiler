@@ -73,6 +73,10 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case FolderTreeButton:return {652,150,758,178};
+    case TreeExpand:return {416,504,554,540};
+    case TreeCollapse:return {560,504,698,540};
+    case TreeOpen:return {704,504,834,540};
     case ImageFit:return {416,504,592,540};
     case ImageActual:return {600,504,778,540};
     case TextOpen:case TextNew:return {}; // reached through context menu
@@ -119,13 +123,15 @@ Rect DesktopShell::Bounds(int t) {
     case NavUp:return {332,150,406,178};
     case Refresh:return {412,150,516,178};
     case Sort:return {522,150,644,178};
-    case Address:return {652,150,1138,178};
+    case Address:return {766,150,1138,178};
     case QuickComputer:return {240,194,406,230};
     case QuickDocuments:return {240,238,406,274};
     case QuickC:return {240,300,406,336};
     case QuickS:return {240,344,406,380};
     case QuickR:return {240,388,406,424};
     default:
+        if(t>=DesktopLinkBase && t<DesktopLinkBase+24){const int n=t-DesktopLinkBase;return {160+(n/5)*132,26+(n%5)*112,272+(n/5)*132,116+(n%5)*112};}
+        if(t>=TreeRowBase && t<TreeRowBase+7)return {416,270+(t-TreeRowBase)*30,1006,300+(t-TreeRowBase)*30};
         if(t>=TextLineBase && t<TextLineBase+5)return {416,300+(t-TextLineBase)*28,1006,328+(t-TextLineBase)*28};
         if(t>=BrowserRowBase && t<BrowserRowBase+Rows)return {422,184+(t-BrowserRowBase)*26,1138,210+(t-BrowserRowBase)*26};
         if(t>=RowBase && t<RowBase+Rows)return {240,184+(t-RowBase)*26,1138,210+(t-RowBase)*26};
@@ -142,12 +148,14 @@ void DesktopShell::SetCatalog(const ExecutableCatalog& catalog) {
     selected_=0;
     auto it=std::find(files_.begin(),files_.end(),old);
     if(it!=files_.end())selected_=size_t(it-files_.begin());
+    catalogFiles_=files_;RefreshLinks();
+    const auto retained=std::find(files_.begin(),files_.end(),old);if(retained!=files_.end())selected_=size_t(retained-files_.begin());
     errors_=catalog.Errors();truncated_=catalog.Truncated();
 }
 bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
     if(TextDialog() || dialog_==Dialog::ImageViewer){error="Close the document before changing filesystem roots.";return false;}
     CloseContext();browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
-    return browser_.Configure(system,sd,rom,error);
+    const bool ok=browser_.Configure(system,sd,rom,error);if(ok)RefreshLinks();return ok;
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
 void DesktopShell::SetGuestActive(const std::string& label) {
@@ -166,6 +174,7 @@ void DesktopShell::Enter() {
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
     if(TextDialog() || dialog_==Dialog::ImageViewer){request_.Clear();startOpen_=false;hover_=pressed_=None;return;}
+    RefreshLinks();
     dialog_=Dialog::None;operationPath_.clear();operationNotice_.clear();
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
@@ -178,6 +187,11 @@ bool DesktopShell::Enabled(int t) const {
 bool DesktopShell::ControlEnabled(int t) const {
     if(t==None)return false;
     if(textInput_!=TextInput::None)return false;
+    if(dialog_==Dialog::FolderTree) {
+        if(t==CancelDialog)return true;
+        if(t==TreeOpen || t==TreeExpand || t==TreeCollapse)return !tree_.Nodes().empty();
+        return t>=TreeRowBase && t<TreeRowBase+7 && treeSelection_/7*7+size_t(t-TreeRowBase)<tree_.Nodes().size();
+    }
     if(dialog_==Dialog::ImageViewer)return t==ImageFit || t==ImageActual || t==CancelDialog;
     if(TextDialog()) {
         if(t==CancelDialog || t==TextSaveAs)return true;
@@ -195,6 +209,10 @@ bool DesktopShell::ControlEnabled(int t) const {
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
     if(t>=TextEdit && t<=TextDiscard)return false;
+    if(t>=TreeOpen && t<=TreeCollapse)return false;
+    if(t==FolderTreeButton)return panel_==Panel::Explorer;
+    if(t==DesktopShortcut || t==StartShortcut)return panel_==Panel::Explorer && !browser_.Entries().empty() && browser_.Entries()[browser_.Selected()].kind==ShellBrowser::Kind::File && ShellBrowser::IsExecutable(browser_.Entries()[browser_.Selected()].path);
+    if(t>=DesktopLinkBase && t<DesktopLinkBase+24)return !guestActive_ && size_t(t-DesktopLinkBase)<desktopLinks_.size();
     if(t==ImageFit || t==ImageActual)return false;
     if(t==ImageOpen) {
         if(panel_!=Panel::Explorer || browser_.Entries().empty())return false;
@@ -242,6 +260,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
         return out;
     }
     if(textInput_!=TextInput::None)return {None};
+    if(dialog_==Dialog::FolderTree)return {TreeExpand,TreeCollapse,TreeOpen,CancelDialog};
     if(dialog_==Dialog::ImageViewer)return {ImageFit,ImageActual,CancelDialog};
     if(TextDialog()) {
         std::vector<int> out;
@@ -264,7 +283,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(panel_==Panel::Explorer) {
         std::vector<int> out;
         if(!browser_.Entries().empty())out.push_back(BrowserRowBase+int(browser_.Selected()%Rows));
-        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions,Previous,Next,OpenWith,Launch,Close,Start})
+        for(int t:{NavBack,NavUp,Address,Refresh,Sort,FolderTreeButton,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions,Previous,Next,OpenWith,Launch,Close,Start})
             if(Enabled(t))out.push_back(t);
         return out;
     }
@@ -275,6 +294,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
         return out;
     }
     std::vector<int> out;
+    for(size_t i=0;i<desktopLinks_.size();++i)if(Enabled(DesktopLinkBase+int(i)))out.push_back(DesktopLinkBase+int(i));
     for(int t:{Programs,Computer,Documents,Start})if(Enabled(t))out.push_back(t);
     return out;
 }
@@ -292,7 +312,26 @@ void DesktopShell::OpenBrowser(const std::string& path) {
 }
 void DesktopShell::LaunchProgram() {
     request_.Clear();if(guestActive_) {SetStatus("Close the current application before starting another.");return;}
-    if(selected_<files_.size())browser_.ResolveCatalogExecutable(files_[selected_],request_);
+    if(selected_<files_.size()) {
+        if(ShellLink::IsLink(files_[selected_]))browser_.OpenPath(browser_.Filesystem().ToGuest(files_[selected_]),request_);
+        else browser_.ResolveCatalogExecutable(files_[selected_],request_);
+    }
+}
+void DesktopShell::RefreshLinks() {
+    if(!browser_.Ready())return;
+    const auto previous=selected_<files_.size()?files_[selected_]:std::string();
+    desktopLinks_.clear();files_=catalogFiles_;linkTruncated_=false;linkErrors_=0;
+    const auto profile=browser_.Filesystem().ProfileDirectory();
+    for(const bool start:{false,true}) {
+        bool truncated=false;size_t errors=0;auto entries=browser_.ListAt(profile+(start?"\\Start Menu\\Programs":"\\Desktop"),&truncated,&errors);
+        linkTruncated_=linkTruncated_ || truncated;linkErrors_+=errors;
+        std::sort(entries.begin(),entries.end(),[](const ShellBrowser::Entry& a,const ShellBrowser::Entry& b){return a.path<b.path;});
+        for(const auto& entry:entries)if(entry.kind==ShellBrowser::Kind::File && ShellLink::IsLink(entry.path)) {
+            if(!start){if(desktopLinks_.size()<24)desktopLinks_.push_back(entry.path);else linkTruncated_=true;}
+            if(start){if(files_.size()<ExecutableCatalog::MaxFiles)files_.push_back(browser_.Filesystem().ToHost(entry.path));else linkTruncated_=true;}
+        }
+    }
+    selected_=0;for(size_t i=0;i<files_.size();++i)if(files_[i]==previous){selected_=i;break;}
 }
 void DesktopShell::ChooseApplication(const std::string& document) {
     if(guestActive_)return;
@@ -348,6 +387,10 @@ bool DesktopShell::ServiceCopy() {
 }
 void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
     const auto purpose=textInput_;textInput_=TextInput::None;
+    if(purpose==TextInput::ShortcutCommand) {
+        if(accepted && browser_.CreateShortcut(input,shortcutStart_)){RefreshLinks();operationNotice_=u"Ярлык сохранён в профиле.";}
+        return;
+    }
     if(purpose==TextInput::TextLine || purpose==TextInput::TextSavePath) {
         if(!accepted)return;
         if(purpose==TextInput::TextSavePath) {
@@ -415,6 +458,7 @@ void DesktopShell::ShowContext(bool folder,int x,int y) {
         if(ControlEnabled(ImageOpen))add(ImageOpen);
         if(browser_.CanChooseApplication())add(OpenWith);
         if(entry.kind==ShellBrowser::Kind::File)add(Copy);
+        if(ControlEnabled(DesktopShortcut)){add(DesktopShortcut);add(StartShortcut);}
         if(entry.kind!=ShellBrowser::Kind::Drive){add(Rename);add(Delete);}
         add(Properties);
     }
@@ -458,6 +502,10 @@ void DesktopShell::ToggleStart() {
 }
 void DesktopShell::Move(int delta) {
     if(textInput_!=TextInput::None)return;
+    if(dialog_==Dialog::FolderTree) {
+        if(!tree_.Nodes().empty())treeSelection_=size_t(std::max<int64_t>(0,std::min<int64_t>(int64_t(tree_.Nodes().size())-1,int64_t(treeSelection_)+delta)));
+        return;
+    }
     if(dialog_==Dialog::ImageViewer) {
         if(!imageFit_)imagePanY_=int(std::max<int64_t>(0,std::min<int64_t>(std::max(0,image_.Height()-ImageViewport().Height()),int64_t(imagePanY_)+int64_t(delta)*32)));
         return;
@@ -488,6 +536,7 @@ void DesktopShell::Move(int delta) {
     focus_=order[size_t((current+delta%count+count)%count)];
 }
 void DesktopShell::Page(int delta) {
+    if(dialog_==Dialog::FolderTree){if(delta>0)tree_.Expand(treeSelection_);else tree_.Collapse(treeSelection_);return;}
     if(dialog_==Dialog::ImageViewer) {
         if(!imageFit_)imagePanX_=int(std::max<int64_t>(0,std::min<int64_t>(std::max(0,image_.Width()-ImageViewport().Width()),int64_t(imagePanX_)+int64_t(delta)*32)));
         return;
@@ -520,6 +569,11 @@ int DesktopShell::HitTest(int x,int y) const {
         return None;
     }
     if(textInput_!=TextInput::None)return None;
+    if(dialog_==Dialog::FolderTree) {
+        for(int t:{TreeExpand,TreeCollapse,TreeOpen,CancelDialog})if(Bounds(t).Contains(x,y))return t;
+        for(int i=0;i<7;++i)if(Bounds(TreeRowBase+i).Contains(x,y))return TreeRowBase+i;
+        return None;
+    }
     if(dialog_==Dialog::ImageViewer) {
         for(int t:{ImageFit,ImageActual,CancelDialog})if(Bounds(t).Contains(x,y))return t;
         return None;
@@ -546,7 +600,7 @@ int DesktopShell::HitTest(int x,int y) const {
     if(panel_!=Panel::Desktop) {
         if(Bounds(Close).Contains(x,y))return Close;
         if(panel_==Panel::Explorer) {
-            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions})if(Bounds(t).Contains(x,y))return t;
+            for(int t:{NavBack,NavUp,Refresh,Sort,FolderTreeButton,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions})if(Bounds(t).Contains(x,y))return t;
             for(int i=0;i<Rows;++i)if(Bounds(BrowserRowBase+i).Contains(x,y))return BrowserRowBase+i;
         }
         if(panel_==Panel::Programs) {
@@ -555,6 +609,7 @@ int DesktopShell::HitTest(int x,int y) const {
         }
         return None;
     }
+    for(size_t i=0;i<desktopLinks_.size();++i)if(Bounds(DesktopLinkBase+int(i)).Contains(x,y))return DesktopLinkBase+int(i);
     for(int t:{Programs,Computer,Documents})if(Bounds(t).Contains(x,y))return t;
     return None;
 }
@@ -566,6 +621,8 @@ void DesktopShell::PointerUp(int x,int y) {
     if(target==None){if(contextOpen_)CloseContext();else if(startOpen_){ToggleStart();}return;}
     if(!Enabled(target))return;
     focus_=target;
+    if(target>=DesktopLinkBase && target<DesktopLinkBase+24){browser_.OpenPath(desktopLinks_[size_t(target-DesktopLinkBase)],request_);return;}
+    if(target>=TreeRowBase && dialog_==Dialog::FolderTree){treeSelection_=treeSelection_/7*7+size_t(target-TreeRowBase);focus_=TreeOpen;return;}
     if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/5*5+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));return;}
     if(target>=RowBase) {
@@ -590,11 +647,24 @@ void DesktopShell::Activate(int target) {
         }
         Activate(action);return;
     }
+    if(target>=DesktopLinkBase && target<DesktopLinkBase+24){browser_.OpenPath(desktopLinks_[size_t(target-DesktopLinkBase)],request_);return;}
+    if(target>=TreeRowBase && dialog_==Dialog::FolderTree){treeSelection_=treeSelection_/7*7+size_t(target-TreeRowBase);focus_=TreeOpen;return;}
     if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/5*5+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));OpenCurrent();return;}
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case DesktopShortcut:case StartShortcut:
+        shortcutStart_=target==StartShortcut;initialText_=rt::QuoteCommandArgument(browser_.Entries()[browser_.Selected()].path);
+        {std::u16string units;TextDocument::DecodeUtf8(initialText_,units);if(units.size()>500){operationNotice_=u"Путь превышает предел клавиатуры ярлыка (500 UTF-16).";break;}}
+        textInput_=TextInput::ShortcutCommand;break;
+    case FolderTreeButton:
+        tree_.Reset(browser_.Filesystem());treeSelection_=0;dialog_=Dialog::FolderTree;dialogReturnFocus_=FolderTreeButton;focus_=TreeOpen;break;
+    case TreeExpand:tree_.Expand(treeSelection_);break;
+    case TreeCollapse:tree_.Collapse(treeSelection_);break;
+    case TreeOpen: {
+        const auto path=tree_.Nodes()[treeSelection_].path;CloseDialog();OpenBrowser(path);break;
+    }
     case ImageOpen: {
         if(!image_.Open(browser_.Filesystem(),browser_.Entries()[browser_.Selected()].path)) {
             operationNotice_=BitmapDocument::ErrorText(image_.LastError());break;
@@ -702,7 +772,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     Fill(s,{0,0,Width,680},0x3A6EA5);
 
     if(!guestActive_)Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
-    Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():Wide(status_),0xC1DCF4,12);
+    Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():linkTruncated_?u"Список ярлыков неполный: достигнут предел.":linkErrors_?u"Некоторые ярлыки недоступны.":Wide(status_),0xC1DCF4,12);
     auto control=[&](int target,std::u16string label,Rect r) {
         const bool enabled=Enabled(target),hot=hover_==target && enabled,down=pressed_==target && hot;
         Gradient(s,r,target==Close?(down?0xA22917:0xEE9A84):down?0x255BB3:hot?0xFCFCFF:0xFFFFFF,
@@ -717,6 +787,12 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         Icon(s,r.left+40,r.top+6,t==Programs?shell_art::programs:t==Computer?shell_art::computer:shell_art::folder);
         Text(s,{r.left+4,r.top+44,r.right-2,r.top+66},t==Programs?u"Программы":t==Computer?u"Мой":u"Мои",enabled?0xFFFFFF:0xA7BDD3,14,true);
         if(t!=Programs)Text(s,{r.left+4,r.top+64,r.right-2,r.bottom},t==Computer?u"компьютер":u"документы",enabled?0xFFFFFF:0xA7BDD3,14,true);
+    }
+    for(size_t i=0;i<desktopLinks_.size();++i) {
+        const int target=DesktopLinkBase+int(i);const auto r=Bounds(target);const bool hot=focus_==target || hover_==target;
+        if(hot){Fill(s,r,0x285F97);Frame(s,r,0x81B4ED);}Icon(s,r.left+40,r.top+6,shell_art::programs);
+        const auto name=desktopLinks_[i].substr(desktopLinks_[i].find_last_of('\\')+1);
+        Text(s,{r.left+4,r.top+44,r.right-2,r.bottom},Wide(name.substr(0,name.size()-4)),Enabled(target)?0xffffff:0xa7bdd3,14,true);
     }
     if(panel_!=Panel::Desktop) {
         Fill(s,{224,106,1166,630},0x13385B);
@@ -740,8 +816,9 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             control(Previous,u"← Назад",Bounds(Previous));control(Next,u"Далее →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
             char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",files_.empty()?0:selected_+1,files_.size());
             Text(s,{522,584,682,610},Wide(count),0x42576B,16);
-            Text(s,{242,556,1136,577},truncated_?u"Достигнут лимит поиска: список неполный.":errors_?u"Часть каталогов недоступна: список может быть неполным.":u"Новый UI по умолчанию. L: прежний режим; ZL: программный вывод.",0x5A6574,13);
+            Text(s,{242,556,1136,577},(truncated_ || linkTruncated_)?u"Достигнут лимит поиска: список неполный.":(errors_ || linkErrors_)?u"Часть каталогов недоступна: список может быть неполным.":u"Новый UI по умолчанию. L: прежний режим; ZL: программный вывод.",0x5A6574,13);
         } else if(panel_==Panel::Explorer) {
+            control(FolderTreeButton,u"Папки",Bounds(FolderTreeButton));
             control(NavBack,u"← Назад",Bounds(NavBack));control(NavUp,u"Вверх",Bounds(NavUp));
             control(Refresh,u"Обновить",Bounds(Refresh));
             control(Sort,browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",Bounds(Sort));
@@ -841,18 +918,25 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             if(hot)Fill(s,r,pressed_==target?0x1D4C99:0x316AC5);
             const auto label=action==Launch?u"Открыть":action==OpenWith?u"Выбрать приложение…":action==Copy?u"Копировать":
                 action==Rename?u"Переименовать…":action==Delete?u"Удалить…":action==Properties?u"Свойства":
-                action==ImageOpen?u"Просмотреть BMP…":action==TextOpen?u"Текст: читать / изменить…":action==TextNew?u"Новый TXT…":action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
+                action==DesktopShortcut?u"Ярлык на рабочий стол…":action==StartShortcut?u"Ярлык в Пуск…":action==ImageOpen?u"Просмотреть BMP…":action==TextOpen?u"Текст: читать / изменить…":action==TextNew?u"Новый TXT…":action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
             Text(s,{r.left+12,r.top+6,r.right-8,r.bottom-2},label,!enabled?0x8793A0:hot?0xFFFFFF:0x162B47,16);
         }
     }
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
         Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::ImageViewer?u"Просмотр BMP":u"Свойства",0xFFFFFF,19,true);
+        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::ImageViewer?u"Просмотр BMP":dialog_==Dialog::FolderTree?u"Дерево папок":u"Свойства",0xFFFFFF,19,true);
         const auto slash=operationPath_.find_last_of('\\');
-        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
-        if(dialog_==Dialog::ImageViewer) {
+        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::FolderTree)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
+        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::FolderTree)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
+        if(dialog_==Dialog::FolderTree) {
+            Text(s,{416,240,1006,264},tree_.Error()?u"Папка недоступна или достигнут предел.":tree_.Truncated()?u"Показана часть папок: предел дерева/поиска.":u"↑/↓ выбор, → развернуть, ← свернуть, Открыть: перейти",0x42576B,13);
+            for(size_t n=0;n<7;++n) {
+                const auto i=treeSelection_/7*7+n;if(i>=tree_.Nodes().size())break;const auto& node=tree_.Nodes()[i];const auto r=Bounds(TreeRowBase+int(n));
+                Fill(s,r,i==treeSelection_?0xD7E8FC:0xFFFFFF);Text(s,{r.left+6+int(std::min(node.depth,20u))*12,r.top+5,r.right-6,r.bottom},(node.expanded?u"− ":u"+ ")+Wide(node.name),0x182943,14);
+            }
+            control(TreeExpand,u"Развернуть",Bounds(TreeExpand));control(TreeCollapse,u"Свернуть",Bounds(TreeCollapse));control(TreeOpen,u"Открыть",Bounds(TreeOpen));control(CancelDialog,u"Закрыть",Bounds(CancelDialog));
+        } else if(dialog_==Dialog::ImageViewer) {
             char info[100];std::snprintf(info,sizeof(info),"%d × %d   %s   ←/→/↑/↓",image_.Width(),image_.Height(),imageFit_?"Вписать":"100%");
             Text(s,{416,240,1006,260},Wide(image_.Path()),0x123D75,14,true);
             Text(s,{416,260,1006,280},Wide(info),0x42576B,13);

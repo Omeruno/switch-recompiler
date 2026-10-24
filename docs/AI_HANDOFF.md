@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`3536ec4a1e8d3b2434f56b84a6bb0046e0daed90` (2026-10-25).
-[CI 40134592527](https://github.com/Omeruno/switch-recompiler/actions/runs/40134592527)
+`4db523691bb6c43558f315ea6ab7dfd97748e29f` (2026-10-25).
+[CI 40137277767](https://github.com/Omeruno/switch-recompiler/actions/runs/40137277767)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -21,7 +21,7 @@ name entry, delete confirmation and properties are now connected.
 are implemented with a shared resumable engine, byte progress and cancel.
 [Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
 click, Menu-key and controller actions. [Persistent sorting/associations](F3C_PREFERENCES.md)
-and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; [native BMP](F_IMAGE_DOCUMENTS.md) and a public x86 save/browse/reopen slice now exist; next: F5 guest file-save correctness.
+and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; [native BMP](F_IMAGE_DOCUMENTS.md) and a public x86 save/browse/reopen slice now exist; the whole bounded F0–F5 software baseline now passes; see [F_ACCEPTANCE.md](F_ACCEPTANCE.md). Physical acceptance is pending, installer/archive extension remains planned.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
@@ -1300,3 +1300,52 @@ passed final runtime/header/fixture tree, including workspace GL and both existi
 Targeted strict check passed before final full suite. Normal publication and exact
 new-SHA CI follow; no local SDK or physical acceptance is implied. Next within
 the same whole-F task: folder tree and persisted real Desktop/Start shortcuts.
+
+
+## Whole-F closure: tree/real links and integrated software acceptance
+
+Incoming 4db5236 exact CI 40137277767 passed six jobs (previous 1f0572a exact
+CI 40136895969 also six). The user requested finishing every baseline F gate.
+All programmatic ledger gates are now implemented; this does not close deferred
+physical acceptance or the explicitly planned post-baseline installer/archive
+extension. Status is PASS_SOFTWARE_PENDING_HARDWARE, not full Windows/NT.
+
+Added actual F1 folder tree (128 nodes/depth32/4096 scans), native controller/
+pointer expansion/collapse/navigation, real persisted Desktop/Start Unicode
+MS-SHLLINK subset, checked no-overwrite staging and shared validated launch with
+arguments/CWD. New profile Start Menu/Programs, shell folder APIs and ProgramFiles
+environment agree. Production applies requested CWD after LoadMainExe, preserving
+EXE/DLL module directory. Link/header/string/path limits, unsupported ID/network/
+extra blocks, generic native icons, clipboard/nonrecursive filesystem and text/
+image limits remain explicit contracts, not universal shell behavior. No COM or
+fake child processes. See F3C_SHORTCUTS_TREE.md.
+
+Native tree/link tests cover actual storage, malformed/truncated Unicode records,
+short/full/flush/close/publish failures, stale/missing targets/CWD, collisions,
+Desktop/Start reconstruction and controller/fan-out/link checks. Independent
+pylnk3 0.4.3 outside the repository parsed written metadata; the product has no
+new dependency. Public x86 bitmap flow now reopens through fresh Desktop and
+Start links with args/different CWD and checks actual folder/environment APIs.
+Native screenshots inspected with real font.
+
+Full clean rootless MinGW/Mesa suite passed final runtime/header/public sources,
+all C/six E9 and both full EGL oracles plus native/guest workspace GL. The new
+reporter emits 22 evidence groups, public fixture hashes, head SHA/dirty state
+and explicit pending hardware/outside-baseline fields only after a successful
+full runner. Missing evidence fails closed; stale reports are removed. CI now
+uploads stage-f-software-acceptance. Local report is explicitly dirty/unpublished;
+only the exact new clean CI report certifies publication.
+
+Initial intermediate runs exposed test cleanup omitting the newly real Start
+Menu directories and a missing shlobj.h include in the public fixture. They were
+corrected directly; environment's ProgramFiles key was normalized for real getter
+lookup. The final clean suite is the release result. Strict link/tree harness and
+ASan/UBSan/leak checks passed, source compiled without exceptions/RTTI. Only
+additional native screenshot assertions/report cleanup/docs followed that suite;
+remaining strict/doc/diff and exact published-SHA six-job/artifact checks follow.
+
+Next after software F: D compatibility fixtures and representative G timing/
+overhead before optimization. Preserve the exact-SHA public F/NRO evidence and
+consolidated deferred Paint/GPU/fallback/Lite/input/relaunch checklist. Local
+devkitA64/libnx remains absent, SD closed. Do not claim physical acceptance or
+universal installer/ZIP/RAR support from the programmatic baseline.

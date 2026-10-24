@@ -1,4 +1,5 @@
 #include "shell_browser.h"
+#include "shell_link.h"
 #include <algorithm>
 #include <cerrno>
 #include <dirent.h>
@@ -55,6 +56,7 @@ const char16_t* ShellBrowser::ErrorText(Error error) {
     case Error::NotDirectory:return u"Укажите путь к папке.";
     case Error::AccessDenied:return u"Нет доступа к пути.";
     case Error::ReadFailed:return u"Не удалось прочитать каталог.";
+    case Error::InvalidShortcut:return u"Ярлык повреждён или использует неподдержанный формат.";
     case Error::UnsupportedFile:return u"Выберите приложение для этого типа файла.";
     }
     return u"Ошибка файловой системы.";
@@ -259,6 +261,18 @@ bool ShellBrowser::OpenPath(const std::string& path,ShellLaunchRequest& out) {
     if(native.empty())return FailErrno();
     struct stat st{};if(stat(native.c_str(),&st)!=0)return FailErrno();
     if(S_ISDIR(st.st_mode))return Navigate(full);
+    if(ShellLink::IsLink(full)) {
+        ShellLink link;if(!link.Load(vfs_,full))return Fail(Error::InvalidShortcut);
+        if(!IsExecutable(link.target) || !ResolveExecutable(link.target,out))return Fail(Error::MissingApplication);
+        std::vector<std::string> args;
+        if(!rt::ParseCommandLine(link.arguments,args,true) || !AttachArguments(args,out)){out.Clear();return Fail(Error::InvalidCommand);}
+        if(!link.workingDirectory.empty()) {
+            rt::FileProperties directory;
+            if(!vfs_.QueryProperties(link.workingDirectory,directory,&caseBudget) || directory.kind!=rt::FileProperties::Kind::Directory){out.Clear();return Fail(Error::NotDirectory);}
+            out.workingDirectory=link.workingDirectory;
+        }
+        return true;
+    }
     if(IsExecutable(full))return ResolveExecutable(full,out);
     std::string document;if(!Document(full,document))return false;
     const auto app=ApplicationFor(document);if(app.empty()){unassociatedDocument_=document;return Fail(Error::UnsupportedFile);}
@@ -317,7 +331,7 @@ std::string ShellBrowser::Extension(const std::string& path) {
 }
 std::string ShellBrowser::SelectedDocument() const {return CanChooseApplication()?entries_[selected_].path:std::string();}
 bool ShellBrowser::CanChooseApplication() const {
-    return selected_<entries_.size() && entries_[selected_].kind==Kind::File && !IsExecutable(entries_[selected_].path);
+    return selected_<entries_.size() && entries_[selected_].kind==Kind::File && !IsExecutable(entries_[selected_].path) && !ShellLink::IsLink(entries_[selected_].path);
 }
 std::string ShellBrowser::ApplicationFor(const std::string& path) const {
     const auto ext=Extension(path);if(ext.empty())return {};
@@ -368,5 +382,20 @@ bool ShellBrowser::RunCommand(const std::string& command,ShellLaunchRequest& out
     if(args.size()==1)return OpenPath(args[0],out);
     if(!ResolveExecutable(args[0],out))return false;
     args.erase(args.begin());return AttachArguments(args,out);
+}
+} // namespace ui
+
+namespace ui {
+std::vector<ShellBrowser::Entry> ShellBrowser::ListAt(const std::string& path,bool* truncated,size_t* errors) {Listing listing;const bool ok=Read(path,listing);if(truncated)*truncated=listing.truncated;if(errors)*errors=listing.errors+(ok?0:1);if(!ok)return {};return listing.entries;}
+bool ShellBrowser::CreateShortcut(const std::string& command,bool startMenu) {
+    std::vector<std::string> args;if(!rt::ParseCommandLine(command,args,true) || args.empty())return Fail(Error::InvalidCommand);
+    ShellLaunchRequest request;if(!ResolveExecutable(args[0],request))return false;
+    ShellLink link;link.target=request.guestPath;link.workingDirectory=link.target.substr(0,link.target.find_last_of('\\'));
+    if(link.workingDirectory.size()==2)link.workingDirectory+="\\";
+    args.erase(args.begin());if(!rt::BuildCommandLine(args,link.arguments))return Fail(Error::InvalidCommand);
+    const auto filename=link.target.substr(link.target.find_last_of('\\')+1);link.name=filename.substr(0,filename.size()-4);link.icon=link.target;
+    const auto destination=vfs_.ProfileDirectory()+(startMenu?"\\Start Menu\\Programs\\":"\\Desktop\\")+link.name+".lnk";
+    if(!link.Save(vfs_,destination))return FailErrno();
+    error_=Error::None;return true;
 }
 } // namespace ui

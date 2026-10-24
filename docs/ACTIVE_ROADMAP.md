@@ -1,6 +1,6 @@
 # Active implementation map — 2026-10-25
 
-Current task: close every remaining programmatic baseline F gate in [F_ACCEPTANCE.md](F_ACCEPTANCE.md), then audit the full map. Do not stop after a single small package.
+Whole-F baseline: **PASS_SOFTWARE_PENDING_HARDWARE**; [acceptance ledger/report](F_ACCEPTANCE.md). Programmatic F0–F5 is implemented and passes the full suite; physical acceptance and the planned extension remain separate.
 
 User-facing global status: [Где находится проект](PROJECT_STATUS_RU.md).
 
@@ -15,7 +15,7 @@ the browser model. [Native Copy/Paste](F_FILE_PASTE.md) now runs in bounded work
 steps with real byte progress and cancellation. [Explorer context menus](F_CONTEXT_ACTIONS.md)
 now route object/current-folder actions through pointer, Menu key and controller
 focus. [Persisted sorting/associations and management](F3C_PREFERENCES.md) are now
-implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; next: F5 guest file-save correctness.
+implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; the remaining baseline tree/shortcuts and retained planes are now implemented. Next: exact-SHA acceptance verification, then D compatibility and measured G work.
 Luna visual refinement and G optimization are deferred. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
@@ -33,16 +33,16 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F2 | [Native idle desktop/theme](F2_DESKTOP.md), Start Programs/About/Exit, bounded EXE panel, licensed Tango art, device clock, retained selection and Start-dismiss focus restoration | Physical shell/input/launch-return checks; F3a now enables My Computer/Documents and path-only Run |
 | F3a | [Real directory explorer](F3_EXPLORER.md), C/S/R and documents, bounded listing/history/case lookup, back/up/address/refresh/sort/pages and shared EXE launch from catalog/Explorer/path-only Run | Physical keyboard/navigation checks; F3b now adds explicit document applications |
 | F3b | [Document applications and arguments](F3_DOCUMENTS.md), Open/Choose application, document type mappings, full A/W/CRT argument transport and public x86 reader | On-disk sorting/association management now implemented in [F3c slice](F3C_PREFERENCES.md); no default or verified Paint association |
-| F3c slice | [Persistent sorting/associations](F3C_PREFERENCES.md), checked dual-slot records, native reassign/forget/retry and fresh-shell x86 document opening | Limited to sorting and document applications; tree/other settings/workspace/document milestones and physical checks remain open |
-| F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; [Retained native/guest integration](F4C_WORKSPACE_LAYERS.md) implemented; physical acceptance and further visual/input refinement remain |
+| F3c baseline | [Persistent sorting/associations](F3C_PREFERENCES.md), checked dual-slot records, native reassign/forget/retry and fresh-shell x86 document opening | [Tree and Desktop/Start links implemented](F3C_SHORTCUTS_TREE.md); arbitrary Windows settings/COM are outside baseline; physical checks pending |
+| F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | [Retained native/guest integration](F4C_WORKSPACE_LAYERS.md) implemented; physical acceptance pending; further theme/input ergonomics are future refinement |
 | F4b.1 | [Independent native input](F4B_INPUT_SERVICE.md), bounded deferred guest events, physical async state, real owner-queue task commands and pending feedback | Physical acceptance; a host API that never yields remains a responsiveness limit |
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; [native/guest retained planes](F4C_WORKSPACE_LAYERS.md) now integrated |
-| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | Native TXT/BMP implemented; F5 guest save/error correctness remains open |
-| Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Supported EXE installation to persistent folders, actual desktop/Start shortcuts, ZIP then RAR/other formats; compatibility and extraction gates remain open |
+| **Functional F: software baseline complete** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | [22-group integrated acceptance](F_ACCEPTANCE.md); physical acceptance pending, extension below still planned |
+| Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Installer compatibility/integration with existing real desktop/Start shortcuts, ZIP then RAR/other formats; installation/extraction gates remain open |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Active whole-F task: tree/shortcuts and integrated acceptance
+## Current boundary: software F complete, physical F pending
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -64,9 +64,7 @@ accepts a destination name, services a resumable job and supports cancellation.
 Menu-key and controller access with captured-target validation and paired input
 ownership. The [F3c preference slice](F3C_PREFERENCES.md) now stores real sort/association
 records in two checked slots and provides native management with restart/error
-checks. The [bounded native TXT tool](F_TEXT_DOCUMENTS.md) now supports actual create/read/line-edit/save/Save As, retained backups and conflict/error outcomes. [Native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice now exist. Next: F5 file-save flush/access/error correctness. Retained native/guest GPU planes remain
-an explicit graphics integration boundary. Implement
-F5 guest file-save correctness before further Luna polish. F3/F4/F5 and general Win32 compatibility remain incomplete.
+checks. The [bounded native TXT tool](F_TEXT_DOCUMENTS.md) now supports actual create/read/line-edit/save/Save As, retained backups and conflict/error outcomes. [Native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice now exist. F5 file-save correctness and integrated evidence are now implemented; see F_ACCEPTANCE.md. Retained native/guest planes and canonical fallback are integrated and checked. Preserve these regressions while moving to D compatibility and representative G measurements; physical acceptance remains separate. F3/F4/F5 baseline is implemented programmatically; physical F and general Win32 compatibility remain incomplete.
 
 Подробная [очередь действий после F1](F_SHELL_PLAN.md#рабочий-план-после-f1-2026-10-23)
 фиксирует критерии F2–F5, возврат к измерениям G и контрольные точки активной работы.
@@ -105,4 +103,4 @@ exact published SHA. Documentation-only packages use source/link/diff checks;
 CI status must still be reported against their exact SHA without invented passes.
 
 
-[F5 synchronous file-save APIs](F5_FILE_SAVE.md) now check read/write/flush/fsync/size/truncate errors and HANDLE/access/alias behavior. The whole-F task continues through the ledger: tree/shortcuts, retained workspace planes and integrated acceptance; the BMP happy path alone does not close F5 or physical gates.
+[F5 synchronous file-save APIs](F5_FILE_SAVE.md) now check read/write/flush/fsync/size/truncate errors and HANDLE/access/alias behavior. The tree/shortcuts, retained workspace planes and integrated 22-group acceptance are implemented; only the software baseline is closed. Physical gates are still pending.

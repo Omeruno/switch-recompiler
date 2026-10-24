@@ -1,3 +1,8 @@
+> Baseline F update: [real Unicode local .lnk and Desktop/Start integration](F3C_SHORTCUTS_TREE.md)
+> and [checked guest file saves](F5_FILE_SAVE.md) are now implemented. Installer
+> compatibility/automation, COM and archive extraction below are still planned;
+> existing shortcut infrastructure does not certify an arbitrary installer.
+
 # Planned functional extension: application installation and archive import
 
 User request, 2026-10-24: downloaded application/game installers should install

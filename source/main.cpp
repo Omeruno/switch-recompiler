@@ -105,7 +105,7 @@ void Blit();
 void CloseOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
-static std::string g_selectedCommandLine;
+static std::string g_selectedCommandLine,g_selectedWorkingDirectory;
 static std::string g_selectedExePath; // set only after an actual picker selection
 
 // НАЙДЕНО ОБРАТНОЙ СВЯЗЬЮ С РЕАЛЬНОГО ЖЕЛЕЗА: тулбар/палитра рисовались
@@ -376,7 +376,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     }
     cpu::CpuState& cpuState = proc.MainThread().cpu;
     rt::Module* exe = proc.LoadMainExe(path, err);
-    if (!exe || !proc.PrepareMainThread(cpuState, err))
+    if (!exe || (!g_selectedWorkingDirectory.empty() && !rt::FileSystem().SetCurrentDirectory(g_selectedWorkingDirectory)) || !proc.PrepareMainThread(cpuState, err))
     {
         g_launchStatus="Could not load program. Choose another EXE or retry.";
         executionLog.Complete(err.c_str(),193,0);
@@ -1992,10 +1992,10 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     swkbdConfigMakePresetDefault(&kbd);
     if (password) swkbdConfigMakePresetPassword(&kbd);
     const bool shellLine=g_activeShell && g_activeShell->PendingTextInput()==ui::DesktopShell::TextInput::TextLine;
-    if(shellLine) {
+    if(g_activeShell && g_activeShell->PendingTextInput()!=ui::DesktopShell::TextInput::None) {
         if(initial.size()>ui::TextDocument::MaxEditUnits){swkbdClose(&kbd);return false;}
         swkbdConfigSetStringLenMax(&kbd,ui::TextDocument::MaxEditUnits);
-        swkbdConfigSetReturnButtonFlag(&kbd,0);
+        if(shellLine)swkbdConfigSetReturnButtonFlag(&kbd,0);
     }
     std::string init = ToUtf8(initial);
     if (!init.empty()) swkbdConfigSetInitialText(&kbd, init.c_str());
@@ -2099,7 +2099,7 @@ static ui::ExecutableCatalog ListExecutables() {
 // Single-file autolaunch is preserved. The picker can always return on applet
 // shutdown or B/PLUS, including while waiting for a new selection edge.
 static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
-    g_selectedCommandLine.clear();
+    g_selectedCommandLine.clear();g_selectedWorkingDirectory.clear();
     padUpdate(&g_pad);
     ui::PointerInputGate gate;gate.Reset(padGetButtons(&g_pad),false);
     const auto catalog=ListExecutables();const auto& files=catalog.Files();
@@ -2152,7 +2152,7 @@ static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
 // One frontend worker owns idle and guest output. This picker keeps the device
 // and presentation alive; it never borrows guest USER/window pointers.
 static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer<uint32_t>& pixels,bool initial) {
-    g_selectedCommandLine.clear();
+    g_selectedCommandLine.clear();g_selectedWorkingDirectory.clear();
     if(!shell.FilesystemReady()) {
         std::string error;
         shell.ConfigureFilesystem("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",error);
@@ -2228,13 +2228,14 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             const bool rename=shell.PendingTextInput()==ui::DesktopShell::TextInput::Rename;
             const bool association=shell.PendingTextInput()==ui::DesktopShell::TextInput::AssociationApplication;
             const bool paste=shell.PendingTextInput()==ui::DesktopShell::TextInput::PasteName;
+            const bool shortcut=shell.PendingTextInput()==ui::DesktopShell::TextInput::ShortcutCommand;
             const bool textLine=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextLine;
             const bool textPath=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextSavePath;
             const bool leaf=newFolder || rename || paste;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetHeaderText(&config,shortcut?"Ярлык: EXE и аргументы":textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
                 swkbdConfigSetGuideText(&config,textLine?"До 500 UTF-16. Для новой строки используйте + строка.":textPath?"Полный путь. Существующий файл не заменяется.":leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 if(textLine)swkbdConfigSetReturnButtonFlag(&config,0);
@@ -2266,7 +2267,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
     }
     newui::g_cx=x;newui::g_cy=y;
     if(shell.CopyRunning())shell.Back();
-    if(!shell.LaunchPath().empty()){g_selectedExePath=shell.LaunchPath();g_selectedCommandLine=shell.LaunchRequest().commandLine;}
+    if(!shell.LaunchPath().empty()){g_selectedExePath=shell.LaunchPath();g_selectedCommandLine=shell.LaunchRequest().commandLine;g_selectedWorkingDirectory=shell.LaunchRequest().workingDirectory;}
     if(outputFailed && !g_appletStopped) {
         newui::CloseOutput();consoleInit(NULL);cpu::g_consoleAvailable=true;
         g_launchStatus="Desktop render unavailable; using text picker.";

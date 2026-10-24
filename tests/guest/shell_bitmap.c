@@ -1,6 +1,7 @@
 /* Public x86 GDI -> actual BMP -> fresh-session reader. No private assets. */
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
@@ -23,7 +24,11 @@ int main(void) {
         file=CreateFileW(argv[2],GENERIC_WRITE,0,0,CREATE_NEW,0,0);CHECK(file!=INVALID_HANDLE_VALUE);
         CHECK(WriteFile(file,fileBytes,78,&count,0) && count==78);CHECK(FlushFileBuffers(file));CHECK(CloseHandle(file));
     } else {
-        CHECK(wcscmp(argv[1],L"read")==0);
+        CHECK(wcscmp(argv[1],L"read")==0 || wcscmp(argv[1],L"read-cwd")==0);
+        if(wcscmp(argv[1],L"read-cwd")==0){wchar_t cwd[512];CHECK(GetCurrentDirectoryW(512,cwd)>0 && wcscmp(cwd,L"C:\\TEMP")==0);
+            CHECK(SHGetSpecialFolderPathW(0,cwd,CSIDL_PROGRAMS,FALSE) && wcscmp(cwd,L"C:\\Documents and Settings\\Player\\Start Menu\\Programs")==0);
+            CHECK(SHGetSpecialFolderPathW(0,cwd,CSIDL_PROGRAM_FILES,FALSE) && wcscmp(cwd,L"C:\\Programs")==0);
+            CHECK(GetEnvironmentVariableW(L"ProgramFiles",cwd,512)>0 && wcscmp(cwd,L"C:\\Programs")==0);}
         file=CreateFileW(argv[2],GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);CHECK(file!=INVALID_HANDLE_VALUE);
         CHECK(ReadFile(file,fileBytes,78,&count,0) && count==78);CHECK(CloseHandle(file));
     }

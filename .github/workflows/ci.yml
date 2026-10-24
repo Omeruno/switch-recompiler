@@ -37,6 +37,19 @@ jobs:
             build-host/guest-run.*/stage_e_acceptance.exe
             docs/STAGE_E_ACCEPTANCE.md
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-f-software-acceptance
+          path: |
+            build-host/stage-f-acceptance.json
+            build-host/guest-run.*/shell_bitmap.exe
+            build-host/guest-run.*/shell_document.exe
+            build-host/guest-run.*/shell_workspace.exe
+            docs/F_ACCEPTANCE.md
+            docs/F3C_SHORTCUTS_TREE.md
+            docs/F4C_WORKSPACE_LAYERS.md
+            docs/F5_FILE_SAVE.md
+
   gpu-reference:
     name: OpenGL pixels and fallback (EGL/Mesa)
     runs-on: ubuntu-latest

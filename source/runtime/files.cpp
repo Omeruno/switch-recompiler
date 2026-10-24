@@ -121,7 +121,7 @@ bool Vfs::ConfigurePersistent(const std::string& systemRoot,const std::string& s
        (!romRoot.empty()&&!next.Mount('R',romRoot,true,5))) {error="cannot mount filesystem roots";return false;}
     // Discard the default standalone mount's cwd; C is the initial current drive.
     next.cwd_="C:\\";next.persistent_=true;
-    for(const char* dir:{"C:\\Programs","C:\\WINDOWS\\system32","C:\\TEMP",
+    for(const char* dir:{"C:\\Programs","C:\\Documents and Settings\\Player\\Start Menu\\Programs","C:\\WINDOWS\\system32","C:\\TEMP",
         "C:\\Documents and Settings\\Player\\Desktop",
         "C:\\Documents and Settings\\Player\\My Documents\\My Pictures",
         "C:\\Documents and Settings\\Player\\Application Data",

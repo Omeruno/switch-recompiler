@@ -133,6 +133,9 @@ HostCallOutcome SpecialFolder(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide)
     if (!dest) { SetLastError(m,ERROR_INVALID_PARAMETER); return Ret(0); }
     std::string path;
     switch(csidl) {
+        case 2:path="C:\\Start Menu\\Programs";break;
+        case 11:path="C:\\Start Menu";break;
+        case 0x26:path="C:\\Programs";break;
         case CSIDL_DESKTOPDIRECTORY: path="C:\\Desktop"; break;
         case CSIDL_PERSONAL: path="C:\\My Documents"; break;
         case CSIDL_MYPICTURES: path="C:\\My Documents\\My Pictures"; break;
@@ -148,7 +151,7 @@ HostCallOutcome SpecialFolder(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide)
     if(rt::FileSystem().Persistent()) {
         const auto profile=rt::FileSystem().ProfileDirectory();
         if(csidl==CSIDL_PROFILE)path=profile;
-        else if(csidl!=CSIDL_COMMON_DOCUMENTS)path=profile+"\\"+path.substr(3);
+        else if(csidl!=CSIDL_COMMON_DOCUMENTS && csidl!=0x26)path=profile+"\\"+path.substr(3);
     }
     if (create) {
         std::string part="C:\\";

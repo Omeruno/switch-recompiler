@@ -123,6 +123,7 @@ int main(int argc,char** argv) {
     gate.Update(0,false);edges=gate.Update(1,true);assert(edges.down==1 && edges.touching);
     for(const auto& path:paths)assert(unlink(path.c_str())==0);
     for(const char* sub:{"/Programs","/WINDOWS/system32","/WINDOWS","/TEMP",
+        "/Documents and Settings/Player/Start Menu/Programs","/Documents and Settings/Player/Start Menu",
         "/Documents and Settings/Player/Desktop","/Documents and Settings/Player/My Documents/My Pictures",
         "/Documents and Settings/Player/My Documents","/Documents and Settings/Player/Application Data",
         "/Documents and Settings/Player/Local Settings/Application Data","/Documents and Settings/Player/Local Settings",

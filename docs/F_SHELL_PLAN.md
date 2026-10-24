@@ -1,3 +1,8 @@
+> Current baseline: **F0–F5 PASS_SOFTWARE_PENDING_HARDWARE**.
+> [Current acceptance ledger/report](F_ACCEPTANCE.md) and [tree/links](F3C_SHORTCUTS_TREE.md)
+> supersede historical open-F3c/F4/F5 notes below. Supported bounded software
+> criteria passed; physical acceptance and the installer/archive extension remain open.
+
 # Stage F: постоянная файловая система и XP-подобная оболочка
 
 Статус: **F1 реализован программно** ([контракт и проверки](F1_FILESYSTEM.md));

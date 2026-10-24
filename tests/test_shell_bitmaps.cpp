@@ -17,7 +17,7 @@ static void Run(Shell& shell,const fs::path& root,ui::ShellLaunchRequest request
     CHECK(rt::FileSystem().ConfigurePersistent(root.string(),"","",error));
     win32::user::PresentationSession platform(true,nullptr);win32::user::EnableUi(1280,720);
     win32::user::ShellSession bridge(shell);CHECK(bridge.Attach("Public GDI bitmap application"));
-    p.SetCommandLine(request.commandLine);CHECK(p.LoadMainExe(request.nativePath,error));CHECK(p.PrepareMainThread(p.MainThread().cpu,error));
+    p.SetCommandLine(request.commandLine);CHECK(p.LoadMainExe(request.nativePath,error));if(!request.workingDirectory.empty())CHECK(rt::FileSystem().SetCurrentDirectory(request.workingDirectory));CHECK(p.PrepareMainThread(p.MainThread().cpu,error));
     const auto probe=p.GetProcAddress(p.MainModule(),"BitmapProbe");CHECK(probe);bool finished=false;
     {
         rt::GuestExecution execution(p,[&](rt::GuestThread& t) {
@@ -52,7 +52,13 @@ int main(int argc,char** argv) {
     const uint32_t expected[]={0xff0000,0x00ff00,0x0000ff,0xffffff,0,0xffff00};
     for(int y=0;y<2;++y)for(int x=0;x<3;++x)CHECK(shell.Image().Pixel(x,y)==expected[y*3+x]);
     shell.Back(); // fresh shell and real x86 process read the same persisted bytes
-    Shell fresh;CHECK(fresh.ConfigureFilesystem(root.string(),"","",error));fresh.Enter();fresh.ToggleStart();Click(fresh,Shell::MenuRun);
+    ui::ShellLink link;link.target="C:\\Programs\\public-bitmap.exe";link.workingDirectory="C:\\TEMP";link.name="Public bitmap";
+    CHECK(rt::BuildCommandLine({"read-cwd",document},link.arguments));
+    CHECK(link.Save(shell.Browser().Filesystem(),"C:\\Documents and Settings\\Player\\Desktop\\Bitmap.lnk"));
+    CHECK(link.Save(shell.Browser().Filesystem(),"C:\\Documents and Settings\\Player\\Start Menu\\Programs\\Bitmap.lnk"));
+    Shell fresh;CHECK(fresh.ConfigureFilesystem(root.string(),"","",error));fresh.Enter();Click(fresh,Shell::DesktopLinkBase);
+    Run(fresh,root,fresh.LaunchRequest());fresh.Enter();fresh.ToggleStart();Click(fresh,Shell::MenuPrograms);fresh.Accept();
+    Run(fresh,root,fresh.LaunchRequest());fresh.Enter();fresh.ToggleStart();Click(fresh,Shell::MenuRun);
     CHECK(rt::BuildCommandLine({"C:\\Programs\\public-bitmap.exe","read",document},command));fresh.CompleteTextInput(true,command);
     Run(fresh,root,fresh.LaunchRequest());CHECK(!rt::g_process && !fresh.GuestActive());
     CHECK(fs::file_size(root/"Documents and Settings/Player/My Documents/рисунок 😀.bmp")==78);

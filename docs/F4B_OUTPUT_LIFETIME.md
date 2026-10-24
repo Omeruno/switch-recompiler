@@ -1,3 +1,8 @@
+> Current integration: [retained workspace layers](F4C_WORKSPACE_LAYERS.md),
+> [tree/persisted links](F3C_SHORTCUTS_TREE.md) and [F0–F5 acceptance](F_ACCEPTANCE.md)
+> now implement the software baseline. Historical “remaining” sections below
+> describe their original package; physical acceptance remains pending.
+
 # F4b.2: persistent frontend and output lifetime
 
 Follows clean `450f1d3` (CI 40081220508, six successful jobs). The functional

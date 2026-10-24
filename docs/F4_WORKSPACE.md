@@ -1,3 +1,8 @@
+> Current integration: [retained workspace layers](F4C_WORKSPACE_LAYERS.md),
+> [tree/persisted links](F3C_SHORTCUTS_TREE.md) and [F0–F5 acceptance](F_ACCEPTANCE.md)
+> now implement the software baseline. Historical “remaining” sections below
+> describe their original package; physical acceptance remains pending.
+
 # F4a: one active application on the native desktop
 
 This package follows F3b at `9c6e4d4`. The user's new priority moves the active
