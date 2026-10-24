@@ -23,6 +23,18 @@ static void Click(Bridge& b,int target) {
     Event(IE::MouseDown,x,y);Event(IE::MouseUp,x,y);CHECK(b.ServiceHost()==Bridge::HostStatus::Running);
 }
 static void Start(Bridge& b) {Event(IE::KeyDown,0,0,0x5B);Event(IE::KeyUp,0,0,0x5B);CHECK(b.ServiceHost()==Bridge::HostStatus::Running);}
+static void Right(Bridge& bridge,const ui::Rect& r) {
+    IE event;event.type=IE::MouseDown;event.button=1;event.x=r.left+10;event.y=r.top+10;pending.push_back(event);
+    event.type=IE::MouseUp;pending.push_back(event);CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);
+}
+static void MenuClick(Bridge& bridge,Shell& shell,int action) {
+    for(size_t i=0;i<shell.ContextCount();++i)if(shell.ContextAction(i)==action) {
+        const auto r=shell.ContextBounds(Shell::ContextBase+int(i));
+        Event(IE::MouseDown,r.left+10,r.top+10);Event(IE::MouseUp,r.left+10,r.top+10);
+        CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);return;
+    }
+    CHECK(false);
+}
 static void Run(Shell& shell,const char* exe,int mode) {
     rt::GuestSession session;auto& p=session.ProcessObject();auto& m=session.Memory();
     user::PresentationSession platform(true,nullptr);
@@ -80,7 +92,17 @@ static void Run(Shell& shell,const char* exe,int mode) {
             for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="clipboard-source.bin") {
                 CHECK(n<Shell::Rows);Click(bridge,Shell::BrowserRowBase+int(n));selectedSource=true;break;
             }
-            CHECK(selectedSource);Click(bridge,Shell::Copy);Click(bridge,Shell::QuickDocuments);
+            CHECK(selectedSource);
+            const auto sourceRow=Shell::Bounds(Shell::BrowserRowBase+int(shell.Browser().Selected()%Shell::Rows));
+            Right(bridge,sourceRow);CHECK(shell.ContextOpen());
+            const auto contextPosts=user::QueueFor(user::Win(hwnd)->threadId).posted.size();
+            Click(bridge,Shell::GuestTask);CHECK(!shell.ContextOpen() && !(user::Win(hwnd)->style&user::WS_MINIMIZE));
+            CHECK(user::QueueFor(user::Win(hwnd)->threadId).posted.size()==contextPosts);
+            Right(bridge,sourceRow);CHECK(shell.ContextOpen());
+            Event(IE::KeyDown,0,0,0x5D);Event(IE::KeyUp,0,0,0x5D);CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running && !shell.ContextOpen());
+            Event(IE::KeyDown,0,0,0x5D);Event(IE::KeyUp,0,0,0x5D);CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running && shell.ContextOpen());
+            Start(bridge);CHECK(shell.ContextOpen() && !shell.StartOpen());
+            MenuClick(bridge,shell,Shell::Copy);CHECK(!shell.ContextOpen());Click(bridge,Shell::QuickDocuments);
             textReply=u"busy-copy.bin";Click(bridge,Shell::Paste);CHECK(shell.CopyRunning());
             const auto beatBeforeCopy=m.Read32(heartbeat);
             unsigned copyPolls=0;
@@ -99,6 +121,10 @@ static void Run(Shell& shell,const char* exe,int mode) {
             CHECK(!std::filesystem::exists(storageRoot+"/Documents and Settings/Player/My Documents/cancel-copy.bin"));
             CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
             Click(bridge,Shell::Close);
+            // A guest-owned right gesture retains ownership over native chrome.
+            IE right;right.type=IE::MouseDown;right.button=1;right.x=400;right.y=250;CHECK(!bridge.Filter(right));
+            right.type=IE::MouseMove;right.x=20;right.y=700;CHECK(!bridge.Filter(right));
+            right.type=IE::MouseUp;CHECK(!bridge.Filter(right));CHECK(!shell.ContextOpen());
             previousBeat=m.Read32(heartbeat);
             if(mode==4)m.Write32(pollMode,1);
             // Queue guest input while it is still executing pure x86 instructions.

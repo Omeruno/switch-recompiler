@@ -1,7 +1,7 @@
 # Functional F: native single-file Copy/Paste
 
 Based on `be95ecb`, exact CI 40092668937 passed all six jobs. This connects
-[checked copy](F_FILE_COPY.md) to the native Explorer. Context menus, directory
+[checked copy](F_FILE_COPY.md) to the native Explorer. [Context menus](F_CONTEXT_ACTIONS.md) now expose the same actions. Directory
 copy and the persistent settings/document queue remain separate work.
 
 ## User flow
@@ -31,7 +31,8 @@ than delivering clicks/keys to the active guest. EndGuest, frontend Enter,
 reconfiguration, selection exit/display failure and object destruction cancel
 unfinished jobs and attempt owned-stage cleanup. Already published copies remain.
 There is no recursive directory copy, Cut, overwrite confirmation, automatic copy
-name, .lnk creation, Windows file clipboard or context menu in this package.
+name, .lnk creation, Windows file clipboard in this package. Context menus are the subsequent
+F_CONTEXT_ACTIONS.md follow-up.
 
 ## One engine, resumable ownership
 
@@ -84,6 +85,6 @@ Run the complete clean MinGW/Mesa host suite, strict no-exceptions/no-RTTI check
 Markdown/diff validation and exact published-SHA six-job CI. Local devkitA64/libnx
 remains unavailable; host tests do not execute the actual Switch input/SD device.
 Physical Paint/GPU/fallback/Lite/input/relaunch acceptance stays deferred; SD
-troubleshooting stays closed. Next: coherent context/right-click/controller
-interaction, then preferences, TXT/images and F5. The [installer/archive plan](F_INSTALL_AND_ARCHIVES.md)
+troubleshooting stays closed. [Context/right-click/controller menus](F_CONTEXT_ACTIONS.md) are connected; next:
+persisted preferences/associations, TXT/images and F5. The [installer/archive plan](F_INSTALL_AND_ARCHIVES.md)
 remains recorded as future functional work.

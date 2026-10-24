@@ -3,7 +3,8 @@
 Based on `975f393` (CI run 40085203929, all six jobs successful). This package
 implements real storage operations and browser model APIs. The follow-up [native file actions](F_FILE_ACTIONS.md) now exposes folder/name
 entry, delete confirmation and properties. The original foundation alone did
-not deliver that end-to-end shell workflow; context menus/copy remain open.
+not deliver that end-to-end shell workflow; [Copy/Paste](F_FILE_PASTE.md) and
+[context menus](F_CONTEXT_ACTIONS.md) were added in follow-ups.
 
 ## Shared storage contract
 
@@ -79,8 +80,8 @@ file bytes in each of its four isolated sessions. The complete
 CI remain required. No proprietary fixture is introduced.
 
 The native-action follow-up connects these operations, confirmation and properties
-with pointer/controller routing. Native Copy/Paste now uses the common resumable engine; next:
-right-click/context actions. Then persisted preferences/associations,
+with pointer/controller routing. Native Copy/Paste uses the common resumable engine and native context actions
+are connected; next: persisted preferences/associations. Then persisted preferences/associations,
 TXT/images and F5 save -> find -> reopen. Luna polish and G optimization remain
 deferred. Local Switch SDK is unavailable; CI compiles the console build.
 Physical Paint/GPU/fallback/input/relaunch acceptance remains deferred, SD closed.

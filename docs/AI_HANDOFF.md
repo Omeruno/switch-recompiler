@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`be95ecb793ba524f7e1d012ec61a21f0027dcb65` (2026-10-24).
-[CI 40092668937](https://github.com/Omeruno/switch-recompiler/actions/runs/40092668937)
+`d8ad9a10f5e5b10f3691571cfa9ef0d70ae476f7` (2026-10-24).
+[CI 40098135433](https://github.com/Omeruno/switch-recompiler/actions/runs/40098135433)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -18,8 +18,9 @@ state and owner-queue window commands. F4b.2 now keeps one frontend worker/devic
 ([scope](F_FILE_OPERATIONS.md)). [Native file actions](F_FILE_ACTIONS.md),
 name entry, delete confirmation and properties are now connected.
 [Checked byte-copy provider/model](F_FILE_COPY.md) and [native Copy/Paste](F_FILE_PASTE.md)
-are implemented with a shared resumable engine, byte progress and cancel; next: coherent L/R
-click and controller actions, preferences/TXT/images and F5 save/find/reopen.
+are implemented with a shared resumable engine, byte progress and cancel.
+[Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
+click, Menu-key and controller actions; next: persisted preferences/associations, TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
@@ -1016,3 +1017,53 @@ harness checks and the extended busy harness passed. Actual native Explorer and
 copy-progress screenshots were inspected. Markdown links/fences and diff checks
 passed. Only documentation changed after the full build. Verify all six CI jobs
 for the exact published SHA; local SDK and physical limitations still apply.
+
+
+## Functional F: native object/current-folder context menus
+
+Fetched clean d8ad9a1/FETCH_HEAD on the requested branch, no newer changes or
+AGENTS.md found; incoming exact CI 40098135433 passed six jobs. Explorer now has
+row right-click object menus, blank-list current-folder menus and reachable File/
+Folder titlebar buttons. Menu/Apps key is handled only with native keyboard focus;
+idle ZR now matches the existing active new-USER secondary button. Supported
+commands invoke the existing production actions; readonly/one-guest restrictions
+remain, folder copy/Cut/archive/installer actions are not fabricated.
+
+Menus retain at most six rows, clamp geometry/shadow to the existing Explorer
+composition rectangle, capture path/type and validate before dispatch. Paging/
+selection/Start/task commands freeze; outside primary click or another right
+press dismisses without click-through/reopening. Paired native/guest gesture
+ownership remains intact. Hover changes menu focus, enabled entries cycle by
+controller/keyboard, and dialogs inherit actual targeting/default Cancel. All
+context state clears on frontend/guest transitions. See F_CONTEXT_ACTIONS.md.
+
+New real-storage tests cover context Copy/Paste/create/rename/delete/properties/
+navigation, geometry, pointer pairing/hover/controller, readonly and stale/type-
+changed objects. Existing seven busy-x86 sessions also exercise right menus,
+Menu-key and Start/task isolation, context Copy and guest-owned right gestures
+before their existing copy/heartbeat/queue/restart checks. Initial harness strict
+compilation required separating a post-loop close assertion; its click helper
+also initially confused browser-row IDs with context IDs. Fixed those test
+issues without runtime workarounds. A preliminary full suite was stopped after
+the final hover-focus fix; only the clean final-tree run counts as validation.
+
+Required gates remain full clean host/MinGW/Mesa, strict compile/execute,
+actual native screenshot/link/diff checks and exact published-SHA six-job CI.
+Local Switch SDK and physical acceptance remain unavailable/deferred; SD closed.
+Next concrete: bounded persisted preferences/associations plus management and
+restart/error checks, then TXT/images/F5. Input refinements, retained workspace
+layers and installer/shortcut/archive future scope remain explicit.
+
+
+Final local context validation: complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final source,
+header and public-fixture tree, including context storage/hover/focus tests,
+seven busy-x86 right/Menu-key/context-Copy/isolation sessions, all previous native
+file actions, incremental copy faults/cancel, filesystem/document/workspace and
+core/USER/legacy lifetimes, Stage C, six E9 groups and both actual EGL oracles.
+Strict -Wall -Wextra -Werror -fno-exceptions -fno-rtti native context harness,
+ShellSession and extended busy harness checks passed. Final actual context
+screenshot inspected; unsupported decorative glyphs were removed from titlebar
+button labels. Markdown links/fences and git diff --check passed. Only docs
+changed after the final build. Verify exact published-SHA six-job CI after push;
+no local Switch SDK or physical acceptance is implied.

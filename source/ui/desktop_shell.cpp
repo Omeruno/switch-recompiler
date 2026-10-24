@@ -72,6 +72,8 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case FileActions:return {876,108,984,138};
+    case FolderActions:return {992,108,1106,138};
     case Copy:return {522,578,628,614};
     case Paste:return {636,578,744,614};
     case NewFolder:return {240,430,406,458};
@@ -125,7 +127,7 @@ void DesktopShell::SetCatalog(const ExecutableCatalog& catalog) {
     errors_=catalog.Errors();truncated_=catalog.Truncated();
 }
 bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
-    browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
+    CloseContext();browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
     return browser_.Configure(system,sd,rom,error);
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
@@ -134,11 +136,13 @@ void DesktopShell::SetGuestActive(const std::string& label) {
     guestLabel_=label.substr(0,240);panel_=Panel::Desktop;Enter();
 }
 void DesktopShell::EndGuest() {
+    CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
     guestActive_=false;guestLabel_.clear();panel_=returnPanel_;focus_=returnFocus_;
     request_.Clear();startOpen_=false;pressed_=None;dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();
 }
 void DesktopShell::Enter() {
+    CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
     dialog_=Dialog::None;operationPath_.clear();operationNotice_.clear();
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
@@ -146,10 +150,16 @@ void DesktopShell::Enter() {
     focus_=panel_==Panel::Programs && !files_.empty()?RowBase+int(selected_%Rows):panel_==Panel::Desktop?Programs:Close;
 }
 bool DesktopShell::Enabled(int t) const {
+    if(contextOpen_)return t>=ContextBase && size_t(t-ContextBase)<contextCount_ && ControlEnabled(contextActions_[size_t(t-ContextBase)]);
+    return ControlEnabled(t);
+}
+bool DesktopShell::ControlEnabled(int t) const {
     if(t==None)return false;
     if(textInput_!=TextInput::None)return false;
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
+    if(t==FileActions)return panel_==Panel::Explorer && !browser_.Entries().empty();
+    if(t==FolderActions)return panel_==Panel::Explorer;
     if(t==Copy)return panel_==Panel::Explorer && !browser_.Entries().empty() && browser_.Entries()[browser_.Selected()].kind==ShellBrowser::Kind::File;
     if(t==Paste)return panel_==Panel::Explorer && !clipboardPath_.empty() && !browser_.Path().empty() && !browser_.ReadOnly();
     if(t==NewFolder)return panel_==Panel::Explorer && !browser_.Path().empty() && !browser_.ReadOnly();
@@ -175,6 +185,10 @@ bool DesktopShell::Enabled(int t) const {
     return t>=Start && t<=Next;
 }
 std::vector<int> DesktopShell::FocusOrder() const {
+    if(contextOpen_) {
+        std::vector<int> out;for(size_t i=0;i<contextCount_;++i)if(Enabled(ContextBase+int(i)))out.push_back(ContextBase+int(i));
+        return out;
+    }
     if(textInput_!=TextInput::None)return {None};
     if(dialog_==Dialog::DeleteConfirm)return {CancelDialog,ConfirmDelete};
     if(dialog_==Dialog::Properties || dialog_==Dialog::CopyProgress)return {CancelDialog};
@@ -187,7 +201,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(panel_==Panel::Explorer) {
         std::vector<int> out;
         if(!browser_.Entries().empty())out.push_back(BrowserRowBase+int(browser_.Selected()%Rows));
-        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Copy,Paste,Previous,Next,OpenWith,Launch,Close,Start})
+        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions,Previous,Next,OpenWith,Launch,Close,Start})
             if(Enabled(t))out.push_back(t);
         return out;
     }
@@ -282,6 +296,61 @@ void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
         const auto document=pendingDocument_;pendingDocument_.clear();browser_.OpenWith(document,path,request_);
     } else OpenBrowser(path);
 }
+Rect DesktopShell::ContextBounds(int target) const {
+    const int row=target-ContextBase;
+    if(!contextOpen_ || row<0 || size_t(row)>=contextCount_)return {};
+    return {contextRect_.left+4,contextRect_.top+4+row*30,contextRect_.right-4,contextRect_.top+34+row*30};
+}
+void DesktopShell::CloseContext() {
+    if(!contextOpen_)return;
+    contextOpen_=false;contextCount_=0;contextPath_.clear();pressed_=hover_=None;focus_=contextReturnFocus_;
+}
+void DesktopShell::ShowContext(bool folder,int x,int y) {
+    if(ModalActive() || startOpen_ || panel_!=Panel::Explorer)return;
+    if(!folder && browser_.Entries().empty())folder=true;
+    contextCount_=0;contextPath_.clear();contextParent_=browser_.Path();contextReturnFocus_=focus_;
+    auto add=[&](int action){contextActions_[contextCount_++]=action;};
+    if(folder){add(Paste);add(NewFolder);add(Refresh);}
+    else {
+        const auto& entry=browser_.Entries()[browser_.Selected()];contextPath_=entry.path;contextFile_=entry.kind==ShellBrowser::Kind::File;
+        add(Launch);
+        if(browser_.CanChooseApplication())add(OpenWith);
+        if(entry.kind==ShellBrowser::Kind::File)add(Copy);
+        if(entry.kind!=ShellBrowser::Kind::Drive){add(Rename);add(Delete);}
+        add(Properties);
+    }
+    const int height=8+int(contextCount_)*30;
+    x=std::max(422,std::min(x,1138-252));y=std::max(184,std::min(y,554-height));
+    contextRect_={x,y,x+252,y+height};contextOpen_=true;pressed_=hover_=None;
+    const auto order=FocusOrder();focus_=order.front();
+}
+void DesktopShell::OpenContext(bool folder) {
+    if(contextOpen_){CloseContext();return;}
+    const auto row=Bounds(BrowserRowBase+int(browser_.Selected()%Rows));
+    ShowContext(folder || focus_==FolderActions,row.left+40,row.top);
+}
+int DesktopShell::SecondaryTarget(int x,int y) const {
+    if(!Rect(422,184,1138,554).Contains(x,y))return -2;
+    const int target=HitTest(x,y);
+    return target>=BrowserRowBase && target<BrowserRowBase+Rows && Enabled(target)?target:-1;
+}
+void DesktopShell::SecondaryDown(int x,int y) {
+    secondaryTarget_=-2;
+    if(contextOpen_){CloseContext();return;}
+    if(ModalActive() || startOpen_ || panel_!=Panel::Explorer || pressed_!=None)return;
+    secondaryTarget_=SecondaryTarget(x,y);secondaryParent_=browser_.Path();secondaryPath_.clear();
+    if(secondaryTarget_>=BrowserRowBase)secondaryPath_=browser_.Entries()[browser_.Selected()/Rows*Rows+size_t(secondaryTarget_-BrowserRowBase)].path;
+}
+void DesktopShell::SecondaryUp(int x,int y) {
+    const int target=secondaryTarget_;secondaryTarget_=-2;
+    if(target==-2 || ModalActive() || startOpen_ || secondaryParent_!=browser_.Path() || target!=SecondaryTarget(x,y))return;
+    if(target>=BrowserRowBase) {
+        const auto index=browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase);
+        if(index>=browser_.Entries().size() || browser_.Entries()[index].path!=secondaryPath_)return;
+        browser_.Select(index);FocusBrowserSelection();
+    }
+    ShowContext(target==-1,x,y);
+}
 void DesktopShell::ToggleStart() {
     if(ModalActive())return;
     pressed_=None;
@@ -312,7 +381,8 @@ void DesktopShell::Page(int delta) {
 }
 void DesktopShell::Accept() {Activate(focus_);}
 void DesktopShell::Back() {
-    pressed_=None;
+    pressed_=None;secondaryTarget_=-2;
+    if(contextOpen_){CloseContext();return;}
     if(textInput_!=TextInput::None){CompleteTextInput(false,"");return;}
     if(dialog_!=Dialog::None){const bool copying=dialog_==Dialog::CopyProgress;CloseDialog();if(copying)operationNotice_=u"Копирование отменено. Файл назначения не создан.";return;}
     if(startOpen_){ToggleStart();}
@@ -321,6 +391,10 @@ void DesktopShell::Back() {
     else if(!guestActive_)exit_=true;
 }
 int DesktopShell::HitTest(int x,int y) const {
+    if(contextOpen_) {
+        for(size_t i=0;i<contextCount_;++i)if(ContextBounds(ContextBase+int(i)).Contains(x,y))return ContextBase+int(i);
+        return None;
+    }
     if(textInput_!=TextInput::None)return None;
     if(dialog_!=Dialog::None) {
         if(Bounds(CancelDialog).Contains(x,y))return CancelDialog;
@@ -335,7 +409,7 @@ int DesktopShell::HitTest(int x,int y) const {
     if(panel_!=Panel::Desktop) {
         if(Bounds(Close).Contains(x,y))return Close;
         if(panel_==Panel::Explorer) {
-            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties,Copy,Paste})if(Bounds(t).Contains(x,y))return t;
+            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties,Copy,Paste,FileActions,FolderActions})if(Bounds(t).Contains(x,y))return t;
             for(int i=0;i<Rows;++i)if(Bounds(BrowserRowBase+i).Contains(x,y))return BrowserRowBase+i;
         }
         if(panel_==Panel::Programs) {
@@ -347,12 +421,12 @@ int DesktopShell::HitTest(int x,int y) const {
     for(int t:{Programs,Computer,Documents})if(Bounds(t).Contains(x,y))return t;
     return None;
 }
-void DesktopShell::PointerMove(int x,int y) {hover_=HitTest(x,y);}
-void DesktopShell::PointerDown(int x,int y) {PointerMove(x,y);pressed_=hover_;}
+void DesktopShell::PointerMove(int x,int y) {hover_=HitTest(x,y);if(contextOpen_ && Enabled(hover_))focus_=hover_;}
+void DesktopShell::PointerDown(int x,int y) {secondaryTarget_=-2;PointerMove(x,y);pressed_=hover_;}
 void DesktopShell::PointerUp(int x,int y) {
     PointerMove(x,y);const int target=pressed_;pressed_=None;
     if(target!=hover_)return;
-    if(target==None){if(startOpen_){ToggleStart();}return;}
+    if(target==None){if(contextOpen_)CloseContext();else if(startOpen_){ToggleStart();}return;}
     if(!Enabled(target))return;
     focus_=target;
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));return;}
@@ -365,10 +439,25 @@ void DesktopShell::PointerUp(int x,int y) {
 }
 void DesktopShell::Activate(int target) {
     if(!Enabled(target))return;
+    if(contextOpen_) {
+        const int action=contextActions_[size_t(target-ContextBase)];
+        const auto path=contextPath_;const auto parent=contextParent_;const bool file=contextFile_;
+        CloseContext();
+        if(browser_.Path()!=parent || (!path.empty() && (browser_.Entries().empty() || browser_.Entries()[browser_.Selected()].path!=path))) {
+            operationNotice_=u"Выделение изменилось. Откройте меню снова.";return;
+        }
+        if(!path.empty()) {
+            rt::FileProperties current;if(!browser_.SelectedProperties(current))return;
+            if((current.kind==rt::FileProperties::Kind::File)!=file){operationNotice_=u"Тип объекта изменился. Обновите список.";return;}
+        }
+        Activate(action);return;
+    }
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));OpenCurrent();return;}
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case FileActions:OpenContext(false);break;
+    case FolderActions:OpenContext(true);break;
     case Copy:
         if(CaptureSelection()) {
             clipboardPath_=operationPath_;clipboardName_=browser_.Entries()[browser_.Selected()].name;operationPath_.clear();
@@ -452,6 +541,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         Gradient(s,{220,112,1158,146},0x0868F4,0x0347BD);
         Text(s,{234,110,1100,142},panel_==Panel::Programs?u"Все программы — запуск EXE":panel_==Panel::Explorer?u"Проводник":u"О Switch Recompiler",0xFFFFFF,20,true);
         control(Close,u"×",Bounds(Close));
+        if(panel_==Panel::Explorer){control(FileActions,u"Файл",Bounds(FileActions));control(FolderActions,u"Папка",Bounds(FolderActions));}
         if(panel_==Panel::Programs) {
             Fill(s,{240,184,1138,554},0xFFFFFF);Frame(s,{239,183,1139,555},0x9EACB9);
             Text(s,{240,151,1138,179},u"ROMFS / SD / drive_c/Programs  •  Список доступных программ",0x42576B,14);
@@ -556,6 +646,19 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         }
         Text(s,{258,538,466,602},guestActive_?u"Одно приложение за раз":browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
         Gradient(s,{2,622,478,678},0x3282D6,0x1C61B5);control(Exit,u"Выйти в Homebrew",Bounds(Exit));
+    }
+    if(contextOpen_) {
+        Fill(s,{contextRect_.left+3,contextRect_.top+3,contextRect_.right+3,contextRect_.bottom+3},0x526477);
+        Fill(s,contextRect_,0xFFFFFF);Frame(s,contextRect_,0x52779D);
+        for(size_t i=0;i<contextCount_;++i) {
+            const int target=ContextBase+int(i),action=contextActions_[i];const auto r=ContextBounds(target);
+            const bool enabled=Enabled(target),hot=enabled && (focus_==target || hover_==target);
+            if(hot)Fill(s,r,pressed_==target?0x1D4C99:0x316AC5);
+            const auto label=action==Launch?u"Открыть":action==OpenWith?u"Выбрать приложение…":action==Copy?u"Копировать":
+                action==Rename?u"Переименовать…":action==Delete?u"Удалить…":action==Properties?u"Свойства":
+                action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
+            Text(s,{r.left+12,r.top+6,r.right-8,r.bottom-2},label,!enabled?0x8793A0:hot?0xFFFFFF:0x162B47,16);
+        }
     }
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);

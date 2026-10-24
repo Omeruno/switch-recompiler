@@ -3,7 +3,8 @@
 Based on `6ac9aa0`, exact CI 40087919426 passed all six jobs. The shared provider
 now implements checked CopyFile; KERNEL32 CopyFileA/W use it, and ShellBrowser
 CopyHere exposes a no-overwrite model operation. [Native Copy/Paste](F_FILE_PASTE.md) now exposes a shell file clipboard, name
-entry, resumable progress and cancellation. Context menus remain open.
+entry, resumable progress and cancellation. [Context menus](F_CONTEXT_ACTIONS.md)
+now use those same real operations.
 
 ## Data and error contract
 
@@ -66,5 +67,5 @@ Local Switch SDK remains absent; CI compile is not physical SD/fsync/rename
 acceptance. Hardware Paint/GPU/fallback/input/relaunch checks remain deferred;
 SD diagnosis stays closed.
 
-Native Copy/Paste is connected; next: coherent context/controller input; then preferences/TXT/images/F5. [Installer/archive import](F_INSTALL_AND_ARCHIVES.md)
+Native Copy/Paste and context actions are connected; next: persisted preferences/associations; then preferences/TXT/images/F5. [Installer/archive import](F_INSTALL_AND_ARCHIVES.md)
 is a separate planned functional extension with explicit compatibility gates.

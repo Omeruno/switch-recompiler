@@ -192,6 +192,7 @@ bool ShellSession::Filter(const InputEvent& e) {
         case 0x26:shell_.Move(-1);break;case 0x28:shell_.Move(1);break;
         case 0x25:shell_.Page(-1);break;case 0x27:shell_.Page(1);break;
         case 0x09:shell_.NextFocus();break;case 0x0D:shell_.Accept();break;
+        case 0x5D:shell_.OpenContext();break;
         case 0x1B:shell_.Back();keyboard_=shell_.StartOpen() || shell_.ActivePanel()!=Shell::Panel::Desktop;break;
         default:break;
         }
@@ -207,6 +208,7 @@ bool ShellSession::Filter(const InputEvent& e) {
             taskPressed_=!shell_.ModalActive() && Shell::Bounds(Shell::GuestTask).Contains(e.x,e.y);
             shell_.PointerDown(e.x,e.y);
         }
+        if(button==1)shell_.SecondaryDown(e.x,e.y);
         Refresh();return true;
     }
     if(e.type==IE::MouseUp) {
@@ -218,6 +220,7 @@ bool ShellSession::Filter(const InputEvent& e) {
             taskPressed_=false;
             if(task)ToggleTask();else shell_.PointerUp(e.x,e.y);
         }
+        if(button==1)shell_.SecondaryUp(e.x,e.y);
         Refresh();return true;
     }
     if(e.type==IE::MouseMove || e.type==IE::Wheel) {

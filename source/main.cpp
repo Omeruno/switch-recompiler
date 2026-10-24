@@ -2166,7 +2166,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
     padUpdate(&g_pad);HidTouchScreenState touch{};
     const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
     gate.Reset(padGetButtons(&g_pad),touching);motion.ResetTime(rt::Clock::NowUs());
-    float x=newui::g_cx,y=newui::g_cy;bool wasTouching=false,pointerHeld=false,keyboard=true,dirty=true,outputFailed=false;
+    float x=newui::g_cx,y=newui::g_cy;bool wasTouching=false,pointerHeld=false,secondaryHeld=false,keyboard=true,dirty=true,outputFailed=false;
     std::u16string lastClock;
     if(autoLaunch) {
         shell.Render(surface,newui::DeviceClock());
@@ -2193,7 +2193,8 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
         const u64 down=edges.down;
         if(down&HidNpadButton_Plus)break;
         const u64 navigation=down&(HidNpadButton_R|HidNpadButton_B|HidNpadButton_Up|HidNpadButton_Down|HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_X|HidNpadButton_Y);
-        if(navigation){shell.CancelPointer();pointerHeld=false;gate.Reset(padGetButtons(&g_pad),rawTouch);}
+        if(navigation){shell.CancelPointer();pointerHeld=false;secondaryHeld=false;gate.Reset(padGetButtons(&g_pad),rawTouch);}
+        if(down&HidNpadButton_ZR)keyboard=false;
         if(down&HidNpadButton_R){shell.ToggleStart();keyboard=true;}
         if(down&HidNpadButton_B){shell.Back();keyboard=true;}
         if(down&HidNpadButton_Up){shell.Move(-1);keyboard=true;}
@@ -2206,6 +2207,10 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
         if(contact && !pointerHeld)shell.PointerDown(int(x),int(y));
         if(!contact && pointerHeld)shell.PointerUp(int(x),int(y));
         pointerHeld=contact;
+        const bool secondary=!navigation && (edges.held&HidNpadButton_ZR);
+        if(secondary && !secondaryHeld)shell.SecondaryDown(int(x),int(y));
+        if(!secondary && secondaryHeld)shell.SecondaryUp(int(x),int(y));
+        secondaryHeld=secondary;
         dirty=dirty || down || edges.up || acceptedTouch!=wasTouching;wasTouching=acceptedTouch;
         if(shell.PendingTextInput()!=ui::DesktopShell::TextInput::None) {
             // Shell keyboard uses no guest USER state or newui::Blit binding.
@@ -2232,7 +2237,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             padUpdate(&g_pad);touch={};
             const bool heldTouch=hidGetTouchScreenStates(&touch,1) && touch.count>0;
             gate.Reset(padGetButtons(&g_pad),heldTouch);shell.CancelPointer();
-            pointerHeld=false;wasTouching=false;keyboard=true;dirty=true;
+            pointerHeld=false;secondaryHeld=false;wasTouching=false;keyboard=true;dirty=true;
             motion.ResetTime(rt::Clock::NowUs());
         }
         if(shell.ServiceCopy())dirty=true;

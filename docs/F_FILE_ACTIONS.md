@@ -11,8 +11,9 @@ operate on actual C/S/R paths using the shared browser/provider methods. Folder
 creation and rename invoke the existing native text-entry adapter; enter one
 name without quotes/path separators. Cancellation does not mutate storage.
 Invalid names, collisions, missing parents, readonly media, wrong types and
-nonempty directories retain actual errors. No copy, recursive delete, recycle
-bin, multiselection or right-click context menu is advertised yet.
+nonempty directories retain actual errors. [Copy/Paste](F_FILE_PASTE.md) and [right-click context menus](F_CONTEXT_ACTIONS.md)
+were added in follow-ups. Recursive delete, recycle bin and multiselection
+remain unsupported.
 
 Mutations are disabled at virtual My Computer/drive entries and on readonly R.
 Properties can inspect a selected file, folder or backing drive-root directory.
@@ -80,8 +81,8 @@ checks and exact published-SHA six-job CI.
 
 The [checked-copy provider](F_FILE_COPY.md) now implements explicit I/O/staging
 semantics. [Native Copy/Paste](F_FILE_PASTE.md) now adds a shell file clipboard, progress and
-cancellation. Next: coherent
-right-click/context actions and further controller interaction, persisted
+cancellation; [context menus](F_CONTEXT_ACTIONS.md) now add paired right-click
+and controller actions. Next: persisted
 preferences/associations, TXT/images and F5 save/find/reopen. Separate retained
 native/guest GPU planes, D compatibility and measured G remain open. No complete
 Windows environment, local Switch SDK or physical Paint/GPU/fallback/input/
