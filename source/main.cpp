@@ -360,9 +360,8 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
             executionLog.Complete("Native shell initialization failed",8,0);return;
         }
         newui::g_shellSession=shellSession.get();
-        // F4a composes native chrome in a bounded CPU image before GPU/software
-        // output. Existing retained window layers remain available without it.
-        win32::user::EnableWindowLayers(false);
+        // Retain guest windows and a separate native plane. Canonical composed
+        // RGB remains available for readback/software/allocation fallback.
     }
 
     // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
@@ -1888,7 +1887,10 @@ bool DrawDesktop(const ui::Surface& s,int x,int y,bool cursor) {
 void Present(const ui::Surface& s) {
     if(g_shellSession) {
         g_shellSession->SetClock(DeviceClock());
-        if(g_presentation.Submit(g_shellSession->Compose(s)))Blit();else g_outputFailed=true;
+        const auto& canonical=g_shellSession->Compose(s);
+        const auto scene=g_gpuActive?g_shellSession->Scene():ui::WindowSceneView{};
+        const bool submitted=scene.owners?g_presentation.Submit(canonical,scene):g_presentation.Submit(canonical);
+        if(submitted)Blit();else g_outputFailed=true;
         return;
     }
     const bool submitted=g_gpuActive && win32::user::S().windowLayers.Enabled()

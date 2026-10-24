@@ -6,6 +6,7 @@
 #include "source/win32/presentation_session.h"
 #include "source/ui/presentation.h"
 #include "source/ui/font.h"
+#include "workspace_layer_oracle.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -15,6 +16,7 @@ namespace user=win32::user;
 using IE=user::InputEvent;using Shell=ui::DesktopShell;
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"workspace line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 static std::vector<IE> pending;
+static WorkspaceLayerOracle* oracle=nullptr;
 static std::function<void()> inspection;
 static void Send(IE::Type type,int x=0,int y=0,uint32_t vk=0) {
     IE e;e.type=type;e.x=x;e.y=y;e.vk=vk;pending.push_back(e);
@@ -40,6 +42,7 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
         user::g_platform.wait=[](int,std::vector<IE>& out){out.swap(pending);return true;};
         user::EnableUi(1280,720);
         user::ShellSession bridge(shell);CHECK(bridge.Attach("Public workspace application"));bridge.SetClock(u"14:32");
+        auto checkLayers=[&](){const auto& canonical=bridge.Compose(user::S().screen.s);const auto scene=bridge.Scene();oracle->Check(canonical,scene);};
         CHECK(user::EnableWindowLayers(true)); // background writes also invalidate canonical ownership
         std::string error;CHECK(p.LoadMainExe(exe,error));CHECK(p.PrepareMainThread(p.MainThread().cpu,error));
         const auto stage=p.GetProcAddress(p.MainModule(),"WorkspaceStage"),finish=p.GetProcAddress(p.MainModule(),"WorkspaceFinish");
@@ -53,15 +56,17 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
                 for(auto h:handles)rects.push_back(user::Win(h)->rect);
                 CHECK(user::S().screen.s.Get(1220,200)==0x3A6EA5);
                 const auto& image=bridge.Compose(user::S().screen.s);CHECK(image.Get(1220,200)==0x3A6EA5);
-                Snapshot(image,screenshot);
+                Snapshot(image,screenshot);oracle->Check(image,bridge.Scene());
                 // Actual production ingestion filters both keyboard edges before USER queues.
                 const auto screenChanges=ui::g_gdi.ScreenChangeCounter();
                 const auto revision=user::g_platform.shellRevision(user::g_platform.shellContext);
                 Start();CHECK(shell.StartOpen());CHECK(user::Q().input.empty());
+                checkLayers();
                 CHECK(ui::g_gdi.ScreenChangeCounter()==screenChanges);
                 CHECK(user::g_platform.shellRevision(user::g_platform.shellContext)>revision);
                 Start();CHECK(!shell.StartOpen());
                 Click(Shell::GuestTask);for(auto h:handles)CHECK(user::Win(h)->style&user::WS_MINIMIZE);
+                checkLayers();
                 CHECK(user::S().screen.s.Get(400,250)==0x3A6EA5);
                 Click(Shell::GuestTask);
                 for(size_t n=0;n<handles.size();++n)CHECK(user::Win(handles[n])->rect==rects[n]);
@@ -73,6 +78,7 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
                 // No click-through; shell explorer uses its host VFS and cannot launch another EXE.
                 Start();Click(Shell::MenuComputer);CHECK(shell.ActivePanel()==Shell::Panel::Explorer);
                 CHECK(!shell.Enabled(Shell::MenuRun));CHECK(!shell.Enabled(Shell::Exit));
+                checkLayers();
                 Click(Shell::Close);CHECK(shell.ActivePanel()==Shell::Panel::Desktop);
                 Start();Click(Shell::MenuPrograms);CHECK(shell.Count()==1);
                 shell.Accept();CHECK(shell.LaunchPath().empty() && shell.PendingTextInput()==Shell::TextInput::None);
@@ -104,10 +110,10 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
         inspection={};CHECK(finished);
     }
     CHECK(user::g_platform.filterInput==previous.filterInput && user::g_platform.shellContext==previous.shellContext);
-    CHECK(!shell.GuestActive());CHECK(!rt::g_process);pending.clear();
+    CHECK(!shell.GuestActive());CHECK(!rt::g_process);pending.clear();oracle->Replay();
 }
 int main(int argc,char** argv) {
-    CHECK(argc>=2);ui::FontCache::SetDirectory("romfs/fonts");
+    CHECK(argc>=2);WorkspaceLayerOracle checks;oracle=&checks;ui::FontCache::SetDirectory("romfs/fonts");
     ui::FontDesc font;font.face="Liberation Sans";font.height=-16;CHECK(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);
     char path[]="/tmp/sr-workspace-XXXXXX";CHECK(mkdtemp(path));
     struct Cleanup{std::string path;~Cleanup(){std::filesystem::remove_all(path);}} cleanup{path};
@@ -128,6 +134,10 @@ int main(int argc,char** argv) {
          CHECK(!shell.GuestActive() && !user::g_platform.filterInput && user::WorkArea().bottom==720);}
         CHECK(allocator.live==0);
     }
+    {rt::GuestSession guest;user::EnableUi(1280,720);Allocator allocator;allocator.fail=3;
+     {user::ShellSession bridge(shell,&allocator);CHECK(bridge.Attach("optional layer allocation"));
+      CHECK(!bridge.Scene().owners && bridge.Compose(user::S().screen.s).Valid());}
+     CHECK(allocator.live==0 && !shell.GuestActive());}
     {rt::GuestSession guest;user::EnableUi(1280,720);user::ShellSession bridge(shell);CHECK(bridge.Attach("missing.exe"));
      CHECK(!guest.ProcessObject().LoadMainExe(std::string(path)+"/missing.exe",error));}
     CHECK(!shell.GuestActive() && !user::g_platform.filterInput);

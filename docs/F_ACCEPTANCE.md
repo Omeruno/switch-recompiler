@@ -16,7 +16,7 @@ award completion to future work or replace physical Switch acceptance.
 | F3 state | Persisted validated settings and document associations | Sort/associations implemented; final scope audit open |
 | F3 shortcuts | Persisted target/arguments/CWD, actual Desktop/Start discovery and validated launch | Open |
 | F4 input/lifetime | Native service independent of guest USER, real owner commands, one output across sessions | Implemented, public busy/session regressions exist |
-| F4 layers | Retained native + guest planes, exact CPU/GL ownership/fallback oracle, owned replay | Open; current shell path flattens and disables window layers |
+| F4 layers | Retained native + guest planes, exact CPU/GL ownership/fallback oracle, owned replay | [Implemented retained integration](F4C_WORKSPACE_LAYERS.md); canonical software fallback retained |
 | F5 save correctness | Real guest read/write/flush/fsync/size/truncate errors, HANDLE access/alias lifetime | [Implemented synchronous subset](F5_FILE_SAVE.md); integrated acceptance pending |
 | F5 whole workflow | Public guest Start -> save -> return -> find -> reopen after fresh frontend, supported failures | TXT/BMP slices exist; combined acceptance pending |
 | Regression/artifact | Full host/MinGW/Mesa, exact-SHA six-job CI, revision-matched NRO and current documents | Required after every completed code package |

@@ -21,6 +21,7 @@ public:
     HostStatus Status() const {return status_;}
     size_t PendingGuestInput() const {return inputCount_;}
     const ui::Surface& Compose(const ui::Surface& guest);
+    ui::WindowSceneView Scene(); // optional owned ownership map; empty selects flat fallback
     void SetClock(const std::u16string& clock);
     bool Filter(const InputEvent& event);
     void PaintBackground(ui::Surface& target,const Region& clip);
@@ -37,7 +38,9 @@ private:
     void ToggleTask();
     ui::DesktopShell& shell_;
     Platform previous_;
-    ui::PresentationBuffer<uint32_t> background_,chrome_,output_;
+    ui::PresentationBuffer<uint32_t> background_,chrome_,output_,owners_;
+    std::array<ui::WindowLayerView,ui::WindowLayers::MaxLayers> sceneLayers_{};
+    uint64_t sceneGeneration_=0;
     ui::Surface backgroundSurface_,chromeSurface_,outputSurface_;
     std::u16string clock_;
     std::vector<uint32_t> minimized_,pendingTask_;

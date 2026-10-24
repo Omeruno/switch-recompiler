@@ -1,6 +1,7 @@
 #include "shell_session.h"
 #include "../runtime/guest_execution.h"
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 
 namespace win32::user {
@@ -15,7 +16,9 @@ void Copy(ui::Surface& dst,const ui::Surface& src,Rect rect) {
 }
 }
 ShellSession::ShellSession(ui::DesktopShell& shell,ui::PresentationAllocator* allocator)
-    :shell_(shell),previous_(g_platform),background_(allocator),chrome_(allocator),output_(allocator) {}
+    :shell_(shell),previous_(g_platform),background_(allocator),chrome_(allocator),output_(allocator),owners_(allocator) {
+    static std::atomic<uint64_t> generation{0};sceneGeneration_=++generation;
+}
 ShellSession::~ShellSession() {
     if(!ready_)return;
     g_platform=previous_;S().workBottom=previousWorkBottom_;shell_.EndGuest();
@@ -107,6 +110,37 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)Copy(outputSurface_,chromeSurface_,{396,196,1034,552});
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return outputSurface_;
+}
+ui::WindowSceneView ShellSession::Scene() {
+    if(!ready_ || !owners_.Resize(size_t(W)*H))return {};
+    const auto guest=S().windowLayers.Scene();
+    if(guest.owners && guest.width==W && guest.height==H)std::memcpy(owners_.data(),guest.owners,size_t(W)*H*4);
+    else std::fill(owners_.data(),owners_.data()+owners_.size(),0);
+    uint32_t nativeToken=0xffffffffu;
+    for(;;) {
+        bool used=false;for(size_t n=0;n<guest.count;++n)if(guest.layers[n].token==nativeToken){used=true;break;}
+        if(!used)break;
+        --nativeToken;
+    }
+    size_t count=0,bytes=size_t(W)*H*4;
+    for(size_t n=0;n<guest.count && count+1<sceneLayers_.size();++n) {
+        const auto& layer=guest.layers[n];if(!layer.surface)continue;
+        const auto size=uint64_t(layer.surface->width)*layer.surface->height*4;
+        if(size>ui::WindowLayers::MaxPixelBytes-bytes)continue;
+        sceneLayers_[count++]=layer;bytes+=size_t(size);
+    }
+    sceneLayers_[count++]={&chromeSurface_,nativeToken,0,0,sceneGeneration_,nullptr};
+    auto cover=[&](Rect rect) {
+        rect=rect.Intersect({0,0,W,H});
+        for(int y=rect.top;y<rect.bottom;++y)for(int x=rect.left;x<rect.right;++x)owners_[size_t(y)*W+x]=nativeToken;
+    };
+    cover({0,680,W,H});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover({218,100,1166,630});
+    if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)cover({396,196,1034,552});
+    if(shell_.StartOpen())cover({0,284,484,680});
+    // Unretained guest owners reconcile to canonical RGB in PresentationLayers.
+    // No borrowed window pointer survives the synchronous Presentation::Submit.
+    return {owners_.data(),W,H,sceneLayers_.data(),count,false,nullptr,sceneGeneration_};
 }
 bool ShellSession::ShellPoint(int x,int y) const {
     if(y>=680 || shell_.StartOpen() || shell_.ModalActive())return true;

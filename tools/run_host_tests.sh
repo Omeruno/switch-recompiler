@@ -254,6 +254,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         for obj in $src; do
             case "$obj" in */opengl_presentation.o) ;; *) glsrc="$glsrc $obj" ;; esac
         done
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_shell_workspace.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $glsrc -lEGL -lGL -o "$out/test_shell_workspace_gl" &&
+           (cd "$root" && EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_shell_workspace_gl" "$guestRoot/shell_workspace.exe") > "$out/shell_workspace_gl.log" 2>&1; then
+            tail -n 1 "$out/shell_workspace_gl.log"
+        else
+            echo "   WORKSPACE NATIVE/GUEST GL LAYERS FAILED"
+            tail -n 25 "$out/shell_workspace_gl.log" 2>/dev/null || true
+            failed=1
+        fi
         if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_composition_guest.cpp" \
            "$root/source/ui/opengl_presentation.cpp" $glsrc -lEGL -lGL -o "$out/test_composition_gl" &&
            EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_composition_gl" "$guestRoot/gui_composition.exe" > "$out/composition_gl_native.log" 2>&1 &&

@@ -1276,3 +1276,27 @@ still passes. Complete clean rootless MinGW/Mesa suite passed final runtime and
 fixture tree, all previous F/C/six E9 and both real EGL oracles included. Strict
 API compilation/native harness passed; exact new-SHA six-job CI follows normal
 publication. Local SDK absent, physical gates deferred, SD closed.
+
+
+## Whole-F closure: retained workspace layer integration
+
+Incoming 1f0572a exact CI 40136895969 passed all six jobs. Whole-F task continues:
+no final F-complete report yet. ShellSession now builds an optional bounded
+ownership map and scene with real guest window surfaces plus independent native
+plane/token/session generation. Switch keeps window raster retention enabled and
+submits this scene to existing Presentation/GPU; canonical CPU composition remains
+software/allocation/driver fallback and guest readback remains untouched. Scene
+48-layer/16 MiB budget includes native, excess guest ownership reconciles to CPU.
+Optional buffer failure gives a valid flat scene. See F4C_WORKSPACE_LAYERS.md.
+
+Extended real-x86 workspace normal/abort/restart checks compare retained software
+and actual EGL/Mesa output pixel-for-pixel, Start/Explorer/minimize/restore,
+poisoned output padding and owned replay after whole guest destruction. Optional
+scene allocation failure and all old required allocation/teardown cases pass.
+Scene integration intentionally uses conservative copy/compare, not native E7
+write-through epochs or a speedup claim. Complete clean rootless MinGW/Mesa suite
+passed final runtime/header/fixture tree, including workspace GL and both existing
+28-scene GL oracles, all file-save/native/guest/Stage C/E lifetime regressions.
+Targeted strict check passed before final full suite. Normal publication and exact
+new-SHA CI follow; no local SDK or physical acceptance is implied. Next within
+the same whole-F task: folder tree and persisted real Desktop/Start shortcuts.
