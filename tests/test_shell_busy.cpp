@@ -5,6 +5,7 @@
 #include "source/win32/shell_session.h"
 #include "source/win32/presentation_session.h"
 #include "source/ui/font.h"
+#include "bitmap_fixture.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -146,7 +147,22 @@ static void Run(Shell& shell,const char* exe,int mode) {
             Click(bridge,Shell::CancelDialog);CHECK(!shell.ModalActive());
             Click(bridge,Shell::Delete);Click(bridge,Shell::ConfirmDelete);CHECK(!std::filesystem::exists(notePath));
             CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
-            Click(bridge,Shell::Close);
+            const auto bmpPath=storageRoot+"/Documents and Settings/Player/My Documents/busy.bmp";
+            {const auto bmp=bitmap_fixture::Make(900,500);std::ofstream f(bmpPath,std::ios::binary);f.write(reinterpret_cast<const char*>(bmp.data()),bmp.size());}
+            Click(bridge,Shell::Refresh);
+            for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="busy.bmp"){CHECK(n<Shell::Rows);Click(bridge,Shell::BrowserRowBase+int(n));break;}
+            Click(bridge,Shell::FileActions);MenuClick(bridge,shell,Shell::ImageOpen);CHECK(shell.ActiveDialog()==Shell::Dialog::ImageViewer);
+            Click(bridge,Shell::ImageActual);Event(IE::KeyDown,0,0,0x27);Event(IE::KeyUp,0,0,0x27);CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);
+            CHECK(shell.ImagePanX()==32);const auto imageBeat=m.Read32(heartbeat);
+            for(unsigned step=0;step<16;++step)execution.RunOne();
+            CHECK(m.Read32(heartbeat)!=imageBeat);
+            ui::OwnedSurface nativeImage;nativeImage.Allocate(1280,720);shell.Render(nativeImage.s,u"");
+            const auto& imageFrame=bridge.Compose(user::S().screen.s);
+            for(int y=196;y<552;++y)for(int x=396;x<1034;++x)CHECK(imageFrame.Get(x,y)==nativeImage.s.Get(x,y));
+            CHECK(imageFrame.Get(Shell::ImageViewport().left,Shell::ImageViewport().top)==bitmap_fixture::Color(32,0));
+            Start(bridge);CHECK(shell.ModalActive() && !shell.StartOpen());Click(bridge,Shell::CancelDialog);
+            CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
+            std::filesystem::remove(bmpPath);Click(bridge,Shell::Close);
             // A guest-owned right gesture retains ownership over native chrome.
             IE right;right.type=IE::MouseDown;right.button=1;right.x=400;right.y=250;CHECK(!bridge.Filter(right));
             right.type=IE::MouseMove;right.x=20;right.y=700;CHECK(!bridge.Filter(right));

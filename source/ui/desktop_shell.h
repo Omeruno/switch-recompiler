@@ -4,6 +4,7 @@
 #include "surface.h"
 #include "shell_browser.h"
 #include "text_document.h"
+#include "bitmap_document.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -17,10 +18,15 @@ public:
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,TextLineBase=300};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,ImageOpen=68,ImageFit=69,ImageActual=70,TextLineBase=300};
     enum class Panel {Desktop,Programs,About,Explorer};
     enum class TextInput {None,Address,Run,OpenWith,NewFolder,Rename,PasteName,AssociationApplication,TextLine,TextSavePath};
-    enum class Dialog {None,DeleteConfirm,Properties,CopyProgress,Preferences,TextEditor,TextClose};
+    enum class Dialog {None,DeleteConfirm,Properties,CopyProgress,Preferences,TextEditor,TextClose,ImageViewer};
+    const BitmapDocument& Image() const {return image_;}
+    static Rect ImageViewport() {return {416,280,1006,492};}
+    bool ImageFitted() const {return imageFit_;}
+    int ImagePanX() const {return imagePanX_;}
+    int ImagePanY() const {return imagePanY_;}
     const TextDocument& Document() const {return document_;}
     size_t TextSelection() const {return textSelection_;}
     Dialog ActiveDialog() const {return dialog_;}
@@ -97,6 +103,9 @@ private:
     void CloseText();
     void SaveText(const std::string& path="");
     bool TextDialog() const {return dialog_==Dialog::TextEditor || dialog_==Dialog::TextClose;}
+    BitmapDocument image_;
+    bool imageFit_=true;
+    int imagePanX_=0,imagePanY_=0;
     TextDocument document_;
     size_t textSelection_=0,textColumn_=0;
     std::u16string textNotice_;

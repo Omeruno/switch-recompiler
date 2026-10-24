@@ -73,6 +73,8 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case ImageFit:return {416,504,592,540};
+    case ImageActual:return {600,504,778,540};
     case TextOpen:case TextNew:return {}; // reached through context menu
     case TextEdit:return {416,450,554,486};
     case TextInsert:return {560,450,698,486};
@@ -143,7 +145,7 @@ void DesktopShell::SetCatalog(const ExecutableCatalog& catalog) {
     errors_=catalog.Errors();truncated_=catalog.Truncated();
 }
 bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
-    if(TextDialog()){error="Close the text document before changing filesystem roots.";return false;}
+    if(TextDialog() || dialog_==Dialog::ImageViewer){error="Close the document before changing filesystem roots.";return false;}
     CloseContext();browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
     return browser_.Configure(system,sd,rom,error);
 }
@@ -156,14 +158,14 @@ void DesktopShell::EndGuest() {
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
     guestActive_=false;guestLabel_.clear();
-    if(!TextDialog()){panel_=returnPanel_;focus_=returnFocus_;}
+    if(!TextDialog() && dialog_!=Dialog::ImageViewer){panel_=returnPanel_;focus_=returnFocus_;}
     request_.Clear();startOpen_=false;pressed_=None;
-    if(!TextDialog()){dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();}
+    if(!TextDialog() && dialog_!=Dialog::ImageViewer){dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();}
 }
 void DesktopShell::Enter() {
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
-    if(TextDialog()){request_.Clear();startOpen_=false;hover_=pressed_=None;return;}
+    if(TextDialog() || dialog_==Dialog::ImageViewer){request_.Clear();startOpen_=false;hover_=pressed_=None;return;}
     dialog_=Dialog::None;operationPath_.clear();operationNotice_.clear();
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
@@ -176,6 +178,7 @@ bool DesktopShell::Enabled(int t) const {
 bool DesktopShell::ControlEnabled(int t) const {
     if(t==None)return false;
     if(textInput_!=TextInput::None)return false;
+    if(dialog_==Dialog::ImageViewer)return t==ImageFit || t==ImageActual || t==CancelDialog;
     if(TextDialog()) {
         if(t==CancelDialog || t==TextSaveAs)return true;
         if(t==TextSave)return !document_.Path().empty();
@@ -192,6 +195,13 @@ bool DesktopShell::ControlEnabled(int t) const {
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
     if(t>=TextEdit && t<=TextDiscard)return false;
+    if(t==ImageFit || t==ImageActual)return false;
+    if(t==ImageOpen) {
+        if(panel_!=Panel::Explorer || browser_.Entries().empty())return false;
+        const auto& entry=browser_.Entries()[browser_.Selected()];auto name=entry.name;
+        std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return c>='A' && c<='Z'?char(c+32):char(c);});
+        return entry.kind==ShellBrowser::Kind::File && name.size()>=4 && name.substr(name.size()-4)==".bmp";
+    }
     if(t==TextNew)return panel_==Panel::Explorer && !browser_.Path().empty() && !browser_.ReadOnly();
     if(t==TextOpen) {
         if(panel_!=Panel::Explorer || browser_.Entries().empty())return false;
@@ -232,6 +242,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
         return out;
     }
     if(textInput_!=TextInput::None)return {None};
+    if(dialog_==Dialog::ImageViewer)return {ImageFit,ImageActual,CancelDialog};
     if(TextDialog()) {
         std::vector<int> out;
         if(dialog_==Dialog::TextEditor)for(int t:{TextEdit,TextInsert,TextErase})if(Enabled(t))out.push_back(t);
@@ -314,6 +325,7 @@ void DesktopShell::SaveText(const std::string& path) {
 }
 void DesktopShell::CloseDialog() {
     if(dialog_==Dialog::CopyProgress)browser_.CancelCopy();
+    if(dialog_==Dialog::ImageViewer)image_.Clear();
     if(TextDialog())document_.New();
     dialog_=Dialog::None;operationPath_.clear();pressed_=hover_=None;focus_=dialogReturnFocus_;
 }
@@ -400,6 +412,7 @@ void DesktopShell::ShowContext(bool folder,int x,int y) {
         const auto& entry=browser_.Entries()[browser_.Selected()];contextPath_=entry.path;contextFile_=entry.kind==ShellBrowser::Kind::File;
         add(Launch);
         if(ControlEnabled(TextOpen))add(TextOpen);
+        if(ControlEnabled(ImageOpen))add(ImageOpen);
         if(browser_.CanChooseApplication())add(OpenWith);
         if(entry.kind==ShellBrowser::Kind::File)add(Copy);
         if(entry.kind!=ShellBrowser::Kind::Drive){add(Rename);add(Delete);}
@@ -445,6 +458,10 @@ void DesktopShell::ToggleStart() {
 }
 void DesktopShell::Move(int delta) {
     if(textInput_!=TextInput::None)return;
+    if(dialog_==Dialog::ImageViewer) {
+        if(!imageFit_)imagePanY_=int(std::max<int64_t>(0,std::min<int64_t>(std::max(0,image_.Height()-ImageViewport().Height()),int64_t(imagePanY_)+int64_t(delta)*32)));
+        return;
+    }
     if(TextDialog()) {
         if(dialog_==Dialog::TextEditor) {
             textSelection_=size_t(std::max<int64_t>(0,std::min<int64_t>(int64_t(document_.Lines().size())-1,int64_t(textSelection_)+delta)));
@@ -471,6 +488,10 @@ void DesktopShell::Move(int delta) {
     focus_=order[size_t((current+delta%count+count)%count)];
 }
 void DesktopShell::Page(int delta) {
+    if(dialog_==Dialog::ImageViewer) {
+        if(!imageFit_)imagePanX_=int(std::max<int64_t>(0,std::min<int64_t>(std::max(0,image_.Width()-ImageViewport().Width()),int64_t(imagePanX_)+int64_t(delta)*32)));
+        return;
+    }
     if(dialog_==Dialog::TextEditor) {
         const auto length=document_.Lines()[textSelection_].text.size();
         textColumn_=size_t(std::max<int64_t>(0,std::min<int64_t>(length,int64_t(textColumn_)+int64_t(delta)*40)));return;
@@ -499,6 +520,10 @@ int DesktopShell::HitTest(int x,int y) const {
         return None;
     }
     if(textInput_!=TextInput::None)return None;
+    if(dialog_==Dialog::ImageViewer) {
+        for(int t:{ImageFit,ImageActual,CancelDialog})if(Bounds(t).Contains(x,y))return t;
+        return None;
+    }
     if(TextDialog()) {
         for(int t:FocusOrder())if(Bounds(t).Contains(x,y))return t;
         if(dialog_==Dialog::TextEditor)for(int i=0;i<5;++i)if(Bounds(TextLineBase+i).Contains(x,y))return TextLineBase+i;
@@ -570,6 +595,14 @@ void DesktopShell::Activate(int target) {
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case ImageOpen: {
+        if(!image_.Open(browser_.Filesystem(),browser_.Entries()[browser_.Selected()].path)) {
+            operationNotice_=BitmapDocument::ErrorText(image_.LastError());break;
+        }
+        imageFit_=true;imagePanX_=imagePanY_=0;dialogReturnFocus_=FileActions;
+        dialog_=Dialog::ImageViewer;focus_=ImageFit;break;
+    }
+    case ImageFit:case ImageActual:imageFit_=target==ImageFit;imagePanX_=imagePanY_=0;break;
     case TextNew:case TextOpen: {
         if(target==TextNew)document_.New();
         else if(!document_.Open(browser_.Filesystem(),browser_.Entries()[browser_.Selected()].path)) {
@@ -808,18 +841,24 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             if(hot)Fill(s,r,pressed_==target?0x1D4C99:0x316AC5);
             const auto label=action==Launch?u"Открыть":action==OpenWith?u"Выбрать приложение…":action==Copy?u"Копировать":
                 action==Rename?u"Переименовать…":action==Delete?u"Удалить…":action==Properties?u"Свойства":
-                action==TextOpen?u"Текст: читать / изменить…":action==TextNew?u"Новый TXT…":action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
+                action==ImageOpen?u"Просмотреть BMP…":action==TextOpen?u"Текст: читать / изменить…":action==TextNew?u"Новый TXT…":action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
             Text(s,{r.left+12,r.top+6,r.right-8,r.bottom-2},label,!enabled?0x8793A0:hot?0xFFFFFF:0x162B47,16);
         }
     }
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
         Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":u"Свойства",0xFFFFFF,19,true);
+        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::ImageViewer?u"Просмотр BMP":u"Свойства",0xFFFFFF,19,true);
         const auto slash=operationPath_.find_last_of('\\');
-        if(dialog_!=Dialog::Preferences && !TextDialog())Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-        if(dialog_!=Dialog::Preferences && !TextDialog())Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
-        if(TextDialog()) {
+        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
+        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
+        if(dialog_==Dialog::ImageViewer) {
+            char info[100];std::snprintf(info,sizeof(info),"%d × %d   %s   ←/→/↑/↓",image_.Width(),image_.Height(),imageFit_?"Вписать":"100%");
+            Text(s,{416,240,1006,260},Wide(image_.Path()),0x123D75,14,true);
+            Text(s,{416,260,1006,280},Wide(info),0x42576B,13);
+            image_.Draw(s,ImageViewport(),imageFit_,imagePanX_,imagePanY_);
+            control(ImageFit,u"Вписать",Bounds(ImageFit));control(ImageActual,u"100%",Bounds(ImageActual));control(CancelDialog,u"Закрыть",Bounds(CancelDialog));
+        } else if(TextDialog()) {
             Text(s,{416,240,1006,266},Wide(document_.Path().empty()?"Новый документ":document_.Path())+(document_.Dirty()?u" *":u""),0x123D75,15,true);
             if(dialog_==Dialog::TextClose) {
                 Text(s,{416,300,1006,332},u"Есть несохранённый текст.",0x24354A,20,true);

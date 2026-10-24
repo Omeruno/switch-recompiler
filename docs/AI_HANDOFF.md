@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`a327117506870a837322de5a0940ee4b52b5bcad` (2026-10-25).
-[CI 40101548903](https://github.com/Omeruno/switch-recompiler/actions/runs/40101548903)
+`3536ec4a1e8d3b2434f56b84a6bb0046e0daed90` (2026-10-25).
+[CI 40134592527](https://github.com/Omeruno/switch-recompiler/actions/runs/40134592527)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -21,7 +21,7 @@ name entry, delete confirmation and properties are now connected.
 are implemented with a shared resumable engine, byte progress and cancel.
 [Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
 click, Menu-key and controller actions. [Persistent sorting/associations](F3C_PREFERENCES.md)
-and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; next: images and F5 save/find/reopen.
+and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; [native BMP](F_IMAGE_DOCUMENTS.md) and a public x86 save/browse/reopen slice now exist; next: F5 guest file-save correctness.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
@@ -1187,3 +1187,64 @@ inspected with a real-font assertion; eight Markdown docs/98 relative links,
 balanced fences and git diff --check passed. Fetched unchanged a327117 again;
 normal publication and exact new-SHA six-job CI verification follow. Local SDK
 remains absent and physical acceptance remains deferred. Next: image viewing.
+
+
+## 2026-10-25 Functional F: bounded native BMP and global status
+
+Fetched clean 3536ec4/FETCH_HEAD, no newer work or AGENTS.md; incoming exact
+CI 40134592527 passed six jobs. User asks to continue and explain overall progress
+(the many file packages felt like standing still). Added PROJECT_STATUS_RU.md:
+we are in functional F, with A/B/C execution base, D compatibility and E physical
+gates explicit, G timing/optimization and H/I/installer/archive work still open.
+No invented percentage or claim that native tools mean broad EXE compatibility.
+
+BitmapDocument owns bounded actual F1 image reads and decoded RGB: BMP 40-byte
+INFOHEADER, uncompressed BI_RGB 1/4/8/24/32, palettes/padded rows/top-/bottom-up.
+Checks signed dimensions, stride/offset/palette/file fields and 16 MiB/4 Mpx/8192
+limits before pixel allocation; fails on invalid indices/input rather than
+fabricating pixels. Existing Process/USER DIB/icon/parser behavior is unchanged;
+PNG/JPEG/RLE/bitfields/V4/V5 are unsupported, no new external decoder. Read and
+close errors/short I/O/bounded EINTR are checked; old snapshot survives failure.
+
+Explorer File/right context exposes actual BMP view, fit/native-size and arrow
+panning. Draw is clipped and samples owned pixels; normal guest teardown/re-entry
+retains the modal/panel/pan, Close frees image data, filesystem reconfigure is
+blocked while open. Native input/one guest/explicit associations remain intact.
+No storage/decode wall-clock responsiveness or total heap claim is made.
+
+New native codec/storage/UI tests generate public BMPs and check depths/row
+orientation/palettes/limits/truncation/mutated headers, actual viewport fit/pan/
+clip pixels, readonly/Unicode/link/error/FD paths and controller/modal/lifetime.
+Public shell_bitmap.c draws real GDI into a DIB and writes actual BMP bytes. The
+new harness uses Start/Run -> guest save -> native Explorer/pixel comparison ->
+fresh shell/x86 reopen. Its launch request is copied before Attach clears native
+pending launch; no runtime workaround. Seven busy-x86 sessions also view/pan/
+compose with exact pixel and no-input-leak checks while the guest heartbeat runs.
+
+Next concrete F5 system gap found by audit: K32_FlushFileBuffers ignores fflush
+failure, always succeeds even for invalid handles, and omits fsync. Inspect
+write/close/size/truncate errors and duplicated object lifetime when fixing it.
+This BMP fixture avoids that false-success API and independently checks actual
+reopened bytes; no durability/error-path F5 acceptance is claimed. Full F5 and
+F3/F4 remain open; this corrects any temptation to call the happy path complete.
+
+Required completion gates: final clean host/MinGW/Mesa, strict/native/public
+checks and screenshot, docs/link/diff, normal branch push and exact new-SHA six
+CI jobs. Local devkitA64/libnx is absent; hardware Paint/GPU/fallback/Lite/input/
+relaunch remain consolidated/deferred and SD diagnosis stays closed.
+
+
+Final BMP local validation: complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final runtime/
+header/public-fixture tree: new native BMP test, actual x86 GDI save/browse/
+fresh-session reopen, seven busy-x86 image/text/context/input sessions and all
+previous filesystem/guest lifetime/Stage C/six E9/both actual EGL oracles.
+Additional final exact-4-Mpx/8192-width native assertions passed strict native
+compilation/execution and AddressSanitizer + UndefinedBehaviorSanitizer with
+leak detection and halt-on-UB, after the full suite; runtime/header/fixture code
+was unchanged. Extended public workflow and busy harnesses also passed strict
+-Wall -Wextra -Werror -fno-exceptions -fno-rtti build/execution. Real native
+screenshot inspected with real-font assertion, six docs/99 relative links,
+balanced fences and git diff --check passed. Incoming six-job CI was independently
+reverified for 3536ec4. Final normal push/exact new-SHA CI must follow; no hardware
+acceptance is implied. Next: F5 real guest file-save flush/access/error behavior.

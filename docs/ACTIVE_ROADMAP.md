@@ -1,5 +1,7 @@
 # Active implementation map — 2026-10-25
 
+User-facing global status: [Где находится проект](PROJECT_STATUS_RU.md).
+
 Current user priority: develop a real usable system before further visual polish.
 F1/F2/F3a/F3b and F4a are implemented. **F4b.1 now services native input between
 executor quanta independently of a guest USER pump**, with bounded deferred input
@@ -11,7 +13,7 @@ the browser model. [Native Copy/Paste](F_FILE_PASTE.md) now runs in bounded work
 steps with real byte progress and cancellation. [Explorer context menus](F_CONTEXT_ACTIONS.md)
 now route object/current-folder actions through pointer, Menu key and controller
 focus. [Persisted sorting/associations and management](F3C_PREFERENCES.md) are now
-implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; next: images and the F5 workflow.
+implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; next: F5 guest file-save correctness.
 Luna visual refinement and G optimization are deferred. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
@@ -33,12 +35,12 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; flat native overlay composition still needs F4b retained-layer integration and visual/interaction refinement |
 | F4b.1 | [Independent native input](F4B_INPUT_SERVICE.md), bounded deferred guest events, physical async state, real owner-queue task commands and pending feedback | Physical acceptance; a host API that never yields remains a responsiveness limit |
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; native/guest retained planes remain open |
-| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | Native TXT implemented; images → save/find/reopen |
+| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | Native TXT/BMP implemented; F5 guest save/error correctness remains open |
 | Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Supported EXE installation to persistent folders, actual desktop/Start shortcuts, ZIP then RAR/other formats; compatibility and extraction gates remain open |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: supported image viewing
+## Next concrete package: F5 guest file-save flush/access/error correctness
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -48,7 +50,7 @@ absolute C paths from the former per-EXE mapping may need reselection through S.
 F4b.1 removes dependence on the guest message pump for native Start/folder input
 at executor boundaries. It preserves real guest command delivery and explicitly
 shows pending requests instead of fabricating a minimized window. F4b.2 now separates frontend/device lifetime from guest lifetime; see
-[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions and checked-copy model are connected; native Copy/Paste is now connected; object/folder context interaction is now connected; persistent sorting/associations and bounded native TXT are implemented; image tools remain open.
+[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions and checked-copy model are connected; native Copy/Paste is now connected; object/folder context interaction is now connected; persistent sorting/associations and bounded native TXT are implemented; bounded native BMP is implemented; PNG/JPEG and broader image support remain open.
 
 The common real create/rename/delete/properties provider and browser model are
 implemented; see [the exact scope](F_FILE_OPERATIONS.md). DesktopShell now exposes [native name/actions/confirmation/properties](F_FILE_ACTIONS.md)
@@ -60,9 +62,9 @@ accepts a destination name, services a resumable job and supports cancellation.
 Menu-key and controller access with captured-target validation and paired input
 ownership. The [F3c preference slice](F3C_PREFERENCES.md) now stores real sort/association
 records in two checked slots and provides native management with restart/error
-checks. The [bounded native TXT tool](F_TEXT_DOCUMENTS.md) now supports actual create/read/line-edit/save/Save As, retained backups and conflict/error outcomes. Next: image viewing and the F5 save/find/reopen scenario. Retained native/guest GPU planes remain
+checks. The [bounded native TXT tool](F_TEXT_DOCUMENTS.md) now supports actual create/read/line-edit/save/Save As, retained backups and conflict/error outcomes. [Native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice now exist. Next: F5 file-save flush/access/error correctness. Retained native/guest GPU planes remain
 an explicit graphics integration boundary. Implement
-supported image tools and F5 before further Luna polish. F3/F4/F5 and general Win32 compatibility remain incomplete.
+F5 guest file-save correctness before further Luna polish. F3/F4/F5 and general Win32 compatibility remain incomplete.
 
 Подробная [очередь действий после F1](F_SHELL_PLAN.md#рабочий-план-после-f1-2026-10-23)
 фиксирует критерии F2–F5, возврат к измерениям G и контрольные точки активной работы.
@@ -99,3 +101,10 @@ COMPOSITION_GL_TEST=1 host/MinGW/Mesa suite and applicable gates, publishes only
 to claude/wonderful-hawking-10mpr0 without force, and checks all six jobs for the
 exact published SHA. Documentation-only packages use source/link/diff checks;
 CI status must still be reported against their exact SHA without invented passes.
+
+
+Concrete F5 audit finding: K32_FlushFileBuffers currently ignores fflush errors,
+always reports success (including invalid handles) and omits fsync. Next fix real
+HANDLE/access/flush behavior with fault/public-x86 coverage; inspect write/close/
+size/truncate errors and alias lifetime. Native TXT checks do not certify those
+guest APIs. The BMP happy path is a software slice, not full F5/hardware acceptance.
