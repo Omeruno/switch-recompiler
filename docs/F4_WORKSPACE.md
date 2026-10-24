@@ -60,6 +60,7 @@ are consumed together. A guest drag/capture keeps its route while crossing
 native chrome; shell gestures do not release into a guest. Start navigation
 cannot steal a held guest gesture. Unconsumed guest key releases stay deliverable.
 
+[F4b.2](F4B_OUTPUT_LIFETIME.md) now preserves frontend/output lifetime across guests.
 F4a uses a **flat CPU composition of native chrome and canonical guest pixels**
 followed by the existing GPU or software presentation. Native overlays do not
 modify guest window pixels or appear in guest GetPixel reads. GPU output and

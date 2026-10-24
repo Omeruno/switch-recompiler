@@ -91,6 +91,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     $cxx $flags "$root/tests/winrun.cpp" $src -o "$out/winrun"
     sh "$root/tests/guest/build.sh" "$guestRoot"
+    if $cxx $flags "$root/tests/test_workspace_output.cpp" $src -o "$out/test_workspace_output" &&
+       (cd "$root" && "$out/test_workspace_output" "$guestRoot/shell_busy.exe") > "$out/workspace_output.log" 2>&1; then
+        tail -n 1 "$out/workspace_output.log"
+    else
+        echo "   PERSISTENT WORKSPACE OUTPUT FAILED"
+        tail -n 35 "$out/workspace_output.log" 2>/dev/null || true
+        failed=1
+    fi
+
     if $cxx $flags "$root/tests/test_shell_busy.cpp" $src -o "$out/test_shell_busy" &&
        (cd "$root" && "$out/test_shell_busy" "$guestRoot/shell_busy.exe") > "$out/shell_busy.log" 2>&1; then
         tail -n 1 "$out/shell_busy.log"

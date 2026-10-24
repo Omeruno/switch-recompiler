@@ -60,8 +60,8 @@ or independently restored windows are removed from minimized tracking. PLUS can
 still explicitly cancel a guest which does not respond.
 
 This does not implement hung-window ghosting, full multi-process multitasking,
-a persistent output device across launches, or retained native/guest GPU layers.
-F4a flat composition/fallback and launch/teardown output ownership remain in use.
+retained native/guest GPU layers. [F4b.2](F4B_OUTPUT_LIFETIME.md) subsequently adds
+persistent frontend/device ownership; the F4a flat composition remains.
 
 ## Reproducible public tests
 
@@ -87,8 +87,8 @@ implied by these host runs.
 
 ## Next functional packages
 
-1. Persistent frontend output/desktop lifetime through selection, load, guest exit
-   and error, plus retained native/guest layer composition with the CPU/GL oracle.
+1. F4b.2 implements persistent frontend/output lifetime. Separate native/guest
+   retained planes still need the complete CPU/GL oracle.
 2. Common real file operations: folder creation, copy/move/rename, explicit delete
    confirmation and stat-backed properties, shared with F1/Win32 semantics.
 3. Consistent left/right click, context menu, selection/scroll/drag and controller

@@ -1,7 +1,8 @@
 #pragma once
 namespace ui {
-// The context is created on the application thread, then explicitly transferred
-// to the guest host thread. Never own EGL and libnx Framebuffer simultaneously.
+// The persistent frontend worker creates, binds and owns the context through
+// native/guest phases. Initialize releases its initial binding; the same owner
+// binds it before rendering. Never own EGL and libnx Framebuffer simultaneously.
 class SwitchGpuOutput {
 public:
     bool Initialize();

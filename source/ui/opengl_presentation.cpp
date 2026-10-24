@@ -23,6 +23,12 @@ void OpenGlPresentation::Reset() {
     ResetTexture(screen_);ResetTexture(ownership_);for(auto& layer:layers_)ResetTexture(layer);
     uploadedBytes_=0;sceneEpoch_=frameId_=frameGeneration_=0;
 }
+void OpenGlPresentation::ResetStats() {
+    uploadedBytes_=totalUploaded_=uploadCalls_=layerDraws_=0;timings_={};
+    // Every query has ended before Render returns. Discard old pending samples
+    // without reading/waiting, and reuse the bounded query objects in order.
+    for(auto& timer:timers_)timer.pending=false;
+}
 size_t OpenGlPresentation::CacheBytes() const {
     size_t bytes=screen_.versions.size()*8+ownership_.versions.size()*8;
     for(const auto& layer:layers_)bytes+=layer.versions.size()*8;

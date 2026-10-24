@@ -27,6 +27,7 @@ public:
     uint64_t LayerDraws() const {return layerDraws_;}
     const GpuPresentationStats& Timings() const {return timings_;}
     bool TimerAvailable() const {return timerAvailable_;}
+    void ResetStats(); // new measurement scope; retains shaders/textures/context
     void PollTimings(); // checks availability only; never waits for GPU completion
     size_t TextureBytes() const;
     const char* Error() const {return error_;}

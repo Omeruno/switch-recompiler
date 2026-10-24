@@ -397,3 +397,8 @@ XP-like native shell: F2 idle desktop и F3a directory browser/path launch ре�
 Минимальный JIT probe ранее возвращал 42 по сообщению пользователя; полноценный
 dynarec/cache/icache/fault fallback остаётся отдельной программой. Физическая
 приёмка текущих GPU/Paint/fallback/input/relaunch остаётся отложенной.
+
+
+Current frontend lifetime: [F4b.2](F4B_OUTPUT_LIFETIME.md) uses one large-stack
+worker and persistent device/presenter across independent GuestSessions. Normal
+return redraws the real native desktop; mode changes/failures own device recovery.

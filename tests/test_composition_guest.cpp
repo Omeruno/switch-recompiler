@@ -52,6 +52,16 @@ public:
             }
         }
         assert(backend_.LayerDraws()>0);
+        // A guest metrics boundary keeps context, textures and upload revisions.
+        if(stage==12) {
+            const auto bytes=backend_.TextureBytes();assert(bytes);
+            backend_.ResetStats();backend_.PollTimings();
+            assert(backend_.TextureBytes()==bytes && !backend_.UploadedBytes() && !backend_.UploadCalls() && !backend_.Timings().gpuSamples);
+            assert(presentation_.Render({nullptr,1280,720,0,0}));
+            assert(!backend_.UploadedBytes() && backend_.Timings().frames==1);
+            glReadPixels(0,0,1280,720,GL_RGBA,GL_UNSIGNED_BYTE,pixels_.data());assert(glGetError()==GL_NO_ERROR);
+            for(int y=0;y<720;++y)for(int x=0;x<1280;++x)assert(pixels_[size_t(719-y)*1280+x]==expected[size_t(y)*stride+x]);
+        }
         // Simulate a backend recreation in the middle of the live window scene.
         if(stage==14)presentation_.Attach(&backend_);
     }

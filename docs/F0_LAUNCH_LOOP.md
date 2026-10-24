@@ -5,7 +5,10 @@
 > instructions below describe their historical build. Active workspace: [F4a](F4_WORKSPACE.md).
 
 
-The production Switch main uses `ui::RunLauncher`, the same lifecycle controller
+> Historical per-launch worker/output ownership below is superseded by
+> [F4b.2 persistent frontend/output](F4B_OUTPUT_LIFETIME.md).
+
+The original production Switch main uses `ui::RunLauncher`, the same lifecycle controller
 exercised by the native restart/failure/shutdown test. Host services (ROMFS,
 registry values, audio device) live across launches. Each launch chooses the
 existing Paint/default or L-overridden UI mode and ZL software override again.

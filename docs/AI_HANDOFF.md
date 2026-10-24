@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`df54bdc5fb112b3eaabd730da5764037ad9db01a` (2026-10-24).
-[CI 40039274735](https://github.com/Omeruno/switch-recompiler/actions/runs/40039274735)
+`450f1d3d84feaef5f4448f08a49121b3bb679293` (2026-10-24).
+[CI 40081220508](https://github.com/Omeruno/switch-recompiler/actions/runs/40081220508)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -14,10 +14,10 @@ not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 Latest steering: prioritize real system functionality and verifiable operations;
 return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 adds
 independent native input service, bounded deferred guest events, physical async
-state and owner-queue window commands. Next: persistent output/desktop lifecycle
-and retained composition, then actual file operations/properties, coherent L/R
+state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Next: actual
+file operations/properties, coherent L/R
 click and controller actions, preferences/TXT/images and F5 save/find/reopen.
-See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), ACTIVE_ROADMAP.md and
+See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
 operation, forced guest callback or guessed application compatibility is allowed.
@@ -768,3 +768,58 @@ df54bdc again before publication. Earlier intermediate runs had harness compile/
 post-destruction inspection failures; only the final clean run is the package
 result. Verify all six CI jobs for the exact published SHA after push. Local
 Switch SDK/hardware limitations above still apply.
+
+
+## F4b.2: persistent frontend/output ownership
+
+Fetched clean 450f1d3, matching the requested branch; no newer work/AGENTS.md
+found. Its six CI results were verified previously and again through the public
+run page at the exact full commit link. This environment's GitHub API initially
+returned 401 (Bad credentials), while Git/public web access worked. The user
+already grants full repository access; do not request permission again. API
+access subsequently recovered, and the exact incoming SHA's six CI jobs were
+verified again via API. No token is exposed or stored in the repository.
+
+One 2 MiB frontend worker now owns native selection, load, guest execution, output
+and final shutdown, preserving the large-stack safety requirement. RunWorkspace
+and OutputLifetime separate per-guest begin/drain/end/return from device Close.
+Same-policy launches reuse EGL/framebuffer/shaders/presenter; only explicit L/ZL
+mode changes or real device failure require reopening. Software fallback persists
+across same-policy launches, with retry through policy change/frontend restart.
+Native desktop and loading/return frames use the same actual output and owned
+Presentation, preserving cursor position and startup input quarantine. Legacy
+direct-framebuffer output explicitly invalidates presentation history on return.
+No fake app surface/second Process or console transition is used for normal return.
+
+Guest End still writes renderer metrics and clears guest layer snapshots, while
+device/context ownership remains with the frontend. GPU ResetStats preserves
+resources and discards old ended timer samples without waiting, so idle/previous
+guest measurements do not enter a new scope. Native idle frames do not complete
+guest input samples. Output failure is latched and recovered through the existing
+safe cleanup/picker fallback. See F4B_OUTPUT_LIFETIME.md for exact boundaries.
+
+New public x86 output-lifetime harness checks one device across normal/load-error/
+abort/restart, real GDI pixels, whole desktop return, redraw after guest memory
+destruction, modes/partial-open failures and shutdown. Real EGL/Mesa scene tests
+check reset counters with retained textures/revisions, no old queries and exact
+pixel output. Full host/MinGW/Mesa and strict checks are required before publish;
+Switch-only main still needs exact-SHA CI. Local SDK package/installer endpoints
+return HTTP 403; do not claim local Switch compilation. Physical consolidated
+Paint/GPU/fallback/input/relaunch acceptance remains deferred; SD stays closed.
+
+Native/guest separate retained GPU planes still remain open; this package retains
+the F4a flat native composition. Next: common real file operations/properties,
+then input/context actions, persistence and TXT/images/F5. Visual polish deferred.
+
+
+Final F4b.2 local validation: complete clean `COMPOSITION_GL_TEST=1 sh
+tools/run_host_tests.sh` passed on the final common runtime/test/fixture tree.
+The persistent-output x86 normal/load-error/abort/restart and shutdown cases,
+GPU counter/cache/old-query reset pixel oracle at both sizes, seven busy-shell
+sessions and all previous native/core/USER/legacy/F1/F3b/Stage C/E/input/dialog
+regressions passed. Strict no-exceptions/no-RTTI compilation passed for the new
+controller harness and common GPU module. Markdown local links/fences and
+git diff --check passed. Only Switch adapter return/console cleanup and comments
+were refined after the first successful suite; the final clean rerun passed.
+Local tests do not compile libnx main: verify exact published-SHA Switch CI and
+all six jobs after publication. Physical checks remain deferred.

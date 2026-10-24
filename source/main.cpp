@@ -37,6 +37,7 @@
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
 #include "ui/launcher_loop.h"
+#include "ui/output_lifetime.h"
 #include "ui/executable_catalog.h"
 #include "ui/desktop_shell.h"
 #include "ui/opengl_presentation.h"
@@ -82,8 +83,8 @@ static bool ContinueApplet() {
 static ui::PointerInputGate g_legacyInputGate;
 
 // Путь к выбранному исполняемому файлу — заполняется PickDesktopExecutable()
-// в main() (native shell или fallback picker) ДО игрового потока; объявлена так рано
-// специально, чтобы GameThreadFunc (которая идёт по файлу раньше, чем сам
+// в постоянном frontend (native shell или fallback picker) ДО гостевого сеанса; объявлена так рано
+// специально, чтобы RunSelectedGuest (которая идёт по файлу раньше, чем сам
 // пикер) могла её использовать.
 // New USER/GDI is the default for every EXE; hold L for legacy compatibility.
 static bool g_useNewUi = true;
@@ -97,6 +98,10 @@ extern bool g_gpuActive;
 void EndPresentation();
 void InvalidateOutput();
 bool InitializeOutput(bool gpuRequested);
+bool DesktopOutput();
+bool OutputHealthy();
+bool DrawDesktop(const ui::Surface& s,int x,int y,bool cursor);
+void Blit();
 void CloseOutput();
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out);
 }
@@ -337,11 +342,11 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     // (rt::Process — тот же загрузчик, что в хостовых тестах). MFC пока
     // эмулируется (HLE), даже если mfc42u.dll лежит рядом с EXE.
     if (g_useNewUi) {
-        newui::BeginPresentation(path);
         win32::user::g_platform.wait = &newui::Wait;
         win32::user::g_platform.present = &newui::Present;
         win32::user::g_platform.textInput = &newui::TextInput;
         win32::user::EnableUi(ui::kHandheldWidth,ui::kHandheldHeight);
+        newui::BeginPresentation(path);
         win32::user::EnableWindowLayers(newui::g_gpuActive);
     }
 
@@ -435,6 +440,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     uint64_t nativePollNs=0;
     while (steps<maxSteps && !execution.Stopped()) {
         if(shellSession) {
+            if(!newui::OutputHealthy()){stopReason="display output failed";break;}
             const uint64_t now=ui::PerformanceNowNs();
             if(now-nativePollNs>=8'000'000ull) {
                 nativePollNs=now;
@@ -1210,7 +1216,7 @@ static bool HandleAboutBoxClick(int realX, int realY) {
 
 static void DrawGdiScreenIntoFramebuffer(Framebuffer& fb, int cursorX, int cursorY)
 {
-    if(!g_framebufferReady)return;
+    if(!g_framebufferReady){g_outputFailed=true;return;}
     // Берём уменьшенное "виртуальное" разрешение (640x360)
     uint32_t screenDc = gdi::g_gdi.GetOrCreateScreenDC(640, 360);
     const gdi::Bitmap* screen = gdi::g_gdi.GetBitmapForDC(screenDc);
@@ -1672,7 +1678,7 @@ struct FramebufferStats {
     uint64_t frames=0,beginNs=0,endNs=0,maxBeginNs=0,maxEndNs=0,deferredDragFrames=0;
     uint64_t skippedUnchanged=0,gpuFrames=0,gpuSwapNs=0,maxGpuSwapNs=0;
 } g_framebufferStats;
-bool g_havePresented=false;
+bool g_havePresented=false,g_cursorVisible=true;
 uint64_t g_presentedSerial=0,g_presentedGeneration=0;
 ui::PresentationCursor g_presentedCursor;
 using PresentationClock=std::chrono::steady_clock;
@@ -1689,19 +1695,41 @@ bool CreateSoftwareOutput() {
     if(R_FAILED(rc)) {framebufferClose(&g_fb);return false;}
     g_framebufferReady=true;return true;
 }
-bool InitializeOutput(bool gpuRequested) {
-    g_gpuFallbacks=0;g_gpuError="none";
-    if(gpuRequested) {
-        g_gpuActive=g_gpuOutput.Initialize();
-        if(g_gpuActive)return true;
-        ++g_gpuFallbacks;g_gpuError=g_gpuOutput.Error();
+bool g_outputFailed=false,g_guestPresentation=false;
+uint64_t g_scopeFallbackStart=0;
+struct OutputDevice {
+    bool Open(ui::OutputPreference mode) {
+        g_havePresented=false;g_outputFailed=false;g_gpuError="none";
+        if(mode==ui::OutputPreference::GpuPreferred) {
+            if(g_gpuOutput.Initialize() && g_gpuOutput.MakeCurrent() && g_gpu.Initialize()) {
+                g_gpuActive=true;g_presentation.Attach(&g_gpu);return true;
+            }
+            ++g_gpuFallbacks;g_gpuError=g_gpuOutput.Error();
+            if(g_gpuOutput.Error()==std::string("none"))g_gpuError=g_gpu.Error();
+            g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;
+        }
+        if(!CreateSoftwareOutput())return false;
+        g_presentation.Attach(&g_software);return true;
     }
-    return CreateSoftwareOutput();
+    void Close() {
+        g_presentation.Detach();g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;
+        if(g_framebufferReady){framebufferClose(&g_fb);g_framebufferReady=false;}
+        g_havePresented=false;g_outputFailed=false;g_graphicsInitialized=false;
+    }
+};
+OutputDevice g_outputDevice;
+ui::OutputLifetime<OutputDevice> g_outputLifetime(g_outputDevice);
+bool InitializeOutput(bool gpuRequested) {
+    if(g_outputFailed)g_outputLifetime.Close();
+    g_graphicsInitialized=g_outputLifetime.Ensure(gpuRequested?ui::OutputPreference::GpuPreferred:ui::OutputPreference::Software);
+    return g_graphicsInitialized;
 }
-void CloseOutput() {
-    g_gpuOutput.Shutdown();g_gpuActive=false;
-    if(g_framebufferReady) {framebufferClose(&g_fb);g_framebufferReady=false;}
+bool OutputHealthy() {return g_outputLifetime.Ready() && !g_outputFailed;}
+bool DesktopOutput() {
+    if(OutputHealthy())return true;
+    return InitializeOutput(true);
 }
+void CloseOutput() {g_outputLifetime.Close();}
 bool FallBackToSoftware(const char* error) {
     g_gpuError=error;++g_gpuFallbacks;
     g_presentation.Attach(&g_software); // retain the owned CPU snapshot
@@ -1710,18 +1738,14 @@ bool FallBackToSoftware(const char* error) {
     return CreateSoftwareOutput();
 }
 void BeginPresentation(const char* guestPath) {
-    g_presentation.Detach();g_presentation.ResetStats();
-    if(g_gpuActive) {
-        if(!g_gpuOutput.MakeCurrent()) {
-            g_gpuError=g_gpuOutput.Error();++g_gpuFallbacks;
-            g_gpuOutput.Shutdown();g_gpuActive=false;CreateSoftwareOutput();
-        } else if(!g_gpu.Initialize())FallBackToSoftware(g_gpu.Error());
-    }
-    g_presentation.Attach(g_gpuActive?static_cast<ui::PresentationBackend*>(&g_gpu):&g_software);
+    // The device/context and the last owned frame remain alive across guests.
+    g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
+    g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
     g_havePresented=false;
-    g_cx=kOutW/2.0f;g_cy=kOutH/2.0f;g_touching=false;
+    g_touching=false;
+    win32::user::S().cursorX=static_cast<int>(g_cx);win32::user::S().cursorY=static_cast<int>(g_cy);
     padUpdate(&g_pad);
     HidTouchScreenState touch={0};
     const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
@@ -1755,7 +1779,7 @@ void EndPresentation() {
             (unsigned long long)g_startupHeldButtons,unsigned(g_startupTouch),ui::StickPointerMotion::MaxPixelsPerSecond);
         fprintf(log,"Backend: %s\nGPU uploaded bytes: %llu\nGPU upload calls: %llu\nGPU fallbacks: %llu\nGPU error: %s\n",
             g_gpuActive?"OpenGL":"software",(unsigned long long)g_gpu.UploadedBytes(),
-            (unsigned long long)g_gpu.UploadCalls(),(unsigned long long)g_gpuFallbacks,g_gpuError.c_str());
+            (unsigned long long)g_gpu.UploadCalls(),(unsigned long long)(g_gpuFallbacks-g_scopeFallbackStart),g_gpuError.c_str());
         fprintf(log,"GPU frames: %llu\nGPU swap ns: %llu\nMax GPU swap ns: %llu\n",
             (unsigned long long)g_framebufferStats.gpuFrames,(unsigned long long)g_framebufferStats.gpuSwapNs,
             (unsigned long long)g_framebufferStats.maxGpuSwapNs);
@@ -1798,13 +1822,12 @@ void EndPresentation() {
         fclose(log);
     }
     ui::g_rasterMetrics.Reset(false);win32::user::S().inputFrames.Reset(false);
-    g_presentation.Detach();
-    win32::user::EnableWindowLayers(false);
-    if(g_gpuActive) {g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;}
+    g_presentation.ClearLayers();
+    win32::user::EnableWindowLayers(false);g_guestPresentation=false;
 }
 void Blit() {
-    if(!g_presentation.SourceWidth())return;
-    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),true};
+    if(g_outputFailed || !g_presentation.SourceWidth())return;
+    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
     // libnx linear mode preserves one CPU staging buffer; framebufferEnd
     // copies that staging image into the dequeued display slot. Skip unchanged
     // staging images before acquisition, swizzle and queueing a duplicate.
@@ -1821,15 +1844,15 @@ void Blit() {
         if(swapped) {
             ++g_framebufferStats.gpuFrames;g_framebufferStats.gpuSwapNs+=swapNs;
             g_framebufferStats.maxGpuSwapNs=std::max(g_framebufferStats.maxGpuSwapNs,swapNs);
-            win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
+            if(g_guestPresentation)win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
             g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
             g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
             return;
         }
         const char* error=rendered?g_gpuOutput.Error():g_gpu.Error();
-        if(!FallBackToSoftware(error))return;
+        if(!FallBackToSoftware(error)){g_outputFailed=true;return;}
     }
-    if(!g_framebufferReady)return;
+    if(!g_framebufferReady){g_outputFailed=true;return;}
     u32 stride=0;
     auto start=PresentationClock::now();
     u32* fb=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
@@ -1843,9 +1866,9 @@ void Blit() {
     ++g_framebufferStats.frames;g_framebufferStats.beginNs+=beginNs;g_framebufferStats.endNs+=endNs;
     g_framebufferStats.maxBeginNs=std::max(g_framebufferStats.maxBeginNs,beginNs);
     g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);
-    if(!rendered)g_havePresented=false;
+    if(!rendered){g_havePresented=false;g_outputFailed=true;}
     if(rendered) {
-        win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
+        if(g_guestPresentation)win32::user::S().inputFrames.OutputQueued(ui::PerformanceNowNs(),ui::g_gdi.ScreenChangeCounter(),g_presentation.ContentSerial());
         g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
         g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
     }
@@ -1855,15 +1878,22 @@ std::u16string DeviceClock() {
     if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);
     return std::u16string(clock,clock+std::strlen(clock));
 }
+bool DrawDesktop(const ui::Surface& s,int x,int y,bool cursor) {
+    g_cx=float(x);g_cy=float(y);g_cursorVisible=cursor;
+    if(!OutputHealthy() || !g_presentation.Submit(s))return false;
+    // Cursor visibility can change between keyboard and pointer navigation.
+    if(g_presentedCursor.visible!=cursor)g_havePresented=false;
+    Blit();return OutputHealthy();
+}
 void Present(const ui::Surface& s) {
     if(g_shellSession) {
         g_shellSession->SetClock(DeviceClock());
-        if(g_presentation.Submit(g_shellSession->Compose(s)))Blit();
+        if(g_presentation.Submit(g_shellSession->Compose(s)))Blit();else g_outputFailed=true;
         return;
     }
     const bool submitted=g_gpuActive && win32::user::S().windowLayers.Enabled()
         ?g_presentation.Submit(s,win32::user::S().windowLayers.Scene()):g_presentation.Submit(s);
-    if(submitted)Blit();
+    if(submitted)Blit();else g_outputFailed=true;
 }
 
 void Key(std::vector<win32::user::InputEvent>& out, bool down, uint32_t vk,uint64_t observedNs) {
@@ -1991,9 +2021,8 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
 
 } // namespace newui
 
-static void GameThreadFunc(void* arg)
+static void RunSelectedGuest()
 {
-    (void)arg;
 
     // Лимит шагов теперь по сути "неограниченный" — реальный выход
     // происходит по кнопке + (через PumpHostFrame -> GetMessage -> WM_QUIT),
@@ -2124,24 +2153,19 @@ static bool PickConsoleExecutableFile(bool allowAutoLaunch) {
 }
 
 
-// F2 idle shell owns its frame/input on the main thread. Close it before the
-// existing guest output/worker starts; do not borrow USER state or write guest
-// renderer metrics. Active-guest taskbar/compositor integration remains F4.
-static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
+// One frontend worker owns idle and guest output. This picker keeps the device
+// and presentation alive; it never borrows guest USER/window pointers.
+static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer<uint32_t>& pixels,bool initial) {
     g_selectedCommandLine.clear();
     if(!shell.FilesystemReady()) {
         std::string error;
         shell.ConfigureFilesystem("sdmc:/switch-recompiler/drive_c","sdmc:/","romfs:/",error);
     }
     const auto catalog=ListExecutables();shell.SetCatalog(catalog);shell.Enter();
-    if(initial && catalog.Files().size()==1 && !catalog.Truncated()) {
-        g_selectedExePath=catalog.Files()[0];return true;
-    }
+    const bool autoLaunch=initial && catalog.Files().size()==1 && !catalog.Truncated();
     shell.SetStatus(!shell.FilesystemReady()?"Persistent filesystem unavailable; file actions are disabled.":initial?"":g_launchStatus);
-    consoleExit(NULL);cpu::g_consoleAvailable=false;
-    ui::PresentationBuffer<uint32_t> pixels;
-    const bool ready=pixels.Resize(size_t(ui::DesktopShell::Width)*ui::DesktopShell::Height)
-        && newui::InitializeOutput(false);
+    if(cpu::g_consoleAvailable){consoleExit(NULL);cpu::g_consoleAvailable=false;}
+    const bool ready=pixels.Resize(size_t(ui::DesktopShell::Width)*ui::DesktopShell::Height) && newui::DesktopOutput();
     if(!ready) {
         newui::CloseOutput();consoleInit(NULL);cpu::g_consoleAvailable=true;
         g_launchStatus="Desktop display unavailable; using text picker.";
@@ -2150,14 +2174,18 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
     g_graphicsInitialized=true;
     ui::Surface surface;surface.width=ui::DesktopShell::Width;surface.height=ui::DesktopShell::Height;
     surface.pitch=surface.width*4;surface.bits=reinterpret_cast<uint8_t*>(pixels.data());
-    ui::SoftwarePresentation software;ui::Presentation presentation(&software);
     ui::PointerInputGate gate;ui::StickPointerMotion motion;
     padUpdate(&g_pad);HidTouchScreenState touch{};
     const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
     gate.Reset(padGetButtons(&g_pad),touching);motion.ResetTime(rt::Clock::NowUs());
-    float x=640,y=360;bool wasTouching=false,pointerHeld=false,keyboard=true,dirty=true,outputFailed=false;
+    float x=newui::g_cx,y=newui::g_cy;bool wasTouching=false,pointerHeld=false,keyboard=true,dirty=true,outputFailed=false;
     std::u16string lastClock;
-    while(ContinueApplet()) {
+    if(autoLaunch) {
+        shell.Render(surface,newui::DeviceClock());
+        if(newui::DrawDesktop(surface,int(x),int(y),false)){g_selectedExePath=catalog.Files()[0];return true;}
+        outputFailed=true;
+    }
+    while(!outputFailed && ContinueApplet()) {
         padUpdate(&g_pad);touch={};
         const bool rawTouch=hidGetTouchScreenStates(&touch,1) && touch.count>0;
         const auto edges=gate.Update(padGetButtons(&g_pad),rawTouch);
@@ -2222,27 +2250,58 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,bool initial) {
         dirty=dirty || clockText!=lastClock;
         if(dirty) {
             shell.Render(surface,clockText);lastClock=clockText;
-            if(!presentation.Submit(surface)){outputFailed=true;break;}
         }
-        if(dirty || moved) {
-            u32 stride=0;auto* buffer=static_cast<u32*>(framebufferBegin(&g_fb,&stride));
-            const bool rendered=presentation.Render({buffer,1280,720,stride/4,size_t(stride/4)*720},
-                {int(x),int(y),!keyboard});
-            framebufferEnd(&g_fb);
-            if(!rendered){outputFailed=true;break;}
-        }
+        if((dirty || moved) && !newui::DrawDesktop(surface,int(x),int(y),!keyboard)){outputFailed=true;break;}
         dirty=false;svcSleepThread(16'000'000);
     }
-    presentation.Detach();newui::CloseOutput();g_graphicsInitialized=false;
+    newui::g_cx=x;newui::g_cy=y;
     if(!shell.LaunchPath().empty()){g_selectedExePath=shell.LaunchPath();g_selectedCommandLine=shell.LaunchRequest().commandLine;}
-    // A console is required only for the text fallback and existing launcher
-    // transition. It is never restored after sticky applet shutdown.
-    if(!g_appletStopped){consoleInit(NULL);cpu::g_consoleAvailable=true;}
     if(outputFailed && !g_appletStopped) {
+        newui::CloseOutput();consoleInit(NULL);cpu::g_consoleAvailable=true;
         g_launchStatus="Desktop render unavailable; using text picker.";
         return PickConsoleExecutableFile(false);
     }
     return !shell.LaunchPath().empty() && !g_appletStopped;
+}
+
+// One native owner for selection, loading, guest fibers, output and final cleanup.
+static void FrontendThreadFunc(void*) {
+    struct SwitchWorkspace {
+        ui::DesktopShell shell;
+        ui::PresentationBuffer<uint32_t> desktopPixels;
+        bool Alive(){return ContinueApplet();}
+        bool Pick(bool initial){return PickDesktopExecutable(shell,desktopPixels,initial);}
+        bool BeginGuest(){
+            g_activeShell=&shell;padUpdate(&g_pad);
+            g_useNewUi=ui::UseNewGuestUi((padGetButtons(&g_pad)&HidNpadButton_L)!=0);
+            const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
+            if(cpu::g_consoleAvailable){consoleExit(NULL);cpu::g_consoleAvailable=false;}
+            g_launchStatus="Could not initialize display. Choose a program to retry.";
+            if(!newui::InitializeOutput(requestGpu))return false;
+            shell.SetStatus("Loading application...");
+            if(desktopPixels.size()) {
+                ui::Surface s;s.width=ui::DesktopShell::Width;s.height=ui::DesktopShell::Height;s.pitch=s.width*4;
+                s.bits=reinterpret_cast<uint8_t*>(desktopPixels.data());shell.Render(s,newui::DeviceClock());
+                if(!newui::DrawDesktop(s,int(newui::g_cx),int(newui::g_cy),false))return false;
+            }
+            return true;
+        }
+        void RunGuest(){RunSelectedGuest();}
+        void EndGuest(){g_activeShell=nullptr;if(!g_useNewUi)newui::InvalidateOutput();}
+        void ReturnToDesktop(){
+            if(!newui::DesktopOutput() || !desktopPixels.size())return;
+            shell.Enter();shell.SetStatus(g_launchStatus);
+            ui::Surface s;s.width=ui::DesktopShell::Width;s.height=ui::DesktopShell::Height;s.pitch=s.width*4;
+            s.bits=reinterpret_cast<uint8_t*>(desktopPixels.data());shell.Render(s,newui::DeviceClock());
+            if(!newui::DrawDesktop(s,int(newui::g_cx),int(newui::g_cy),false))
+                g_launchStatus="Could not redraw desktop. Display recovery will be retried.";
+        }
+        void Close(){
+            g_activeShell=nullptr;newui::CloseOutput();
+            if(cpu::g_consoleAvailable){consoleExit(NULL);cpu::g_consoleAvailable=false;}
+        }
+    } workspace;
+    ui::RunWorkspace(workspace);
 }
 
 int main(int argc, char* argv[])
@@ -2294,35 +2353,17 @@ int main(int argc, char* argv[])
     printf("=== Switch Recompiler ===\n");
     consoleUpdate(NULL);
 
-    struct SwitchLauncher {
-        ui::DesktopShell shell;
-        bool Alive() {return ContinueApplet();}
-        bool Pick(bool initial) {return PickDesktopExecutable(shell,initial);}
-        bool BeginOutput() {
-            g_activeShell=&shell;
-            padUpdate(&g_pad);
-            g_useNewUi = ui::UseNewGuestUi((padGetButtons(&g_pad)&HidNpadButton_L)!=0);
-            const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
-            consoleExit(NULL);cpu::g_consoleAvailable=false;
-            g_launchStatus="Could not initialize display. Choose a program to retry.";
-            g_graphicsInitialized=newui::InitializeOutput(requestGpu);
-            return g_graphicsInitialized;
-        }
-        void RunGuest() {
-            Thread worker{};
-            g_launchStatus="Could not create guest thread. Choose a program to retry.";
-            Result rc=threadCreate(&worker,GameThreadFunc,nullptr,nullptr,2*1024*1024,0x2C,-2);
-            if(R_FAILED(rc))return;
-            rc=threadStart(&worker);
-            if(R_SUCCEEDED(rc)) {
-                threadWaitForExit(&worker);
-            } else g_launchStatus="Could not start guest thread. Choose a program to retry.";
-            threadClose(&worker);
-        }
-        void EndOutput() {g_activeShell=nullptr;newui::CloseOutput();g_graphicsInitialized=false;}
-        void RestorePicker() {consoleInit(NULL);cpu::g_consoleAvailable=true;}
-    } launcher;
-    ui::RunLauncher(launcher);
+    Thread frontend{};
+    Result frontendResult=threadCreate(&frontend,FrontendThreadFunc,nullptr,nullptr,2*1024*1024,0x2C,-2);
+    if(R_SUCCEEDED(frontendResult)) {
+        frontendResult=threadStart(&frontend);
+        if(R_SUCCEEDED(frontendResult))threadWaitForExit(&frontend);
+        threadClose(&frontend);
+    }
+    if(R_FAILED(frontendResult)) {
+        printf("[!] Could not start frontend: 0x%x\nPress PLUS to exit.\n",frontendResult);
+        while(ContinueApplet()) {padUpdate(&g_pad);if(padGetButtonsDown(&g_pad)&HidNpadButton_Plus)break;consoleUpdate(NULL);svcSleepThread(16'000'000);}
+    }
     romfsExit();
     if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
     if(cpu::g_consoleAvailable)consoleExit(NULL);

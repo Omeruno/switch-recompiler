@@ -10,6 +10,9 @@ enables real My Computer/Documents and path-only Run; the F2 behavior below is
 its original delivery scope. Physical Switch acceptance stays
 on the deferred checklist in [STAGE_E_PERFORMANCE.md](STAGE_E_PERFORMANCE.md).
 
+> F4b.2 supersedes the original per-launch device/worker lifetime below;
+> native selection and guests now share a persistent owner/output. See [contract](F4B_OUTPUT_LIFETIME.md).
+
 ## Delivered behavior
 
 `ui::DesktopShell` owns its bounded catalog copy, selected EXE, active panel,
