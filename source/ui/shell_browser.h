@@ -57,6 +57,7 @@ public:
     // listing refresh failed. Callers must not retry AppliedViewStale.
     enum class MutationResult {Failed,Applied,AppliedViewStale};
     MutationResult CreateFolder(const std::string& name);
+    MutationResult CopyHere(const std::string& source,const std::string& name); // no overwrite
     MutationResult RenameSelected(const std::string& name);
     MutationResult DeleteSelected(); // permanent; UI must confirm before calling
     bool SelectedProperties(rt::FileProperties&);

@@ -61,6 +61,15 @@ int main(int argc,char**argv) {
     CHECK(rename("C:\\TEMP\\ops-file.txt","C:\\TEMP\\ops-renamed.txt")==0);
     ops=fopen("C:\\TEMP\\ops-renamed.txt","rb");CHECK(ops!=NULL);
     if(ops){char content[7]={0};CHECK(fread(content,1,6,ops)==6 && strcmp(content,"actual")==0);fclose(ops);}
+    CHECK(CopyFileW(L"C:\\TEMP\\ops-renamed.txt",L"C:\\TEMP\\copy-\x6587.txt",TRUE));
+    CHECK(!CopyFileW(L"C:\\TEMP\\ops-renamed.txt",L"C:\\TEMP\\copy-\x6587.txt",TRUE) && GetLastError()==ERROR_FILE_EXISTS);
+    CHECK(!CopyFileA("C:\\TEMP\\ops-renamed.txt","C:\\TEMP\\ops-renamed.txt",FALSE));
+    CHECK(!CopyFileA("C:\\TEMP\\ops-renamed.txt","R:\\forbidden-copy",FALSE) && GetLastError()==ERROR_WRITE_PROTECT);
+    CHECK(CopyFileA("C:\\TEMP\\ops-renamed.txt","C:\\TEMP\\copy-narrow.txt",TRUE));
+    CHECK(CopyFileA("C:\\TEMP\\ops-renamed.txt","C:\\TEMP\\copy-narrow.txt",FALSE));
+    ops=fopen("C:\\TEMP\\copy-narrow.txt","rb");CHECK(ops!=NULL);
+    if(ops){char content[7]={0};CHECK(fread(content,1,6,ops)==6 && strcmp(content,"actual")==0);fclose(ops);}
+    CHECK(DeleteFileW(L"C:\\TEMP\\copy-\x6587.txt"));CHECK(DeleteFileA("C:\\TEMP\\copy-narrow.txt"));
     CHECK(DeleteFileW(L"C:\\TEMP\\ops-renamed.txt"));
     FILE* ro=fopen("R:\\locked.txt","r+b");CHECK(ro==NULL && errno==EACCES);if(ro)fclose(ro);
     CHECK(_wremove(L"R:\\locked.txt")==-1);

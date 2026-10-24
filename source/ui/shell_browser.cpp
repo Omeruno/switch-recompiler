@@ -180,6 +180,13 @@ ShellBrowser::MutationResult ShellBrowser::CreateFolder(const std::string& name)
     const auto target=Join(path_,name);size_t budget=scanLimit_;
     return FinishMutation(vfs_.CreateDirectory(target,&budget),target);
 }
+ShellBrowser::MutationResult ShellBrowser::CopyHere(const std::string& source,const std::string& name) {
+    if(!ready_ || path_.empty() || !ValidLeaf(name)) {
+        errno=!ready_?ENODEV:EINVAL;return FinishMutation(false,{});
+    }
+    const auto target=Join(path_,name);size_t budget=scanLimit_;
+    return FinishMutation(vfs_.CopyFile(source,target,true,&budget),target);
+}
 ShellBrowser::MutationResult ShellBrowser::RenameSelected(const std::string& name) {
     const auto selected=SelectedPath();
     if(!ready_ || path_.empty() || selected.empty() || !ValidLeaf(name)) {

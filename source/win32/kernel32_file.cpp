@@ -325,23 +325,8 @@ HostCallOutcome K32_MoveFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return M
 HostCallOutcome K32_MoveFileExA(cpu::CpuState& c, cpu::IGuestMemory& m) { return MoveCommon(c, m, false, (Arg(c, m, 2) & 1) != 0); }
 HostCallOutcome K32_MoveFileExW(cpu::CpuState& c, cpu::IGuestMemory& m) { return MoveCommon(c, m, true, (Arg(c, m, 2) & 1) != 0); }
 HostCallOutcome CopyCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
-    std::string a = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide));
-    if(a.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
-    std::string b = rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 1), wide),true);
-    if(b.empty()){SetLastError(m,ErrnoToWin());return Ret(0);}
-    bool failIfExists = Arg(c, m, 2) != 0;
-    struct stat st;
-    if (failIfExists && StatHost(b, st)) { SetLastError(m, ERROR_FILE_EXISTS); return Ret(0); }
-    std::FILE* in = std::fopen(a.c_str(), "rb");
-    if (!in) { SetLastError(m, ErrnoToWin()); return Ret(0); }
-    std::FILE* out = std::fopen(b.c_str(), "wb");
-    if (!out) { std::fclose(in); SetLastError(m, ErrnoToWin()); return Ret(0); }
-    char buf[8192];
-    size_t n;
-    while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0) std::fwrite(buf, 1, n, out);
-    std::fclose(in);
-    std::fclose(out);
-    return Ret(1);
+    if(rt::FileSystem().CopyFile(ReadPath(m,Arg(c,m,0),wide),ReadPath(m,Arg(c,m,1),wide),Arg(c,m,2)!=0))return Ret(1);
+    SetLastError(m,errno==EEXIST?ERROR_FILE_EXISTS:ErrnoToWin());return Ret(0);
 }
 HostCallOutcome K32_CopyFileA(cpu::CpuState& c, cpu::IGuestMemory& m) { return CopyCommon(c, m, false); }
 HostCallOutcome K32_CopyFileW(cpu::CpuState& c, cpu::IGuestMemory& m) { return CopyCommon(c, m, true); }

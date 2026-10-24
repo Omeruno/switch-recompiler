@@ -6,7 +6,8 @@ executor quanta independently of a guest USER pump**, with bounded deferred inpu
 and asynchronous owner-window commands. **F4b.2 now keeps one frontend worker
 and output device across guest sessions.** Shared file mutations/properties now exist in the provider/browser model;
 [Native file actions](F_FILE_ACTIONS.md), name entry, confirmation and properties
-are now connected. Next: checked copy, context actions,
+are now connected. [Checked byte copy](F_FILE_COPY.md) is shared by VFS, Win32 and
+the browser model. Next: native Copy/Paste and context actions,
 coherent Switch input, TXT/images and the F5 workflow.
 Luna visual refinement and G optimization are deferred. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
@@ -28,11 +29,12 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; flat native overlay composition still needs F4b retained-layer integration and visual/interaction refinement |
 | F4b.1 | [Independent native input](F4B_INPUT_SERVICE.md), bounded deferred guest events, physical async state, real owner-queue task commands and pending feedback | Physical acceptance; a host API that never yields remains a responsiveness limit |
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; native/guest retained planes remain open |
-| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); persistent shell/session/input/output | Checked copy → input/context menus → preferences/TXT/images → save/find/reopen |
+| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); persistent shell/session/input/output | Native Copy/Paste → input/context menus → preferences/TXT/images → save/find/reopen |
+| Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Supported EXE installation to persistent folders, actual desktop/Start shortcuts, ZIP then RAR/other formats; compatibility and extraction gates remain open |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: checked file copy
+## Next concrete package: native Copy/Paste and context actions
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -42,19 +44,29 @@ absolute C paths from the former per-EXE mapping may need reselection through S.
 F4b.1 removes dependence on the guest message pump for native Start/folder input
 at executor boundaries. It preserves real guest command delivery and explicitly
 shows pending requests instead of fabricating a minimized window. F4b.2 now separates frontend/device lifetime from guest lifetime; see
-[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions are connected; checked copy and TXT/image tools remain open.
+[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions and checked-copy model are connected; Copy/Paste UI and TXT/image tools remain open.
 
 The common real create/rename/delete/properties provider and browser model are
 implemented; see [the exact scope](F_FILE_OPERATIONS.md). DesktopShell now exposes [native name/actions/confirmation/properties](F_FILE_ACTIONS.md)
-with controller focus and modal input ownership. Copy needs checked read/write/close
-errors, safe destination handling and explicit partial-file semantics before exposure.
-Then add coherent right-click/context/controller actions. Retained native/guest GPU planes remain
+with controller focus and modal input ownership. The [checked-copy provider/model](F_FILE_COPY.md) now checks data I/O/fsync/close
+and stages publication without truncating an old destination. Its device rename/
+race/cleanup limits are explicit. Implement native Copy/Paste with destination
+selection, then coherent right-click/context/controller actions. Retained native/guest GPU planes remain
 an explicit graphics integration boundary. Implement
 persisted associations/settings and actual document tools before further Luna
 polish. F3/F4/F5 and general Win32 compatibility remain incomplete.
 
 Подробная [очередь действий после F1](F_SHELL_PLAN.md#рабочий-план-после-f1-2026-10-23)
 фиксирует критерии F2–F5, возврат к измерениям G и контрольные точки активной работы.
+
+## Planned installation and archives
+
+After the functional F5 baseline, add [supported EXE installers and archive import](F_INSTALL_AND_ARCHIVES.md):
+real persistent application folders and desktop/Start shortcuts, then ZIP/RAR/other
+formats with explicit supported subsets and real extraction errors. Installer child
+process/COM/MSI dependencies and shortcut APIs need actual implementations; this
+is not universal installer/game compatibility. This request is recorded without
+replacing the current file/document queue.
 
 ## Implementation order and gates
 

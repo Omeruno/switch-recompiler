@@ -78,7 +78,8 @@ and unchanged later guest event counts. Run the complete clean
 `COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh`, strict no-exceptions/no-RTTI
 checks and exact published-SHA six-job CI.
 
-Next: checked copy with honest I/O/partial-failure semantics, then coherent
+The [checked-copy provider](F_FILE_COPY.md) now implements explicit I/O/staging
+semantics. Next: native Copy/Paste and coherent
 right-click/context actions and further controller interaction, persisted
 preferences/associations, TXT/images and F5 save/find/reopen. Separate retained
 native/guest GPU planes, D compatibility and measured G remain open. No complete

@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b46b378b5769f8140d9efe5a6f8dfaae77424ea9` (2026-10-24).
-[CI 40086771006](https://github.com/Omeruno/switch-recompiler/actions/runs/40086771006)
+`6ac9aa071f168a26e0c75b4f634f7efa606c7f2e` (2026-10-24).
+[CI 40087919426](https://github.com/Omeruno/switch-recompiler/actions/runs/40087919426)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -16,7 +16,8 @@ return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 add
 independent native input service, bounded deferred guest events, physical async
 state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Shared real file mutations/properties now exist in VFS and the browser model
 ([scope](F_FILE_OPERATIONS.md)). [Native file actions](F_FILE_ACTIONS.md),
-name entry, delete confirmation and properties are now connected; next: checked copy, coherent L/R
+name entry, delete confirmation and properties are now connected.
+[Checked byte-copy provider/model](F_FILE_COPY.md) is implemented; next: native Copy/Paste, coherent L/R
 click and controller actions, preferences/TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
@@ -921,3 +922,44 @@ Switch-only keyboard codec/cancel-redraw correction followed the common compile;
 main.cpp is excluded from host tests and needs exact new-SHA Switch CI. Markdown
 links/fences and git diff --check passed. No local SDK/hardware acceptance is
 implied; exact published-SHA CI must be checked after publication.
+
+
+## Functional F: checked byte-copy provider and installer/archive plan
+
+Fetched clean 6ac9aa0/FETCH_HEAD on the working branch, no newer changes or
+AGENTS.md. Exact incoming CI 40087919426 passed all six jobs. User requests future
+EXE installation to proper persistent folders with real desktop shortcuts, plus
+ZIP/RAR/other extraction. Recorded F_INSTALL_AND_ARCHIVES.md and linked the
+active/global/shell maps: after baseline F5, actual installer/shortcut/child-
+process/API compatibility and archive extraction gates, not universal support.
+No dependencies/download manager or installer implementation is added now.
+
+VFS checked CopyFile now serves KERNEL32 A/W and ShellBrowser CopyHere. An
+exclusive sibling stage, 8 KiB buffer, checked short/EINTR data I/O, fsync and
+both closes precede native publication. Same-object C/S/case/hard-link aliases,
+readonly destinations/roots/links/types and collisions are rejected. Failures
+preserve old source/destination and first errno; cleanup attempts only the owned
+stage. Stage cleanup failure/crash residue, native-writer races, source mutation,
+metadata and synchronous latency limits remain explicit in F_FILE_COPY.md.
+Switch replacement-rename support is not assumed: unsupported replacement fails
+without deleting the old file. Native Copy/Paste controls remain unimplemented;
+next package is destination/clipboard UI plus coherent context/controller input.
+
+New real-file tests inject open/create/read/short-write/zero-write/fsync/both-
+close/publication/collision/late-destination/cleanup errors and check bytes,
+first errors, descriptor lifetime and staged residue. The four-session public
+x86 fixture exercises actual CopyFileA/W, Unicode, collision/self-copy/readonly
+failures and copied bytes. Initial native expectation incorrectly assumed full
+Cyrillic case folding, beyond F1's current resolver: changed it to exact Unicode
+names with ASCII-case extension. No runtime Unicode-collation claim is added.
+An initial full suite was stopped when the browser-copy model was added; only
+the later clean final-tree suite is the validation result.
+
+Final local validation: complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final code/header/
+fixture tree, including new copy faults/browser copy, extended four x86 filesystem
+sessions, native file actions, busy guest/workspace/lifetime regressions, Stage C,
+six E9 groups and both real EGL pixel oracles. Strict no-exceptions/no-RTTI copy
+harness/module compilation and execution passed; Markdown links/fences/diff checks
+also passed before publication. Exact new-SHA six-job CI must then be verified. No local Switch SDK
+or physical acceptance is inferred; hardware list stays deferred and SD closed.

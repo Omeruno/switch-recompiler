@@ -38,6 +38,7 @@ struct FileProperties {
     bool mountReadOnly=false,ownerWriteBit=false;
 };
 
+class FileCopyIo;
 class Vfs {
 public:
     Vfs();
@@ -69,6 +70,11 @@ public:
     bool DeleteFile(const std::string&,size_t* caseBudget=nullptr) const;
     bool RemoveDirectory(const std::string&,size_t* caseBudget=nullptr) const;
     bool Move(const std::string& from,const std::string& to,bool replace=false,size_t* caseBudget=nullptr) const;
+    // Checked regular-file byte copy via an exclusive sibling staging file.
+    // Existing destination is never opened/truncated; native publication can
+    // fail if replacement rename is unsupported. No metadata/durability promise.
+    bool CopyFile(const std::string& from,const std::string& to,bool failIfExists=true,
+                  size_t* caseBudget=nullptr,FileCopyIo* io=nullptr) const;
 private:
     bool MutationPath(const std::string&,std::string& host,size_t*) const;
     struct MountPoint {std::string root,cwd;bool readOnly=false;uint32_t type=0;};

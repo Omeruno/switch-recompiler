@@ -36,9 +36,9 @@ native writer**. F1 trusted-root/symlink race limitations remain. These calls do
 not yield into another guest while mutating. Access rights of already-open
 handles, inode aliases/hard links and renaming a current directory still have
 the existing host-backed limitations; this is not an NT filesystem/security model.
-CopyFile remains the earlier separate implementation and still needs checked
-read/write/close errors and safe destination handling before shell copy is exposed.
-No unsupported Copy action is advertised by this package.
+[Checked CopyFile](F_FILE_COPY.md) now shares the provider and browser model,
+with staged publication and checked I/O. Native Copy/Paste remains the next UI
+package; no unsupported Copy action is advertised.
 
 ## Properties and browser model
 
@@ -79,7 +79,7 @@ file bytes in each of its four isolated sessions. The complete
 CI remain required. No proprietary fixture is introduced.
 
 The native-action follow-up connects these operations, confirmation and properties
-with pointer/controller routing. Next: checked copy before advertising it, then
+with pointer/controller routing. Next: native Copy/Paste using the checked provider, then
 right-click/context actions. Then persisted preferences/associations,
 TXT/images and F5 save -> find -> reopen. Luna polish and G optimization remain
 deferred. Local Switch SDK is unavailable; CI compiles the console build.
