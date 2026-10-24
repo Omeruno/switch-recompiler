@@ -104,6 +104,7 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     Copy(outputSurface_,guest,{0,0,W,H});
     Copy(outputSurface_,chromeSurface_,{0,680,W,H});
     if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,{218,100,1166,630});
+    if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)Copy(outputSurface_,chromeSurface_,{396,196,1034,552});
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return outputSurface_;
 }

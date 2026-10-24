@@ -2218,13 +2218,14 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             const bool openWith=shell.PendingTextInput()==ui::DesktopShell::TextInput::OpenWith;
             const bool newFolder=shell.PendingTextInput()==ui::DesktopShell::TextInput::NewFolder;
             const bool rename=shell.PendingTextInput()==ui::DesktopShell::TextInput::Rename;
+            const bool association=shell.PendingTextInput()==ui::DesktopShell::TextInput::AssociationApplication;
             const bool paste=shell.PendingTextInput()==ui::DesktopShell::TextInput::PasteName;
             const bool leaf=newFolder || rename || paste;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
-                swkbdConfigSetGuideText(&config,leaf?"Введите одно имя без пути и кавычек.":openWith?"Для расширения выбор запомнится до выхода из оболочки.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
+                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetGuideText(&config,leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
                 accepted=R_SUCCEEDED(swkbdShow(&config,text,sizeof(text)));

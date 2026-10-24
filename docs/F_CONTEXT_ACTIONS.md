@@ -72,8 +72,8 @@ incremental-copy/heartbeat/window/overflow/quit/restart checks. The full clean
 MinGW/Mesa suite, strict no-exceptions/no-RTTI checks, actual screenshots,
 Markdown/diff checks and exact published-SHA six-job CI remain required.
 
-Next: bounded persisted preferences/associations and management, then real TXT/
-image tools and F5 save/find/reopen. Further input ergonomics and retained
+[Bounded persisted preferences/associations](F3C_PREFERENCES.md) and management
+are now implemented. Next: real TXT/image tools and F5 save/find/reopen. Further input ergonomics and retained
 native/guest GPU planes remain open. [Installer/shortcuts/ZIP/RAR](F_INSTALL_AND_ARCHIVES.md)
 remain planned future scope. Local Switch SDK is unavailable; CI builds the NRO,
 while physical Paint/GPU/fallback/Lite/input/relaunch checks remain deferred.

@@ -63,6 +63,12 @@ static void Run(Shell& shell,const char* exe,int mode) {
             hwnd=user::Desktop()->children[0];
             CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);Start(bridge);CHECK(shell.StartOpen());
             const auto before=frameCount;user::PresentIfNeeded(true);CHECK(frameCount>before);
+            Click(bridge,Shell::Settings);CHECK(shell.ActiveDialog()==Shell::Dialog::Preferences);
+            ui::OwnedSurface nativeSettings;nativeSettings.Allocate(1280,720);shell.Render(nativeSettings.s,u"");
+            const auto& settingsFrame=bridge.Compose(user::S().screen.s);
+            for(int y=196;y<552;++y)for(int x=396;x<1034;++x)CHECK(settingsFrame.Get(x,y)==nativeSettings.s.Get(x,y));
+            Click(bridge,Shell::PreferenceSort);CHECK(shell.Browser().PreferenceStatus()==ui::ShellPreferenceStore::Status::Saved);
+            Click(bridge,Shell::CancelDialog);CHECK(!shell.ModalActive());Start(bridge);CHECK(shell.StartOpen());
             Click(bridge,Shell::MenuComputer);CHECK(shell.ActivePanel()==Shell::Panel::Explorer);
             CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0);
             // Native file actions operate on actual storage even while this x86

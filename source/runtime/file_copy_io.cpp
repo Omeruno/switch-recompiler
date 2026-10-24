@@ -4,6 +4,7 @@
 #include <cstdio>
 namespace rt {
 int FileCopyIo::OpenRead(const std::string& p) {return open(p.c_str(),O_RDONLY);}
+int FileCopyIo::OpenReplace(const std::string& p) {return open(p.c_str(),O_CREAT|O_TRUNC|O_WRONLY,0600);}
 int FileCopyIo::CreateExclusive(const std::string& p) {return open(p.c_str(),O_CREAT|O_EXCL|O_WRONLY,0600);}
 ssize_t FileCopyIo::Read(int fd,void* p,size_t n) {return read(fd,p,n);}
 ssize_t FileCopyIo::Write(int fd,const void* p,size_t n) {return write(fd,p,n);}

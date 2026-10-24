@@ -72,6 +72,13 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case Settings:return {16,490,234,542};
+    case PreferenceSort:return {416,276,630,310};
+    case AssociationPrevious:return {416,392,500,428};
+    case AssociationNext:return {508,392,592,428};
+    case AssociationChange:return {600,392,790,428};
+    case AssociationForget:return {798,392,1006,428};
+    case PreferenceSave:return {416,504,630,540};
     case FileActions:return {876,108,984,138};
     case FolderActions:return {992,108,1106,138};
     case Copy:return {522,578,628,614};
@@ -156,8 +163,14 @@ bool DesktopShell::Enabled(int t) const {
 bool DesktopShell::ControlEnabled(int t) const {
     if(t==None)return false;
     if(textInput_!=TextInput::None)return false;
+    if(dialog_==Dialog::Preferences) {
+        if(t==PreferenceSort || t==PreferenceSave || t==CancelDialog)return true;
+        if(t==AssociationPrevious || t==AssociationNext)return browser_.Associations().size()>1;
+        return (t==AssociationChange || t==AssociationForget) && preferenceSelection_<browser_.Associations().size();
+    }
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
+    if(t==Settings)return browser_.Ready();
     if(t==FileActions)return panel_==Panel::Explorer && !browser_.Entries().empty();
     if(t==FolderActions)return panel_==Panel::Explorer;
     if(t==Copy)return panel_==Panel::Explorer && !browser_.Entries().empty() && browser_.Entries()[browser_.Selected()].kind==ShellBrowser::Kind::File;
@@ -190,11 +203,15 @@ std::vector<int> DesktopShell::FocusOrder() const {
         return out;
     }
     if(textInput_!=TextInput::None)return {None};
+    if(dialog_==Dialog::Preferences) {
+        std::vector<int> out;for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Enabled(t))out.push_back(t);
+        return out;
+    }
     if(dialog_==Dialog::DeleteConfirm)return {CancelDialog,ConfirmDelete};
     if(dialog_==Dialog::Properties || dialog_==Dialog::CopyProgress)return {CancelDialog};
     if(startOpen_) {
         std::vector<int> out;
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Exit,Start})if(Enabled(t))out.push_back(t);
+        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Settings,Exit,Start})if(Enabled(t))out.push_back(t);
         return out;
     }
     if(panel_==Panel::About)return {Close,Start};
@@ -264,7 +281,10 @@ bool DesktopShell::ServiceCopy() {
 }
 void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
     const auto purpose=textInput_;textInput_=TextInput::None;
-    if(!accepted || purpose==TextInput::None){pendingDocument_.clear();operationPath_.clear();return;}
+    if(!accepted || purpose==TextInput::None){pendingDocument_.clear();pendingAssociation_.clear();operationPath_.clear();return;}
+    if(purpose==TextInput::AssociationApplication) {
+        browser_.ReassignAssociation(pendingAssociation_,input);pendingAssociation_.clear();return;
+    }
     if(purpose==TextInput::PasteName) {
         if(browser_.Path()!=operationParent_) {operationNotice_=u"Папка изменилась. Повторите вставку.";return;}
         if(browser_.BeginCopyHere(clipboardPath_,input)) {
@@ -359,6 +379,11 @@ void DesktopShell::ToggleStart() {
 }
 void DesktopShell::Move(int delta) {
     if(textInput_!=TextInput::None)return;
+    if(dialog_==Dialog::Preferences) {
+        const auto count=browser_.Associations().size();
+        if(count)preferenceSelection_=size_t((int64_t(preferenceSelection_)+delta%int64_t(count)+int64_t(count))%int64_t(count));
+        return;
+    }
     if(dialog_!=Dialog::None) {if(dialog_==Dialog::DeleteConfirm && delta%2)focus_=focus_==CancelDialog?ConfirmDelete:CancelDialog;return;}
     if(panel_==Panel::Explorer && !startOpen_ && focus_>=BrowserRowBase) {
         browser_.Move(delta);FocusBrowserSelection();return;
@@ -396,6 +421,10 @@ int DesktopShell::HitTest(int x,int y) const {
         return None;
     }
     if(textInput_!=TextInput::None)return None;
+    if(dialog_==Dialog::Preferences) {
+        for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Bounds(t).Contains(x,y))return t;
+        return None;
+    }
     if(dialog_!=Dialog::None) {
         if(Bounds(CancelDialog).Contains(x,y))return CancelDialog;
         if(dialog_==Dialog::DeleteConfirm && Bounds(ConfirmDelete).Contains(x,y))return ConfirmDelete;
@@ -403,7 +432,7 @@ int DesktopShell::HitTest(int x,int y) const {
     }
     if(Bounds(Start).Contains(x,y))return Start;
     if(startOpen_) {
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Exit})if(Bounds(t).Contains(x,y))return t;
+        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Settings,Exit})if(Bounds(t).Contains(x,y))return t;
         return None; // Menu is modal to clicks; no click-through to desktop/window.
     }
     if(panel_!=Panel::Desktop) {
@@ -456,6 +485,20 @@ void DesktopShell::Activate(int target) {
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case Settings:dialog_=Dialog::Preferences;dialogReturnFocus_=Start;focus_=CancelDialog;preferenceSelection_=0;break;
+    case PreferenceSort:browser_.CycleSort();break;
+    case PreferenceSave:browser_.SavePreferences();break;
+    case AssociationPrevious:case AssociationNext: {
+        const auto count=browser_.Associations().size();
+        preferenceSelection_=target==AssociationPrevious?(preferenceSelection_+count-1)%count:(preferenceSelection_+1)%count;break;
+    }
+    case AssociationChange:
+        pendingAssociation_=browser_.Associations()[preferenceSelection_].extension;
+        initialText_=browser_.Associations()[preferenceSelection_].application;textInput_=TextInput::AssociationApplication;break;
+    case AssociationForget:
+        browser_.ForgetAssociation(browser_.Associations()[preferenceSelection_].extension);
+        if(preferenceSelection_>=browser_.Associations().size())preferenceSelection_=0;
+        break;
     case FileActions:OpenContext(false);break;
     case FolderActions:OpenContext(true);break;
     case Copy:
@@ -518,7 +561,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     Fill(s,{0,0,Width,680},0x3A6EA5);
 
     if(!guestActive_)Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
-    Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):Wide(status_),0xC1DCF4,12);
+    Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():Wide(status_),0xC1DCF4,12);
     auto control=[&](int target,std::u16string label,Rect r) {
         const bool enabled=Enabled(target),hot=hover_==target && enabled,down=pressed_==target && hot;
         Gradient(s,r,target==Close?(down?0xA22917:0xEE9A84):down?0x255BB3:hot?0xFCFCFF:0xFFFFFF,
@@ -592,15 +635,16 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             if(entries.empty())Text(s,{440,204,1118,252},browser_.Errors() || browser_.Truncated()?u"Нет записей для отображения. См. сообщение ниже.":u"Папка пуста.",0x536376,16);
             std::u16string note;
             if(browser_.LastError()!=ShellBrowser::Error::None)note=ShellBrowser::ErrorText(browser_.LastError());
+            else if(browser_.PreferenceWarning())note=browser_.PreferenceText();
             else if(!operationNotice_.empty())note=operationNotice_;
             else {
                 if(browser_.Truncated())note+=u"Лимит просмотра: список неполный. ";
                 if(browser_.Errors())note+=u"Некоторые записи недоступны. ";
                 if(note.empty() && browser_.CanChooseApplication()) {
                     const auto app=browser_.ApplicationFor(browser_.SelectedDocument());
-                    note=app.empty()?u"Открыть: выбрать приложение. Тип запоминается до выхода.":u"Приложение: "+Wide(app.substr(app.find_last_of('\\')+1))+u" (до выхода из оболочки)";
+                    note=app.empty()?u"Открыть: выбрать приложение. Ассоциации сохраняются в профиле.":u"Приложение: "+Wide(app.substr(app.find_last_of('\\')+1))+u"";
                 }
-                if(note.empty())note=browser_.Path().empty()?u"Для томов показано доступное место. R: только чтение.":browser_.ReadOnly()?u"Только чтение. Адресная строка открывает ввод пути.":u"Документы: Открыть или Выбрать приложение. Тип запоминается до выхода.";
+                if(note.empty())note=browser_.Path().empty()?u"Для томов показано доступное место. R: только чтение.":browser_.ReadOnly()?u"Только чтение. Адресная строка открывает ввод пути.":u"Документы: Открыть или Выбрать приложение. Настройки — в Пуске.";
             }
             Text(s,{240,556,1138,577},note,browser_.LastError()!=ShellBrowser::Error::None?0xA33C22:0x5A6574,13);
             control(OpenWith,u"Выбрать приложение",Bounds(OpenWith));
@@ -638,11 +682,11 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         Fill(s,{242,352,478,630},0xD8E8F7);Frame(s,{0,284,480,680},0x1555AD);
         Gradient(s,{2,286,478,352},0x4D98EB,0x1C63BD);
         Frame(s,{14,298,54,340},0xE7F1FF);Icon(s,18,302,shell_art::computer);Text(s,{66,306,465,342},u"Player",0xFFFFFF,23,true);
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About}) {
+        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Settings}) {
             const auto r=Bounds(t);const bool hot=Enabled(t) && (focus_==t || hover_==t);
             if(hot){Fill(s,r,pressed_==t?0x1D4C99:0x316AC5);Frame(s,r,0x204DA0);}
             Icon(s,r.left+5,r.top+7,t==MenuComputer?shell_art::computer:t==MenuDocuments?shell_art::folder:shell_art::programs);
-            Text(s,{r.left+43,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,15,t==MenuPrograms);
+            Text(s,{r.left+43,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":t==Settings?u"Настройки оболочки":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,15,t==MenuPrograms);
         }
         Text(s,{258,538,466,602},guestActive_?u"Одно приложение за раз":browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
         Gradient(s,{2,622,478,678},0x3282D6,0x1C61B5);control(Exit,u"Выйти в Homebrew",Bounds(Exit));
@@ -663,11 +707,23 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
         Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":u"Свойства",0xFFFFFF,19,true);
+        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":u"Свойства",0xFFFFFF,19,true);
         const auto slash=operationPath_.find_last_of('\\');
-        Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-        Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
-        if(dialog_==Dialog::CopyProgress) {
+        if(dialog_!=Dialog::Preferences)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
+        if(dialog_!=Dialog::Preferences)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
+        if(dialog_==Dialog::Preferences) {
+            Text(s,{416,246,1006,272},u"Сортировка проводника",0x24354A,17,true);
+            control(PreferenceSort,browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",Bounds(PreferenceSort));
+            const auto& associations=browser_.Associations();char count[64];
+            std::snprintf(count,sizeof(count),"%zu / %zu",associations.empty()?0:preferenceSelection_+1,associations.size());
+            Text(s,{416,322,1006,346},u"Типы файлов: "+Wide(count)+u"  (↑/↓ — выбор)",0x24354A,16,true);
+            Text(s,{416,354,1006,382},preferenceSelection_<associations.size()?Wide("."+associations[preferenceSelection_].extension+" → "+associations[preferenceSelection_].application):u"Ассоциаций пока нет. Откройте документ и выберите приложение.",0x42576B,14);
+            control(AssociationPrevious,u"←",Bounds(AssociationPrevious));control(AssociationNext,u"→",Bounds(AssociationNext));
+            control(AssociationChange,u"Сменить EXE…",Bounds(AssociationChange));control(AssociationForget,u"Забыть тип",Bounds(AssociationForget));
+            Text(s,{416,444,1006,470},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceText(),browser_.PreferenceWarning() || browser_.LastError()!=ShellBrowser::Error::None?0xA33C22:0x42576B,14);
+            Text(s,{416,472,1006,496},browser_.PreferenceWarning()?u"Текущие изменения доступны сейчас. Сохранение можно повторить.":u"Приложения проверяются при открытии документа.",0x526477,13);
+            control(PreferenceSave,u"Сохранить",Bounds(PreferenceSave));control(CancelDialog,u"Закрыть",Bounds(CancelDialog));
+        } else if(dialog_==Dialog::CopyProgress) {
             char bytes[64];std::snprintf(bytes,sizeof(bytes),"%llu",static_cast<unsigned long long>(browser_.CopyBytes()));
             Text(s,{416,324,1006,350},u"Записано: "+Wide(bytes)+u" байт",0x24354A,18,true);
             Text(s,{416,368,1006,396},u"Источник: "+Wide(clipboardPath_),0x42576B,14);

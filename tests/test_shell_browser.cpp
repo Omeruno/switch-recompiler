@@ -149,7 +149,7 @@ int main(int argc,char** argv) {
     shell.Enter();shell.Accept();assert(shell.LaunchRequest().arguments.size()==1 && !shell.LaunchPath().empty());
     Screenshot(shell,prefix,"associated-document");
     shell.Enter();shell.ToggleStart();Input(shell,Shell::MenuRun,"\"bad quote");assert(shell.LaunchPath().empty());
-    Browser associations;assert(associations.Configure(system.string(),sd.string(),rom.string(),error));
+    Browser associations;assert(associations.Configure((sd/"association-system").string(),sd.string(),rom.string(),error));
     for(size_t i=0;i<Browser::MaxAssociations;++i) {
         const auto name="type.t"+std::to_string(i);std::ofstream(sd/name)<<"data";
         assert(associations.OpenWith("S:\\"+name,"S:\\Apps\\Unicode 文件\\PuBlic.EXE",request));

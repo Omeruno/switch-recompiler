@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`d8ad9a10f5e5b10f3691571cfa9ef0d70ae476f7` (2026-10-24).
-[CI 40098135433](https://github.com/Omeruno/switch-recompiler/actions/runs/40098135433)
+`62b50f0d81cf78da8ec7d91eab3304727b5c17f1` (2026-10-24).
+[CI 40099366270](https://github.com/Omeruno/switch-recompiler/actions/runs/40099366270)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -20,7 +20,8 @@ name entry, delete confirmation and properties are now connected.
 [Checked byte-copy provider/model](F_FILE_COPY.md) and [native Copy/Paste](F_FILE_PASTE.md)
 are implemented with a shared resumable engine, byte progress and cancel.
 [Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
-click, Menu-key and controller actions; next: persisted preferences/associations, TXT/images and F5 save/find/reopen.
+click, Menu-key and controller actions. [Persistent sorting/associations](F3C_PREFERENCES.md)
+and native management are now implemented as a bounded F3c slice; next: TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
@@ -1067,3 +1068,57 @@ screenshot inspected; unsupported decorative glyphs were removed from titlebar
 button labels. Markdown links/fences and git diff --check passed. Only docs
 changed after the final build. Verify exact published-SHA six-job CI after push;
 no local Switch SDK or physical acceptance is implied.
+
+
+## F3c slice: real persistent sorting/associations and native management
+
+Fetched clean 62b50f0/FETCH_HEAD on the requested branch, no newer work/AGENTS.md;
+incoming exact CI 40099366270 passed six jobs. ShellPreferenceStore now reads
+bounded versioned CRC32/generation records from two owned F1 profile slots.
+Save checks short writes/fsync/close in the other slot, retaining the previous
+valid record without assuming Horizon replacement rename. Missing/default,
+recovered/corrupt/future-version/I/O and unconfirmed-save outcomes are distinct;
+unknown versions/read errors block writes. One frontend writer, no NT registry
+or power-loss-proof filesystem guarantee. See F3C_PREFERENCES.md for details.
+
+Browser restores actual sort/mappings, saves accepted sort/association changes,
+and exposes reassign/forget/retry. Start -> Shell settings provides those real
+controls; persistence warnings remain visible and failed save does not fake a
+durable result or suppress a valid document launch. Reassignment captures an
+extension independently of selection. Dialog composition now includes its actual
+rectangle over the desktop panel while a guest runs, retaining input ownership.
+Settings cover sort and at most 32 extension/EXE mappings, not full OS settings,
+last folder/theme/input/application state or arbitrary EXE compatibility.
+
+New native tests compare real slot bytes, fresh-shell restoration, malformed/
+CRC/truncated/oversized/future/readonly data, duplicate/maximal records and
+partial/open/read/fsync/close/short I/O failures with descriptor cleanup. They
+exercise controller/pointer management and genuine changed/removed mapping loads.
+The document harness now runs a fifth actual-x86 session from a new shell using
+its restored Unicode document association. The earlier association-limit test
+uses an isolated profile root rather than assuming saved mappings disappeared.
+Seven busy-x86 sessions inspect exact composed settings pixels and actual sort
+saving. Initial test enum names collided with virtual method names; scoped them.
+A strict indentation warning was fixed; neither required runtime workarounds.
+
+Complete clean rootless MinGW/Mesa full suite passed on the final runtime/header/
+fixture tree. Additional final native maximum-record/CRC/oversize/controller
+assertions passed strict no-exceptions/no-RTTI compilation and execution after
+that suite. Source/runtime was unchanged. Native settings screenshot inspected;
+remaining strict/link/diff checks and exact new-SHA six-job CI must be verified
+before completion. Local Switch SDK remains absent; physical acceptance stays
+deferred and SD troubleshooting closed. Next: real TXT read/edit/save, then
+supported image viewing/F5; installer/shortcuts/ZIP/RAR remain planned work.
+
+
+Final preference validation gates: complete clean rootless MinGW/Mesa suite
+passed, including native dual-slot/settings tests, five actual-x86 document
+sessions (one from restored state in a fresh shell), seven busy-x86 native
+settings/pixel/save cases and all previous lifecycle/file/context/copy/input,
+Stage C, six E9 and both actual EGL oracle checks. Final extended native record/
+controller assertions, preference provider/UI and extended busy harness passed
+-Wall -Wextra -Werror -fno-exceptions -fno-rtti compilation/execution; ShellSession
+strict compilation passed. Actual final settings screenshot inspected; Markdown
+links/fences and git diff --check passed. No runtime change followed the full
+suite; only extra native assertions/docs. Verify exact published-SHA six-job CI.
+Local SDK/physical limitations and the separate installer/archive plan remain.

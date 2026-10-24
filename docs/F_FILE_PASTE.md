@@ -86,5 +86,6 @@ Markdown/diff validation and exact published-SHA six-job CI. Local devkitA64/lib
 remains unavailable; host tests do not execute the actual Switch input/SD device.
 Physical Paint/GPU/fallback/Lite/input/relaunch acceptance stays deferred; SD
 troubleshooting stays closed. [Context/right-click/controller menus](F_CONTEXT_ACTIONS.md) are connected; next:
-persisted preferences/associations, TXT/images and F5. The [installer/archive plan](F_INSTALL_AND_ARCHIVES.md)
+[persisted preferences/associations](F3C_PREFERENCES.md) are implemented; next
+TXT/images and F5. The [installer/archive plan](F_INSTALL_AND_ARCHIVES.md)
 remains recorded as future functional work.

@@ -20,10 +20,10 @@ still returns to the same shell. Choosing an application establishes only the
 user's intent, not verified application compatibility.
 
 For extensions of 1–16 ASCII letters/digits/underscore/hyphen, the lowercased
-extension is remembered in the current shell (up to 32 types). That state
-survives guest exits, failures and fresh GuestSession teardown; it ends when
-homebrew exits or the browser's roots are explicitly reconfigured. There is no
-on-disk association persistence yet. Files without a supported extension can be
+extension is remembered (up to 32 types). The [F3c follow-up](F3C_PREFERENCES.md)
+now persists mappings in the F1 profile and provides native reassignment/removal,
+validated fresh-shell restoration and visible save errors. The initial F3b
+implementation only retained these mappings in the current shell. Files without a supported extension can be
 opened once with an explicit application; EXEs cannot be remapped as documents.
 Missing/unreadable applications fail with a visible error; Choose application
 can replace them. Cancellation changes no association and launches nothing.

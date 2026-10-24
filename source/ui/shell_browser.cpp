@@ -28,6 +28,8 @@ bool ShellBrowser::Configure(const std::string& system,const std::string& sd,con
     if(!vfs_.ConfigurePersistent(system,sd,rom,error))return Fail(Error::NotReady);
     ready_=true;path_.clear();history_.clear();entries_.clear();selected_=0;
     associations_.clear();unassociatedDocument_.clear();
+    ShellPreferences restored;preferenceStatus_=preferences_.Load(vfs_,restored);
+    sort_=Sort(restored.sort);associations_=std::move(restored.associations);
     return Refresh();
 }
 bool ShellBrowser::Mounted(char drive) const {
@@ -160,7 +162,7 @@ void ShellBrowser::Page(int delta,size_t rows) {
     Select(std::min(size_t(page)*rows+selected_%rows,entries_.size()-1));
 }
 void ShellBrowser::CycleSort() {
-    const auto selected=SelectedPath();sort_=Sort((int(sort_)+1)%3);SortEntries(selected);
+    const auto selected=SelectedPath();sort_=Sort((int(sort_)+1)%3);SortEntries(selected);SavePreferences();
 }
 bool ShellBrowser::ValidLeaf(const std::string& name) {
     if(name.empty() || name.size()>255 || name=="." || name==".." || name.back()=='.' || name.back()==' ')return false;
@@ -268,6 +270,40 @@ bool ShellBrowser::OpenSelected(ShellLaunchRequest& out) {
     return OpenPath(entries_[selected_].path,out);
 }
 
+bool ShellBrowser::SavePreferences() {
+    if(!ready_)return Fail(Error::NotReady);
+    ShellPreferences p;p.sort=uint32_t(sort_);p.associations=associations_;
+    const bool saved=preferences_.Save(vfs_,p);
+    preferenceStatus_=saved?ShellPreferenceStore::Status::Saved:ShellPreferenceStore::Status::SaveFailed;return saved;
+}
+bool ShellBrowser::PreferenceWarning() const {
+    using S=ShellPreferenceStore::Status;
+    return preferenceStatus_==S::Recovered || preferenceStatus_==S::Corrupt || preferenceStatus_==S::Unsupported || preferenceStatus_==S::IoError || preferenceStatus_==S::SaveFailed;
+}
+const char16_t* ShellBrowser::PreferenceText() const {
+    using S=ShellPreferenceStore::Status;
+    switch(preferenceStatus_) {
+    case S::Missing:return u"Настройки ещё не сохранены.";
+    case S::Loaded:case S::Saved:return u"Настройки сохранены в профиле.";
+    case S::Recovered:return u"Восстановлена доступная копия настроек.";
+    case S::Corrupt:return u"Настройки повреждены. Используются значения по умолчанию.";
+    case S::Unsupported:return u"Версия настроек не поддерживается.";
+    case S::IoError:return u"Не удалось полностью прочитать настройки.";
+    case S::SaveFailed:return u"Сохранение настроек не подтверждено.";
+    }
+    return u"";
+}
+bool ShellBrowser::ReassignAssociation(const std::string& extension,const std::string& application) {
+    auto it=std::find_if(associations_.begin(),associations_.end(),[&](const Association& a){return a.extension==extension;});
+    if(it==associations_.end())return Fail(Error::NotFound);
+    ShellLaunchRequest request;if(!ResolveExecutable(application,request))return false;
+    it->application=request.guestPath;SavePreferences();return true;
+}
+bool ShellBrowser::ForgetAssociation(const std::string& extension) {
+    auto it=std::find_if(associations_.begin(),associations_.end(),[&](const Association& a){return a.extension==extension;});
+    if(it==associations_.end())return Fail(Error::NotFound);
+    associations_.erase(it);error_=Error::None;SavePreferences();return true;
+}
 std::string ShellBrowser::Extension(const std::string& path) {
     const auto dot=path.find_last_of('.'),slash=path.find_last_of("\\/");
     if(dot==std::string::npos || (slash!=std::string::npos && dot<slash) || dot+1==path.size() || path.size()-dot>17)return {};
@@ -314,6 +350,7 @@ bool ShellBrowser::OpenWith(const std::string& path,const std::string& applicati
             if(associations_.size()==MaxAssociations){out.Clear();return Fail(Error::AssociationLimit);}
             associations_.push_back({ext,out.guestPath});
         }
+        SavePreferences();
     }
     return true;
 }

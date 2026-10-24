@@ -10,7 +10,8 @@ are now connected. [Checked byte copy](F_FILE_COPY.md) is shared by VFS, Win32 a
 the browser model. [Native Copy/Paste](F_FILE_PASTE.md) now runs in bounded work
 steps with real byte progress and cancellation. [Explorer context menus](F_CONTEXT_ACTIONS.md)
 now route object/current-folder actions through pointer, Menu key and controller
-focus. Next: persisted preferences/associations, TXT/images and the F5 workflow.
+focus. [Persisted sorting/associations and management](F3C_PREFERENCES.md) are now
+implemented as a bounded F3c slice. Next: TXT/images and the F5 workflow.
 Luna visual refinement and G optimization are deferred. See the
 [F4b.1 contract](F4B_INPUT_SERVICE.md) and [functional shell plan](F_SHELL_PLAN.md).
 AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
@@ -27,16 +28,17 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F1 | Persistent C/S/R, per-drive cwd, mapped module/command-line/profile paths, readonly mutations, real statvfs space and Unicode W dialogs; [contract/tests](F1_FILESYSTEM.md) | Physical SD/Paint compatibility; no automatic migration of old absolute C paths |
 | F2 | [Native idle desktop/theme](F2_DESKTOP.md), Start Programs/About/Exit, bounded EXE panel, licensed Tango art, device clock, retained selection and Start-dismiss focus restoration | Physical shell/input/launch-return checks; F3a now enables My Computer/Documents and path-only Run |
 | F3a | [Real directory explorer](F3_EXPLORER.md), C/S/R and documents, bounded listing/history/case lookup, back/up/address/refresh/sort/pages and shared EXE launch from catalog/Explorer/path-only Run | Physical keyboard/navigation checks; F3b now adds explicit document applications |
-| F3b | [Document applications and arguments](F3_DOCUMENTS.md), Open/Choose application, remembered session types, full A/W/CRT argument transport and public x86 reader | On-disk preferences/association management remain F3c; no default or verified Paint association |
+| F3b | [Document applications and arguments](F3_DOCUMENTS.md), Open/Choose application, document type mappings, full A/W/CRT argument transport and public x86 reader | On-disk sorting/association management now implemented in [F3c slice](F3C_PREFERENCES.md); no default or verified Paint association |
+| F3c slice | [Persistent sorting/associations](F3C_PREFERENCES.md), checked dual-slot records, native reassign/forget/retry and fresh-shell x86 document opening | Limited to sorting and document applications; tree/other settings/workspace/document milestones and physical checks remain open |
 | F4a | [Shared active workspace](F4_WORKSPACE.md), new UI default including Paint, native backdrop/Start/taskbar, one-task minimize/restore and work area/input routing | Physical acceptance; flat native overlay composition still needs F4b retained-layer integration and visual/interaction refinement |
 | F4b.1 | [Independent native input](F4B_INPUT_SERVICE.md), bounded deferred guest events, physical async state, real owner-queue task commands and pending feedback | Physical acceptance; a host API that never yields remains a responsiveness limit |
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; native/guest retained planes remain open |
-| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); persistent shell/session/input/output | Persisted preferences/associations → TXT/images → save/find/reopen |
+| **Functional F: in progress** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); persistent shell/session/input/output | TXT/images → save/find/reopen |
 | Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Supported EXE installation to persistent folders, actual desktop/Start shortcuts, ZIP then RAR/other formats; compatibility and extraction gates remain open |
 | G0 | Bounded opt-in opcode/host-entry census and public fixture | Representative PE timing/overhead and optimization deferred behind the F milestone; census is not CPU speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
-## Next concrete package: persisted preferences and document associations
+## Next concrete package: real TXT read/edit/save
 
 F1 decouples persistent C from EXE directory/cwd, exposes real SD as S and
 read-only ROMFS as R, and keeps ordinary host launches compatible by default.
@@ -46,7 +48,7 @@ absolute C paths from the former per-EXE mapping may need reselection through S.
 F4b.1 removes dependence on the guest message pump for native Start/folder input
 at executor boundaries. It preserves real guest command delivery and explicitly
 shows pending requests instead of fabricating a minimized window. F4b.2 now separates frontend/device lifetime from guest lifetime; see
-[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions and checked-copy model are connected; native Copy/Paste is now connected; object/folder context interaction is now connected; persistence and TXT/image tools remain open.
+[F4B_OUTPUT_LIFETIME.md](F4B_OUTPUT_LIFETIME.md). Native file actions and checked-copy model are connected; native Copy/Paste is now connected; object/folder context interaction is now connected; persistent sorting/associations are implemented; TXT/image tools remain open.
 
 The common real create/rename/delete/properties provider and browser model are
 implemented; see [the exact scope](F_FILE_OPERATIONS.md). DesktopShell now exposes [native name/actions/confirmation/properties](F_FILE_ACTIONS.md)
@@ -56,8 +58,10 @@ race/cleanup limits are explicit. The [native single-file Copy/Paste flow](F_FIL
 accepts a destination name, services a resumable job and supports cancellation.
 [Native object/folder menus](F_CONTEXT_ACTIONS.md) now implement right-click,
 Menu-key and controller access with captured-target validation and paired input
-ownership. Next implement bounded persisted preferences/associations and their
-management, with actual restart/error handling. Retained native/guest GPU planes remain
+ownership. The [F3c preference slice](F3C_PREFERENCES.md) now stores real sort/association
+records in two checked slots and provides native management with restart/error
+checks. Next implement bounded real TXT read/edit/save, then image viewing and
+the F5 save/find/reopen scenario. Retained native/guest GPU planes remain
 an explicit graphics integration boundary. Implement
 persisted associations/settings and actual document tools before further Luna
 polish. F3/F4/F5 and general Win32 compatibility remain incomplete.

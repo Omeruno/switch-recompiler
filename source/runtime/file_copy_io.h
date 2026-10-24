@@ -10,6 +10,7 @@ class FileCopyIo {
 public:
     virtual ~FileCopyIo()=default;
     virtual int OpenRead(const std::string&);
+    virtual int OpenReplace(const std::string&); // owned preference slot only
     virtual int CreateExclusive(const std::string&);
     virtual ssize_t Read(int,void*,size_t);
     virtual ssize_t Write(int,const void*,size_t);

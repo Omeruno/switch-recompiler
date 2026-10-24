@@ -1,5 +1,6 @@
 #pragma once
 #include "../runtime/files.h"
+#include "shell_preferences.h"
 #include "../runtime/file_copy_job.h"
 #include "../runtime/command_line.h"
 #include <string>
@@ -69,6 +70,13 @@ public:
     MutationResult DeleteSelected(); // permanent; UI must confirm before calling
     bool SelectedProperties(rt::FileProperties&);
     int OperationErrno() const {return operationErrno_;}
+    const std::vector<ShellAssociation>& Associations() const {return associations_;}
+    bool ReassignAssociation(const std::string& extension,const std::string& application);
+    bool ForgetAssociation(const std::string& extension);
+    bool SavePreferences();
+    ShellPreferenceStore::Status PreferenceStatus() const {return preferenceStatus_;}
+    bool PreferenceWarning() const;
+    const char16_t* PreferenceText() const;
     void CycleSort();
     Sort Ordering() const {return sort_;}
     bool ReadOnly() const {return readOnly_;}
@@ -79,7 +87,7 @@ public:
     static bool IsExecutable(const std::string& path);
     static const char16_t* ErrorText(Error);
 private:
-    struct Association {std::string extension,application;};
+    using Association=ShellAssociation;
     struct Location {std::string path,selectedPath;};
     struct Listing {
         std::vector<Entry> entries;
@@ -107,6 +115,8 @@ private:
     std::vector<Entry> entries_;
     std::vector<Location> history_;
     std::vector<Association> associations_;
+    ShellPreferenceStore preferences_;
+    ShellPreferenceStore::Status preferenceStatus_=ShellPreferenceStore::Status::Missing;
     size_t selected_=0,errors_=0,scanned_=0,itemLimit_,scanLimit_;
     Error error_=Error::None;
     Sort sort_=Sort::Name;

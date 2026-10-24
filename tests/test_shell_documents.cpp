@@ -77,6 +77,15 @@ int main(int argc,char** argv) {
     Run(shell.LaunchRequest(),system,sd,rom); // Remembered association after guest teardown.
     shell.Enter();shell.ToggleStart();click(ui::DesktopShell::MenuRun);shell.CompleteTextInput(true,rt::QuoteCommandArgument(doc));
     Run(shell.LaunchRequest(),system,sd,rom); // Same document association through Run.
+    {
+        ui::DesktopShell restarted;CHECK(restarted.ConfigureFilesystem(system.string(),sd.string(),rom.string(),error));
+        CHECK(restarted.Browser().ApplicationFor(doc)==app);restarted.Enter();restarted.ToggleStart();
+        const auto run=ui::DesktopShell::Bounds(ui::DesktopShell::MenuRun);
+        restarted.PointerDown(run.left+10,run.top+10);restarted.PointerUp(run.left+10,run.top+10);
+        restarted.CompleteTextInput(true,rt::QuoteCommandArgument(doc));
+        CHECK(restarted.PendingTextInput()==ui::DesktopShell::TextInput::None && restarted.LaunchRequest().arguments==std::vector<std::string>{doc});
+        Run(restarted.LaunchRequest(),system,sd,rom); // Persisted association in a fresh native shell.
+    }
     CHECK(!rt::g_process);std::string data;std::ifstream f(document);std::getline(f,data);CHECK(data=="public document payload");
-    puts("PASSED: four real-x86 Run/chooser/association/reopen sessions; full A/W command line, CRT argv, LocalFree and actual Unicode document bytes");
+    puts("PASSED: five real-x86 Run/chooser/association/reopen/fresh-shell sessions; full A/W command line, CRT argv, LocalFree and actual Unicode document bytes");
 }
