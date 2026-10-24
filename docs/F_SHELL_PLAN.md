@@ -16,7 +16,7 @@
 с прогрессом/отменой подключены.
 [Контекстные меню объектов/папки](F_CONTEXT_ACTIONS.md), ПКМ и controller focus
 подключены. [Постоянная сортировка/ассоциации и управление](F3C_PREFERENCES.md)
-реализованы ограниченным пакетом F3c. Очередь: TXT/изображения → сценарий F5. F3c/F4/F5 целиком не закрыты.
+реализованы ограниченным пакетом F3c. Ограниченный [native TXT read/edit/save](F_TEXT_DOCUMENTS.md) реализован. Очередь: изображения → сценарий F5. F3c/F4/F5 целиком не закрыты.
 
 Пользовательская цель: реальная файловая структура Switch/SD, синяя панель
 задач и зелёный «Пуск», рабочий стол, программы и проводник в пределах уже
@@ -188,3 +188,8 @@ handoff/карты, обычный commit/push в рабочую ветку и C
 принимать произвольный installer EXE за уже поддержанный нельзя. Отдельно —
 ZIP, затем RAR/другие форматы, корректные пути, ошибки, лимиты и сохранность
 существующих файлов. Этот блок запланирован, сейчас не реализован.
+
+
+Native TXT create/read/line-edit/save/Save As is now implemented with bounded
+UTF/BOM preservation, retained backups and real conflict/error reporting; see
+[F_TEXT_DOCUMENTS.md](F_TEXT_DOCUMENTS.md). Next: supported image viewing and F5.

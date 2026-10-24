@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`62b50f0d81cf78da8ec7d91eab3304727b5c17f1` (2026-10-24).
-[CI 40099366270](https://github.com/Omeruno/switch-recompiler/actions/runs/40099366270)
+`a327117506870a837322de5a0940ee4b52b5bcad` (2026-10-25).
+[CI 40101548903](https://github.com/Omeruno/switch-recompiler/actions/runs/40101548903)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -21,7 +21,7 @@ name entry, delete confirmation and properties are now connected.
 are implemented with a shared resumable engine, byte progress and cancel.
 [Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
 click, Menu-key and controller actions. [Persistent sorting/associations](F3C_PREFERENCES.md)
-and native management are now implemented as a bounded F3c slice; next: TXT/images and F5 save/find/reopen.
+and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; next: images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
 protection/unwind/API compatibility remain separate open work. No fake successful
@@ -1122,3 +1122,68 @@ strict compilation passed. Actual final settings screenshot inspected; Markdown
 links/fences and git diff --check passed. No runtime change followed the full
 suite; only extra native assertions/docs. Verify exact published-SHA six-job CI.
 Local SDK/physical limitations and the separate installer/archive plan remain.
+
+
+## 2026-10-25 Functional F: real bounded native TXT documents
+
+Fetched clean a327117/FETCH_HEAD on the requested branch; no newer work or
+AGENTS.md found. Incoming exact CI 40101548903 passed six jobs. Local host tools
+remain usable; devkitA64/libnx is absent, not a local Switch-build claim.
+
+TextDocument now reads at most 64 KiB of strict UTF-8 or BOM UTF-16 LE/BE, preserves
+BOM/supplementary text/individual CRLF/LF/CR endings, and supports real line edits,
+insertion/removal, dirty state, Save and no-overwrite Save As. It checks actual
+file bytes for conflicts before and after staging. Checked exclusive stage I/O,
+fsync and close precede a backup-first two-rename publication that does not need
+Horizon overwrite rename. Old bytes remain in an ordinary sibling .bak, even on
+success; failed publication attempts restoration only to a vacant old name.
+Recovery/cleanup residues are explicit. No transaction/power-loss/native-writer-
+race safety or bounded I/O latency is claimed. See F_TEXT_DOCUMENTS.md.
+
+Native Explorer Folder/New TXT and File/Text commands expose the actual model.
+Five-line view, line selection/horizontal scroll, keyboard line editing up to
+500 UTF-16 units, insert/erase, Save/Save As and default-Cancel dirty-close flow
+work with pointer/controller/keyboard focus. Long lines remain scrollable and
+are never truncated into the smaller keyboard. Active/idle Switch line adapters
+set the length/return-key limits; oversized initial Save As paths are left empty.
+Native text modal state survives ordinary guest end/re-entry, with filesystem
+reconfiguration refused while open. Associations/ordinary EXE Open are preserved;
+this is native tooling, not extra Process/Notepad or general EDIT compatibility.
+
+New real-storage/model/UI tests inject short/EINTR/read/write/full/flush/close/
+move/publish/rollback/cleanup errors and model Horizon no-overwrite rename. They
+check exact bytes, codecs/endings/limits, conflict/readonly, dirty cancel/discard
+and fresh reopening. The existing public x86 document reader now consumes bytes
+created and subsequently edited/saved by this model. Seven busy x86 sessions
+exercise the real native TXT modal, saving, composed pixels, input isolation and
+continued guest heartbeat. Initial strict-test indentation and fixture string-
+length/lifecycle selection assumptions were corrected directly; successful saves
+now select the actual new document after refresh. No runtime compatibility stub.
+
+Required completion gates: full clean host/MinGW/Mesa, strict targeted checks,
+actual native screenshot, Markdown/diff checks and exact published-SHA six-job
+CI. No physical Switch result is inferred; Paint/GPU/fallback/input/relaunch
+remain deferred and SD troubleshooting closed. Next: supported images, then F5.
+Installer/desktop shortcuts/ZIP/RAR and retained native/guest planes remain open.
+
+
+Final TXT validation: complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the release runtime/
+headers/public fixtures, including the final long-line native assertions. New
+strict native TXT harness and extended seven-session busy-x86 harness passed
+-Wall -Wextra -Werror -fno-exceptions -fno-rtti; ShellSession strict compilation
+also passed. Five actual-x86 readers consumed a native-created, edited and saved
+Unicode document; all prior filesystem/copy/context/preferences/lifetime/input,
+Stage C, six E9 groups and both actual EGL oracles remained green.
+
+A final added close/save test exposed that guest end restored the old panel while
+the native editor retained its modal; EndGuest now preserves the editor's current
+panel/focus as well. An intermediate suite was stopped after that correction,
+then the full clean release suite above passed. Unix absence checks also reject
+dangling links for generated publication names; Switch uses its native stat.
+Successful save-and-close retains the backup notice in the surrounding Explorer.
+No runtime source changed after the release suite. Actual native screenshot
+inspected with a real-font assertion; eight Markdown docs/98 relative links,
+balanced fences and git diff --check passed. Fetched unchanged a327117 again;
+normal publication and exact new-SHA six-job CI verification follow. Local SDK
+remains absent and physical acceptance remains deferred. Next: image viewing.

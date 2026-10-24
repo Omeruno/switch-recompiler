@@ -126,6 +126,26 @@ static void Run(Shell& shell,const char* exe,int mode) {
             Click(bridge,Shell::CancelDialog);CHECK(!shell.CopyRunning());
             CHECK(!std::filesystem::exists(storageRoot+"/Documents and Settings/Player/My Documents/cancel-copy.bin"));
             CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
+            // The actual native TXT editor uses the same F1 storage while x86
+            // continues spinning. Its modal events must never reach guest USER.
+            Click(bridge,Shell::FolderActions);MenuClick(bridge,shell,Shell::TextNew);
+            CHECK(shell.ActiveDialog()==Shell::Dialog::TextEditor);
+            textReply=u"busy public text";Click(bridge,Shell::TextEdit);
+            CHECK(shell.Document().Dirty());const auto textBeat=m.Read32(heartbeat);
+            for(unsigned step=0;step<16;++step)execution.RunOne();
+            CHECK(m.Read32(heartbeat)!=textBeat);
+            ui::OwnedSurface nativeText;nativeText.Allocate(1280,720);shell.Render(nativeText.s,u"");
+            const auto& textFrame=bridge.Compose(user::S().screen.s);
+            for(int y=196;y<552;++y)for(int x=396;x<1034;++x)CHECK(textFrame.Get(x,y)==nativeText.s.Get(x,y));
+            Start(bridge);CHECK(!shell.StartOpen() && shell.ModalActive());
+            textReply=u"C:\\Documents and Settings\\Player\\My Documents\\busy-note.txt";
+            const auto notePath=storageRoot+"/Documents and Settings/Player/My Documents/busy-note.txt";
+            std::filesystem::remove(notePath); // independently reset this public fixture per session
+            Click(bridge,Shell::TextSaveAs);CHECK(!shell.Document().Dirty());
+            std::ifstream note(notePath,std::ios::binary);CHECK(std::string(std::istreambuf_iterator<char>(note),{})=="busy public text");note.close();
+            Click(bridge,Shell::CancelDialog);CHECK(!shell.ModalActive());
+            Click(bridge,Shell::Delete);Click(bridge,Shell::ConfirmDelete);CHECK(!std::filesystem::exists(notePath));
+            CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
             Click(bridge,Shell::Close);
             // A guest-owned right gesture retains ownership over native chrome.
             IE right;right.type=IE::MouseDown;right.button=1;right.x=400;right.y=250;CHECK(!bridge.Filter(right));

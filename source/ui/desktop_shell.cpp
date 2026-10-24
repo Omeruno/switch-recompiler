@@ -2,6 +2,7 @@
 #include "font.h"
 #include "shell_icons.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <ctime>
 
@@ -72,6 +73,13 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case TextOpen:case TextNew:return {}; // reached through context menu
+    case TextEdit:return {416,450,554,486};
+    case TextInsert:return {560,450,698,486};
+    case TextErase:return {704,450,842,486};
+    case TextSave:return {416,504,554,540};
+    case TextSaveAs:return {560,504,698,540};
+    case TextDiscard:return {704,504,834,540};
     case Settings:return {16,490,234,542};
     case PreferenceSort:return {416,276,630,310};
     case AssociationPrevious:return {416,392,500,428};
@@ -116,6 +124,7 @@ Rect DesktopShell::Bounds(int t) {
     case QuickS:return {240,344,406,380};
     case QuickR:return {240,388,406,424};
     default:
+        if(t>=TextLineBase && t<TextLineBase+5)return {416,300+(t-TextLineBase)*28,1006,328+(t-TextLineBase)*28};
         if(t>=BrowserRowBase && t<BrowserRowBase+Rows)return {422,184+(t-BrowserRowBase)*26,1138,210+(t-BrowserRowBase)*26};
         if(t>=RowBase && t<RowBase+Rows)return {240,184+(t-RowBase)*26,1138,210+(t-RowBase)*26};
         return {};
@@ -134,6 +143,7 @@ void DesktopShell::SetCatalog(const ExecutableCatalog& catalog) {
     errors_=catalog.Errors();truncated_=catalog.Truncated();
 }
 bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
+    if(TextDialog()){error="Close the text document before changing filesystem roots.";return false;}
     CloseContext();browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
     return browser_.Configure(system,sd,rom,error);
 }
@@ -145,12 +155,15 @@ void DesktopShell::SetGuestActive(const std::string& label) {
 void DesktopShell::EndGuest() {
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
-    guestActive_=false;guestLabel_.clear();panel_=returnPanel_;focus_=returnFocus_;
-    request_.Clear();startOpen_=false;pressed_=None;dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();
+    guestActive_=false;guestLabel_.clear();
+    if(!TextDialog()){panel_=returnPanel_;focus_=returnFocus_;}
+    request_.Clear();startOpen_=false;pressed_=None;
+    if(!TextDialog()){dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();}
 }
 void DesktopShell::Enter() {
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
+    if(TextDialog()){request_.Clear();startOpen_=false;hover_=pressed_=None;return;}
     dialog_=Dialog::None;operationPath_.clear();operationNotice_.clear();
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
@@ -163,6 +176,14 @@ bool DesktopShell::Enabled(int t) const {
 bool DesktopShell::ControlEnabled(int t) const {
     if(t==None)return false;
     if(textInput_!=TextInput::None)return false;
+    if(TextDialog()) {
+        if(t==CancelDialog || t==TextSaveAs)return true;
+        if(t==TextSave)return !document_.Path().empty();
+        if(dialog_==Dialog::TextClose)return t==TextDiscard;
+        if(t==TextEdit)return document_.Lines()[textSelection_].text.size()<=TextDocument::MaxEditUnits;
+        if(t==TextInsert || t==TextErase)return true;
+        return t>=TextLineBase && t<TextLineBase+5 && textSelection_/5*5+size_t(t-TextLineBase)<document_.Lines().size();
+    }
     if(dialog_==Dialog::Preferences) {
         if(t==PreferenceSort || t==PreferenceSave || t==CancelDialog)return true;
         if(t==AssociationPrevious || t==AssociationNext)return browser_.Associations().size()>1;
@@ -170,6 +191,14 @@ bool DesktopShell::ControlEnabled(int t) const {
     }
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
+    if(t>=TextEdit && t<=TextDiscard)return false;
+    if(t==TextNew)return panel_==Panel::Explorer && !browser_.Path().empty() && !browser_.ReadOnly();
+    if(t==TextOpen) {
+        if(panel_!=Panel::Explorer || browser_.Entries().empty())return false;
+        const auto& entry=browser_.Entries()[browser_.Selected()];auto name=entry.name;
+        std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return c>='A' && c<='Z'?char(c+32):char(c);});
+        return entry.kind==ShellBrowser::Kind::File && name.size()>=4 && name.substr(name.size()-4)==".txt";
+    }
     if(t==Settings)return browser_.Ready();
     if(t==FileActions)return panel_==Panel::Explorer && !browser_.Entries().empty();
     if(t==FolderActions)return panel_==Panel::Explorer;
@@ -203,6 +232,12 @@ std::vector<int> DesktopShell::FocusOrder() const {
         return out;
     }
     if(textInput_!=TextInput::None)return {None};
+    if(TextDialog()) {
+        std::vector<int> out;
+        if(dialog_==Dialog::TextEditor)for(int t:{TextEdit,TextInsert,TextErase})if(Enabled(t))out.push_back(t);
+        for(int t:{TextSave,TextSaveAs,TextDiscard,CancelDialog})if(Enabled(t))out.push_back(t);
+        return out;
+    }
     if(dialog_==Dialog::Preferences) {
         std::vector<int> out;for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Enabled(t))out.push_back(t);
         return out;
@@ -258,8 +293,28 @@ void DesktopShell::OpenCurrent() {
         ChooseApplication(browser_.UnassociatedDocument());
     FocusBrowserSelection();
 }
+void DesktopShell::CloseText() {
+    if(dialog_==Dialog::TextClose){dialog_=Dialog::TextEditor;focus_=TextEdit;return;}
+    if(document_.Dirty()){dialog_=Dialog::TextClose;focus_=CancelDialog;return;}
+    CloseDialog();
+}
+void DesktopShell::SaveText(const std::string& path) {
+    const bool closing=dialog_==Dialog::TextClose;
+    const bool saved=document_.Save(browser_.Filesystem(),path);
+    if(!saved) {
+        textNotice_=document_.Error()==EBUSY?u"Файл изменился: сохраните под новым именем.":document_.Error()==EEXIST?u"Имя уже занято. Укажите новое имя.":document_.Error()==EROFS || document_.Error()==EACCES?u"Нет доступа к записи. Сохраните в другой папке.":u"Ошибка записи. Текст остаётся в памяти.";
+    } else {
+        textNotice_=u"Сохранено.";
+        if(!browser_.Refresh())textNotice_+=u" Список не обновлён.";
+        else for(size_t i=0;i<browser_.Entries().size();++i)if(browser_.Entries()[i].path==document_.Path()){browser_.Select(i);break;}
+    }
+    if(!document_.BackupPath().empty())textNotice_+=u" Копия: "+Wide(document_.BackupPath().substr(document_.BackupPath().find_last_of('/')+1));
+    if(!document_.RecoveryPath().empty())textNotice_+=u" Остаток: "+Wide(document_.RecoveryPath().substr(document_.RecoveryPath().find_last_of('/')+1));
+    if(closing && saved){operationNotice_=textNotice_;CloseDialog();}
+}
 void DesktopShell::CloseDialog() {
     if(dialog_==Dialog::CopyProgress)browser_.CancelCopy();
+    if(TextDialog())document_.New();
     dialog_=Dialog::None;operationPath_.clear();pressed_=hover_=None;focus_=dialogReturnFocus_;
 }
 bool DesktopShell::CaptureSelection() {
@@ -281,6 +336,16 @@ bool DesktopShell::ServiceCopy() {
 }
 void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
     const auto purpose=textInput_;textInput_=TextInput::None;
+    if(purpose==TextInput::TextLine || purpose==TextInput::TextSavePath) {
+        if(!accepted)return;
+        if(purpose==TextInput::TextSavePath) {
+            if(input.size()<3 || !((input[0]>='A' && input[0]<='Z') || (input[0]>='a' && input[0]<='z')) || input[1]!=':' || (input[2]!='\\' && input[2]!='/'))textNotice_=u"Укажите полный путь C:\\, S:\\ или R:\\.";
+            else SaveText(input);
+        }
+        else if(document_.Edit(textSelection_,input)){textNotice_=u"Строка изменена. Сохраните документ.";textColumn_=0;}
+        else textNotice_=u"Строка не принята: предел 500 UTF-16, без переводов строк и двоичных символов.";
+        return;
+    }
     if(!accepted || purpose==TextInput::None){pendingDocument_.clear();pendingAssociation_.clear();operationPath_.clear();return;}
     if(purpose==TextInput::AssociationApplication) {
         browser_.ReassignAssociation(pendingAssociation_,input);pendingAssociation_.clear();return;
@@ -330,10 +395,11 @@ void DesktopShell::ShowContext(bool folder,int x,int y) {
     if(!folder && browser_.Entries().empty())folder=true;
     contextCount_=0;contextPath_.clear();contextParent_=browser_.Path();contextReturnFocus_=focus_;
     auto add=[&](int action){contextActions_[contextCount_++]=action;};
-    if(folder){add(Paste);add(NewFolder);add(Refresh);}
+    if(folder){add(Paste);add(NewFolder);add(TextNew);add(Refresh);}
     else {
         const auto& entry=browser_.Entries()[browser_.Selected()];contextPath_=entry.path;contextFile_=entry.kind==ShellBrowser::Kind::File;
         add(Launch);
+        if(ControlEnabled(TextOpen))add(TextOpen);
         if(browser_.CanChooseApplication())add(OpenWith);
         if(entry.kind==ShellBrowser::Kind::File)add(Copy);
         if(entry.kind!=ShellBrowser::Kind::Drive){add(Rename);add(Delete);}
@@ -379,6 +445,13 @@ void DesktopShell::ToggleStart() {
 }
 void DesktopShell::Move(int delta) {
     if(textInput_!=TextInput::None)return;
+    if(TextDialog()) {
+        if(dialog_==Dialog::TextEditor) {
+            textSelection_=size_t(std::max<int64_t>(0,std::min<int64_t>(int64_t(document_.Lines().size())-1,int64_t(textSelection_)+delta)));
+            textColumn_=0;
+        }
+        return;
+    }
     if(dialog_==Dialog::Preferences) {
         const auto count=browser_.Associations().size();
         if(count)preferenceSelection_=size_t((int64_t(preferenceSelection_)+delta%int64_t(count)+int64_t(count))%int64_t(count));
@@ -398,6 +471,10 @@ void DesktopShell::Move(int delta) {
     focus_=order[size_t((current+delta%count+count)%count)];
 }
 void DesktopShell::Page(int delta) {
+    if(dialog_==Dialog::TextEditor) {
+        const auto length=document_.Lines()[textSelection_].text.size();
+        textColumn_=size_t(std::max<int64_t>(0,std::min<int64_t>(length,int64_t(textColumn_)+int64_t(delta)*40)));return;
+    }
     if(ModalActive())return;
     if(panel_==Panel::Explorer && !startOpen_){browser_.Page(delta,Rows);FocusBrowserSelection();return;}
     if(panel_!=Panel::Programs || startOpen_ || files_.empty())return;
@@ -409,6 +486,7 @@ void DesktopShell::Back() {
     pressed_=None;secondaryTarget_=-2;
     if(contextOpen_){CloseContext();return;}
     if(textInput_!=TextInput::None){CompleteTextInput(false,"");return;}
+    if(TextDialog()){CloseText();return;}
     if(dialog_!=Dialog::None){const bool copying=dialog_==Dialog::CopyProgress;CloseDialog();if(copying)operationNotice_=u"Копирование отменено. Файл назначения не создан.";return;}
     if(startOpen_){ToggleStart();}
     else if(panel_==Panel::Explorer && browser_.CanBack()){browser_.Back();FocusBrowserSelection();}
@@ -421,6 +499,11 @@ int DesktopShell::HitTest(int x,int y) const {
         return None;
     }
     if(textInput_!=TextInput::None)return None;
+    if(TextDialog()) {
+        for(int t:FocusOrder())if(Bounds(t).Contains(x,y))return t;
+        if(dialog_==Dialog::TextEditor)for(int i=0;i<5;++i)if(Bounds(TextLineBase+i).Contains(x,y))return TextLineBase+i;
+        return None;
+    }
     if(dialog_==Dialog::Preferences) {
         for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Bounds(t).Contains(x,y))return t;
         return None;
@@ -458,6 +541,7 @@ void DesktopShell::PointerUp(int x,int y) {
     if(target==None){if(contextOpen_)CloseContext();else if(startOpen_){ToggleStart();}return;}
     if(!Enabled(target))return;
     focus_=target;
+    if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/5*5+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));return;}
     if(target>=RowBase) {
         const auto next=First()+size_t(target-RowBase);
@@ -481,10 +565,33 @@ void DesktopShell::Activate(int target) {
         }
         Activate(action);return;
     }
+    if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/5*5+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
     if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/Rows*Rows+size_t(target-BrowserRowBase));OpenCurrent();return;}
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case TextNew:case TextOpen: {
+        if(target==TextNew)document_.New();
+        else if(!document_.Open(browser_.Filesystem(),browser_.Entries()[browser_.Selected()].path)) {
+            operationNotice_=u"TXT не открыт: допустим UTF-8 / UTF-16 с BOM, до 64 КиБ, без двоичных символов.";break;
+        }
+        textSelection_=textColumn_=0;textNotice_.clear();dialogReturnFocus_=FileActions;
+        dialog_=Dialog::TextEditor;focus_=TextEdit;break;
+    }
+    case TextEdit:textInput_=TextInput::TextLine;initialText_=TextDocument::Utf8(document_.Lines()[textSelection_].text);break;
+    case TextInsert:
+        if(document_.InsertAfter(textSelection_)){++textSelection_;textColumn_=0;textNotice_=u"Строка добавлена.";}
+        else textNotice_=u"Документ превышает 64 КиБ.";
+        break;
+    case TextErase:
+        document_.Erase(textSelection_);textSelection_=std::min(textSelection_,document_.Lines().size()-1);textColumn_=0;break;
+    case TextSave:SaveText();break;
+    case TextSaveAs: {
+        textInput_=TextInput::TextSavePath;initialText_=document_.Path().empty()?browser_.Path()+(browser_.Path().back()=='\\'?"":"\\")+"Новый.txt":document_.Path();
+        std::u16string pathUnits;TextDocument::DecodeUtf8(initialText_,pathUnits);if(pathUnits.size()>500)initialText_.clear();
+        break;
+    }
+    case TextDiscard:CloseDialog();break;
     case Settings:dialog_=Dialog::Preferences;dialogReturnFocus_=Start;focus_=CancelDialog;preferenceSelection_=0;break;
     case PreferenceSort:browser_.CycleSort();break;
     case PreferenceSave:browser_.SavePreferences();break;
@@ -518,6 +625,7 @@ void DesktopShell::Activate(int target) {
             focus_=CancelDialog;pressed_=hover_=None;
         }break;
     case CancelDialog: {
+        if(TextDialog()){CloseText();break;}
         const bool copying=dialog_==Dialog::CopyProgress;CloseDialog();
         if(copying)operationNotice_=u"Копирование отменено. Файл назначения не создан.";
         break;
@@ -700,18 +808,40 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             if(hot)Fill(s,r,pressed_==target?0x1D4C99:0x316AC5);
             const auto label=action==Launch?u"Открыть":action==OpenWith?u"Выбрать приложение…":action==Copy?u"Копировать":
                 action==Rename?u"Переименовать…":action==Delete?u"Удалить…":action==Properties?u"Свойства":
-                action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
+                action==TextOpen?u"Текст: читать / изменить…":action==TextNew?u"Новый TXT…":action==Paste?u"Вставить сюда…":action==NewFolder?u"Новая папка…":u"Обновить";
             Text(s,{r.left+12,r.top+6,r.right-8,r.bottom-2},label,!enabled?0x8793A0:hot?0xFFFFFF:0x162B47,16);
         }
     }
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
         Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":u"Свойства",0xFFFFFF,19,true);
+        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":u"Свойства",0xFFFFFF,19,true);
         const auto slash=operationPath_.find_last_of('\\');
-        if(dialog_!=Dialog::Preferences)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-        if(dialog_!=Dialog::Preferences)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
-        if(dialog_==Dialog::Preferences) {
+        if(dialog_!=Dialog::Preferences && !TextDialog())Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
+        if(dialog_!=Dialog::Preferences && !TextDialog())Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
+        if(TextDialog()) {
+            Text(s,{416,240,1006,266},Wide(document_.Path().empty()?"Новый документ":document_.Path())+(document_.Dirty()?u" *":u""),0x123D75,15,true);
+            if(dialog_==Dialog::TextClose) {
+                Text(s,{416,300,1006,332},u"Есть несохранённый текст.",0x24354A,20,true);
+                Text(s,{416,344,1006,372},u"Сохраните, выберите новое имя или отмените закрытие.",0x42576B,15);
+                control(TextDiscard,u"Не сохранять",Bounds(TextDiscard));
+            } else {
+                char info[100];std::snprintf(info,sizeof(info),"Строка %zu/%zu, с позиции %zu",textSelection_+1,document_.Lines().size(),textColumn_+1);
+                Text(s,{416,270,1006,296},Wide(info)+u"  ↑/↓ строки, ←/→ прокрутка",0x42576B,13);
+                for(size_t row=0;row<5;++row) {
+                    const auto i=textSelection_/5*5+row;if(i>=document_.Lines().size())break;
+                    const auto r=Bounds(TextLineBase+int(row));Fill(s,r,i==textSelection_?0xD7E8FC:0xFFFFFF);
+                    const auto& line=document_.Lines()[i].text;size_t column=i==textSelection_?std::min(textColumn_,line.size()):0;
+                    if(column<line.size() && line[column]>=0xdc00 && line[column]<=0xdfff && column)--column;
+                    auto visible=line.substr(column,120);if(!visible.empty() && visible.back()>=0xd800 && visible.back()<=0xdbff)visible.pop_back();std::replace(visible.begin(),visible.end(),u'\t',u' ');
+                    Text(s,{r.left+5,r.top+4,r.right-5,r.bottom},visible,0x182943,15);
+                }
+                control(TextEdit,u"Изменить…",Bounds(TextEdit));control(TextInsert,u"+ строка",Bounds(TextInsert));control(TextErase,u"− строка",Bounds(TextErase));
+            }
+            Text(s,{416,488,1006,504},textNotice_.empty()?u"До 64 КиБ; строка ввода до 500 UTF-16. Y/Tab: кнопки.":textNotice_,0x8B3F24,12);
+            control(TextSave,u"Сохранить",Bounds(TextSave));control(TextSaveAs,u"Как…",Bounds(TextSaveAs));
+            control(CancelDialog,dialog_==Dialog::TextClose?u"Отмена":u"Закрыть",Bounds(CancelDialog));
+        } else if(dialog_==Dialog::Preferences) {
             Text(s,{416,246,1006,272},u"Сортировка проводника",0x24354A,17,true);
             control(PreferenceSort,browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",Bounds(PreferenceSort));
             const auto& associations=browser_.Associations();char count[64];

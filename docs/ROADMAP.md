@@ -1,5 +1,5 @@
 # Switch Recompiler — полная дорожная карта
-Дата обновления: 2026-10-23
+Дата обновления: 2026-10-25
 Статус: инженерный план, НЕ заявление о полной Windows-совместимости.
 
 ## Цель и границы
@@ -10,7 +10,7 @@
 - Производительность: сначала эталонный интерпретатор, затем опциональный dynarec, GPU backend. Ускорение НЕ должно менять семантику приложений.
 
 ## Подтверждённые факты / текущая точка
-- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: F1 постоянный SD-backed корень/тома и F2 native idle desktop/theme реализованы; F3a добавил реальный проводник/path-only Run; F3b добавил приложения документов/аргументы; F4a добавил desktop/taskbar/Start при активном EXE и новый UI Paint по умолчанию. По последнему запросу F4b.1 добавил независимое обслуживание native-ввода. F4b.2 сохраняет frontend/output между сеансами. Реальные create/rename/delete/properties и проверяемый copy provider реализованы; native Copy/Paste с прогрессом/отменой подключён; context menu/ПКМ/controller focus подключены; постоянная сортировка/ассоциации реализованы ограниченным F3c-пакетом; следующая цель — TXT/изображения и F5; Luna-полировка отложена. См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
+- **Мы здесь: C принят в ограниченном scope; E0–E7 и F0 программно реализованы, G0 добавил census. Пользовательская веха F не завершена: F1 постоянный SD-backed корень/тома и F2 native idle desktop/theme реализованы; F3a добавил реальный проводник/path-only Run; F3b добавил приложения документов/аргументы; F4a добавил desktop/taskbar/Start при активном EXE и новый UI Paint по умолчанию. По последнему запросу F4b.1 добавил независимое обслуживание native-ввода. F4b.2 сохраняет frontend/output между сеансами. Реальные create/rename/delete/properties и проверяемый copy provider реализованы; native Copy/Paste с прогрессом/отменой подключён; context menu/ПКМ/controller focus подключены; постоянная сортировка/ассоциации реализованы ограниченным F3c-пакетом; ограниченный native TXT read/edit/save реализован; следующая цель — изображения и F5; Luna-полировка отложена. См. [активную карту](ACTIVE_ROADMAP.md), [аудит](PROJECT_AUDIT_2026_10_23.md) и [план F1–F5](F_SHELL_PLAN.md).**
 - Принятая реализация: `6aacc4e013e55be84a6f7860dfb34e810c6fbda0`; все пять CI jobs прошли в [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Пользователь запустил standalone input и combined acceptance v2 на Switch и прислал отчёты: PASS 1–8, `PASS: ALL 8 SUITES`, `input passed`, без FAIL. [Запись приёмки](STAGE_C_ACCEPTANCE.md#результат-приёмки-2026-10-22).
 - Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
 - Дополнительная аппаратная проверка пользователем: Paint на NRO `8b0ad70` работает без изменений/регрессии (2026-10-22). Это проверка Paint, а не всех новых loader/concurrency-сценариев.
@@ -147,3 +147,8 @@ Acceptance gates: a native spin-lock guest test completes under scheduler quanta
 результатом при просмотре истории/документов не обнаружено. Эта запись
 сохраняет текущее подтверждение пользователя, не подменяет отсутствующие
 Result-коды/фото и не обещает JIT в любом режиме запуска.
+
+
+Native TXT create/read/line-edit/save/Save As is now implemented with bounded
+UTF/BOM preservation, retained backups and real conflict/error reporting; see
+[F_TEXT_DOCUMENTS.md](F_TEXT_DOCUMENTS.md). Next: supported image viewing and F5.

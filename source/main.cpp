@@ -1989,6 +1989,12 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     if (R_FAILED(swkbdCreate(&kbd, 0))) return false;
     swkbdConfigMakePresetDefault(&kbd);
     if (password) swkbdConfigMakePresetPassword(&kbd);
+    const bool shellLine=g_activeShell && g_activeShell->PendingTextInput()==ui::DesktopShell::TextInput::TextLine;
+    if(shellLine) {
+        if(initial.size()>ui::TextDocument::MaxEditUnits){swkbdClose(&kbd);return false;}
+        swkbdConfigSetStringLenMax(&kbd,ui::TextDocument::MaxEditUnits);
+        swkbdConfigSetReturnButtonFlag(&kbd,0);
+    }
     std::string init = ToUtf8(initial);
     if (!init.empty()) swkbdConfigSetInitialText(&kbd, init.c_str());
     if (multiline) swkbdConfigSetType(&kbd, SwkbdType_All);
@@ -2220,13 +2226,16 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             const bool rename=shell.PendingTextInput()==ui::DesktopShell::TextInput::Rename;
             const bool association=shell.PendingTextInput()==ui::DesktopShell::TextInput::AssociationApplication;
             const bool paste=shell.PendingTextInput()==ui::DesktopShell::TextInput::PasteName;
+            const bool textLine=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextLine;
+            const bool textPath=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextSavePath;
             const bool leaf=newFolder || rename || paste;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
-                swkbdConfigSetGuideText(&config,leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
+                swkbdConfigSetHeaderText(&config,textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetGuideText(&config,textLine?"До 500 UTF-16. Для новой строки используйте + строка.":textPath?"Полный путь. Существующий файл не заменяется.":leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
+                if(textLine)swkbdConfigSetReturnButtonFlag(&config,0);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
                 accepted=R_SUCCEEDED(swkbdShow(&config,text,sizeof(text)));
                 swkbdClose(&config);

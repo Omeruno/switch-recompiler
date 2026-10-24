@@ -105,3 +105,8 @@ F3c: bounded persisted preferences/association management, remaining supported
 Start/settings actions and directory-tree refinements. F4 still needs active-
 guest compositor/taskbar/input ownership, and F5 needs the complete public
 save/find/reopen scenario plus deferred physical Paint/SD/input/GPU checks.
+
+
+Native TXT create/read/line-edit/save/Save As is now implemented with bounded
+UTF/BOM preservation, retained backups and real conflict/error reporting; see
+[F_TEXT_DOCUMENTS.md](F_TEXT_DOCUMENTS.md). Next: supported image viewing and F5.

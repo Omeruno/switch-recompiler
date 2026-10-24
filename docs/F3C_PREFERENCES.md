@@ -103,3 +103,8 @@ SD troubleshooting stays closed. Next: real TXT read/edit/save, then supported
 image viewing and F5 save/find/reopen. [Installer/shortcuts/ZIP/RAR](F_INSTALL_AND_ARCHIVES.md)
 remain planned future work; retained native/guest GPU planes and D compatibility
 remain explicit separate boundaries.
+
+
+Native TXT create/read/line-edit/save/Save As is now implemented with bounded
+UTF/BOM preservation, retained backups and real conflict/error reporting; see
+[F_TEXT_DOCUMENTS.md](F_TEXT_DOCUMENTS.md). Next: supported image viewing and F5.

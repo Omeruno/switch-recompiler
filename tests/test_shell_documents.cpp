@@ -53,7 +53,10 @@ int main(int argc,char** argv) {
     fs::copy_file(argv[1],sd/"Apps/Public Application/document reader.exe");
     ui::DesktopShell shell;std::string error;CHECK(shell.ConfigureFilesystem(system.string(),sd.string(),rom.string(),error));
     const auto document=system/"Documents and Settings/Player/My Documents/文档 😀 with spaces.txt";
-    std::ofstream(document)<<"public document payload";
+    // Create real document bytes through the production native document model.
+    ui::TextDocument text;text.New();CHECK(text.Edit(0,"initial draft"));
+    CHECK(text.Save(shell.Browser().Filesystem(),"C:\\Documents and Settings\\Player\\My Documents\\文档 😀 with spaces.txt"));
+    CHECK(text.Edit(0,"public document payload") && text.Save(shell.Browser().Filesystem()));
     const std::string doc="C:\\Documents and Settings\\Player\\My Documents\\文档 😀 with spaces.txt";
     const std::string app="S:\\Apps\\Public Application\\document reader.exe";
     auto click=[&](int target) {

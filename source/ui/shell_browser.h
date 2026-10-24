@@ -28,6 +28,7 @@ public:
     };
     explicit ShellBrowser(size_t maxItems=MaxItems,size_t maxScanned=MaxScanned);
     bool Configure(const std::string& system,const std::string& sd,const std::string& rom,std::string& error);
+    const rt::Vfs& Filesystem() const {return vfs_;}
     bool Ready() const {return ready_;}
     // Empty path is the virtual My Computer root; all others go through F1 VFS.
     bool Navigate(const std::string& path);

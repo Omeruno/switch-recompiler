@@ -8,13 +8,14 @@ add a second file-operation implementation or guest Process.
 
 A completed right press/release on an Explorer row selects that row without
 opening it and shows its object menu. File actions include Open, Choose application
-(for document types), Copy, Rename, Delete and Properties as applicable. Directories
+(for document types), Copy, Rename, Delete and Properties as applicable. TXT files additionally offer the native
+[Text read/edit tool](F_TEXT_DOCUMENTS.md). Directories
 and drives have their supported subsets; folder copying, Cut, archives, installer
 and shortcut commands are absent. Readonly or one-active-guest restrictions stay
 visible as disabled commands; menus do not bypass ordinary action validation.
 
 A completed right click on an empty part of the listing shows current-folder
-Paste, New folder and Refresh. Paste operates on the current browser folder,
+Paste, New folder, New TXT and Refresh. Paste operates on the current browser folder,
 not on a previously selected child. The Explorer titlebar also has File and
 Folder buttons. Y/Tab focus then A/X/Enter reaches both menus without using the
 pointer: File targets the selected object, Folder targets the current location.
@@ -46,7 +47,7 @@ production action. Delete still defaults to Cancel and Paste never overwrites.
 Up/Down and Y/Tab cycle enabled entries, pointer hover moves menu focus and
 Enter/A/X chooses the focused action. No disabled item is activated. Context
 state is transient and discarded on re-entry/guest return/reconfiguration.
-At most six 30-pixel rows are retained. Geometry is clamped to the actual Explorer
+At most eight 30-pixel rows are retained. Geometry is clamped to the actual Explorer
 listing area; its shadow also stays inside the existing native composition
 rectangle. Rendering and hit-testing use the same menu bounds. There is no
 unrendered overlay extending over guest windows.
