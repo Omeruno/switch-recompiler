@@ -65,6 +65,7 @@ bool ShellSession::ReadHost(int timeout,bool independent) {
         if(e.type==InputEvent::Quit && independent) {status_=HostStatus::Quit;break;}
         if(!Filter(e) && !QueueGuest(e))break;
     }
+    if(status_==HostStatus::Running && shell_.ServiceCopy())Refresh();
     if(!alive && status_==HostStatus::Running)status_=HostStatus::SourceClosed;
     return alive;
 }

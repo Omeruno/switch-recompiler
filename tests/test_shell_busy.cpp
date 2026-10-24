@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 namespace user=win32::user;
 using IE=user::InputEvent;using Shell=ui::DesktopShell;using Bridge=user::ShellSession;
@@ -74,6 +75,29 @@ static void Run(Shell& shell,const char* exe,int mode) {
             CHECK(!shell.ModalActive() && std::filesystem::is_directory(storageRoot+"/renamed-session-folder"));
             Click(bridge,Shell::Delete);Click(bridge,Shell::ConfirmDelete);
             CHECK(!std::filesystem::exists(storageRoot+"/renamed-session-folder"));
+            Click(bridge,Shell::Refresh);
+            bool selectedSource=false;
+            for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="clipboard-source.bin") {
+                CHECK(n<Shell::Rows);Click(bridge,Shell::BrowserRowBase+int(n));selectedSource=true;break;
+            }
+            CHECK(selectedSource);Click(bridge,Shell::Copy);Click(bridge,Shell::QuickDocuments);
+            textReply=u"busy-copy.bin";Click(bridge,Shell::Paste);CHECK(shell.CopyRunning());
+            const auto beatBeforeCopy=m.Read32(heartbeat);
+            unsigned copyPolls=0;
+            while(shell.CopyRunning()) {
+                CHECK(++copyPolls<100);execution.RunOne();CHECK(!rt::GuestExecution::Active());
+                CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);
+            }
+            CHECK(copyPolls>1 && m.Read32(heartbeat)!=beatBeforeCopy);
+            const auto copiedPath=storageRoot+"/Documents and Settings/Player/My Documents/busy-copy.bin";
+            CHECK(std::filesystem::file_size(copiedPath)==200003);
+            std::ifstream copied(copiedPath,std::ios::binary);const std::string actual{std::istreambuf_iterator<char>(copied),{}};
+            CHECK(actual==std::string(200003,'q'));copied.close();
+            Click(bridge,Shell::Delete);Click(bridge,Shell::ConfirmDelete);CHECK(!std::filesystem::exists(copiedPath));
+            textReply=u"cancel-copy.bin";Click(bridge,Shell::Paste);CHECK(shell.CopyRunning());
+            Click(bridge,Shell::CancelDialog);CHECK(!shell.CopyRunning());
+            CHECK(!std::filesystem::exists(storageRoot+"/Documents and Settings/Player/My Documents/cancel-copy.bin"));
+            CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
             Click(bridge,Shell::Close);
             previousBeat=m.Read32(heartbeat);
             if(mode==4)m.Write32(pollMode,1);
@@ -126,7 +150,8 @@ int main(int argc,char** argv) {
     CHECK(argc==2);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
     char name[]="/tmp/sr-shell-busy-XXXXXX";CHECK(mkdtemp(name));
     struct Cleanup{std::string path;~Cleanup(){std::filesystem::remove_all(path);}} cleanup{name};
-    storageRoot=name;Shell shell;std::string error;CHECK(shell.ConfigureFilesystem(name,"","",error));
+    storageRoot=name;std::ofstream(storageRoot+"/clipboard-source.bin",std::ios::binary)<<std::string(200003,'q');
+    Shell shell;std::string error;CHECK(shell.ConfigureFilesystem(name,"","",error));
     for(int mode:{0,1,2,3,4,6,0}) {Run(shell,argv[1],mode);CHECK(!shell.GuestActive() && !rt::g_process && !user::g_platform.wait);}
     std::puts("busy shell: actual x86 spin, independent native input/output, deferred owner commands, exact input pairs, bounded overflow, quit/abort/restart PASS");
 }

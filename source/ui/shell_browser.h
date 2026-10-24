@@ -1,5 +1,6 @@
 #pragma once
 #include "../runtime/files.h"
+#include "../runtime/file_copy_job.h"
 #include "../runtime/command_line.h"
 #include <string>
 #include <vector>
@@ -57,6 +58,12 @@ public:
     // listing refresh failed. Callers must not retry AppliedViewStale.
     enum class MutationResult {Failed,Applied,AppliedViewStale};
     MutationResult CreateFolder(const std::string& name);
+    bool BeginCopyHere(const std::string& source,const std::string& name);
+    bool ServiceCopy(); // <=8 job phases, then final listing refresh
+    void CancelCopy();
+    bool CopyRunning() const {return copyJob_.Running();}
+    uint64_t CopyBytes() const {return copyJob_.BytesWritten();}
+    MutationResult CopyResult() const {return copyResult_;}
     MutationResult CopyHere(const std::string& source,const std::string& name); // no overwrite
     MutationResult RenameSelected(const std::string& name);
     MutationResult DeleteSelected(); // permanent; UI must confirm before calling
@@ -92,6 +99,9 @@ private:
     bool AttachArguments(const std::vector<std::string>&,ShellLaunchRequest&);
     bool Document(const std::string& path,std::string& full);
     rt::Vfs vfs_;
+    rt::FileCopyJob copyJob_;
+    std::string copyTarget_;
+    MutationResult copyResult_=MutationResult::Failed;
     bool ready_=false,readOnly_=false,truncated_=false;
     std::string path_,unassociatedDocument_;
     std::vector<Entry> entries_;

@@ -76,6 +76,7 @@ public:
     bool CopyFile(const std::string& from,const std::string& to,bool failIfExists=true,
                   size_t* caseBudget=nullptr,FileCopyIo* io=nullptr) const;
 private:
+    friend class FileCopyJob;
     bool MutationPath(const std::string&,std::string& host,size_t*) const;
     struct MountPoint {std::string root,cwd;bool readOnly=false;uint32_t type=0;};
     std::array<MountPoint,26> mounts_{};

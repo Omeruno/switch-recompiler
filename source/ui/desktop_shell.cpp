@@ -72,6 +72,8 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
+    case Copy:return {522,578,628,614};
+    case Paste:return {636,578,744,614};
     case NewFolder:return {240,430,406,458};
     case Rename:return {240,462,406,490};
     case Delete:return {240,494,406,522};
@@ -123,6 +125,7 @@ void DesktopShell::SetCatalog(const ExecutableCatalog& catalog) {
     errors_=catalog.Errors();truncated_=catalog.Truncated();
 }
 bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error) {
+    browser_.CancelCopy();clipboardPath_.clear();clipboardName_.clear();
     return browser_.Configure(system,sd,rom,error);
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
@@ -131,10 +134,12 @@ void DesktopShell::SetGuestActive(const std::string& label) {
     guestLabel_=label.substr(0,240);panel_=Panel::Desktop;Enter();
 }
 void DesktopShell::EndGuest() {
+    browser_.CancelCopy();
     guestActive_=false;guestLabel_.clear();panel_=returnPanel_;focus_=returnFocus_;
     request_.Clear();startOpen_=false;pressed_=None;dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();
 }
 void DesktopShell::Enter() {
+    browser_.CancelCopy();
     dialog_=Dialog::None;operationPath_.clear();operationNotice_.clear();
     request_.Clear();pendingDocument_.clear();textInput_=TextInput::None;exit_=false;startOpen_=false;hover_=pressed_=None;
     if(panel_==Panel::Explorer){browser_.Refresh();FocusBrowserSelection();return;}
@@ -145,6 +150,8 @@ bool DesktopShell::Enabled(int t) const {
     if(textInput_!=TextInput::None)return false;
     if(dialog_!=Dialog::None)return t==CancelDialog || (dialog_==Dialog::DeleteConfirm && t==ConfirmDelete);
     if(t==ConfirmDelete || t==CancelDialog)return false;
+    if(t==Copy)return panel_==Panel::Explorer && !browser_.Entries().empty() && browser_.Entries()[browser_.Selected()].kind==ShellBrowser::Kind::File;
+    if(t==Paste)return panel_==Panel::Explorer && !clipboardPath_.empty() && !browser_.Path().empty() && !browser_.ReadOnly();
     if(t==NewFolder)return panel_==Panel::Explorer && !browser_.Path().empty() && !browser_.ReadOnly();
     if(t==Properties)return panel_==Panel::Explorer && !browser_.Entries().empty();
     if(t==Rename || t==Delete)return panel_==Panel::Explorer && !browser_.ReadOnly() &&
@@ -170,7 +177,7 @@ bool DesktopShell::Enabled(int t) const {
 std::vector<int> DesktopShell::FocusOrder() const {
     if(textInput_!=TextInput::None)return {None};
     if(dialog_==Dialog::DeleteConfirm)return {CancelDialog,ConfirmDelete};
-    if(dialog_==Dialog::Properties)return {CancelDialog};
+    if(dialog_==Dialog::Properties || dialog_==Dialog::CopyProgress)return {CancelDialog};
     if(startOpen_) {
         std::vector<int> out;
         for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Exit,Start})if(Enabled(t))out.push_back(t);
@@ -180,7 +187,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(panel_==Panel::Explorer) {
         std::vector<int> out;
         if(!browser_.Entries().empty())out.push_back(BrowserRowBase+int(browser_.Selected()%Rows));
-        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Previous,Next,OpenWith,Launch,Close,Start})
+        for(int t:{NavBack,NavUp,Address,Refresh,Sort,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,NewFolder,Rename,Delete,Properties,Copy,Paste,Previous,Next,OpenWith,Launch,Close,Start})
             if(Enabled(t))out.push_back(t);
         return out;
     }
@@ -221,6 +228,7 @@ void DesktopShell::OpenCurrent() {
     FocusBrowserSelection();
 }
 void DesktopShell::CloseDialog() {
+    if(dialog_==Dialog::CopyProgress)browser_.CancelCopy();
     dialog_=Dialog::None;operationPath_.clear();pressed_=hover_=None;focus_=dialogReturnFocus_;
 }
 bool DesktopShell::CaptureSelection() {
@@ -233,9 +241,24 @@ void DesktopShell::MutationFeedback(ShellBrowser::MutationResult result) {
         result==ShellBrowser::MutationResult::AppliedViewStale?u"Операция выполнена, но список не обновлён. Нажмите Обновить.":u"";
     if(result!=ShellBrowser::MutationResult::Failed)FocusBrowserSelection();
 }
+bool DesktopShell::ServiceCopy() {
+    if(dialog_!=Dialog::CopyProgress || !browser_.ServiceCopy())return false;
+    if(!browser_.CopyRunning()) {
+        const auto result=browser_.CopyResult();CloseDialog();MutationFeedback(result);
+    }
+    return true;
+}
 void DesktopShell::CompleteTextInput(bool accepted,const std::string& input) {
     const auto purpose=textInput_;textInput_=TextInput::None;
     if(!accepted || purpose==TextInput::None){pendingDocument_.clear();operationPath_.clear();return;}
+    if(purpose==TextInput::PasteName) {
+        if(browser_.Path()!=operationParent_) {operationNotice_=u"Папка изменилась. Повторите вставку.";return;}
+        if(browser_.BeginCopyHere(clipboardPath_,input)) {
+            operationPath_=browser_.Path()+(browser_.Path().back()=='\\'?"":"\\")+input;
+            dialog_=Dialog::CopyProgress;dialogReturnFocus_=Paste;focus_=CancelDialog;pressed_=hover_=None;
+        }
+        return;
+    }
     if(purpose==TextInput::NewFolder || purpose==TextInput::Rename) {
         // Selection/navigation is frozen while input is pending. Keep a captured
         // path check as well; do not redirect a command to a different selection.
@@ -291,7 +314,7 @@ void DesktopShell::Accept() {Activate(focus_);}
 void DesktopShell::Back() {
     pressed_=None;
     if(textInput_!=TextInput::None){CompleteTextInput(false,"");return;}
-    if(dialog_!=Dialog::None){CloseDialog();return;}
+    if(dialog_!=Dialog::None){const bool copying=dialog_==Dialog::CopyProgress;CloseDialog();if(copying)operationNotice_=u"Копирование отменено. Файл назначения не создан.";return;}
     if(startOpen_){ToggleStart();}
     else if(panel_==Panel::Explorer && browser_.CanBack()){browser_.Back();FocusBrowserSelection();}
     else if(panel_!=Panel::Desktop){panel_=Panel::Desktop;focus_=Programs;}
@@ -312,7 +335,7 @@ int DesktopShell::HitTest(int x,int y) const {
     if(panel_!=Panel::Desktop) {
         if(Bounds(Close).Contains(x,y))return Close;
         if(panel_==Panel::Explorer) {
-            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties})if(Bounds(t).Contains(x,y))return t;
+            for(int t:{NavBack,NavUp,Refresh,Sort,Address,QuickComputer,QuickDocuments,QuickC,QuickS,QuickR,OpenWith,Launch,Previous,Next,NewFolder,Rename,Delete,Properties,Copy,Paste})if(Bounds(t).Contains(x,y))return t;
             for(int i=0;i<Rows;++i)if(Bounds(BrowserRowBase+i).Contains(x,y))return BrowserRowBase+i;
         }
         if(panel_==Panel::Programs) {
@@ -346,6 +369,13 @@ void DesktopShell::Activate(int target) {
     if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
+    case Copy:
+        if(CaptureSelection()) {
+            clipboardPath_=operationPath_;clipboardName_=browser_.Entries()[browser_.Selected()].name;operationPath_.clear();
+            operationNotice_=u"Файл выбран. Откройте папку назначения и нажмите Вставить.";
+        }break;
+    case Paste:
+        operationParent_=browser_.Path();textInput_=TextInput::PasteName;initialText_=clipboardName_;break;
     case NewFolder:
         operationParent_=browser_.Path();operationPath_.clear();textInput_=TextInput::NewFolder;initialText_="Новая папка";break;
     case Rename:
@@ -355,7 +385,11 @@ void DesktopShell::Activate(int target) {
             dialogReturnFocus_=target;dialog_=target==Delete?Dialog::DeleteConfirm:Dialog::Properties;
             focus_=CancelDialog;pressed_=hover_=None;
         }break;
-    case CancelDialog:CloseDialog();break;
+    case CancelDialog: {
+        const bool copying=dialog_==Dialog::CopyProgress;CloseDialog();
+        if(copying)operationNotice_=u"Копирование отменено. Файл назначения не создан.";
+        break;
+    }
     case ConfirmDelete: {
         const auto path=operationPath_;const auto kind=properties_.kind;rt::FileProperties current;
         const bool same=browser_.Path()==operationParent_ && !browser_.Entries().empty() &&
@@ -482,7 +516,8 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             control(OpenWith,u"Выбрать приложение",Bounds(OpenWith));
             control(Previous,u"← Страница",Bounds(Previous));control(Next,u"Страница →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
             char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",entries.empty()?0:browser_.Selected()+1,entries.size());
-            Text(s,{522,584,750,610},Wide(count),0x42576B,16);
+            Text(s,{242,278,404,298},Wide(count),0x42576B,12);
+            control(Copy,u"Копировать",Bounds(Copy));control(Paste,u"Вставить…",Bounds(Paste));
         } else {
             Icon(s,256,184,shell_art::computer);
             Text(s,{312,184,1120,220},u"Switch Recompiler",0x123D75,26,true);
@@ -525,11 +560,18 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(dialog_!=Dialog::None) {
         Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
         Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":u"Свойства",0xFFFFFF,19,true);
+        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":u"Свойства",0xFFFFFF,19,true);
         const auto slash=operationPath_.find_last_of('\\');
         Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
         Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);
-        if(dialog_==Dialog::DeleteConfirm) {
+        if(dialog_==Dialog::CopyProgress) {
+            char bytes[64];std::snprintf(bytes,sizeof(bytes),"%llu",static_cast<unsigned long long>(browser_.CopyBytes()));
+            Text(s,{416,324,1006,350},u"Записано: "+Wide(bytes)+u" байт",0x24354A,18,true);
+            Text(s,{416,368,1006,396},u"Источник: "+Wide(clipboardPath_),0x42576B,14);
+            Text(s,{416,410,1006,440},u"Существующие файлы не заменяются.",0x42576B,16);
+            Text(s,{416,454,1006,482},u"B: отмена копирования",0x526477,14);
+            control(CancelDialog,u"Отмена",Bounds(CancelDialog));
+        } else if(dialog_==Dialog::DeleteConfirm) {
             Text(s,{416,324,1006,350},u"Удалить выбранный объект безвозвратно?",0x24354A,18,true);
             Text(s,{416,368,1006,396},u"Корзины нет. Восстановление не предусмотрено.",0x9D3826,16);
             Text(s,{416,410,1006,440},u"Папку можно удалить только если она пуста.",0x42576B,16);

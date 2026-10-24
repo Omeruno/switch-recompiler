@@ -91,6 +91,28 @@ int main(int argc,char** argv) {
     Click(s,Shell::ConfirmDelete);CHECK(s.Browser().LastError()==ui::ShellBrowser::Error::NotFound);
     Click(s,Shell::QuickR);CHECK(!s.Enabled(Shell::NewFolder) && !s.Enabled(Shell::Rename) && !s.Enabled(Shell::Delete));
     Click(s,Shell::Properties);CHECK(s.PropertiesSnapshot().mountReadOnly && s.PropertiesSnapshot().size==6);s.Back();
+    // Clipboard is a path/name snapshot, not retained file bytes/handles.
+    Click(s,Shell::Copy);CHECK(s.ClipboardPath()=="R:\\locked.txt");
+    Click(s,Shell::QuickC);Address(s,"C:\\TEMP");CHECK(s.Enabled(Shell::Paste));
+    CHECK(Focus(s,Shell::Paste));s.Accept();CHECK(s.PendingTextInput()==Shell::TextInput::PasteName && s.InitialText()=="locked.txt");
+    s.CompleteTextInput(false,"no-copy");CHECK(!fs::exists(system/"TEMP/no-copy"));
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"copied.txt");CHECK(s.CopyRunning() && s.ActiveDialog()==Shell::Dialog::CopyProgress);
+    Picture(s,prefix,"copy-progress");
+    Click(s,Shell::QuickR);s.ToggleStart();CHECK(s.Browser().Path()=="C:\\TEMP" && !s.StartOpen());
+    while(s.CopyRunning())CHECK(s.ServiceCopy());
+    CHECK(!s.ModalActive() && fs::file_size(system/"TEMP/copied.txt")==6 && s.Browser().Entries()[s.Browser().Selected()].name=="copied.txt");
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"copied.txt");CHECK(!s.CopyRunning() && s.Browser().LastError()==ui::ShellBrowser::Error::AlreadyExists);
+    CHECK(fs::file_size(system/"TEMP/copied.txt")==6);
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"../escape");CHECK(!s.CopyRunning() && s.Browser().LastError()==ui::ShellBrowser::Error::InvalidPath);
+    std::ofstream(system/"TEMP/large.bin",std::ios::binary)<<std::string(200003,'q');Click(s,Shell::Refresh);Select(s,"large.bin");Click(s,Shell::Copy);
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"cancel-large.bin");CHECK(s.CopyRunning());s.ServiceCopy();CHECK(s.CopyRunning());
+    s.Back();CHECK(!s.CopyRunning() && !s.ModalActive() && !fs::exists(system/"TEMP/cancel-large.bin"));
+    s.SetGuestActive("copy owner");Click(s,Shell::Computer);Address(s,"C:\\TEMP");
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"end-guest.bin");CHECK(s.CopyRunning());s.EndGuest();CHECK(!s.CopyRunning() && !fs::exists(system/"TEMP/end-guest.bin"));
+    s.Enter();CHECK(s.ClipboardPath()=="C:\\TEMP\\large.bin");
+    Click(s,Shell::Paste);s.CompleteTextInput(true,"restart-copy.bin");CHECK(s.CopyRunning());s.Enter();CHECK(!s.CopyRunning() && !fs::exists(system/"TEMP/restart-copy.bin"));
+    fs::remove(system/"TEMP/large.bin");Click(s,Shell::Paste);s.CompleteTextInput(true,"missing-source.bin");CHECK(!s.CopyRunning() && s.Browser().LastError()==ui::ShellBrowser::Error::NotFound);
+    Click(s,Shell::QuickR);CHECK(!s.Enabled(Shell::Paste));
     // Dialog/name cancellation at frontend re-entry discards transient commands.
     Click(s,Shell::QuickC);Click(s,Shell::NewFolder);s.Enter();s.CompleteTextInput(true,"must-not-create");CHECK(!fs::exists(system/"must-not-create"));
     CHECK(s.LaunchPath().empty() && !s.ExitRequested());

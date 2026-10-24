@@ -2213,11 +2213,12 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             const bool openWith=shell.PendingTextInput()==ui::DesktopShell::TextInput::OpenWith;
             const bool newFolder=shell.PendingTextInput()==ui::DesktopShell::TextInput::NewFolder;
             const bool rename=shell.PendingTextInput()==ui::DesktopShell::TextInput::Rename;
-            const bool leaf=newFolder || rename;
+            const bool paste=shell.PendingTextInput()==ui::DesktopShell::TextInput::PasteName;
+            const bool leaf=newFolder || rename || paste;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
                 swkbdConfigSetGuideText(&config,leaf?"Введите одно имя без пути и кавычек.":openWith?"Для расширения выбор запомнится до выхода из оболочки.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
@@ -2234,6 +2235,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             pointerHeld=false;wasTouching=false;keyboard=true;dirty=true;
             motion.ResetTime(rt::Clock::NowUs());
         }
+        if(shell.ServiceCopy())dirty=true;
         if(shell.ExitRequested() || !shell.LaunchPath().empty())break;
         const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";
         if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);
@@ -2246,6 +2248,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
         dirty=false;svcSleepThread(16'000'000);
     }
     newui::g_cx=x;newui::g_cy=y;
+    if(shell.CopyRunning())shell.Back();
     if(!shell.LaunchPath().empty()){g_selectedExePath=shell.LaunchPath();g_selectedCommandLine=shell.LaunchRequest().commandLine;}
     if(outputFailed && !g_appletStopped) {
         newui::CloseOutput();consoleInit(NULL);cpu::g_consoleAvailable=true;

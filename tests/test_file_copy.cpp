@@ -104,6 +104,36 @@ int main() {
     CHECK(cleanupFailure.live==0 && Bytes(root/"destination")==payload);size_t residue=0;
     for(const auto& e:fs::directory_iterator(root))if(e.path().filename().string().find(".sr-copy-")==0){++residue;fs::remove(e.path());}
     CHECK(residue==1);
+    // Every owner-thread step is bounded to one I/O/finalization phase. No
+    // destination publication before Done; cancellation/destruction discards it.
+    for(unsigned stop:{0u,1u,2u,7u,8u,20u,80u,160u}) {
+        FaultIo io(Mode::Short);
+        {
+            rt::FileCopyJob job;CHECK(job.Start(v,"C:\\source.bin","C:\\cancelled",true,nullptr,&io));
+            for(unsigned i=0;i<stop;++i){CHECK(job.Running());job.Step();CHECK(!fs::exists(root/"cancelled"));}
+            const auto before=job.BytesWritten();CHECK(before<=payload.size());
+            if(stop%2){job.Cancel();CHECK(job.Status()==rt::FileCopyJob::State::Cancelled);job.Step();CHECK(job.BytesWritten()==before);}
+        }
+        CHECK(io.live==0 && !fs::exists(root/"cancelled"));
+    }
+    {
+        FaultIo io(Mode::Short);rt::FileCopyJob job;
+        CHECK(job.Start(v,"C:\\source.bin","C:\\resumed",true,nullptr,&io));
+        unsigned steps=0;uint64_t previous=0;
+        while(job.Running()) {
+            CHECK(!fs::exists(root/"resumed"));job.Step();CHECK(++steps<1000);
+            CHECK(job.BytesWritten()>=previous && job.BytesWritten()-previous<=8192);previous=job.BytesWritten();
+        }
+        CHECK(steps>20 && job.Status()==rt::FileCopyJob::State::Done && Bytes(root/"resumed")==payload && io.live==0);
+    }
+    {
+        rt::FileCopyJob job;CHECK(job.Start(v,"C:\\source.bin","C:\\late-step"));job.Step();
+        std::ofstream(root/"late-step")<<"created during copy";
+        while(job.Running())job.Step();
+        CHECK(job.Status()==rt::FileCopyJob::State::Failed && job.Error()==EEXIST && Bytes(root/"late-step")=="created during copy");
+        CHECK(job.Start(v,"C:\\source.bin","C:\\restart"));while(job.Running())job.Step();
+        CHECK(job.Status()==rt::FileCopyJob::State::Done && Bytes(root/"restart")==payload);
+    }
     ui::ShellBrowser browser;CHECK(browser.Configure(root.string(),sd.string(),rom.string(),error));
     CHECK(browser.Navigate("C:\\TEMP"));using Result=ui::ShellBrowser::MutationResult;
     CHECK(browser.CopyHere("C:\\source.bin","browser.bin")==Result::Applied && Bytes(root/"TEMP/browser.bin")==payload);
@@ -111,5 +141,6 @@ int main() {
     CHECK(browser.CopyHere("C:\\source.bin","browser.bin")==Result::Failed && browser.LastError()==ui::ShellBrowser::Error::AlreadyExists);
     CHECK(browser.CopyHere("C:\\source.bin","..\\escape")==Result::Failed);
     CHECK(browser.Navigate("R:\\"));CHECK(browser.CopyHere("C:\\source.bin","bad")==Result::Failed && browser.LastError()==ui::ShellBrowser::Error::ReadOnly);
+    for(const auto& e:fs::directory_iterator(root))CHECK(e.path().filename().string().find(".sr-copy-")!=0);
     puts("PASSED: real staged byte copy, aliases/readonly/types, short I/O/EINTR, read/write/flush/close/publish faults and preserved source/destination");
 }

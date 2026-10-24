@@ -180,6 +180,25 @@ ShellBrowser::MutationResult ShellBrowser::CreateFolder(const std::string& name)
     const auto target=Join(path_,name);size_t budget=scanLimit_;
     return FinishMutation(vfs_.CreateDirectory(target,&budget),target);
 }
+bool ShellBrowser::BeginCopyHere(const std::string& source,const std::string& name) {
+    CancelCopy();copyResult_=MutationResult::Failed;
+    if(!ready_ || path_.empty() || !ValidLeaf(name)) {
+        errno=!ready_?ENODEV:EINVAL;FinishMutation(false,{});return false;
+    }
+    copyTarget_=Join(path_,name);size_t budget=scanLimit_;
+    if(!copyJob_.Start(vfs_,source,copyTarget_,true,&budget)) {FinishMutation(false,{});return false;}
+    operationErrno_=0;error_=Error::None;return true;
+}
+bool ShellBrowser::ServiceCopy() {
+    if(!copyJob_.Running())return false;
+    for(unsigned i=0;i<8 && copyJob_.Running();++i)copyJob_.Step();
+    if(!copyJob_.Running()) {
+        errno=copyJob_.Error();
+        copyResult_=FinishMutation(copyJob_.Status()==rt::FileCopyJob::State::Done,copyTarget_);
+    }
+    return true;
+}
+void ShellBrowser::CancelCopy() {copyJob_.Cancel();}
 ShellBrowser::MutationResult ShellBrowser::CopyHere(const std::string& source,const std::string& name) {
     if(!ready_ || path_.empty() || !ValidLeaf(name)) {
         errno=!ready_?ENODEV:EINVAL;return FinishMutation(false,{});

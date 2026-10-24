@@ -79,7 +79,8 @@ and unchanged later guest event counts. Run the complete clean
 checks and exact published-SHA six-job CI.
 
 The [checked-copy provider](F_FILE_COPY.md) now implements explicit I/O/staging
-semantics. Next: native Copy/Paste and coherent
+semantics. [Native Copy/Paste](F_FILE_PASTE.md) now adds a shell file clipboard, progress and
+cancellation. Next: coherent
 right-click/context actions and further controller interaction, persisted
 preferences/associations, TXT/images and F5 save/find/reopen. Separate retained
 native/guest GPU planes, D compatibility and measured G remain open. No complete

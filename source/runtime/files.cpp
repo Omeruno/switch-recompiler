@@ -2,8 +2,7 @@
 
 #include "files.h"
 #include "process.h"
-#include "file_copy_io.h"
-#include <atomic>
+#include "file_copy_job.h"
 
 #include <cctype>
 #include <cerrno>
@@ -268,57 +267,11 @@ bool Vfs::Move(const std::string& from,const std::string& to,bool replace,size_t
 }
 
 bool Vfs::CopyFile(const std::string& from,const std::string& to,bool failIfExists,size_t* budget,FileCopyIo* custom) const {
-    if(from.empty()){errno=EINVAL;return false;}
-    const auto a=ToHost(from,false,budget);std::string b;
-    if(a.empty() || !MutationPath(to,b,budget))return false;
-    struct stat src{},dst{};if(stat(a.c_str(),&src)!=0)return false;
-    if(!S_ISREG(src.st_mode)){errno=EACCES;return false;}
-    // Reject same native object through case, overlapping drives or hard links.
-    const auto destination=[&]() {
-        if(stat(b.c_str(),&dst)!=0)return errno==ENOENT;
-        if(a==b || (src.st_ino && src.st_ino==dst.st_ino && src.st_dev==dst.st_dev)){errno=EINVAL;return false;}
-        if(failIfExists){errno=EEXIST;return false;}
-        if(!S_ISREG(dst.st_mode) || !(dst.st_mode&S_IWUSR)){errno=EACCES;return false;}
-        return true;
-    };
-    if(!destination())return false;
-    FileCopyIo native;auto& io=custom?*custom:native;
-    int in=io.OpenRead(a);if(in<0)return false;
-    int out=-1,failure=0;std::string stage;
-    static std::atomic<uint32_t> serial{0};
-    const auto slash=b.find_last_of('/');const auto parent=b.substr(0,slash+1);
-    for(unsigned attempt=0;attempt<64;++attempt) {
-        char leaf[40];std::snprintf(leaf,sizeof(leaf),".sr-copy-%08x.tmp",unsigned(serial.fetch_add(1)));
-        stage=parent+leaf;if(stage==a || stage==b)continue;
-        out=io.CreateExclusive(stage);
-        if(out>=0)break;
-        if(errno!=EEXIST){failure=errno?errno:EIO;break;}
-    }
-    if(out<0) {
-        if(!failure)failure=EEXIST;
-        io.Close(in);errno=failure;return false;
-    }
-    char buffer[8192];
-    while(!failure) {
-        const auto count=io.Read(in,buffer,sizeof(buffer));
-        if(count<0){if(errno==EINTR)continue;failure=errno?errno:EIO;break;}
-        if(!count)break;
-        size_t offset=0;
-        while(offset<size_t(count)) {
-            const auto written=io.Write(out,buffer+offset,size_t(count)-offset);
-            if(written<0 && errno==EINTR)continue;
-            if(written<=0){failure=written<0 && errno?errno:EIO;break;}
-            offset+=size_t(written);
-        }
-    }
-    if(!failure && io.Flush(out)!=0)failure=errno?errno:EIO;
-    const auto close=[&](int fd){if(io.Close(fd)!=0 && !failure)failure=errno?errno:EIO;};
-    close(out);close(in);
-    // Recheck before publication. This is not atomic no-replace versus native
-    // writers, nor a coherent source snapshot if another writer changes it.
-    if(!failure && !destination())failure=errno?errno:EIO;
-    if(!failure && io.Rename(stage,b)!=0)failure=errno?errno:EIO;
-    if(failure){io.Remove(stage);errno=failure;return false;}
+    FileCopyJob job;
+    if(!job.Start(*this,from,to,failIfExists,budget,custom))return false;
+    while(job.Running())job.Step();
+    if(budget)*budget=job.RemainingBudget();
+    if(job.Status()!=FileCopyJob::State::Done){errno=job.Error();return false;}
     return true;
 }
 

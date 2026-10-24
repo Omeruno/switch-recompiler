@@ -37,8 +37,8 @@ not yield into another guest while mutating. Access rights of already-open
 handles, inode aliases/hard links and renaming a current directory still have
 the existing host-backed limitations; this is not an NT filesystem/security model.
 [Checked CopyFile](F_FILE_COPY.md) now shares the provider and browser model,
-with staged publication and checked I/O. Native Copy/Paste remains the next UI
-package; no unsupported Copy action is advertised.
+with staged publication and checked I/O. [Native single-file Copy/Paste](F_FILE_PASTE.md) is now connected; unsupported
+directory copying and overwrite controls are not advertised.
 
 ## Properties and browser model
 
@@ -79,7 +79,7 @@ file bytes in each of its four isolated sessions. The complete
 CI remain required. No proprietary fixture is introduced.
 
 The native-action follow-up connects these operations, confirmation and properties
-with pointer/controller routing. Next: native Copy/Paste using the checked provider, then
+with pointer/controller routing. Native Copy/Paste now uses the common resumable engine; next:
 right-click/context actions. Then persisted preferences/associations,
 TXT/images and F5 save -> find -> reopen. Luna polish and G optimization remain
 deferred. Local Switch SDK is unavailable; CI compiles the console build.

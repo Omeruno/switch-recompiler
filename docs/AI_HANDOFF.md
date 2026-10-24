@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`6ac9aa071f168a26e0c75b4f634f7efa606c7f2e` (2026-10-24).
-[CI 40087919426](https://github.com/Omeruno/switch-recompiler/actions/runs/40087919426)
+`be95ecb793ba524f7e1d012ec61a21f0027dcb65` (2026-10-24).
+[CI 40092668937](https://github.com/Omeruno/switch-recompiler/actions/runs/40092668937)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -17,7 +17,8 @@ independent native input service, bounded deferred guest events, physical async
 state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Shared real file mutations/properties now exist in VFS and the browser model
 ([scope](F_FILE_OPERATIONS.md)). [Native file actions](F_FILE_ACTIONS.md),
 name entry, delete confirmation and properties are now connected.
-[Checked byte-copy provider/model](F_FILE_COPY.md) is implemented; next: native Copy/Paste, coherent L/R
+[Checked byte-copy provider/model](F_FILE_COPY.md) and [native Copy/Paste](F_FILE_PASTE.md)
+are implemented with a shared resumable engine, byte progress and cancel; next: coherent L/R
 click and controller actions, preferences/TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
@@ -963,3 +964,55 @@ six E9 groups and both real EGL pixel oracles. Strict no-exceptions/no-RTTI copy
 harness/module compilation and execution passed; Markdown links/fences/diff checks
 also passed before publication. Exact new-SHA six-job CI must then be verified. No local Switch SDK
 or physical acceptance is inferred; hardware list stays deferred and SD closed.
+
+
+## Functional F: native Copy/Paste and resumable checked copy
+
+Fetched clean be95ecb/FETCH_HEAD on the working branch, no newer work/AGENTS.md;
+incoming exact CI 40092668937 passed six jobs. Installer/archive future scope
+remains recorded. FileCopyJob now owns the checked-copy state machine, mount/cwd
+snapshot, native paths/descriptors/stage and 8 KiB buffer. Native service performs
+at most eight phases per call, with short-write/EINTR resumption and cancellation.
+Data read/write, fsync, both closes and final publication remain checked. The
+last destination check and rename never yield between them. Synchronous VFS/
+Win32/CopyHere use the same engine, preserving the prior failure contract.
+
+Native Explorer Copy remembers an actual file path/name; Paste accepts a new
+name in the current folder. It never overwrites. Actual staged bytes are shown
+in a native cancel-only progress dialog; selection/path/Start/task input is
+frozen. Idle selection and independent active-guest native service advance the
+job on their existing owner thread. No new thread/Process or guest callback is
+used. Re-entry, guest return, selection exit/display failure and destruction
+cancel unfinished stages; file clipboard paths survive ordinary guest sessions.
+See F_FILE_PASTE.md for work-count/I/O-time, guest/native writer, cleanup/durability
+and supported one-file-only limits. No wall-clock responsiveness or throughput
+claim, hardware acceptance, directory copy or context menu is added.
+
+Direct tests cover incremental writes, cancellation/destruction at several
+phases, late destination collision and fresh restart; old injected I/O faults
+exercise the same engine. Native shell checks real bytes and Copy/Paste naming,
+readonly/collision/missing/invalid source/name, controller/modal and scope cancel.
+Seven actual-x86 busy sessions now also copy to My Documents while the guest
+heartbeat advances between chunks, compare every byte and cancel another copy
+without leaked guest input. One initial new harness incorrectly called EndGuest
+without SetGuestActive and then assumed Explorer restoration; corrected the test
+lifecycle rather than changing runtime return behavior.
+
+Required gates: final clean MinGW/Mesa full suite, strict compile/execute checks,
+actual native screenshots, Markdown/diff checks and exact new-SHA six-job CI.
+Local Switch SDK remains absent and physical tests deferred; SD stays closed.
+Next concrete package: right-click/context/controller actions, then persistence,
+TXT/images/F5; installer/shortcuts/ZIP/RAR remain separate planned work.
+
+
+Final local Copy/Paste validation: the complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final source,
+header and public-fixture tree. It includes resumable/cancel/destructor/late-name
+copy cases, prior injected copy faults, native real Copy/Paste, seven busy x86
+copy/heartbeat/cancel sessions, all prior filesystem/document/workspace and
+core/USER/legacy lifetimes, Stage C, six E9 groups and both real EGL pixel oracles.
+Strict -Wall -Wextra -Werror -fno-exceptions -fno-rtti copy job/browser/native
+harness checks and the extended busy harness passed. Actual native Explorer and
+copy-progress screenshots were inspected. Markdown links/fences and diff checks
+passed. Only documentation changed after the full build. Verify all six CI jobs
+for the exact published SHA; local SDK and physical limitations still apply.
