@@ -10,6 +10,18 @@
 static uint64_t fakeNs,clockReads;
 static uint64_t FakeClock() {++clockReads;return fakeNs;}
 static void Boundaries() {
+    ui::ExecutionPhaseMetrics phases(&FakeClock);
+    {ui::ExecutionPhaseMetrics::Scope off(phases,ui::ExecutionPhase::Quantum);}
+    assert(!clockReads);phases.Reset(true);fakeNs=10;
+    {ui::ExecutionPhaseMetrics::Scope run(phases,ui::ExecutionPhase::Quantum);fakeNs=45;}
+    // A parked fiber's wait/peer work belongs to later outer phases, not run.
+    fakeNs=1000;
+    {ui::ExecutionPhaseMetrics::Scope native(phases,ui::ExecutionPhase::NativeService);fakeNs=1020;}
+    {ui::ExecutionPhaseMetrics::Scope idle(phases,ui::ExecutionPhase::IdleSleep);fakeNs=1040;}
+    assert(clockReads==6 && phases.Phase(ui::ExecutionPhase::Quantum).totalNs==35);
+    assert(phases.Phase(ui::ExecutionPhase::NativeService).totalNs==20);
+    assert(phases.Phase(ui::ExecutionPhase::IdleSleep).totalNs==20);
+    phases.Reset();assert(!phases.Enabled() && !phases.Phase(ui::ExecutionPhase::Quantum).count);clockReads=0;
     ui::RasterMetrics raster(&FakeClock);
     {ui::RasterMetrics::Scope off(raster,ui::RasterStage::Fill);}
     assert(!clockReads);raster.Reset(true);fakeNs=100;

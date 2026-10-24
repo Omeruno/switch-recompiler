@@ -16,7 +16,8 @@ steps with real byte progress and cancellation. [Explorer context menus](F_CONTE
 now route object/current-folder actions through pointer, Menu key and controller
 focus. [Persisted sorting/associations and management](F3C_PREFERENCES.md) are now
 implemented as a bounded F3c slice. [Bounded native TXT read/edit/save](F_TEXT_DOCUMENTS.md) is now implemented; [bounded native BMP viewing](F_IMAGE_DOCUMENTS.md) and a public x86 GDI/save/browse/reopen slice are now implemented; the remaining baseline tree/shortcuts and retained planes are now implemented. Exact-SHA F CI passed six jobs at `50ec505` (run 40139298651).
-Current next stage is [G1 public PE phase/overhead measurement](G1_MEASUREMENTS.md),
+Current stage is G: [G1 public PE phase/overhead measurement](G1_MEASUREMENTS.md)
+and [G2 measured SRCCOPY/optional executor phases](G2_BLIT_AND_PHASES.md),
 following the user's Paint/large-Minesweeper slowdown report. GPU output already
 exists; canonical GDI is still CPU rasterized. Measured GDI/GPU and interpreter
 work precedes speedup claims; Luna visual fidelity remains open. See the
@@ -42,7 +43,7 @@ AI_HANDOFF.md and this map supersede historical next-E1/next-G notes.
 | F4b.2 | [Persistent frontend/output](F4B_OUTPUT_LIFETIME.md), one large-stack owner, shared native/guest presenter, real desktop return and scoped metrics | Physical acceptance; exact 975f393 CI passed six jobs; explicit mode/failure transitions can recreate the device; [native/guest retained planes](F4C_WORKSPACE_LAYERS.md) now integrated |
 | **Functional F: software baseline complete** | [Shared real file operations/properties](F_FILE_OPERATIONS.md) in VFS, Win32/CRT and browser model; [native create/rename/delete confirmation/properties UI](F_FILE_ACTIONS.md); [checked byte-copy provider](F_FILE_COPY.md); [native Copy/Paste](F_FILE_PASTE.md) with progress/cancel; [native object/folder context menus](F_CONTEXT_ACTIONS.md); [persistent sort/association management](F3C_PREFERENCES.md); [bounded native TXT](F_TEXT_DOCUMENTS.md); persistent shell/session/input/output | [22-group integrated acceptance](F_ACCEPTANCE.md); physical acceptance pending, extension below still planned |
 | Planned F extension | [Installer and archive plan](F_INSTALL_AND_ARCHIVES.md) recorded from user request | Installer compatibility/integration with existing real desktop/Start shortcuts, ZIP then RAR/other formats; installation/extraction gates remain open |
-| G0/G1 | Bounded opt-in opcode/host-entry census; [public actual-PE phase/overhead experiment](G1_MEASUREMENTS.md), three workloads/four modes, checked full pixels and reports | Actual console workload attribution; measured optimization; coherent GPU GDI blit/fill/readback contract and oracle; census is not speedup |
+| G0/G1/G2 | Bounded opt-in opcode/host-entry census; [public actual-PE phase/overhead experiment](G1_MEASUREMENTS.md), three workloads/four modes, checked full pixels and reports; [G2](G2_BLIT_AND_PHASES.md) enables a bounded 32-bit SRCCOPY row path and optional console quantum-wall report, same-build reference/fast comparison | Physical console attribution remains deferred; coherent GPU GDI blit/fill/readback contract and actual EGL prototype; census is not speedup |
 | H/I | Diagnostics/build artifacts exist; no completed DirectDraw/D3D/product release | Separate graphics API translation, installation/config/compatibility matrix/release work |
 
 ## Current boundary: software F complete, physical F pending
@@ -122,3 +123,14 @@ Keep CPU pixel/ROP, retained layers and software fallback as regression oracles.
 User-observed visual distance from XP remains open Luna refinement. Pinball x86's
 first host failure is missing RegCreateKeyExA, separate D work; no compatibility
 claim or user binary is committed.
+
+
+G2 continues without asking the user for hardware tests: default bounded 32-bit
+SRCCOPY now skips general scaling/format/ROP work while preserving capture and
+reference alpha normalization. A native 1,600-case differential oracle and
+same-build public PE reference/fast/phase comparison cover the change. Optional
+production report v8 wraps outer RunOne/native service/idle sleep, never parked
+HLE frames or each opcode; it stays disabled without an explicit flag.
+See G2_BLIT_AND_PHASES.md. Next independent package: coherent GPU-GDI command/
+target/readback contract and real-EGL CPU comparison prototype. No Switch FPS
+claim or deferred hardware acceptance is added; Luna/D/installer work stays open.

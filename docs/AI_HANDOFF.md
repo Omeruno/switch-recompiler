@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`4db523691bb6c43558f315ea6ab7dfd97748e29f` (2026-10-25).
-[CI 40137277767](https://github.com/Omeruno/switch-recompiler/actions/runs/40137277767)
+`9d4f8760987a26b96749e7b8d5797d5a213a89a1` (2026-10-25).
+[CI 40141901580](https://github.com/Omeruno/switch-recompiler/actions/runs/40141901580)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -1405,3 +1405,62 @@ shell syntax, six-job workflow/artifact validation, Markdown links/fences and
 git diff --check passed. Only documentation followed the final full suite.
 Normal branch publication and exact new-SHA six-job CI/artifact verification
 follow; local precommit report is explicitly dirty, not published evidence.
+
+
+## 2026-10-25 G2: first measured GDI copy optimization and console phase support
+
+Fetched clean 9d4f876/FETCH_HEAD, no newer work/AGENTS. Incoming exact CI
+40141901580 passed six jobs; its clean G1 report, fixture length/SHA and all 60
+measured samples were independently verified. User requests autonomous work
+without new physical testing. Hardware gates remain deferred; do not ask for
+console logs or flag setup as a prerequisite to independent implementation.
+
+Gdi::BlitCore now defaults to a bounded row-based 32-bit SRCCOPY path after
+normal target/clip/overlap preparation: no scaling, mirror, key or out-of-range
+source. Masks unused high byte, honors negative pitch and uses original Set
+for captured destinations, preserving ownership/layer/tile revisions. Other
+cases retain the general loop. Session-owned native diagnostic control can
+select that exact reference loop in the same executable. No EXE-name exception,
+new API stub, shader or GPU-GDI claim. See G2_BLIT_AND_PHASES.md.
+
+New native differential regression checks 1,600 reference/fast cases including
+full storage/guards/unused bytes, formats/pitches, clips/bounds/translated/
+scaled/mirrored/key/ROP/overlap and repeated captured writes. Strict standalone
+compilation/execution and ASan/UBSan/leak checks passed. A test initially used
+nonexistent Region::Add; corrected to existing UnionRect, no runtime workaround.
+The public PE benchmark now supports reference/fast and phase modes, while G1
+still runs unchanged four-mode controls. G2 compares six conditions per workload
+with seven repeats, 126 measured samples +18 checked warm-ups. Timing is not a
+pass threshold; host-only observations never certify Switch FPS.
+
+Presentation report v8 adds optional fixed-storage quantum/native-service/idle
+wall counters. First byte1 of profile-execution.flag enables them once per
+new-UI session; missing/unreadable defaults off. Scopes wrap outer RunOne, not
+HLE continuations across suspension; no per-opcode clock or per-frame SD log.
+RunOne includes HLE/interpreter/scheduler and synchronous waits/presentation,
+not exclusive CPU time. Raster/GL may nest; don't sum counters as disjoint.
+Deterministic-clock tests verify disabled/reset/accounting; public actual-PE
+phase mode requires one quantum sample per outer call and records overhead.
+Legacy UI and existing raster instrumentation policy are unchanged.
+
+Final complete rootless MinGW/Mesa suite and exact new-SHA six-job CI/artifact
+checks are required before completion. Switch main is CI-compiled; no local
+devkitA64/libnx SDK. Next: GPU-GDI coherence/target/command/readback contract
+and bounded actual-EGL prototype, preserving CPU oracle and fallback before
+activation. Pinball registry blocker, installer/archives and Luna remain open.
+
+
+Final G2 local validation: complete fresh rootless MinGW/Mesa suite passed on
+the final runtime/header/harness tree, including G1's 72 checked runs, G2's 144,
+new 1,600-case differential oracle, phase counters, 22 F groups, Stage C/six E9,
+workspace EGL and both 28-scene CPU/actual-GL comparisons. Initial local tile
+run medians were 19.79/15.69 ms reference/fast, nested blits 4.70/0.63 ms; CPU control
+5.00/4.98 ms. These are host observations, no Switch speedup claim. Strict native
+blit/harness/metrics checks, ASan/UBSan/leak, negative wrong-architecture/stale
+report, Python/shell syntax, Markdown/diff and six-job artifact checks passed.
+A rootless AArch64 assembler initially lacked its relocated shared-library path;
+setting that path restored the toolchain. The same optimized native blit oracle
+passed under QEMU ARM64 and is added to the existing ARM64 CI job. This is not
+a local Switch SDK/build. No runtime code followed the full suite; only docs and
+the additional ARM64 CI gate. Publish normally and verify exact new-SHA six jobs,
+clean G2 report and fixture hash before completion. User hardware tests deferred.

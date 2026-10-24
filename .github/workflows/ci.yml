@@ -16,6 +16,10 @@ jobs:
         run: |
           aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -static -fno-exceptions -fno-rtti -I. tests/test_host_fiber.cpp source/runtime/host_fiber.cpp -o /tmp/test_host_fiber_arm64
           qemu-aarch64 /tmp/test_host_fiber_arm64
+      - name: Compare fast GDI copies with the reference on ARM64
+        run: |
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -static -fno-exceptions -fno-rtti -I. tests/test_blit_fast_path.cpp source/ui/ui_gdi.cpp source/ui/font.cpp -o /tmp/test_blit_arm64
+          qemu-aarch64 /tmp/test_blit_arm64
 
   host-tests:
     name: Хост-тесты (g++)
@@ -37,6 +41,13 @@ jobs:
             build-host/stage-g-measurement.json
             build-host/guest-run.*/graphics_workload.exe
             docs/G1_MEASUREMENTS.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-g-blit-comparison
+          path: |
+            build-host/stage-g-blit.json
+            build-host/guest-run.*/graphics_workload.exe
+            docs/G2_BLIT_AND_PHASES.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-e-acceptance-exe

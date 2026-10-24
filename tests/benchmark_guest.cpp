@@ -15,10 +15,12 @@
 
 #define CHECK(x) do{if(!(x)){std::fprintf(stderr,"benchmark %d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(int argc,char** argv) {
-    CHECK(argc==4);
+    CHECK(argc==4 || argc==5);
     const std::string workload=argv[2],instrument=argv[3];
     CHECK(workload=="cpu" || workload=="tiles" || workload=="strokes");
-    CHECK(instrument=="baseline" || instrument=="census" || instrument=="raster" || instrument=="both");
+    CHECK(instrument=="baseline" || instrument=="census" || instrument=="raster" || instrument=="both" || instrument=="phase");
+    const bool fast=argc==4 || std::strcmp(argv[4],"fast")==0;
+    CHECK(argc==4 || fast || std::strcmp(argv[4],"reference")==0);
     const bool census=instrument=="census" || instrument=="both";
     const bool raster=instrument=="raster" || instrument=="both";
     rt::Clock::SetFastForward(true);cpu::g_consoleAvailable=false;
@@ -28,6 +30,8 @@ int main(int argc,char** argv) {
     auto session=std::make_unique<rt::GuestSession>();
     auto& p=session->ProcessObject();auto& m=session->Memory();std::string error;
     win32::user::EnableUi(800,600);ui::g_rasterMetrics.Reset(raster);
+    ui::g_gdi.EnableBlitFastPath(fast);
+    ui::ExecutionPhaseMetrics phases;phases.Reset(instrument=="phase");
     p.SetCommandLine(rt::QuoteCommandArgument(argv[1])+" "+workload);
     const auto loadBegin=ui::PerformanceNowNs();
     CHECK(p.LoadMainExe(argv[1],error));
@@ -50,7 +54,11 @@ int main(int argc,char** argv) {
             fault=true;return false;
         },rt::GuestExecution::Startup::InitializeModules);
         for(;quanta<100000;++quanta) {
-            const auto result=execution.RunOne();
+            rt::GuestExecution::Result result;
+            {
+                ui::ExecutionPhaseMetrics::Scope timing(phases,ui::ExecutionPhase::Quantum);
+                result=execution.RunOne();
+            }
             CHECK(result!=rt::GuestExecution::Result::AllocationFailed);
             if(result==rt::GuestExecution::Result::Stopped){finished=true;++quanta;break;}
             CHECK(result!=rt::GuestExecution::Result::Idle);
@@ -92,7 +100,9 @@ int main(int argc,char** argv) {
         std::printf("%s{\"stage\":\"%s\",\"count\":%llu,\"ns\":%llu,\"max_ns\":%llu}",i?",":"",ui::RasterStageName(s),
             (unsigned long long)v.count,(unsigned long long)v.totalNs,(unsigned long long)v.maxNs);
     }
-    std::printf("],\"opcodes\":[");bool comma=false;
+    const auto& quantum=phases.Phase(ui::ExecutionPhase::Quantum);
+    std::printf("],\"blit_path\":\"%s\",\"quantum_count\":%llu,\"quantum_wall_ns\":%llu,\"opcodes\":[",fast?"fast":"reference",
+        (unsigned long long)quantum.count,(unsigned long long)quantum.totalNs);bool comma=false;
     for(size_t i=0;i<profile.opcodes.size();++i)if(profile.opcodes[i]) {
         std::printf("%s{\"id\":%zu,\"count\":%llu}",comma?",":"",i,(unsigned long long)profile.opcodes[i]);comma=true;
     }

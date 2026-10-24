@@ -149,3 +149,15 @@ Unicode document across normal exit/abort/relaunch, original relative files and
 adjacent DLLs, readonly R, actual free-space reporting and C Programs discovery.
 Existing files are not moved; old saved per-EXE absolute C paths may need
 reselection through S. This is feature validation, not renewed SD diagnosis.
+
+
+## v8: optional outer executor phases (G2)
+
+[Contract and comparison](G2_BLIT_AND_PHASES.md). Existing rendering/raster/input
+fields retain their semantics. New quantum, native-service and idle-sleep wall
+fields are disabled by default and enabled only by an explicit per-session flag.
+They wrap outer frontend calls rather than parked HLE stacks. RunOne includes
+interpreter/HLE/callback/synchronous wait and presentation work; raster and GPU
+stages can be nested, never additive disjoint CPU phases. No per-instruction
+clock or per-frame SD output. This prepares future console attribution without
+asking for physical tests now or awarding hardware performance acceptance.

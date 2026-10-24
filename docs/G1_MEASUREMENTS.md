@@ -1,5 +1,8 @@
 # G1: public PE phases and instrumentation overhead
 
+Follow-up: [G2](G2_BLIT_AND_PHASES.md) adds a measured CPU SRCCOPY path,
+same-build reference/fast comparison and optional production executor phases.
+
 This begins measured Stage G after the bounded software F baseline. It does
 not implement a dynarec, GPU GDI or certify real Paint/Minesweeper performance.
 The user's current Switch observation is slowdown with Paint and a large

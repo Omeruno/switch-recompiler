@@ -442,6 +442,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
             if(!newui::OutputHealthy()){stopReason="display output failed";break;}
             const uint64_t now=ui::PerformanceNowNs();
             if(now-nativePollNs>=8'000'000ull) {
+                ui::ExecutionPhaseMetrics::Scope nativeTiming(ui::g_executionPhases,ui::ExecutionPhase::NativeService);
                 nativePollNs=now;
                 const auto status=shellSession->ServiceHost();
                 if(status!=win32::user::ShellSession::HostStatus::Running) {
@@ -460,14 +461,21 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
                 stopReason="host cancelled guest";break;
             }
         }
-        auto result=execution.RunOne();
+        rt::GuestExecution::Result result;
+        {
+            ui::ExecutionPhaseMetrics::Scope quantumTiming(ui::g_executionPhases,ui::ExecutionPhase::Quantum);
+            result=execution.RunOne();
+        }
         runningThread=proc.Scheduler().Current();
         if (result==rt::GuestExecution::Result::AllocationFailed) {
             stopReason="cannot allocate guest native continuation stack"; break;
         }
         if (result==rt::GuestExecution::Result::Idle) {
             if (!proc.Scheduler().HasLiveThreads()) { stopReason="guest called exit()"; break; }
-            if (proc.Scheduler().HasPendingTimers()) { rt::Clock::Sleep(1); continue; }
+            if (proc.Scheduler().HasPendingTimers()) {
+                ui::ExecutionPhaseMetrics::Scope idleTiming(ui::g_executionPhases,ui::ExecutionPhase::IdleSleep);
+                rt::Clock::Sleep(1);continue;
+            }
             stopReason="no runnable guest threads"; break;
         }
     }
@@ -1742,6 +1750,11 @@ void BeginPresentation(const char* guestPath) {
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
+    // Explicit opt-in; no per-instruction clocks or SD writes. Read once/session.
+    FILE* executionFlag=fopen("sdmc:/switch-recompiler/profile-execution.flag","rb");
+    const bool executionTiming=executionFlag && fgetc(executionFlag)=='1';
+    if(executionFlag)fclose(executionFlag);
+    ui::g_executionPhases.Reset(executionTiming);
     g_havePresented=false;
     g_touching=false;
     win32::user::S().cursorX=static_cast<int>(g_cx);win32::user::S().cursorY=static_cast<int>(g_cy);
@@ -1758,7 +1771,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v7\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v8\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1807,6 +1820,11 @@ void EndPresentation() {
             fprintf(log,"%s samples: %llu\n%s total ns: %llu\n%s max ns: %llu\n",name,(unsigned long long)d.count,
                 name,(unsigned long long)d.totalNs,name,(unsigned long long)d.maxNs);
         };
+        fprintf(log,"Execution phase timing enabled: %u\n",unsigned(ui::g_executionPhases.Enabled()));
+        duration("Executor quantum wall",ui::g_executionPhases.Phase(ui::ExecutionPhase::Quantum));
+        duration("Native service wall",ui::g_executionPhases.Phase(ui::ExecutionPhase::NativeService));
+        duration("Executor idle sleep wall",ui::g_executionPhases.Phase(ui::ExecutionPhase::IdleSleep));
+        fprintf(log,"Execution phase scope: outer RunOne wall intervals include interpreter, HLE, callbacks and synchronous waits/presentation; native service and idle sleep are outside RunOne. Raster/GPU counters can be nested; do not add them to executor wall time or treat residual as exclusive x86 time. No CPU-time or FPS claim.\n");
         for(size_t i=0;i<size_t(ui::RasterStage::Count);++i) {
             const auto stage=static_cast<ui::RasterStage>(i);char name[64];
             snprintf(name,sizeof(name),"CPU raster %s",ui::RasterStageName(stage));duration(name,ui::g_rasterMetrics.Stage(stage));
@@ -1821,6 +1839,7 @@ void EndPresentation() {
         fclose(log);
     }
     ui::g_rasterMetrics.Reset(false);win32::user::S().inputFrames.Reset(false);
+    ui::g_executionPhases.Reset(false);
     g_presentation.ClearLayers();
     win32::user::EnableWindowLayers(false);g_guestPresentation=false;
 }

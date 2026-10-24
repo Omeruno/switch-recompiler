@@ -15,6 +15,32 @@ struct DurationCounter {
     uint64_t count=0,totalNs=0,maxNs=0;
     void Add(uint64_t ns) {++count;totalNs+=ns;maxNs=std::max(maxNs,ns);}
 };
+// Outer frontend phases only. RunOne returns when a guest fiber parks, so peer
+// execution is not charged to a suspended HLE call. These are wall intervals.
+enum class ExecutionPhase {Quantum,NativeService,IdleSleep,Count};
+class ExecutionPhaseMetrics {
+public:
+    using Clock=uint64_t(*)();
+    explicit ExecutionPhaseMetrics(Clock clock=&PerformanceNowNs):clock_(clock) {}
+    void Reset(bool enabled=false) {enabled_=enabled;phases_={};}
+    bool Enabled() const {return enabled_;}
+    const DurationCounter& Phase(ExecutionPhase p) const {return phases_[size_t(p)];}
+    class Scope {
+    public:
+        Scope(ExecutionPhaseMetrics& m,ExecutionPhase p):m_(m),p_(p),active_(m.Enabled()) {
+            if(active_)start_=m_.clock_();
+        }
+        ~Scope() {if(active_){const auto end=m_.clock_();m_.phases_[size_t(p_)].Add(end>=start_?end-start_:0);}}
+        Scope(const Scope&)=delete;
+        Scope& operator=(const Scope&)=delete;
+    private:
+        ExecutionPhaseMetrics& m_;ExecutionPhase p_;bool active_;uint64_t start_=0;
+    };
+private:
+    Clock clock_;bool enabled_=false;
+    std::array<DurationCounter,size_t(ExecutionPhase::Count)> phases_{};
+};
+inline ExecutionPhaseMetrics g_executionPhases;
 enum class RasterStage {Pixel,Stroke,Shape,Fill,Blit,Flood,Text,Readback,Count};
 inline const char* RasterStageName(RasterStage s) {
     constexpr const char* names[]={"pixel","stroke","shape","fill","blit","flood","text","readback"};

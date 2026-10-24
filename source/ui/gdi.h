@@ -124,6 +124,8 @@ public:
     // Заметка «экран изменился» для вывода на дисплей
     uint64_t ScreenChangeCounter() const { return screenChanges_; }
     void MarkScreenChanged() {++screenChanges_;}
+    // Diagnostic reference control; session-owned with the rest of GDI state.
+    void EnableBlitFastPath(bool enabled) {blitFastPath_=enabled;}
 
     // --- объекты ---
     ObjType TypeOf(uint32_t h) const;
@@ -245,6 +247,7 @@ private:
     WindowDcProvider provider_ = nullptr;
     uint64_t layoutGeneration_ = 1;
     uint64_t screenChanges_ = 0;
+    bool blitFastPath_ = true;
 };
 
 extern Gdi g_gdi;
