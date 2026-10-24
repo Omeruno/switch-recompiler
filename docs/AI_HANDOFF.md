@@ -823,3 +823,13 @@ git diff --check passed. Only Switch adapter return/console cleanup and comments
 were refined after the first successful suite; the final clean rerun passed.
 Local tests do not compile libnx main: verify exact published-SHA Switch CI and
 all six jobs after publication. Physical checks remain deferred.
+
+
+Switch CI for initial F4b.2 commit 82ae340 caught a scope error in legacy
+DrawGdiScreenIntoFramebuffer: a broad guard replacement referred to the new
+renderer namespace's g_outputFailed flag from the separate legacy function.
+The correction restores that function's original no-framebuffer return; new
+renderer failure latching remains scoped to newui::Blit. The complete common
+runtime/fixture host suite is unchanged and remains passed; main.cpp is excluded
+from it. Verify the corrected exact SHA's Switch build and all six jobs, not the
+failed 82ae340. No physical acceptance is added.

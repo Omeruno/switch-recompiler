@@ -1216,7 +1216,7 @@ static bool HandleAboutBoxClick(int realX, int realY) {
 
 static void DrawGdiScreenIntoFramebuffer(Framebuffer& fb, int cursorX, int cursorY)
 {
-    if(!g_framebufferReady){g_outputFailed=true;return;}
+    if(!g_framebufferReady)return;
     // Берём уменьшенное "виртуальное" разрешение (640x360)
     uint32_t screenDc = gdi::g_gdi.GetOrCreateScreenDC(640, 360);
     const gdi::Bitmap* screen = gdi::g_gdi.GetBitmapForDC(screenDc);
