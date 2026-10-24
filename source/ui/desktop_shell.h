@@ -15,9 +15,14 @@ public:
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32};
     enum class Panel {Desktop,Programs,About,Explorer};
-    enum class TextInput {None,Address,Run,OpenWith};
+    enum class TextInput {None,Address,Run,OpenWith,NewFolder,Rename};
+    enum class Dialog {None,DeleteConfirm,Properties};
+    Dialog ActiveDialog() const {return dialog_;}
+    bool ModalActive() const {return dialog_!=Dialog::None || textInput_!=TextInput::None;}
+    const std::string& DialogPath() const {return operationPath_;}
+    const rt::FileProperties& PropertiesSnapshot() const {return properties_;}
     bool ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error);
     bool FilesystemReady() const {return browser_.Ready();}
     const ShellBrowser& Browser() const {return browser_;}
@@ -63,6 +68,14 @@ private:
     void OpenCurrent();
     void ChooseApplication(const std::string&);
     void FocusBrowserSelection();
+    void CloseDialog();
+    bool CaptureSelection();
+    void MutationFeedback(ShellBrowser::MutationResult);
+    Dialog dialog_=Dialog::None;
+    rt::FileProperties properties_;
+    std::string operationPath_,operationParent_;
+    std::u16string operationNotice_;
+    int dialogReturnFocus_=Properties;
     size_t First() const {return selected_/Rows*Rows;}
     std::vector<int> FocusOrder() const;
     std::vector<std::string> files_;

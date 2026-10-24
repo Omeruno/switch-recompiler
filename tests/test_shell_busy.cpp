@@ -14,6 +14,8 @@ using IE=user::InputEvent;using Shell=ui::DesktopShell;using Bridge=user::ShellS
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"busy shell line %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 static std::vector<IE> pending;
 static unsigned frameCount=0;
+static std::u16string textReply;
+static std::string storageRoot;
 static void Event(IE::Type type,int x=0,int y=0,uint32_t vk=0) {IE e;e.type=type;e.x=x;e.y=y;e.vk=vk;pending.push_back(e);}
 static void Click(Bridge& b,int target) {
     const auto r=Shell::Bounds(target);const int x=(r.left+r.right)/2,y=(r.top+r.bottom)/2;
@@ -24,6 +26,7 @@ static void Run(Shell& shell,const char* exe,int mode) {
     rt::GuestSession session;auto& p=session.ProcessObject();auto& m=session.Memory();
     user::PresentationSession platform(true,nullptr);
     user::g_platform.wait=[](int,std::vector<IE>& events){events.swap(pending);return true;};
+    user::g_platform.textInput=[](const std::u16string&,bool,bool,std::u16string& out){out=textReply;return true;};
     user::g_platform.present=[](const ui::Surface& s){CHECK(s.Valid());++frameCount;};
     user::EnableUi(1280,720);Bridge bridge(shell);CHECK(bridge.Attach("Busy public application"));
     std::string error;CHECK(p.LoadMainExe(exe,error));CHECK(p.PrepareMainThread(p.MainThread().cpu,error));
@@ -49,6 +52,28 @@ static void Run(Shell& shell,const char* exe,int mode) {
             const auto before=frameCount;user::PresentIfNeeded(true);CHECK(frameCount>before);
             Click(bridge,Shell::MenuComputer);CHECK(shell.ActivePanel()==Shell::Panel::Explorer);
             CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0);
+            // Native file actions operate on actual storage even while this x86
+            // app does not pump USER. No callback or second guest is required.
+            Click(bridge,Shell::QuickC);textReply=u"session-folder";Click(bridge,Shell::NewFolder);
+            CHECK(std::filesystem::is_directory(storageRoot+"/session-folder"));
+            Click(bridge,Shell::Properties);CHECK(shell.ActiveDialog()==Shell::Dialog::Properties);
+            CHECK(shell.PropertiesSnapshot().kind==rt::FileProperties::Kind::Directory);
+            const auto postedBefore=user::QueueFor(user::Win(hwnd)->threadId).posted.size();
+            Start(bridge);CHECK(!shell.StartOpen() && shell.ModalActive());
+            Click(bridge,Shell::GuestTask);CHECK(shell.ModalActive());
+            CHECK(user::QueueFor(user::Win(hwnd)->threadId).posted.size()==postedBefore);
+            Event(IE::MouseDown,400,250);Event(IE::MouseUp,400,250);
+            Event(IE::KeyDown,0,0,'J');Event(IE::KeyUp,0,0,'J');
+            Event(IE::KeyDown,0,0,0x1B);Event(IE::KeyUp,0,0,0x1B);
+            CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running && !shell.ModalActive());
+            CHECK(bridge.PendingGuestInput()==0 && user::Q().input.empty() && m.Read32(keys)==0 && m.Read32(clicks)==0);
+            textReply=u"renamed-session-folder";Click(bridge,Shell::Rename);
+            CHECK(!std::filesystem::exists(storageRoot+"/session-folder") && std::filesystem::is_directory(storageRoot+"/renamed-session-folder"));
+            Click(bridge,Shell::Delete);CHECK(shell.Focus()==Shell::CancelDialog);
+            Event(IE::KeyDown,0,0,0x0D);Event(IE::KeyUp,0,0,0x0D);CHECK(bridge.ServiceHost()==Bridge::HostStatus::Running);
+            CHECK(!shell.ModalActive() && std::filesystem::is_directory(storageRoot+"/renamed-session-folder"));
+            Click(bridge,Shell::Delete);Click(bridge,Shell::ConfirmDelete);
+            CHECK(!std::filesystem::exists(storageRoot+"/renamed-session-folder"));
             Click(bridge,Shell::Close);
             previousBeat=m.Read32(heartbeat);
             if(mode==4)m.Write32(pollMode,1);
@@ -101,7 +126,7 @@ int main(int argc,char** argv) {
     CHECK(argc==2);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
     char name[]="/tmp/sr-shell-busy-XXXXXX";CHECK(mkdtemp(name));
     struct Cleanup{std::string path;~Cleanup(){std::filesystem::remove_all(path);}} cleanup{name};
-    Shell shell;std::string error;CHECK(shell.ConfigureFilesystem(name,"","",error));
+    storageRoot=name;Shell shell;std::string error;CHECK(shell.ConfigureFilesystem(name,"","",error));
     for(int mode:{0,1,2,3,4,6,0}) {Run(shell,argv[1],mode);CHECK(!shell.GuestActive() && !rt::g_process && !user::g_platform.wait);}
     std::puts("busy shell: actual x86 spin, independent native input/output, deferred owner commands, exact input pairs, bounded overflow, quit/abort/restart PASS");
 }

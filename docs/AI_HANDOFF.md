@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`975f393b19a8c503f3d4a2c94b9bf8b6385a84aa` (2026-10-24).
-[CI 40085203929](https://github.com/Omeruno/switch-recompiler/actions/runs/40085203929)
+`b46b378b5769f8140d9efe5a6f8dfaae77424ea9` (2026-10-24).
+[CI 40086771006](https://github.com/Omeruno/switch-recompiler/actions/runs/40086771006)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -15,8 +15,8 @@ Latest steering: prioritize real system functionality and verifiable operations;
 return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 adds
 independent native input service, bounded deferred guest events, physical async
 state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Shared real file mutations/properties now exist in VFS and the browser model
-([scope](F_FILE_OPERATIONS.md)); next: native operation UI/confirmation/properties
-and checked copy, coherent L/R
+([scope](F_FILE_OPERATIONS.md)). [Native file actions](F_FILE_ACTIONS.md),
+name entry, delete confirmation and properties are now connected; next: checked copy, coherent L/R
 click and controller actions, preferences/TXT/images and F5 save/find/reopen.
 See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
 F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
@@ -875,3 +875,49 @@ execution. The first standalone command incorrectly named a nonexistent
 command_line.cpp (its implementation is header-only); corrected command passed.
 Markdown local links/fences and git diff --check passed. No local Switch or
 physical result is claimed. Verify exact published-SHA six-job CI after push.
+
+
+## Functional F: native file actions and modal properties/deletion
+
+Fetched clean b46b378/FETCH_HEAD on the requested branch; incoming exact CI
+40086771006 passed all six jobs. No AGENTS.md/newer work found. Sidebar actions
+now expose actual create/rename/delete and stat-backed properties through the
+common provider. Name cancellation is inert; permanent delete defaults to Cancel.
+Modal/input freezes path/selection/paging/Start, captures path/type and revalidates
+before deletion. Errors remain visible, success-with-stale-list is separate, and
+properties query actual storage anew. No recursive delete/copy/context menu is
+exposed. See F_FILE_ACTIONS.md for the exact contract and race limits.
+
+ShellSession consumes modal input and blocks task commands without guest callbacks
+or another Process. Idle keyboard labels distinguish new folder/rename. Active
+Switch text input now uses the shared UTF-8 path codec instead of dropping non-BMP
+characters, and restores output after cancellation as well as acceptance. Local
+SDK remains absent; only exact new-SHA Switch CI checks these libnx paths.
+
+The new native harness uses real storage and actual controls/controller focus,
+fresh properties/screenshots, invalid/collision/readonly/nonempty errors,
+default cancel, frozen target and disappeared/type-changed objects. The existing
+seven-session x86 busy fixture also performs native file actions with no guest
+message pump and checks no leaked input, modal Start/task guards and real bytes.
+First native test compilation incorrectly assumed OwnedSurface::Allocate returns
+bool; corrected to check the surface after allocation. An intermediate assertion
+used an incorrect expected string length; final byte-size checks use the actual
+18/19-byte content. No runtime workaround was added for either harness issue.
+
+Full host/MinGW/Mesa validation and exact published-SHA six-job CI remain the
+completion gates. Hardware checks are still deferred and SD diagnosis closed.
+Concrete next: shared checked copy with error/partial-file semantics before a
+Copy action, then context/input, preferences/TXT/images/F5; visual polish deferred.
+
+
+Final local native-action validation: the complete clean rootless MinGW/Mesa
+`COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` passed on the final common
+runtime/header/fixture tree, including the new file-action test and extended
+seven-session actual-x86 busy-shell test, all earlier mount/document/core/USER/
+legacy/workspace checks, Stage C, six E9 groups and both real EGL pixel oracles.
+Strict no-exceptions/no-RTTI native action and ShellSession compilation passed;
+final native Explorer/properties/delete screenshots were inspected. Only the
+Switch-only keyboard codec/cancel-redraw correction followed the common compile;
+main.cpp is excluded from host tests and needs exact new-SHA Switch CI. Markdown
+links/fences and git diff --check passed. No local SDK/hardware acceptance is
+implied; exact published-SHA CI must be checked after publication.

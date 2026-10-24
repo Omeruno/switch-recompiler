@@ -107,7 +107,7 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     return outputSurface_;
 }
 bool ShellSession::ShellPoint(int x,int y) const {
-    if(y>=680 || shell_.StartOpen())return true;
+    if(y>=680 || shell_.StartOpen() || shell_.ModalActive())return true;
     if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && Rect(218,100,1166,630).Contains(x,y))return true;
     return !WindowFromPoint(x,y,false); // exposed native desktop, never guest chrome
 }
@@ -181,7 +181,7 @@ bool ShellSession::Filter(const InputEvent& e) {
         if(e.type==IE::Char)return keyboard_;
         const auto vk=e.vk&255;const bool down=e.type==IE::KeyDown;
         if(vk==0x5B) {
-            if(down && !guestHeld){shell_.ToggleStart();keyboard_=shell_.StartOpen();Refresh();}
+            if(down && !guestHeld){shell_.ToggleStart();keyboard_=shell_.StartOpen() || shell_.ModalActive();Refresh();}
             return true;
         }
         if(!down) {const bool owned=shellKeys_[vk];shellKeys_[vk]=false;return owned;}
@@ -203,7 +203,7 @@ bool ShellSession::Filter(const InputEvent& e) {
         shellButtons_[button]=owned;guestButtons_[button]=!owned;
         if(!owned){keyboard_=false;return false;}
         keyboard_=true;if(button==0) {
-            taskPressed_=Shell::Bounds(Shell::GuestTask).Contains(e.x,e.y);
+            taskPressed_=!shell_.ModalActive() && Shell::Bounds(Shell::GuestTask).Contains(e.x,e.y);
             shell_.PointerDown(e.x,e.y);
         }
         Refresh();return true;

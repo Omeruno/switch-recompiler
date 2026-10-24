@@ -1983,19 +1983,6 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
 
 std::string ToUtf8(const std::u16string& w) { return win32::hle::WideToUtf8(w); }
 
-std::u16string FromUtf8(const char* s) {
-    std::u16string out;
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(s);
-    while (*p) {
-        uint32_t cp;
-        if (*p < 0x80) cp = *p++;
-        else if ((*p >> 5) == 6 && p[1]) { cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F); p += 2; }
-        else if ((*p >> 4) == 14 && p[1] && p[2]) { cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); p += 3; }
-        else { ++p; continue; }
-        out.push_back(static_cast<char16_t>(cp));
-    }
-    return out;
-}
 
 bool TextInput(const std::u16string& initial, bool multiline, bool password, std::u16string& out) {
     SwkbdConfig kbd;
@@ -2012,10 +1999,11 @@ bool TextInput(const std::u16string& initial, bool multiline, bool password, std
     const bool touching=hidGetTouchScreenStates(&touch,1) && touch.count>0;
     g_pointerInputGate.Reset(padGetButtons(&g_pad),touching);g_touching=false;
     g_pointerMotion.ResetTime(rt::Clock::NowUs());
-    if (R_FAILED(rc)) return false;
-    out = FromUtf8(buf);
+    // The applet may have changed scanout even when the user cancelled.
     InvalidateOutput();
     Blit();
+    if (R_FAILED(rc)) return false;
+    out = win32::hle::Utf8PathToWide(buf);
     return true;
 }
 
@@ -2223,12 +2211,15 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             // Shell keyboard uses no guest USER state or newui::Blit binding.
             const bool address=shell.PendingTextInput()==ui::DesktopShell::TextInput::Address;
             const bool openWith=shell.PendingTextInput()==ui::DesktopShell::TextInput::OpenWith;
+            const bool newFolder=shell.PendingTextInput()==ui::DesktopShell::TextInput::NewFolder;
+            const bool rename=shell.PendingTextInput()==ui::DesktopShell::TextInput::Rename;
+            const bool leaf=newFolder || rename;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
-                swkbdConfigSetGuideText(&config,openWith?"Для расширения выбор запомнится до выхода из оболочки.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
-                swkbdConfigSetStringLenMax(&config,500);
+                swkbdConfigSetHeaderText(&config,newFolder?"Новая папка":rename?"Переименовать":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetGuideText(&config,leaf?"Введите одно имя без пути и кавычек.":openWith?"Для расширения выбор запомнится до выхода из оболочки.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
+                swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());
                 accepted=R_SUCCEEDED(swkbdShow(&config,text,sizeof(text)));
                 swkbdClose(&config);

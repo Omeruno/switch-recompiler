@@ -111,6 +111,6 @@ remain open. No hardware Paint/GPU/fallback/input/relaunch result is added here.
 
 
 Functional F update: [shared real file operations/properties](F_FILE_OPERATIONS.md)
-are implemented in VFS and the browser model. Their native UI, confirmation and
-properties dialog remain the next package; the original controls above do not
-yet expose create/rename/delete actions.
+are implemented in VFS and the browser model. Their [native UI, confirmation and properties dialog](F_FILE_ACTIONS.md) are now
+connected. The original control list above predates the new sidebar actions;
+context menus and checked copy remain open.

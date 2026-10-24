@@ -1,9 +1,9 @@
 # Functional F: shared file-operation foundation
 
 Based on `975f393` (CI run 40085203929, all six jobs successful). This package
-implements real storage operations and browser model APIs. **DesktopShell does
-not yet expose new buttons, context menus or a properties dialog.** Those are
-the next package; a provider test is not a usable end-to-end shell workflow.
+implements real storage operations and browser model APIs. The follow-up [native file actions](F_FILE_ACTIONS.md) now exposes folder/name
+entry, delete confirmation and properties. The original foundation alone did
+not deliver that end-to-end shell workflow; context menus/copy remain open.
 
 ## Shared storage contract
 
@@ -63,8 +63,8 @@ applied-with-stale-view. A listing failure after an actual rename/delete must
 never encourage retrying an already-applied operation. OperationErrno describes
 the mutation; LastError can describe the later refresh. History and associations
 are not rewritten to follow renamed objects. There are no retained native file
-handles or guest pointers. DeleteSelected is permanent; its future UI caller
-must obtain an explicit user deletion confirmation before executing it.
+handles or guest pointers. DeleteSelected is permanent; the native UI caller now obtains an explicit
+user deletion confirmation before executing it.
 
 ## Checks and next package
 
@@ -78,9 +78,9 @@ file bytes in each of its four isolated sessions. The complete
 `COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh` and exact published-SHA six-job
 CI remain required. No proprietary fixture is introduced.
 
-Next: expose these operations through coherent native actions, name entry,
-confirmation and a real properties view with pointer/controller routing; add
-checked copy before advertising it. Then persisted preferences/associations,
+The native-action follow-up connects these operations, confirmation and properties
+with pointer/controller routing. Next: checked copy before advertising it, then
+right-click/context actions. Then persisted preferences/associations,
 TXT/images and F5 save -> find -> reopen. Luna polish and G optimization remain
 deferred. Local Switch SDK is unavailable; CI compiles the console build.
 Physical Paint/GPU/fallback/input/relaunch acceptance remains deferred, SD closed.
