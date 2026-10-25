@@ -1,166 +1,165 @@
-> Текущая веха F0–F5: **PASS_SOFTWARE_PENDING_HARDWARE**.
-> [Критерии, отчёт и оставшиеся аппаратные проверки](F_ACCEPTANCE.md).
-> Установщики/архивы — отдельное запланированное расширение; полной Windows-совместимости нет.
+# Switch Recompiler — глобальная дорожная карта A–I
 
-# Switch Recompiler — полная дорожная карта
-Дата обновления: 2026-10-25
-Статус: инженерный план, НЕ заявление о полной Windows-совместимости.
+Дата обновления: 2026-10-25, после G4b.1.
+Проверенный код `2c4f8497926ec638fdf94441b77961769618b624`:
+[CI40196352908, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908).
+[Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
+[технический handoff](AI_HANDOFF.md). История расследований — в handoff и
+[аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
 
 ## Цель и границы
-Нативная среда запуска 32-битных x86 Windows XP/NT 5.1 user-mode приложений на Nintendo Switch (Horizon/libnx). Не эмулируем всё ядро Windows и не делаем исключения под конкретные EXE. XP-подобный рабочий стол — собственный host-shell, не обязательный запуск настоящего explorer.exe.
 
-Два независимых измерения качества:
-- Совместимость: правильность x86, Win32 ABI, SEH, потоки, объектная модель, GUI.
-- Производительность: сначала эталонный интерпретатор, затем опциональный dynarec, GPU backend. Ускорение НЕ должно менять семантику приложений.
+Среда запуска поддержанных 32-битных x86 Windows XP/NT5.1 user-mode приложений
+на Nintendo Switch/Horizon. XP-подобная оболочка — собственный native host-shell.
+Полное ядро Windows, запуск настоящего explorer.exe и x64 не являются уже
+реализованными возможностями. Совместимость конкретных программ, скорость и
+визуальная полнота — отдельные критерии; красивый desktop не закрывает Win32 API.
 
-## Подтверждённые факты / текущая точка
-- **Мы здесь: ограниченная программная F0–F5 реализована и прошла CI; физическая приёмка F/E остаётся открытой. G1 добавил: публичный x86 PE-тест вычислений, плиточного поля и линий, замеры фаз и накладных расходов. G2 добавил проверяемый быстрый 32-битный SRCCOPY и опциональные фазы исполнения; [контракт](G2_BLIT_AND_PHASES.md). GPU уже композитит и выводит окна, но GDI остаётся на CPU. Следующее ускорение выбираем по измерениям; перенос GDI на GPU требует корректного ROP/readback/fallback. D-совместимость и Luna-внешний вид остаются открытыми. См. [активную карту](ACTIVE_ROADMAP.md), [G1](G1_MEASUREMENTS.md) и [критерии F](F_ACCEPTANCE.md).**
-- Принятая реализация: `6aacc4e013e55be84a6f7860dfb34e810c6fbda0`; все пять CI jobs прошли в [39810630356](https://github.com/Omeruno/switch-recompiler/actions/runs/39810630356). Пользователь запустил standalone input и combined acceptance v2 на Switch и прислал отчёты: PASS 1–8, `PASS: ALL 8 SUITES`, `input passed`, без FAIL. [Запись приёмки](STAGE_C_ACCEPTANCE.md#результат-приёмки-2026-10-22).
-- Paint открывает и сохраняет файлы на физическом Switch — проверено пользователем; держать NRO базового коммита `2c9a1fa` как известную рабочую копию.
-- Дополнительная аппаратная проверка пользователем: Paint на NRO `8b0ad70` работает без изменений/регрессии (2026-10-22). Это проверка Paint, а не всех новых loader/concurrency-сценариев.
-- Интерпретатор x86, PE EXE/DLL loader, импорты, Win32 HLE, файловые диалоги, USER32/GDI существуют, но совместимость неполная.
-- SEH: RaiseException, dispatch CPU traps, FS:[0], CONTEXT32 частично включая x87/SSE, RtlUnwind, nested/collided subset; не подтверждать полноту SEH без пограничных тестов.
-- GuestThread/TEB/stack/TLS и GuestScheduler исполняют x86 по квантам в winrun и Switch. CreateThread/worker return, Sleep, single/multiple waits и critical sections существуют. Базовый HEAD `83b299b` имеет зелёный CI `39650590532`; новые изменения проверять отдельно.
-- Добавлены общая process-owned HANDLE table, независимое дублирование объектов, alias wake, abandoned mutex и ExitThread главного потока. Наличие кода не заменяет CI и аппаратную проверку.
-- USER32 v2: focus/active принадлежат очереди потока; GetGUIThreadInfo позволяет проверить чужую очередь. Capture один на desktop, но Get/ReleaseCapture учитывают владельца. AttachThreadInput явно не реализован; объединённые очереди не имитируются успешным stub.
-- Визуальный desktop-shell ещё не существует как законченная функция.
+**Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1 реализован
+в изолированном GPU-прототипе. Следующий рубеж — G4b.2, подключение окон,
+памяти и основного вывода. D, физическая E/F, H/I и расширения среды открыты.**
 
-## Этап A — корректность и регрессионная база [постоянно]
-- Версионировать known-good NRO и тестовые EXE без распространения proprietary Windows DLL/бинарников.
-- Host tests, x86 CPU oracle, Switch CI; редкие проверки на настоящей Switch отдельно.
-- Каждый баг: воспроизводящий минимальный Win32 guest, проверка стеков/регистров/импортов и crash log.
-- Матрица программ: запуск, GUI, ввод, открытие/сохранение, потоки, стабильность, производительность.
+Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
+или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
+не активирован для Paint. Процент общей готовности и срок здесь не назначаются.
 
-## Этап B — кооперативная многопоточность [база реализована, поддерживать регрессиями]
-B1. Выполнять инструкции по квантам GuestScheduler для выбранного GuestThread; переключать FS и TEB, хостовые поля текущего потока. Проверка: два гостя увеличивают независимые счётчики, без перекрёстных записей.
-B2. CreateThread, ExitThread, GetExitCodeThread, SuspendThread, ResumeThread, GetCurrentThreadId; законный worker return trampoline завершает только рабочий поток, не процесс.
-B3. Для каждого потока: lastError, SEH активный стек, TLS, stack guards, DLL_THREAD_ATTACH/DETACH, TEB self and ClientId.
-B4. Отделить HWND/очередь сообщений/таймеры от host render-thread. Проверка: оконный процесс с фоновым worker и без зависания интерфейса.
-Критерий: Paint baseline + 2 worker guest EXE + корректное завершение/обработка exceptions на разных потоках.
+## Этап A — корректность и регрессионная база [постоянная работа]
 
-## Этап C — NT объекты и ожидания [ограниченная приёмка пройдена]
-- Единая таблица типизированных 32-битных HANDLE с refcounts: thread, file, event, mutex, semaphore.
-- WaitForSingleObject/MultipleObjects, finite/infinite timeout, auto/manual reset, WAIT_ABANDONED; guest wait освобождает квант, не блокирует render.
-- CriticalSection рекурсивность/владелец, Interlocked, таймеры и очередь сообщений.
-- MsgWaitForMultipleObjects/Ex объединяют HANDLE и очередь USER32 v2; wait-all не расходует объекты до готовности всего набора и input. Поддержаны новые/уже просмотренные сообщения, QS masks, MWMO_INPUTAVAILABLE.
-- QueueUserAPC и alertable SleepEx/WaitForSingleObjectEx/WaitForMultipleObjectsEx/MsgWaitEx выполняют callbacks на CPU/TEB/TLS получателя, включая очередь до старта и вложенные alertable waits.
-- Именованные event/mutex/semaphore: Create/Open A/W, общий типизированный namespace внутри Process, lifetime до последнего HANDLE, Local/default и отдельные Global имена. HANDLE содержит собственные access/INHERIT/PROTECT_FROM_CLOSE; права проверяются в waits, sync mutation, thread/APC и file/CRT data I/O.
-- SignalObjectAndWait: однократный signal event/mutex/semaphore, общий continuation wait, alertable/nonalertable APC, timeout/abandonment/access checks. Переполнение семафора возвращает ERROR_TOO_MANY_POSTS; signal-object lifetime не продлевается ожиданием.
-- Waitable timers: Create/Open A/W, общий named/type/access контракт, manual/auto reset, relative/absolute deadlines, periodic coalescing, Set/Cancel, timer APC с FILETIME и отменой при rearm/последнем Close/выходе setter. Scheduler учитывает armed timers при простое всех потоков; native regression покрывает cancel-at-dispatch checkpoint.
-- Регрессии конкуренции: auto-timer через aliases отдаёт одно срабатывание одному из трёх waiters; manual-timer будит всех; periodic wait-all сохраняет исходный deadline и timer/semaphore tokens. APC проверены на self-cancel/rearm/последний Close и перенос setter/TLS. Исправлена утечка retry deadline после ошибочного wait-all: новый независимый wait получает чистое состояние.
-- Смешанные waits/teardown: нативная регрессия закрытия HANDLE после отменённого APC выявила и закрыла недостающую повторную валидацию до consume/park. Win32-гости проверяют 12 MsgWait/timer/APC циклов с блокирующим callback и sent/posted сообщениями, а также ExitThread из timer APC с удалением HWND, abandonment mutex и отменой таймера.
-- Остановка исполнения: последний executor Process дренирует native frames до отмены всех потоков/waits/APC/timers и освобождения stack/TEB/TLS; nested executor не завершает внешнюю сессию. ExitProcess сохраняет заданный код, host abort использует STATUS_UNSUCCESSFUL; HANDLE tombstones и ранее полученные exit codes сохраняются. Host abort остаётся без guest callbacks; orderly process detach описан ниже, обычная выгрузка DLL — в этапе D. Добавлены native stop/ExitProcess регрессия и Win32 ExitProcess из APC при заблокированном timer callback.
-- Orderly process exit: ExitProcess/CRT exit/entry RET внутри executor дренируют peers и вызывают EXE TLS/DLL_PROCESS_DETACH на requester CPU/TEB/TLS, в обратном initialization order, с ненулевым reserved и loader lock. Thread HANDLE/память requester завершаются после callbacks; host abort уведомлений не вызывает. Добавлен bridge последнего ExitThread/worker return, включая повторную проверку peers после loader lock и сохранение жизни процесса при suspended peer. Добавлен startup на main fiber и cleanup при attach failure (STATUS_DLL_INIT_FAILED), включая failed-load TLS/DllMain detach. Обычная выгрузка DLL и динамический failure rollback реализованы в D; добавлена ограниченная обработка startup SEH/CPU faults; полный NT failure contract и hardware acceptance остаются открыты.
-- **Ограниченный этап C закрыт 2026-10-22**: программные gates и полный аппаратный `stage_c_acceptance.exe` v2 прошли; последний отчёт содержит `PASS: ALL 8 SUITES`. Бывшая оценка ~95% заменена результатом приёмки. Scope: один Process, HANDLE/waits/APC/timers, startup/exit/cancellation и GUI ownership. Cross-process namespace/наследование, token/DACL, I/O completion APCs, TerminateThread и полный NT-контракт остаются отдельным расширением модели. Подробности и границы — [STAGE_C_ACCEPTANCE.md](STAGE_C_ACCEPTANCE.md).
-Критерий: producer/consumer guest, контеншн и тайм-ауты, отсутствие deadlock.
+Есть host/MinGW, CPU oracle, ARM64/QEMU, actual-EGL и Switch CI, диагностика,
+known-good сборки и публичные EXE из исходников. Proprietary Windows DLL/EXE и
+частные пользовательские отчёты не распространяются через публичный git.
 
-## Этап D — loader и системные Win32 API [существенно реализован, расширять по приложениям]
-- PE32 ABI (stdcall/cdecl/thiscall), экспорт по имени/ordinal, forwarded exports, delay-load, DLL refcount and attach/detach.
-- DLL unload: явные ссылки LoadLibrary/GetModuleHandleEx, PIN/UNCHANGED_REFCOUNT/FROM_ADDRESS; достижимость от EXE/закреплённых модулей/явных ссылок удерживает общие и циклические зависимости. FreeLibrary вызывает TLS/DllMain PROCESS_DETACH с reserved=0 в обратном initialization order, затем освобождает образы и host-owned static TLS у живых потоков (включая suspended), переиспользует TLS-индексы. HLE-модули закреплены. Метаданные выгруженных модулей сохраняются для безопасности snapshots. Добавлен rollback обычных динамических LoadLibrary: отклонённые/частично отображённые DLL и ненужные новые зависимости освобождаются, уже существующие и независимые вложенные загрузки сохраняются, повторная попытка начинается с чистого образа/TLS. Отказ в циклической вложенной зависимости распространяется на новые зависящие модули. Guest GetProcAddress инициализирует ленивые forwarded targets и откатывает неудачные новые edges/images. FreeLibraryAndExitThread не возвращается в выгруженный код. Ошибки отсутствующего модуля, повреждённого PE, TLS setup и отказа DllMain различаются. Необработанные guest SEH/CPU faults в attach/TLS теперь дают ошибку загрузки (1114; startup C0000142), динамический отказ проходит обычный rollback. SEH получает первую попытку; аварийный attach не получает PROCESS_DETACH, FALSE-return сохраняет отдельный cleanup. Сохранены явные ExitThread/ExitProcess и host abort; FS:[0] восстанавливается после аварийного callback. Добавлены native/PE проверки вложенного handler fault, yield и межпоточной изоляции. Полный startup image rollback/NT failure contract, guest finally unwind и LoadLibraryEx datafile/image flags ещё впереди.
-- VirtualAlloc/Protect/Query/Free, page faults and stack growth, файловые пути, кодировки, реестр, загрузка ресурсов, COM/Shell.
-- Полные необработанные исключения, unwind, x87 precision limitations, FPU/SSE; тесты MSVC-подобного поведения.
-Критерий: реальные приложения без адресных hardcodes и чистое завершение.
+Критерий каждого расширения: воспроизводящий публичный тест, регрессии и
+exact-SHA CI. Дальнейшая цель — матрица приложений: запуск/GUI/ввод/файлы/
+потоки/стабильность/производительность. A не закрывается навсегда.
 
-## Этап E — графическая граница [реализованы E6/E7; E8/E9 открыты]
-Подробный план до 100%: [STAGE_E_PLAN.md](STAGE_E_PLAN.md). Пакеты аудита/backend/software/dirty/lifetime и GPU/layers/cache уже реализованы; принятая отметка — 60%, дальнейшие аппаратные критерии остаются открытыми. Проценты — веса пакетов, не оценка сроков.
-Формат: Win32 GDI/DirectDraw/Direct3D commands → независимый графический backend.
-E1. Ввести границу поверхности: host-owned textures/surfaces, pixel format, clip, dirty rect, lifetime, update, blit/composite, present. Детерминированный software backend — эталон.
-E2. Для GDI: выполнять семантику на CPU где это выгоднее/проще; отправлять изменённые прямоугольники в GPU, аппаратно компоновать окна, курсор и масштабирование; cache glyphs/bitmaps.
-E3. Native Switch GPU backend только после проверки доступного API и режима памяти; определить подходящий libnx/deko3d/совместимый графический путь для целевого homebrew runtime. Факт наличия GPU не означает прямой аппаратной совместимости с DirectX.
-E4. Измерять latency/CPU/GPU/memory на Switch, fallback на software если несовместимый путь.
-Критерий: пиксельное сравнение CPU и GPU вывода на GDI-сценах + Paint visual regression.
+## Этап B — исполнение x86 и потоки [база реализована]
 
-## Этап F — XP-подобная оболочка [программная F0–F5 реализована; физическая приёмка открыта]
-- Общий SD-backed root, рабочий стол/Start/проводник, реальные операции с файлами, TXT/BMP, ссылки и постоянный workspace реализованы в ограниченном [F0–F5 scope](F_ACCEPTANCE.md). Аппаратная приёмка и дальнейшая визуальная доводка остаются открытыми.
-- Свой desktop-shell host UI: фон, taskbar, Start menu, часы, shortcuts, запуск и переключение EXE, сохранение на SD, управление Joy-Con/тач.
-- Собственный файловый менеджер. Настоящий explorer.exe — необязательная отдельная цель с огромными зависимостями.
-- Процессы: начать с одного адресного пространства/нескольких окон, затем полноценная изоляция нескольких экземпляров с отдельными Process и ресурсами.
-Критерий: открыть Paint из «Пуска», рисовать, сохранить, найти через проводник, переключиться между окнами.
+Интерпретатор, GuestScheduler/кванты, guest threads, TEB/TLS/FS, lastError,
+SEH-стек, callbacks/native continuations и корректный thread return существуют.
+UI ownership, фоновые workers и выход проверяются публичными гостями.
 
-## Запланированное расширение F: установка приложений и архивы
+Открыто: пограничные CPU/ABI случаи, совместимость и дальнейшее ускорение.
+Нет готового полноценного x86→ARM64 dynarec; не заменять CPU correctness быстрыми
+неверными ответами. Сохранять oracle и interpreter fallback.
 
-Запрос 2026-10-24: EXE-установщики программ/игр должны писать в реальные
-постоянные папки и создавать рабочие ярлыки Desktop/Start. Нужны согласованные
-Program Files/profile paths, действительные Win32/registry/shortcut API и явные
-ограничения child-process/MSI/COM. Затем импорт ZIP/RAR/других архивов с реальным
-распаковыванием, выбором папки, сохранностью файлов и проверкой ошибок.
-Подробные зависимости/критерии: [F_INSTALL_AND_ARCHIVES.md](F_INSTALL_AND_ARCHIVES.md).
-Это будущий блок после базового F5, не заявление о текущей поддержке произвольных
-установщиков или игр. Текущая очередь — [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md).
+## Этап C — объекты, ожидания и lifecycle [ограниченная приёмка пройдена]
 
-## Этап G — измерения и ускорение [G0/G1/G2 программно реализованы]
-- [G4b.1](G4B_GPU_BATCHES.md): ограниченное ordered batching заливок и сравнение в одной сборке; G4b.2 live HWND/DIB/ROP/presenter bridge остаётся открыт.
-- [G4a](G4A_GPU_TARGETS.md): несколько GPU targets с поколениями, прямой texture compositor и fallback, пока без подключения к Win32. Далее G4b batching/coherence/production bridge.
-- [G3](G3_GPU_GDI_PROTOTYPE.md): изолированные настоящие GL fill/copy, ограниченный журнал, CPU readback и recovery; не активирован для Paint. Далее G4: окна/память/presentation bridge и batching.
-- [G1](G1_MEASUREMENTS.md): публичный реальный PE, проверяемые пиксели/результаты, фазы исполнения и повторный контроль стоимости профилирования. Пока без ускорения или Switch FPS.
-- Профилирование интерпретатора, горячие инструкции, fast paths.
-- Опциональный dynarec x86→ARM64 с блоковым кэшем, точными флагами и исключениями; interpreter fallback и differential tests.
-- Проверить возможности исполняемой памяти / icache / W^X на Horizon до обещаний полноценного JIT.
-Критерий: идентичные CPU oracle и SEH результаты; измеримый speedup на реальной Switch.
+Принята модель одного Process: типизированные HANDLE/права/aliases, sync objects,
+wait/MsgWait, APC, timers, per-thread queues, startup/exit/cancellation и GUI
+ownership. [Stage C acceptance](STAGE_C_ACCEPTANCE.md): пользовательский Switch
+отчёт v2 содержит PASS: ALL 8 SUITES; базовый SHA6aacc4e, CI39810630356.
 
-## Этап H — DirectDraw и Direct3D
-- Начать с DirectDraw 2D/palette/surface flipping; затем выбрать D3D поколения по реальной совместимости и спросу.
-- API translation в native GPU backend с текстурами, render targets, shaders, ресурсным кэшем.
-- Графику Win32 и графику игр не смешивать с оболочкой: shell — лишь клиент общего compositor.
-Критерий: тесты DirectDraw, затем простые D3D сцены и профилированные игры.
+Это не вся NT-модель: cross-process/security/DACL, полная изоляция нескольких
+Process, AttachThreadInput и другие расширения остаются отдельной работой.
+Прежняя приёмка не подтверждает каждый будущий SHA.
 
-## Этап I — выход продукта
-- Версионирование NRO, installer/config for SD, error logs, graceful recovery, crash-safe saves, regression suite.
-- Таблица совместимости программ, настройка производительности и контроллеров.
-- x64 — отдельная архитектурная программа (x86-64 decoder/ABI/PE32+/Win64); не включать молча в текущий XP x86 scope.
+## Этап D — loader и системные Win32 API [частично реализован]
 
-## Актуальная очередь 2026-10-23 (после аудита)
+Есть PE32 EXE/DLL, ABI/import/export/delay-load, refcount/unload/TLS/rollback,
+ограниченный SEH/unwind и существенный Win32/CRT. Сохранять loader-lock,
+отказы загрузки/attach и корректную очистку на requester CPU/TEB/TLS.
 
-1. **F1 реализован:** постоянные C/S/R, per-drive CWD/readonly, согласованные
-   loader/CRT/dialog/profile пути и реальные statvfs space APIs. Контракт,
-   совместимость старых запусков и пределы — [F1_FILESYSTEM.md](F1_FILESYSTEM.md).
-2. **F4b/F3c/F5:** retained-композиция и взаимодействие поверх F4a,
-   затем постоянные настройки и действия Start/tree поверх F3a/F3b, сохранение/поиск/повторное открытие документа.
-   F0 session/picker foundation не означает готовую оболочку.
-3. **D:** файловые недостачи, нужные F1; отдельно page-permission enforcement,
-   bounded SEH/unwind/LoadLibraryEx и воспроизводимые API incompatibilities.
-4. **E:** сохранить реализованные software/GPU/layers/cache/telemetry/tests;
-   E8/E9, реальный Paint/GPU/fallback/input/relaunch остаются одним отложенным
-   аппаратным списком. Не переоткрывать SD и не засчитывать host PASS как Switch.
-5. **G/H:** G0 сохранить; timing/overhead/fast paths после рабочей F-вехи или
-   измеренного blocker. Dynarec и DirectDraw/D3D — отдельные программы.
+Открыто: enforcement прав страниц, полный unwind/SEH, COM, другие API и
+зависимости реальных программ. Работать по воспроизводимым несовместимостям.
+Pinball x86 на host сначала останавливается на отсутствующем RegCreateKeyExA;
+его запуск не объявлен поддержанным. GPU-работы эту ошибку не закрывают.
+Критерий: реальное поведение API/ошибок, не successful stub или имя EXE.
 
-Сводка доказательств: [PROJECT_AUDIT_2026_10_23.md](PROJECT_AUDIT_2026_10_23.md).
-Пакеты и критерии F, предложенный layout и лицензируемые visual sources:
-[F_SHELL_PLAN.md](F_SHELL_PLAN.md). F1 mounts, desktop/Start/explorer и F4a/F4b.1 уже подключены; create/rename/delete/properties подключены; Copy/Paste UI подключён; контекстные меню подключены; сортировка/ассоциации сохраняются в профиле; документы и полная непрерывность среды остаются открыты.
+## Этап E — графический вывод и композиция [программная реализация, физические gates открыты]
 
-## Историческая очередь (сохранена для контекста)
-1. **Зафиксировать базу:** Stage C принят на `6aacc4e`; сохранить рабочую NRO. Paint hardware baseline остаётся `8b0ad70`: приёмка C сама по себе не доказывает Paint open/save на новом SHA. Host/MinGW, CPU oracle, ARM64/QEMU и Switch build остаются обязательными регрессиями.
-2. **Следующий пакет E1:** проследить Surface/GDI → композицию окон → platform present; ввести явный renderer-backend interface с правилами ownership/lifetime, формата пикселей, clip, dirty rects и resize. Вынести существующий software путь за интерфейс, сохранив CPU GDI эталоном. Добавить измерения времени/числа present и объёма обновлений. Приёмка: детерминированное сравнение пикселей до/после, teardown/resize/clip, существующие GUI/input tests и Paint smoke. Это ещё не GPU backend.
-3. **Базовый аппаратный JIT probe уже выполнен:** 2026-10-22 пользователь подтвердил, что в прежней переписке до переноса проекта запускал probe на Switch и получал 42. Повторный запуск минимального probe не является текущей блокирующей задачей. Старое фото/точный SHA, режим запуска, Result-коды и результат cleanup в репозитории не найдены; их не выдумывать. Это подтверждение исполнения минимальной ARM64-функции со слов пользователя, а не приёмка dynarec. При интеграции проверить реальный code-cache: rewrite/invalidation, icache, lifetime и безопасный fallback; окружение при следующем таком тесте записать.
-4. **После E1:** выбирать E2/E3 по измерениям и доступному Switch API: dirty uploads и композиция с сохранением software fallback; доказать пиксельную эквивалентность и реальное улучшение на консоли. D дорабатывать по конкретным несовместимостям и минимальным воспроизводящим тестам, не ждать абстрактной полной Win32-совместимости.
-5. **Следующие вехи:** F — минимальный host-shell в модели одного Process (запуск Paint, окна, файлы, ввод); G — профилирование и первый ограниченный x86→ARM64 backend с oracle/fallback, используя подтверждённую базовую JIT-возможность и отдельные проверки code-cache при интеграции. Не запускать полную оболочку, GPU и dynarec одной неделимой переделкой. H DirectDraw/D3D — самостоятельный последующий блок.
+Есть CPU GDI/ROP/readback как эталон, software backend, production Switch GL,
+retained window/native planes, ownership/revisions, damage/cache/lifetime и
+метрики. Public actual-x86 композиция сравнивается с CPU и настоящим GL через
+EGL; [контракт](STAGE_E_COMPOSITION.md), [метрики и физическая очередь](STAGE_E_PERFORMANCE.md).
+[Combined E9](STAGE_E_ACCEPTANCE.md) содержит шесть программных групп.
 
-Правило: изменения исключительно в ветке `claude/wonderful-hawking-10mpr0`. Не объявлять CI-успех для коммита, пока нет зелёного workflow с тем же SHA.
+Текущие Paint/GPU/fallback/Lite/input/relaunch, реальные memory/latency/throughput
+и аппаратная приёмка новой сборки отложены. Старые Paint open/save подтверждения
+относятся к прежним baseline SHA, включая8b0ad70, а не ко всем новым версиям.
+Новый GPU-GDI разрабатывается в G3/G4 и должен состыковаться с E без потери CPU
+эталона/fallback; DirectDraw/D3D — отдельный этап H.
 
-## Architecture review: external recommendations (2026-10-21)
-Independent review found four actionable risks; refined against existing design:
-1. **Instruction quantums already preempt pure guest spin loops.** Actual starvation danger is nested guest callbacks / blocking HLE calls that monopolize the host thread, so test an infinite-looking busy spin waiting on worker and audit HLE callbacks. Eventually implement MsgWaitForMultipleObjects and APC alongside real per-thread message queues; do not emulate as ordinary WaitForSingleObject.
-2. **JIT feasibility probe moves earlier**, before implementing ARM64 dynarec: use libnx `jitCreate`, `jitTransitionToWritable/Executable`, and `jitGetRwAddr/jitGetRxAddr`; run a minimal generated ARM64 function on physical Switch in actual target homebrew launch mode. Confirm permissions and I-cache synchronization, code-memory lifetime, and W^X without assuming `svcMapProcessCodeMemory` must be called manually. Keep current interpreter fallback. libnx API docs: https://switchbrew.github.io/libnx/jit_8h.html
-3. GDI remains synchronous CPU rasterizer and pixel-correct reference; GPU used for dirty-rect upload, batching and desktop composition; DirectDraw/D3D translator is a separate backend. Never force every GDI call through GPU.
-4. Expand old-compiler SEH ABI tests (MSVC/Delphi/CRT) with nested, collided unwinds, register/flags/FP restoration. Apply targeted compatibility matrix, not unbounded demand for "100% Win32".
-Acceptance gates: a native spin-lock guest test completes under scheduler quanta; no host API call starves render loop; JIT probe works on user's actual Switch before dynarec milestone is scheduled; GDI image comparison passes software vs composited output.
+## Этап F — оболочка, файлы и сеансы [ограниченная программная F0–F5 готова]
 
+Постоянные C/S/R/profile/CWD/Unicode, native desktop/Start/taskbar/explorer/tree,
+реальные Desktop/Start `.lnk`, sort/associations, create/rename/delete/properties,
+Copy/Paste/контексты, bounded TXT/BMP, checked sync file saving и сквозное
+save/find/fresh-session reopen реализованы. Один активный гостевой Process
+может иметь несколько окон; последовательные сеансы изолированы. Native-ввод
+и frontend/output продолжают жить независимо от guest USER pump.
 
-## Уточнение аппаратного JIT результата (2026-10-22)
-Пользователь сообщил: probe уже проверяли в другой переписке до переноса,
-сгенерированный ARM64-код возвращал `42`. Прежняя запись «нет физической
-проверки» устарела. Найдены коммиты реализации `bb33f1e`, перехода на Pad API
-`904347f` и изоляции CI `3d7081e`; отдельного прежнего коммита с аппаратным
-результатом при просмотре истории/документов не обнаружено. Эта запись
-сохраняет текущее подтверждение пользователя, не подменяет отсутствующие
-Result-коды/фото и не обещает JIT в любом режиме запуска.
+Статус [F acceptance](F_ACCEPTANCE.md): PASS_SOFTWARE_PENDING_HARDWARE,
+22 программные группы. Все пять Luna-обновлений Claude сохранены;
+[PanelArea/integration review](LUNA_INTEGRATION_REVIEW.md) закрывает обрезание
+новой панели и click-through при активном EXE. Внешний вид не объявлен полным XP.
 
+Физическая приёмка F остаётся открытой. У окон native-оболочки min/max пока декоративны;
+их free drag/resize, несколько одновременных EXE, широкая поддержка изображений,
+shell COM и полная среда XP не входят в закрытый baseline. [Подробный scope](F_SHELL_PLAN.md).
 
-Native TXT create/read/line-edit/save/Save As is now implemented with bounded
-UTF/BOM preservation, retained backups and real conflict/error reporting; see
-[F_TEXT_DOCUMENTS.md](F_TEXT_DOCUMENTS.md). Next: supported image viewing and F5.
+## Запланированное расширение F — установщики и архивы [не реализовано]
 
+[План](F_INSTALL_AND_ARCHIVES.md): поддержанные installer EXE должны реально
+писать payload в постоянную папку, создавать рабочие Desktop/Start ссылки,
+правильно сообщать ошибки/отмену и иметь определённый update/remove scope.
+Файловая база и ссылки уже есть; совместимость произвольных installers, MSI,
+COM, child-process/service зависимостей этим не обеспечивается.
 
-Крупные блоки и ближайший проверяемый рубеж для пользователя: [PROJECT_STATUS_RU.md](PROJECT_STATUS_RU.md).
-Просмотр BMP: [F_IMAGE_DOCUMENTS.md](F_IMAGE_DOCUMENTS.md).
+Затем реальная распаковка ZIP; позднее RAR/другие форматы с валидацией путей,
+сохранностью данных и ошибками. Установка игры и совместимость её запуска —
+разные проверки. Этот блок остаётся видимым после программной F5.
+
+## Этап G — измерения и ускорение CPU/GDI [сейчас G4b.2]
+
+GPU-GDI — текущий экспериментальный подблок на стыке E/G. Он не заменяет
+исходную задачу CPU-ускорения и не означает готовый dynarec.
+
+| Пакет | Реализовано | Состояние |
+| --- | --- | --- |
+| G0/G1 | Opcode/API census, [публичный PE phases/overhead тест](G1_MEASUREMENTS.md) | Инструменты измерений |
+| G2 | [CPU SRCCOPY и optional executor phases](G2_BLIT_AND_PHASES.md) | CPU fast path включён |
+| G3 | [GL fill/copy/readback/recovery](G3_GPU_GDI_PROTOTYPE.md) | Изолированный bounded prototype |
+| G4a | [Targets/generations/direct texture composition](G4A_GPU_TARGETS.md) | Изолированный prototype, без readback ради каждой композиции |
+| G4b.1 | [Ordered instanced fills](G4B_GPU_BATCHES.md), cached uniforms, pixel/count/timing comparison | 64 disjoint fills →1 draw; копии/пересечения в порядке; prototype |
+| **G4b.2** | HWND/DC lifecycle, raw-DIB/ROP/read barriers, GL-state и production texture bridge | **Следующий незавершённый рубеж** |
+
+До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
+измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
+собственные маленькие лимиты и dedicated-context контракт; простое включение
+для Paint некорректно. Host результаты не являются консольным FPS.
+
+CPU backend отдельно: выбрать fast paths по измерениям; dynarec требует code
+cache/rewrite/invalidation/icache/lifetime/fault fallback и differential oracle.
+Минимальный ARM64 JIT-probe ранее дал42 на Switch по подтверждению пользователя;
+не повторять его как prerequisite и не выдавать за приёмку полного dynarec.
+
+## Этап H — DirectDraw и Direct3D [не реализован]
+
+Отдельный переводчик graphics API: сначала определённый DirectDraw2D/palette/
+surface subset, затем выбранное поколение D3D по целевым приложениям. Нужны
+реальные surfaces/textures/ROP-or-API semantics/lifetime и проверяемые игры.
+Наличие GL compositor или GPU-GDI этого не даёт.
+
+## Этап I — готовый продукт [открыт]
+
+CI/NRO/логи/публичные fixtures уже есть. Остаются матрица совместимости,
+понятная конфигурация/доставка, повторяемая стабильность/сохранения/ошибки,
+документация и итоговая приёмка целевого набора приложений на Switch.
+Проект не объявлен заменой Windows или поддержкой всех EXE.
+
+## Рабочая очередь и правила
+
+1. G4b.2 — окно/память/presenter bridge с CPU fallback и публичными проверками.
+2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
+3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
+4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
+   сейчас не блокируют независимую host-разработку. SD восстановлена, диагностика закрыта.
+5. CPU dynarec, H graphics API и I product gates — самостоятельные крупные работы.
+
+Сохранять корректность CPU GDI/readback, native1280x720, L legacy/ZL software,
+ввод, Claude Luna и fresh guest/persistent frontend lifetime. Локального
+Switch SDK нет; сборка NRO через CI. Host PASS не заменяет физическую приёмку.
+Изменения только в claude/wonderful-hawking-10mpr0 без force push. Перед работой
+проверять HEAD/tree/handoff; после пакета обновлять карту, выполнять положенные
+проверки и проверять все шесть CI jobs точного опубликованного SHA.

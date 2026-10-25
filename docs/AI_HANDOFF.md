@@ -1,31 +1,37 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`847ba20e9f8151cc9d16b0e3796ba24c97a2150f` (2026-10-25).
-[CI 40193307039](https://github.com/Omeruno/switch-recompiler/actions/runs/40193307039)
+`2c4f8497926ec638fdf94441b77961769618b624` (2026-10-25).
+[CI 40196352908](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current priority after the 2026-10-23 audit
+## Current position after G4b.1 (2026-10-25)
 
-Latest steering: prioritize real system functionality and verifiable operations;
-return to visual Luna polish later. F1/F2/F3a/F3b/F4a are implemented; F4b.1 adds
-independent native input service, bounded deferred guest events, physical async
-state and owner-queue window commands. F4b.2 now keeps one frontend worker/device across guest sessions. Shared real file mutations/properties now exist in VFS and the browser model
-([scope](F_FILE_OPERATIONS.md)). [Native file actions](F_FILE_ACTIONS.md),
-name entry, delete confirmation and properties are now connected.
-[Checked byte-copy provider/model](F_FILE_COPY.md) and [native Copy/Paste](F_FILE_PASTE.md)
-are implemented with a shared resumable engine, byte progress and cancel.
-[Native object/folder contexts](F_CONTEXT_ACTIONS.md) now support paired right
-click, Menu-key and controller actions. [Persistent sorting/associations](F3C_PREFERENCES.md)
-and native management are now implemented as a bounded F3c slice; [bounded native TXT](F_TEXT_DOCUMENTS.md) now implements real read/edit/save; [native BMP](F_IMAGE_DOCUMENTS.md) and a public x86 save/browse/reopen slice now exist; the whole bounded F0–F5 software baseline now passes; see [F_ACCEPTANCE.md](F_ACCEPTANCE.md). Physical acceptance is pending, installer/archive extension remains planned.
-See [F4B_INPUT_SERVICE.md](F4B_INPUT_SERVICE.md), [output lifetime](F4B_OUTPUT_LIFETIME.md), ACTIVE_ROADMAP.md and
-F_SHELL_PLAN.md. This supersedes older next-Luna/next-G priorities. D memory
-protection/unwind/API compatibility remain separate open work. No fake successful
-operation, forced guest callback or guessed application compatibility is allowed.
+Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
+G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
+are preserved. G3/G4a/G4b.1 implement isolated actual-GL GPU-GDI targets,
+readback/recovery, generation/lifetime checks, direct texture composition and
+ordered instanced fill batches. They are NOT activated for live Paint/Win32 GDI.
+
+Next is G4b.2: HWND/DC/visible ownership, raw-DIB and CPU ROP/read barriers,
+shared-context state/lifetime and a texture-aware production presenter bridge.
+Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
+and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
+and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
+test request is needed to progress this work.
+
+Global/current scope: [PROJECT_STATUS_RU.md](PROJECT_STATUS_RU.md),
+[ROADMAP.md](ROADMAP.md), [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md). These are now
+consolidated current maps, not append-only competing historical next steps.
+D API/page protection/unwind/COM and Pinball x86 remain open. Installer/ZIP/RAR,
+full native window actions/Luna polish, multi-Process and H DirectDraw/D3D are
+separate incomplete work; minimal JIT probe42 is not a dynarec acceptance.
+Keep all no-stub/correctness/lifetime rules below. Detailed package history
+follows; its old future-tense queues do not supersede this current position.
 
 ## Working agreement
 
@@ -1646,3 +1652,20 @@ relative links/fences, six-job workflow/new independent GPU gate and git diff
 test passed on the same runtime. No code followed the full suite, only docs.
 Fetched unchanged847ba20 before normal publication. Verify exact new-SHA all six
 CI jobs and clean42-sample artifact before completion. Hardware remains deferred.
+
+
+## 2026-10-25 consolidated global map update (documentation only)
+
+User asks to reconcile overall project position. Clean2c4f849/FETCH_HEAD, exact
+CI40196352908 reverified six success and prior clean42-sample batching artifact
+verified. Replaced accumulated contradictory next-BMP/F5/G1 snippets in user
+status and active map with one current scope: F software done/pending hardware;
+G2 active CPU optimization; G3/G4a/G4b.1 isolated GPU prototypes; nextG4b.2.
+Reconciled global A–I plan and retained C/JIT historical acceptance through
+subsystem evidence rather than presenting old queues as current. No global
+percentage, FPS, full XP, installer, dynarec or DirectX completion is inferred.
+Explicitly retain decorative native min/max, free drag/resize/multi-EXE and
+broader-image limitations; real paths/links do not certify installers. Hardware
+checks remain deferred, SD closed, local SDK absent and CI NRO build distinct.
+Only documentation changed; link/fence/source/diff checks and exact published-
+SHA CI are the gates. No runtime test rerun or code/fixture behavior claimed.
