@@ -152,3 +152,11 @@ pixels with actual EGL, including context destruction. It is not connected to
 production GDI/presentation and grants no Switch FPS/physical acceptance.
 Next G4: multi-target/batching/CPU-read and raw-DIB barriers plus texture-aware
 presentation before activation. User hardware tests remain deferred.
+
+
+G4a [multiple GPU targets/direct texture composition](G4A_GPU_TARGETS.md) adds
+four generation-checked native target IDs, resource budgets and actual-GL scene
+composition without per-frame CPU readback/reupload, plus explicit read/copy
+barriers and manager-wide fallback. It remains isolated from live USER/GDI and
+the production presenter. Next G4b: bounded batching, HWND/raw-DIB/ROP coherence
+and the real presenter bridge; no physical test request or Paint FPS claim.

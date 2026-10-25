@@ -89,6 +89,7 @@ Program Files/profile paths, действительные Win32/registry/shortcu
 установщиков или игр. Текущая очередь — [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md).
 
 ## Этап G — измерения и ускорение [G0/G1/G2 программно реализованы]
+- [G4a](G4A_GPU_TARGETS.md): несколько GPU targets с поколениями, прямой texture compositor и fallback, пока без подключения к Win32. Далее G4b batching/coherence/production bridge.
 - [G3](G3_GPU_GDI_PROTOTYPE.md): изолированные настоящие GL fill/copy, ограниченный журнал, CPU readback и recovery; не активирован для Paint. Далее G4: окна/память/presentation bridge и batching.
 - [G1](G1_MEASUREMENTS.md): публичный реальный PE, проверяемые пиксели/результаты, фазы исполнения и повторный контроль стоимости профилирования. Пока без ускорения или Switch FPS.
 - Профилирование интерпретатора, горячие инструкции, fast paths.

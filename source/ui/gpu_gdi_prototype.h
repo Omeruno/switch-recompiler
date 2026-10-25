@@ -32,6 +32,7 @@ public:
     size_t JournalCommands() const {return count_;}
     size_t InputBytes() const {return inputBytes_;}
 private:
+    friend class GpuGdiTargets;
     struct Command {Rect rect;uint32_t color=0;bool copy=false;PresentationBuffer<uint32_t> input;};
     bool Room(size_t bytes);
     void Replay();

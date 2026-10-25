@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b7cb82dd29171bbd6c9852128d1be6097c3d1ea3` (2026-10-25).
-[CI 40188452904](https://github.com/Omeruno/switch-recompiler/actions/runs/40188452904)
+`a98e87e1d759f5e2eb23865124f29cb68051af0d` (2026-10-25).
+[CI 40189429070](https://github.com/Omeruno/switch-recompiler/actions/runs/40189429070)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -1545,3 +1545,54 @@ allocations freed. No runtime change followed the suite, only additional test
 assertion/docs/artifact cleanup. Markdown links/fences, shell/YAML/six-job and
 diff checks passed. No newer remote branch changes when fetched. Normal push
 and exact new-SHA six-job/artifact proof remain the final publication gates.
+
+
+## G4a: multiple owned GPU targets and direct texture composition
+
+Clean a98e87e/FETCH_HEAD, no AGENTS or newer remote work; exact incoming
+CI40189429070 independently reverified six success. User requests continuation
+without physical testing. Added GpuGdiTargets: four native generation-checked
+handles, aggregate512x512 target pixels, create/destroy/budget/allocator cleanup,
+fill/copy/read and explicit CopyTargetViaCpu barrier. Process-global monotonic
+generations reject reused/foreign/reinitialized handles and never wrap. GPU
+texture names remain private. See G4A_GPU_TARGETS.md for scope and budgets.
+
+Actual-GL composition flushes targets and directly samples resident textures into
+default framebuffer, opaque nearest-scaled back-to-front up to1280x720. The
+composition path has no CPU snapshot/readback or texture reupload. Inherited
+command capacity checkpoints and explicit read APIs still read back by design.
+CPU fallback compositor reads real target images and owns its output. Readback
+failure, target draw error or presenter failure disables the manager's GPU path
+and recovers all images. Actual context destruction notification requires no
+driver calls; native CPU operations continue. No live HWND/GDI/presenter hookup,
+shared-context state restoration, arbitrary ROP/palette/alpha or batching yet.
+
+Actual EGL oracle compares every output pixel with independent64-bit CPU mapping,
+four patterned/overlapping/clipped/scaled targets,12 geometry-only frames with
+zero internal readbacks/no reuploads, native1280x720, explicit CPU read barriers,
+invalid/stale frames before output writes, reused/foreign/reset IDs, both target
+allocation failures, input/output failure, slot/pixel caps and cross-target source
+mutation. Covers target draw, presenter-only and readback errors, global fallback
+and actual context loss with flushed+pending work, then continued CPU writes.
+Ordinary host test explicitly rejects unavailable GPU initialization. Independent
+strict O2 gate added to existing gpu-reference job and artifact/log to host job;
+still six jobs. Full fresh suite and exact-SHA publication proof remain gates.
+
+Next G4b: batching plus live-window/raw-DIB/ROP coherence and texture-aware
+production integration instead of unconditional canonical CPU compose. Do not
+claim Paint GPU acceleration or console FPS from this isolated semantic bridge.
+Claude's Luna and G2 CPU fast path preserved. Hardware tests deferred, local
+Switch SDK absent; CI compiles Switch source. No SD re-diagnosis.
+
+
+Final G4a local validation: the complete fresh rootless MinGW/Mesa suite passed
+on the final runtime/header tree, including G3/G4a actual EGL, native unavailable
+behavior, G1/G2 measurements,22 F groups, Stage C/six E9 and both native/guest
+workspace/composition GL paths. Extra final tests cover overlapping self-copy
+through the explicit barrier, empty output, readback-induced global fallback,
+presenter-only failure without pending target commands and destruction right
+after frame submission without a completion wait. Strict O2/no-exceptions/
+no-RTTI and ASan/UBSan target checks passed; driver leak scanning disabled, owned
+allocator cleanup checked independently. No runtime changed after the full suite.
+Final doc/shell/YAML/diff checks and exact published-SHA six-job/artifact proof
+remain publication gates. User hardware checks stay deferred.
