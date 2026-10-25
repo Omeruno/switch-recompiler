@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`f4a5ecfe330c2a5ff9ea08065cd8403bad19045a` (2026-10-25).
-[CI 40200041032](https://github.com/Omeruno/switch-recompiler/actions/runs/40200041032)
+`7ffbf95ed6658c05a93a5fb90dd33485c4cdc452` (2026-10-25).
+[CI 40202733317](https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -34,6 +34,18 @@ full native window actions/Luna polish, multi-Process and H DirectDraw/D3D are
 separate incomplete work; minimal JIT probe42 is not a dynarec acceptance.
 Keep all no-stub/correctness/lifetime rules below. Detailed package history
 follows; its old future-tense queues do not supersede this current position.
+
+## User's long-term product target
+
+Spore, Mirror’s Edge and The Sims 3 are explicit future PC-game targets; none is
+certified working. [Architecture/acceptance direction](TARGET_GAMES_RU.md).
+Build common compatibility/performance paths, not a Paint-specific accelerator.
+Full ARM64 dynarec, GPU API/shader translation (audit D3D9 first), audio,
+memory/streaming and thread correctness are separate required milestones.
+Use real Horizon/homebrew backends within available system budgets; x86 is not
+native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
+or playable FPS without version-specific physical evidence. Hardware remains
+deferred; current next implementation is still HWND/DC identity/lifetime.
 
 ## Working agreement
 
@@ -1732,3 +1744,15 @@ checks passed; driver leak scanning disabled. The negative old-source control
 failed at the expected initialization assertion. No implementation changed
 after the full suite; subsequent changes are comments/docs/map. Published-SHA
 CI and Pages deployment remain final gates, separate from physical acceptance.
+
+## PC-game direction recorded — 2026-10-25 (documentation only)
+
+Clean7ffbf95/FETCH_HEAD; exact core CI40202733317 verified six success. User
+clarified the goal as PC games including Spore/Mirror’s Edge/The Sims3, using
+Switch CPU/GPU through proper translation/native host backends. Added explicit
+planned/unsupported target matrix and functional/performance gates, broad G CPU,
+H graphics/shaders/audio and D dependencies. D3D9 audit follows chosen versions;
+no blind mandatory large DirectDraw prerequisite. Current HWND/DC queue retained.
+Updated global/active/user/visual maps without claiming a game was inspected or
+launched, x64 support, hardware results, FPS or full-resource access. No runtime
+changes; map/link/browser/diff checks plus exact-SHA core CI/Pages are the gates.

@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">От EXE до рабочей среды</h1><p class="intro">Что уже работает, что проверяется отдельно и что ещё впереди. Открой карточку — внутри результат, ограничения и следующий критерий.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>G4b.2a пройден → HWND/DC</span></div><h2>Мост GPU к реальным окнам</h2><p>Общий GL-контекст проверен. Следом — окна, память и основной вывод. Живой Paint пока выполняет GDI на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>G4b.2a пройден → HWND/DC</span></div><h2>Мост GPU к реальным окнам</h2><p>Общий GL-контекст проверен. Следом — окна, память и основной вывод. Живой Paint пока выполняет GDI на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Прототип ≠ живой Paint</strong><span>Нужен мост к приложениям</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-25",
-  "runtimeSha": "2c4f8497926ec638fdf94441b77961769618b624",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908",
+  "runtimeSha": "7ffbf95ed6658c05a93a5fb90dd33485c4cdc452",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -119,7 +119,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ],
       "todo": [
         "Защита страниц, полный unwind/SEH и COM.",
-        "API и зависимости конкретных программ."
+        "API и зависимости конкретных программ.",
+        "Аудит игровых системных/audio/middleware API по выбранным версиям; реальные host backends, без успешных заглушек."
       ],
       "gate": "Реальная программа проходит нужные API и сообщает настоящие ошибки.",
       "docs": [
@@ -188,12 +189,14 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ],
       "todo": [
         "Привязка к окнам/DC, памяти и основному выводу.",
-        "Затем замеры настоящих приложений и дальнейшее CPU-ускорение."
+        "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
+        "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],
       "gate": "Поддержанный живой x86 GDI-путь рисует через GPU с точным чтением и CPU fallback.",
       "docs": [
         "docs/ACTIVE_ROADMAP.md",
-        "docs/G4B_GPU_BATCHES.md"
+        "docs/G4B_GPU_BATCHES.md",
+        "docs/TARGET_GAMES_RU.md"
       ],
       "limit": "GPU-прототип ещё не включён для Paint. Dynarec остаётся отдельной незавершённой работой.",
       "kind": "Этап"
@@ -203,14 +206,17 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "H",
       "title": "DirectDraw / Direct3D",
       "status": "planned",
-      "summary": "Отдельный будущий блок игровой графики.",
+      "summary": "Будущие игровые API и шейдеры; приоритет аудита — D3D9.",
       "done": [],
       "todo": [
-        "Поддержанный DirectDraw subset и затем выбранное поколение D3D.",
-        "Перевод API и проверки целевых игр."
+        "Исследовать зависимости выбранных Windows-версий Spore, Mirror’s Edge и The Sims 3.",
+        "Выбрать первый проверяемый графический контракт; проверить потребность в D3D9.",
+        "Реализовать нужные ресурсы, шейдеры, draw/state/present/reset и сравнение с эталоном.",
+        "Добавлять DirectDraw по реальным зависимостям; совместимость игр пока не подтверждена."
       ],
       "gate": "Реальные API и игры работают с корректными ресурсами и жизненным циклом.",
       "docs": [
+        "docs/TARGET_GAMES_RU.md",
         "docs/ROADMAP.md"
       ],
       "limit": "Наличие OpenGL-композитора или GPU-GDI не означает готовую поддержку DirectX.",
@@ -221,16 +227,19 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "I",
       "title": "Готовый продукт",
       "status": "planned",
-      "summary": "Сборки есть; выпуск продукта ещё впереди.",
+      "summary": "Цель: PC-игры на Switch. Spore, Mirror’s Edge, The Sims 3 — пока в плане.",
       "done": [
         "NRO, CI, логи и публичные тестовые артефакты."
       ],
       "todo": [
         "Матрица совместимости, конфигурация и доставка.",
-        "Стабильность и итоговая приёмка целевого набора приложений."
+        "Стабильность и итоговая приёмка целевого набора приложений.",
+        "Spore, Mirror’s Edge, The Sims 3: зафиксировать версии и проверить путь до игровой сцены, ввод/звук, сохранения и длительные сеансы.",
+        "Измерить CPU/GPU frame time, память, передачи и streaming на Switch; запуск и приемлемый FPS этих игр ещё не подтверждены."
       ],
       "gate": "Целевые программы воспроизводимо работают на Switch с понятными ограничениями.",
       "docs": [
+        "docs/TARGET_GAMES_RU.md",
         "docs/ROADMAP.md"
       ],
       "limit": "Полная Windows-совместимость и поддержка всех EXE не заявлены.",

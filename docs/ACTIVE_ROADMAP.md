@@ -3,13 +3,24 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: G4b.2a shared GL-state handoff implemented; next G4b.2 window/DC identity, coherence/
-production-presenter integration.** Runtime baseline `2c4f8497926ec638fdf94441b77961769618b624`
-passed [CI40196352908, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908).
+production-presenter integration.** Runtime baseline `7ffbf95ed6658c05a93a5fb90dd33485c4cdc452`
+passed [CI40202733317, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
 [technical handoff/history](AI_HANDOFF.md). These documents supersede old next-F1,
 next-image/F5 and next-G1 notes. No overall project percentage is inferred.
+
+## Product direction
+
+The user's long-term targets are **Spore, Mirror’s Edge and The Sims 3** as PC
+games on Switch. These are planned, unverified compatibility/performance goals;
+Paint/Minesweeper are common-path fixtures, not product limits. See
+[TARGET_GAMES_RU.md](TARGET_GAMES_RU.md): full x86→ARM64 dynarec, real GPU API/shader
+translation (prioritize auditing D3D9), audio, memory/streaming, thread correctness
+and exact-version application acceptance. Do not promise full hardware utilization
+or FPS, or add per-EXE shortcuts. Preserve current HWND/DC integration queue;
+choose subsequent CPU/H/D work by measured bottlenecks and actual dependencies.
 
 ## Global state
 
