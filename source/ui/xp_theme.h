@@ -54,5 +54,19 @@ void DrawStatusBar(Surface& s, const Rect& r);
 // Пунктирная рамка фокуса
 void DrawFocusRect(Surface& s, const Rect& r);
 
+// --- Меню «Пуск» ---
+
+// Рамка меню: синяя шапка headerH со скруглёнными углами и оранжевой
+// полоской, белый левый столбец до splitX, голубой правый, синий низ footerH
+void DrawStartMenuFrame(Surface& s, const Rect& r, int headerH, int footerH, int splitX);
+// Картинка пользователя в белой рамке (size x size)
+void DrawUserPicture(Surface& s, int x, int y, int size);
+// Кнопка «Выключение»: красный квадрат со знаком питания
+void DrawPowerGlyph(Surface& s, int x, int y, int size, bool hot);
+// Зелёная стрелка «Все программы»
+void DrawAllProgramsArrow(Surface& s, int x, int y, int size);
+// Разделитель в меню: тонкая линия, гаснущая к краям
+void DrawMenuSeparator(Surface& s, int left, int right, int y);
+
 } // namespace xp
 } // namespace ui

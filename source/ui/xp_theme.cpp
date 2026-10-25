@@ -431,5 +431,90 @@ void DrawFocusRect(Surface& s, const Rect& r) {
     for (int y = r.top; y < r.bottom; y += 2) { Blend(s, r.left, y, 0x000000, 0.7f); Blend(s, r.right - 1, y, 0x000000, 0.7f); }
 }
 
+
+void DrawStartMenuFrame(Surface& s, const Rect& r, int headerH, int footerH, int splitX) {
+    const Stop header[] = {{0.0f, 0x4F9AF2}, {0.12f, 0x1E73E6}, {0.6f, 0x1962D9}, {1.0f, 0x1A5ACF}};
+    const Stop footer[] = {{0.0f, 0x4B8FE6}, {0.1f, 0x3A7FDD}, {1.0f, 0x1C58C4}};
+    // тень справа и снизу
+    for (int i = 1; i <= 4; ++i) {
+        float a = 0.22f / i;
+        for (int y = r.top + 8; y < r.bottom; ++y) Blend(s, r.right + i - 1, y, 0x000000, a);
+        for (int x = r.left + 4; x < r.right + i; ++x) Blend(s, x, r.bottom + i - 1, 0x000000, a);
+    }
+    // шапка
+    RoundRamp(s, Rect(r.left, r.top, r.right, r.top + headerH), 7, header, true, false);
+    // оранжевая полоска под шапкой, ярче к середине
+    for (int x = r.left; x < r.right; ++x) {
+        float t = 1.0f - std::fabs((x - r.left) / static_cast<float>(r.Width()) - 0.5f) * 2;
+        Fill(s, Rect(x, r.top + headerH, x + 1, r.top + headerH + 2), Mix(0x2F6FD8, 0xF2A14A, t * 1.4f));
+    }
+    const int bodyTop = r.top + headerH + 2, bodyBottom = r.bottom - footerH;
+    Fill(s, Rect(r.left, bodyTop, splitX, bodyBottom), 0xFFFFFF);
+    Fill(s, Rect(splitX, bodyTop, r.right, bodyBottom), 0xD3E5FA);
+    Fill(s, Rect(splitX, bodyTop, splitX + 1, bodyBottom), 0x95BDEE);
+    // низ
+    for (int y = bodyBottom; y < r.bottom; ++y)
+        Fill(s, Rect(r.left, y, r.right, y + 1), Ramp(footer, static_cast<float>(y - bodyBottom) / std::max(1, footerH - 1)));
+    // внешняя рамка (кроме скруглённой шапки)
+    Fill(s, Rect(r.left, r.top + headerH, r.left + 1, r.bottom), 0x1C5AD0);
+    Fill(s, Rect(r.right - 1, r.top + headerH, r.right, r.bottom), 0x1C5AD0);
+    Fill(s, Rect(r.left, r.bottom - 1, r.right, r.bottom), 0x123E9E);
+}
+
+void DrawUserPicture(Surface& s, int x, int y, int size) {
+    Rect frame(x, y, x + size, y + size);
+    const Stop rim[] = {{0.0f, 0xFFFFFF}, {1.0f, 0xD8E6FA}};
+    RoundRamp(s, frame, 4, rim);
+    Rect in(x + 3, y + 3, x + size - 3, y + size - 3);
+    // маленький пейзаж: небо, солнце, холм
+    for (int yy = in.top; yy < in.bottom; ++yy)
+        for (int xx = in.left; xx < in.right; ++xx) {
+            float fx = (xx - in.left) / static_cast<float>(in.Width()), fy = (yy - in.top) / static_cast<float>(in.Height());
+            uint32_t c = Mix(0x2F73DB, 0x9CCBF5, fy * 1.4f);
+            if (std::hypot(fx - 0.72f, fy - 0.3f) < 0.13f) c = 0xFFE78A;
+            float hill = 0.62f - 0.12f * std::sin(fx * 3.2f + 0.4f);
+            if (fy > hill) c = Mix(0x7CC242, 0x2E7A16, (fy - hill) * 2.5f);
+            s.Set(xx, yy, c);
+        }
+}
+
+void DrawPowerGlyph(Surface& s, int x, int y, int size, bool hot) {
+    Rect r(x, y, x + size, y + size);
+    const Stop body[] = {{0.0f, 0xF59A6B}, {0.5f, 0xE0542C}, {1.0f, 0xC0391B}};
+    const Stop bodyHot[] = {{0.0f, 0xFFB78E}, {0.5f, 0xEE6A3F}, {1.0f, 0xD0472A}};
+    const Stop rim[] = {{0.0f, 0xFFFFFF}, {1.0f, 0xF2D3C6}};
+    RoundRamp(s, r, 4, rim);
+    if (hot) RoundRamp(s, Rect(x + 2, y + 2, x + size - 2, y + size - 2), 3, bodyHot);
+    else RoundRamp(s, Rect(x + 2, y + 2, x + size - 2, y + size - 2), 3, body);
+    const float cx = x + size / 2.0f, cy = y + size / 2.0f + 1, rad = size * 0.27f, w = std::max(1.6f, size * 0.09f);
+    // кольцо с разрывом сверху и вертикальная черта
+    for (int yy = y; yy < y + size; ++yy)
+        for (int xx = x; xx < x + size; ++xx) {
+            float dx = xx + 0.5f - cx, dy = yy + 0.5f - cy;
+            float d = std::fabs(std::hypot(dx, dy) - rad);
+            float ang = std::atan2(dx, -dy);
+            if (std::fabs(ang) < 0.55f) continue;
+            Blend(s, xx, yy, 0xFFFFFF, std::min(1.0f, std::max(0.0f, w / 2 - d + 0.5f)));
+        }
+    Thick(s, cx, cy - rad - 1, cx, cy - 1, w, 0xFFFFFF);
+}
+
+void DrawAllProgramsArrow(Surface& s, int x, int y, int size) {
+    const float cx = x + size / 2.0f, cy = y + size / 2.0f;
+    Disc(s, cx, cy, size / 2.0f, 0x2A8A2A, 0x2A8A2A);
+    Disc(s, cx, cy, size / 2.0f - 1, 0x8BDA6E, 0x2F9E2F);
+    const float k = size / 20.0f;
+    Thick(s, cx - 4 * k, cy, cx + 4 * k, cy, 2.6f * k, 0xFFFFFF);
+    Thick(s, cx + 4 * k, cy, cx, cy - 4 * k, 2.6f * k, 0xFFFFFF);
+    Thick(s, cx + 4 * k, cy, cx, cy + 4 * k, 2.6f * k, 0xFFFFFF);
+}
+
+void DrawMenuSeparator(Surface& s, int left, int right, int y) {
+    for (int x = left; x < right; ++x) {
+        float t = 1.0f - std::fabs((x - left) / static_cast<float>(std::max(1, right - left)) - 0.5f) * 2;
+        Blend(s, x, y, 0x9DB9E6, std::min(1.0f, t * 1.6f));
+    }
+}
+
 } // namespace xp
 } // namespace ui

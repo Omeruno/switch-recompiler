@@ -47,10 +47,6 @@ uint32_t Mix(uint32_t a,uint32_t b,int n,int d) {
     for(int shift=0;shift<=16;shift+=8)out|=uint32_t((int((a>>shift)&255)*(d-n)+int((b>>shift)&255)*n)/d)<<shift;
     return out;
 }
-void Gradient(Surface& s,Rect r,uint32_t a,uint32_t b) {
-    const int height=std::max(1,r.Height()-1);
-    for(int y=r.top;y<r.bottom;++y)Fill(s,{r.left,y,r.right,y+1},Mix(a,b,y-r.top,height));
-}
 void Text(Surface& s,Rect r,std::u16string text,uint32_t color=0x182943,int size=16,bool bold=false) {
     FontDesc desc;desc.face="Liberation Sans";desc.height=-size;desc.weight=bold?700:400;
     auto* font=FontCache::Get(desc);
@@ -185,7 +181,7 @@ Rect DesktopShell::Bounds(int t) {
     case TextSave:return {416,504,554,540};
     case TextSaveAs:return {560,504,698,540};
     case TextDiscard:return {704,504,834,540};
-    case Settings:return {16,490,234,542};
+    case Settings:return {6,358,238,410};
     case PreferenceSort:return {416,276,630,310};
     case AssociationPrevious:return {416,392,500,428};
     case AssociationNext:return {508,392,592,428};
@@ -207,12 +203,12 @@ Rect DesktopShell::Bounds(int t) {
     case Programs:return {20,26,132,116};
     case Computer:return {20,132,132,222};
     case Documents:return {20,238,132,328};
-    case MenuPrograms:return {16,370,234,422};
-    case MenuComputer:return {250,370,466,414};
-    case MenuDocuments:return {250,422,466,466};
-    case MenuRun:return {250,474,466,518};
-    case About:return {16,430,234,482};
-    case Exit:return {266,632,466,668};
+    case MenuPrograms:return {6,586,238,622};
+    case MenuComputer:return {246,398,474,432};
+    case MenuDocuments:return {246,360,474,394};
+    case MenuRun:return {246,450,474,484};
+    case About:return {6,414,238,466};
+    case Exit:return {300,638,474,672};
     case Close:return {1226,12,1250,34};
     case Launch:return {178,170,378,190};
     case Previous:return {1170,649,1208,669};
@@ -871,7 +867,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     xp::DrawWallpaper(s,{0,0,Width,680});
 
     // подсказки управления и строка состояния — с тенью, чтобы читались на обоях
-    if(!guestActive_ && panel_==Panel::Desktop) {
+    if(!guestActive_ && panel_==Panel::Desktop && !startOpen_) {
         const std::u16string hints=u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход";
         Text(s,{23,641,1251,664},hints,0x0A1F3A,14);Text(s,{22,640,1250,663},hints,0xF2F7FC,14);
     }
@@ -1109,18 +1105,47 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     xp::DrawTray(s,{1158,680,1280,720});
     Text(s,{1186,690,1272,716},clock,0xFFFFFF,16);
     if(startOpen_) {
-        Fill(s,{4,288,484,680},0x163B64);Fill(s,{0,284,480,680},0xFFFFFF);
-        Fill(s,{242,352,478,630},0xD8E8F7);Frame(s,{0,284,480,680},0x1555AD);
-        Gradient(s,{2,286,478,352},0x4D98EB,0x1C63BD);
-        Frame(s,{14,298,54,340},0xE7F1FF);Icon(s,18,302,shell_art::computer);Text(s,{66,306,465,342},u"Player",0xFFFFFF,23,true);
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,About,Settings}) {
-            const auto r=Bounds(t);const bool hot=Enabled(t) && (focus_==t || hover_==t);
-            if(hot){Fill(s,r,pressed_==t?0x1D4C99:0x316AC5);Frame(s,r,0x204DA0);}
-            Icon(s,r.left+5,r.top+7,t==MenuComputer?shell_art::computer:t==MenuDocuments?shell_art::folder:shell_art::programs);
-            Text(s,{r.left+43,r.top+12,r.right-4,r.bottom-2},t==MenuPrograms?u"Все программы →":t==MenuComputer?u"Мой компьютер":t==MenuDocuments?u"Мои документы":t==MenuRun?u"Выполнить…":t==Settings?u"Настройки оболочки":u"О программе",!Enabled(t)?0x8195A9:hot?0xFFFFFF:0x173250,15,t==MenuPrograms);
+        // Меню «Пуск» Windows XP: шапка с пользователем, два столбца, низ с выключением
+        const Rect menu{0,284,480,680};
+        xp::DrawStartMenuFrame(s,menu,62,44,240);
+        xp::DrawUserPicture(s,10,292,48);
+        Text(s,{68,305,470,340},u"Player",0x0A2B7A,22,true);Text(s,{67,304,469,339},u"Player",0xFFFFFF,22,true);
+        auto item=[&](int target,xp::IconKind icon,int iconSize,const std::u16string& title,const std::u16string& subtitle,bool bold) {
+            const auto r=Bounds(target);const bool on=Enabled(target),hot=on && (focus_==target || hover_==target);
+            if(hot)Fill(s,r,pressed_==target?0x1D4C99:0x316AC5);
+            const int iy=r.top+(r.Height()-iconSize)/2;
+            xp::DrawIcon(s,icon,r.left+6,iy,iconSize);
+            const int tx=r.left+iconSize+14;
+            const uint32_t color=!on?0x9AA6B8:hot?0xFFFFFF:0x000000;
+            if(subtitle.empty())Text(s,{tx,r.top+(r.Height()-18)/2,r.right-4,r.bottom},title,color,14,bold);
+            else {
+                Text(s,{tx,r.top+(r.Height()-34)/2,r.right-4,r.bottom},title,color,14,true);
+                Text(s,{tx,r.top+(r.Height()-34)/2+18,r.right-4,r.bottom},subtitle,!on?0x9AA6B8:hot?0xDCE8FA:0x6D6D6D,12);
+            }
+        };
+        item(Settings,xp::IconKind::Computer,32,u"Настройки оболочки",u"Сортировка и ассоциации",true);
+        item(About,xp::IconKind::Application,32,u"О программе",u"Switch Recompiler",true);
+        xp::DrawMenuSeparator(s,14,232,574);
+        {
+            const auto r=Bounds(MenuPrograms);const bool hot=Enabled(MenuPrograms) && (focus_==MenuPrograms || hover_==MenuPrograms);
+            if(hot)Fill(s,r,pressed_==MenuPrograms?0x1D4C99:0x316AC5);
+            const std::u16string label=u"Все программы";
+            const int w=TextWidth(label,14,true),x=r.left+(r.Width()-w-30)/2;
+            Text(s,{x,r.top+9,r.right,r.bottom},label,hot?0xFFFFFF:0x000000,14,true);
+            xp::DrawAllProgramsArrow(s,x+w+10,r.top+8,20);
         }
-        Text(s,{258,538,466,602},guestActive_?u"Одно приложение за раз":browser_.Ready()?u"Выполнить: путь и аргументы":u"Файлы недоступны",0x8397AB,13);
-        Gradient(s,{2,622,478,678},0x3282D6,0x1C61B5);control(Exit,u"Выйти в Homebrew",Bounds(Exit));
+        item(MenuDocuments,xp::IconKind::Documents,24,u"Мои документы",u"",true);
+        item(MenuComputer,xp::IconKind::Computer,24,u"Мой компьютер",u"",true);
+        xp::DrawMenuSeparator(s,252,468,442);
+        item(MenuRun,xp::IconKind::Application,24,u"Выполнить…",u"",false);
+        WrapText(s,{256,496,470,580},guestActive_?u"Запущена программа: одна за раз.":browser_.Ready()?u"Выполнить: путь к программе и аргументы.":u"Файлы недоступны.",0x6D7F99,12);
+        // «Выключение» — выход из оболочки в меню Homebrew
+        {
+            const auto r=Bounds(Exit);const bool hot=focus_==Exit || hover_==Exit;
+            if(hot)Fill(s,r,0x2A6ADB);
+            xp::DrawPowerGlyph(s,r.left+4,r.top+3,28,hot);
+            Text(s,{r.left+39,r.top+9,r.right,r.bottom},u"Выйти в Homebrew",0xFFFFFF,14);
+        }
     }
     if(contextOpen_) {
         Fill(s,{contextRect_.left+3,contextRect_.top+3,contextRect_.right+3,contextRect_.bottom+3},0x526477);
