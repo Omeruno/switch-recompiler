@@ -143,3 +143,12 @@ geometry/input/ownership mismatch. New shared PanelArea is checked against real
 x86 guest overlap and independent full-panel pixels, including actual EGL. G2
 exact CI6/6 and clean comparison artifact verified; G3 prototype remains next.
 No physical tests requested from the user.
+
+
+G3 [isolated GL GDI target/readback/recovery prototype](G3_GPU_GDI_PROTOTYPE.md)
+continues after the reviewed Luna integration (b7cb82d exact CI6/6). Real shader
+fill/copy and bounded owned command/recovery storage are checked against CPU
+pixels with actual EGL, including context destruction. It is not connected to
+production GDI/presentation and grants no Switch FPS/physical acceptance.
+Next G4: multi-target/batching/CPU-read and raw-DIB barriers plus texture-aware
+presentation before activation. User hardware tests remain deferred.

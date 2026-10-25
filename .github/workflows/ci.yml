@@ -50,6 +50,13 @@ jobs:
             docs/G2_BLIT_AND_PHASES.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-gpu-gdi-prototype
+          if-no-files-found: error
+          path: |
+            build-host/gpu_gdi_prototype.log
+            docs/G3_GPU_GDI_PROTOTYPE.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-e-acceptance-exe
           path: |
             build-host/guest-run.*/stage_e_acceptance.exe
@@ -84,6 +91,10 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -Wall -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_presentation_gpu.cpp source/ui/presentation.cpp source/ui/presentation_layers.cpp source/ui/window_layers.cpp source/ui/opengl_presentation.cpp -lEGL -lGL -o /tmp/test_presentation_gpu
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_presentation_gpu
+      - name: Actual GPU GDI prototype and recovery oracle
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_gpu_gdi_prototype.cpp source/ui/gpu_gdi_prototype.cpp source/ui/ui_gdi.cpp source/ui/font.cpp -lEGL -lGL -o /tmp/test_gpu_gdi_prototype
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_gpu_gdi_prototype
 
   cpu-oracle:
     name: Сверка CPU с железом

@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`466bcfd818407071e400de31bfac137c615b5554` (2026-10-25).
-[CI 40148776172](https://github.com/Omeruno/switch-recompiler/actions/runs/40148776172)
+`b7cb82dd29171bbd6c9852128d1be6097c3d1ea3` (2026-10-25).
+[CI 40188452904](https://github.com/Omeruno/switch-recompiler/actions/runs/40188452904)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -1496,3 +1496,52 @@ SHA six-job CI remain publication gates; local SDK absent, physical tests deferr
 Continue where G2 stopped: bounded real-EGL GPU-GDI/coherence/readback/recovery
 prototype before production activation. Do not require hardware logs/flag setup
 from the user. D Pinball/installer/archives and visual refinements stay open.
+
+
+## G3: isolated actual-GL GDI target/readback/recovery prototype
+
+Preserved all five Claude Luna commits and published shared panel geometry fix
+b7cb82d; exact CI40188452904 verified six success. Continued independently with
+GPU-GDI semantics, no request for physical tests. GpuGdiPrototype is compiled but
+not referenced/activated by production Win32 GDI, frontend or presentation.
+See G3_GPU_GDI_PROTOTYPE.md for the exact supported subset and caller contract.
+
+Real GLSL/FBO solid fills and snapshot-backed1:1 RGB copies operate on one target
+up to512x512. Inputs owned before queue/byte capacity checkpoints. Journal64
+commands/4MiB snapshots retains flushed and pending work until successful readback
+into separate scratch commits a CPU checkpoint. Draw/readback failure replays
+the journal and reports CPU fallback; FlushGpu returns false. Actual context-loss
+notification replays without driver calls after context destruction. Ordinary
+non-GL host Initialize fails explicitly. Fixed budgets/injected allocator cover
+init/command failure and cleanup. Dedicated current context only; not a shared-
+context renderer or arbitrary ROP/palette/transform/multi-target implementation.
+
+Actual EGL tests compare every pixel at1x1/31x23/512x512 with CPU GDI, source
+mutation after enqueue, both caps, malformed copies, init/command allocation
+failure, GL draw/readback errors, CPU continuation and real EGL context destruction
+with flushed+pending commands. GPU mode/counters required before failure. Added
+independent O2 strict test to existing gpu-reference job and host artifact/log;
+no seventh job. No user application files or hardware timing is part of evidence.
+Initial strict compile corrected misleading indentation. The upload texture is
+kept distinct from the FBO target even for fills, avoiding an undefined feedback
+loop. Full clean suite on final runtime/test tree is the completion gate.
+
+Next G4: bounded multiple target/window IDs, batching, read/raw-DIB/ROP barriers,
+texture-aware presentation and measured transfer/checkpoint cost before any
+production activation. Current ShellSession memcpy of canonical CPU pixels
+would otherwise force readback/duplicate raster. No Paint-on-GPU/FPS claim.
+Luna updates remain; native min/max glyph actions, D Pinball and installer/
+archive work remain explicit. Physical acceptance deferred; local SDK absent.
+
+
+Final G3 validation: complete fresh rootless MinGW/Mesa suite passed on the
+final runtime/header implementation, including unavailable-host behavior, real
+EGL prototype/failure/context-loss oracle, G1/G2,22 F evidence groups, Stage C/
+six E9 and both workspace/composition EGL paths. Additional final borrowed-input
+capacity-checkpoint assertion passed strict O2/no-exceptions/no-RTTI actual-GL
+execution. ASan/UBSan passed the full final prototype test; driver leak scanning
+was disabled, while the injected allocator independently requires all module
+allocations freed. No runtime change followed the suite, only additional test
+assertion/docs/artifact cleanup. Markdown links/fences, shell/YAML/six-job and
+diff checks passed. No newer remote branch changes when fetched. Normal push
+and exact new-SHA six-job/artifact proof remain the final publication gates.
