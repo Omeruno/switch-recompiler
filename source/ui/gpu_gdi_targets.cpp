@@ -1,4 +1,5 @@
 #include "gpu_gdi_targets.h"
+#include "gdi_gl_scope.h"
 #include <algorithm>
 #include <atomic>
 #include <limits>
@@ -102,6 +103,7 @@ void GpuGdiTargets::ContextLost() {
 }
 bool GpuGdiTargets::Present(const Layer* layers,size_t count,int width,int height) {
     if(!gpuActive_ || !Validate(layers,count,width,height))return false;
+    detail::GdiGlScope glScope;
     for(size_t i=0;i<count;++i)if(!Find(layers[i].target)->FlushGpu()){Fallback();return false;}
     if(!DrawFrame(layers,count,width,height)){Fallback();return false;}
     ++stats_.frames;return true;
@@ -136,6 +138,7 @@ void main(){ivec2 p=ivec2(gl_FragCoord.xy);p.y=outputHeight-1-p.y;
 ivec2 q=((p-bounds.xy)*sourceSize)/bounds.zw;color=vec4(texelFetch(image,q,0).rgb,1);})";
 }
 bool GpuGdiTargets::OpenPresenter() {
+    detail::GdiGlScope glScope;
     if(glGetError()!=GL_NO_ERROR)return false;
     const auto v=CompilePresenter(GL_VERTEX_SHADER,vertex),f=CompilePresenter(GL_FRAGMENT_SHADER,actualFragment);
     if(!v || !f){if(v)glDeleteShader(v);if(f)glDeleteShader(f);return false;}
@@ -144,11 +147,13 @@ bool GpuGdiTargets::OpenPresenter() {
     glGenVertexArrays(1,&vao_);return vao_ && glGetError()==GL_NO_ERROR;
 }
 void GpuGdiTargets::DeletePresenter() {
+    detail::GdiGlScope glScope(program_ || vao_);
     if(program_)glDeleteProgram(program_);
     if(vao_)glDeleteVertexArrays(1,&vao_);
     program_=vao_=0;
 }
 bool GpuGdiTargets::DrawFrame(const Layer* layers,size_t count,int width,int height) {
+    detail::GdiGlScope glScope;
     if(glGetError()!=GL_NO_ERROR)return false;
     glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,width,height);glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DITHER);glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_STENCIL_TEST);glDisable(GL_CULL_FACE);glDisable(GL_FRAMEBUFFER_SRGB);

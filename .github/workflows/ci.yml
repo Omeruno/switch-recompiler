@@ -59,6 +59,13 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-gpu-gdi-shared-context
+          if-no-files-found: error
+          path: |
+            build-host/gpu_gdi_shared_context.log
+            docs/G4B2_SHARED_CONTEXT.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-gpu-gdi-targets
           if-no-files-found: error
           path: |
@@ -112,6 +119,10 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_gpu_gdi_prototype.cpp source/ui/gpu_gdi_prototype.cpp source/ui/ui_gdi.cpp source/ui/font.cpp -lEGL -lGL -o /tmp/test_gpu_gdi_prototype
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_gpu_gdi_prototype
+      - name: Shared GDI context preserves the production renderer
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_gpu_gdi_shared_context.cpp source/ui/gpu_gdi_targets.cpp source/ui/gpu_gdi_prototype.cpp source/ui/opengl_presentation.cpp source/ui/presentation.cpp source/ui/presentation_layers.cpp source/ui/window_layers.cpp -lEGL -lGL -o /tmp/test_gpu_gdi_shared_context
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_gpu_gdi_shared_context
       - name: Multiple GPU targets and presentation without CPU readback
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_gpu_gdi_targets.cpp source/ui/gpu_gdi_targets.cpp source/ui/gpu_gdi_prototype.cpp -lEGL -lGL -o /tmp/test_gpu_gdi_targets

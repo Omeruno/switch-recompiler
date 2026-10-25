@@ -165,3 +165,7 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 Изменения только в claude/wonderful-hawking-10mpr0 без force push. Перед работой
 проверять HEAD/tree/handoff; после пакета обновлять карту, выполнять положенные
 проверки и проверять все шесть CI jobs точного опубликованного SHA.
+
+G4b.2 уточнение: [сохранение GL-состояния и чередование с production renderer](G4B2_SHARED_CONTEXT.md)
+реализованы отдельным пакетом G4b.2a. Дальше — реальные HWND/DC, CPU/DIB/ROP
+барьеры и основной texture bridge; активация в приложениях не выполнена.

@@ -2,7 +2,7 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: G4b.1 implemented; next gate G4b.2 live-window/coherence/
+**Current position: G4b.2a shared GL-state handoff implemented; next G4b.2 window/DC identity, coherence/
 production-presenter integration.** Runtime baseline `2c4f8497926ec638fdf94441b77961769618b624`
 passed [CI40196352908, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
@@ -56,7 +56,8 @@ recursive file-manager features and arbitrary Windows shell/COM are not implied.
 | G3 | [GL fill/copy/readback/recovery target](G3_GPU_GDI_PROTOTYPE.md) | Dedicated context, isolated bounded subset |
 | G4a | [Generation-checked targets and direct texture composition](G4A_GPU_TARGETS.md) | No per-frame CPU readback merely for composition; not live HWND bindings |
 | G4b.1 | [Ordered instanced fill batches](G4B_GPU_BATCHES.md), cached uniforms,42-sample same-build pixel/count/timing report | Copies/intersections preserve order; bounded journal/checkpoints retained |
-| G4b.2 | HWND/DC/visible ownership, raw-DIB/ROP/read barriers, GL-state and production texture bridge | **Next, not implemented/activated** |
+| G4b.2a | [Bounded shared GL-state handoff](G4B2_SHARED_CONTEXT.md), actual EGL interleaving with production renderer | Implemented prerequisite; no live GDI activation |
+| Remaining G4b.2 | HWND/DC/visible ownership, raw-DIB/ROP/read barriers and production texture bridge | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -70,7 +71,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 2. Define genuine CPU barriers for GetPixel/GetDIBits, CPU ROP/source access and
    raw guest DIB writes. Keep unsupported cases CPU-authoritative and report
    unsupported operations honestly; no successful stubs or EXE-name exceptions.
-3. Establish current-context/state ownership and a texture-aware bridge to the
+3. Preserve the [implemented shared-context handoff](G4B2_SHARED_CONTEXT.md) and build a texture-aware bridge to the
    existing presenter. ShellSession currently reads canonical CPU pixels: adding
    GPU drawing plus unconditional readback/duplicate CPU raster is insufficient.
    Preserve ownership masks, CPU fallback, independent input and all Luna changes.

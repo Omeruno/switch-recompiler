@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`2c4f8497926ec638fdf94441b77961769618b624` (2026-10-25).
-[CI 40196352908](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908)
+`f4a5ecfe330c2a5ff9ea08065cd8403bad19045a` (2026-10-25).
+[CI 40200041032](https://github.com/Omeruno/switch-recompiler/actions/runs/40200041032)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.1 (2026-10-25)
+## Current position after G4b.2a (2026-10-25)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -17,8 +17,10 @@ are preserved. G3/G4a/G4b.1 implement isolated actual-GL GPU-GDI targets,
 readback/recovery, generation/lifetime checks, direct texture composition and
 ordered instanced fill batches. They are NOT activated for live Paint/Win32 GDI.
 
-Next is G4b.2: HWND/DC/visible ownership, raw-DIB and CPU ROP/read barriers,
-shared-context state/lifetime and a texture-aware production presenter bridge.
+G4b.2a implements bounded GL-state preservation and interleaving with the real
+production renderer; see [contract/evidence](G4B2_SHARED_CONTEXT.md).
+Next is remaining G4b.2: HWND/DC/visible ownership and lifetime, raw-DIB and CPU
+ROP/read barriers, then a texture-aware production presenter bridge.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -1690,3 +1692,43 @@ GitHub Actions. API now confirms `build_type: workflow` and
 https://omeruno.github.io/switch-recompiler/. The workflow validates/uploads
 the site and deploys when Pages is accessible. Check the actual deployment
 and core CI for the published SHA before reporting the site live.
+
+## G4b.2a: shared-context state handoff
+
+Clean f4a5ecf/FETCH_HEAD; no newer remote commits/AGENTS. Incoming core CI
+40200041032 verified six success; Pages deployment 40200041025 succeeded after
+the owner allowed this branch in github-pages. The public roadmap is live.
+
+Added fixed-storage nested GdiGlScope around actual G3/G4 GPU operations. It
+normalizes required raster/sampler/PBO/pixel-transfer state and restores caller
+program/VAO/FBO/viewport/scissor/clear/mask/texture0/sampler/active-unit/store
+state on success/error/cleanup. Queued operations have no scope unless they
+reach a checkpoint; nested flush/draw/read use one outer snapshot. CPU fallback
+and notified context loss skip GL as before. See G4B2_SHARED_CONTEXT.md for the
+bounded GL3.3 caller contract and unsupported active query/TF/conditional scopes.
+
+New independent actual-EGL oracle checks hostile state, every target/output
+pixel, capacity/read/copy barriers, invalid frames and injected-error fallback.
+Twelve GDI/unchanged production-renderer interleavings require correct images
+and zero additional target readbacks merely for presentation. The same test
+fails against incoming unguarded sources at initialization with a caller PBO.
+Strict O2 and sanitizer checks plus full fresh host/MinGW/Mesa suite are gates;
+no live HWND/DC fixture or Paint acceleration is inferred. Existing G3/G4a
+context-loss/allocator oracles and G4b.1 count/measurement gates remain mandatory.
+
+Added strict independent check to gpu-reference and host log artifact; core CI
+still six jobs. Update the visual map alongside docs. Next: actual HWND/DC
+identity/lifetime, then raw-DIB/CPU ROP coherence and production texture bridge.
+No runtime activation, forced user hardware testing or new SD investigation.
+Local SDK unavailable; NRO compilation is CI-only. Verify exact pushed SHA
+and Pages publication before reporting completion.
+
+Final local G4b.2a validation: the complete fresh rootless MinGW/Mesa suite
+passed the final runtime implementation: new shared-context oracle, G3/G4a
+context loss and allocator checks, G4b.1's42 measured samples/exact work gates,
+G1/G2, actual-x86 workspace/composition/input, Stage C/six E9 groups,22 F
+groups and session/dialog/file regressions. Strict O2 and ASan/UBSan shared-GL
+checks passed; driver leak scanning disabled. The negative old-source control
+failed at the expected initialization assertion. No implementation changed
+after the full suite; subsequent changes are comments/docs/map. Published-SHA
+CI and Pages deployment remain final gates, separate from physical acceptance.

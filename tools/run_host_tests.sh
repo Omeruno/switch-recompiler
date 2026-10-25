@@ -21,7 +21,7 @@ rm -f "$out/stage-f-acceptance.json"
 rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
-rm -f "$out/gpu_gdi_targets.log"
+rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
 failed=0
 
@@ -281,6 +281,18 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         else
             echo "   GPU GDI BATCH COMPARISON FAILED"
             tail -n 25 "$out/gpu_gdi_batches.log" 2>/dev/null || true
+            failed=1
+        fi
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_gdi_shared_context.cpp" \
+           "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" "$root/source/ui/presentation.cpp" \
+           "$root/source/ui/presentation_layers.cpp" "$root/source/ui/window_layers.cpp" \
+           -lEGL -lGL -o "$out/test_gpu_gdi_shared_context" &&
+           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_gpu_gdi_shared_context" > "$out/gpu_gdi_shared_context.log" 2>&1; then
+            tail -n 1 "$out/gpu_gdi_shared_context.log"
+        else
+            echo "   GPU GDI SHARED CONTEXT FAILED"
+            tail -n 25 "$out/gpu_gdi_shared_context.log" 2>/dev/null || true
             failed=1
         fi
         if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_gdi_targets.cpp" \

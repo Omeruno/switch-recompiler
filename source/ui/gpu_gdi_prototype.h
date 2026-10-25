@@ -6,7 +6,8 @@
 
 namespace ui {
 // Isolated semantic prototype, NEVER selected by production GDI/presentation.
-// Requires a dedicated current GL 3.3 context on the owning native thread.
+// Requires the owning thread's current GL 3.3 core context; bounded caller
+// state is restored at handoff. See G4B2_SHARED_CONTEXT.md for preconditions.
 class GpuGdiPrototype {
 public:
     enum class Mode {Empty,Gpu,CpuFallback};

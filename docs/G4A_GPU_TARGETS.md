@@ -1,5 +1,10 @@
 # G4a: bounded GPU target identities and texture presentation
 
+Current contract update: [G4b.2a shared-context handoff](G4B2_SHARED_CONTEXT.md)
+adds bounded state preservation and production-renderer interleaving. Historical
+dedicated-context limitations below describe the original package. This does not
+activate GPU-GDI for live Win32 applications.
+
 Incoming `a98e87e` passed all six CI jobs in run 40189429070. This builds on G3's
 real GL fill/copy/readback/recovery experiment. G4a remains **isolated from live
 Win32 GDI, USER windows and the production Switch presenter**. It does not turn

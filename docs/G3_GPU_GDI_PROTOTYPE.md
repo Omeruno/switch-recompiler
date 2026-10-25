@@ -1,5 +1,10 @@
 # G3: isolated GL GDI target, readback and bounded recovery prototype
 
+Current contract update: [G4b.2a shared-context handoff](G4B2_SHARED_CONTEXT.md)
+adds bounded state preservation and production-renderer interleaving. Historical
+dedicated-context limitations below describe the original package. This does not
+activate GPU-GDI for live Win32 applications.
+
 This follows G2's measured CPU SRCCOPY and the preserved Claude Luna update.
 Luna integration `b7cb82d` passed all six jobs in CI 40188452904. User hardware
 checks remain deferred. This module is **not selected by production GDI or the

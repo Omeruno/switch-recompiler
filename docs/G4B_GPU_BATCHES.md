@@ -1,5 +1,10 @@
 # G4b.1: ordered GPU fill batches and same-build measurements
 
+Current contract update: [G4b.2a shared-context handoff](G4B2_SHARED_CONTEXT.md)
+adds bounded state preservation and production-renderer interleaving. Historical
+dedicated-context limitations below describe the original package. This does not
+activate GPU-GDI for live Win32 applications.
+
 Incoming 847ba20 passed six jobs in CI 40193307039. This package is the batching
 slice of G4b; live-window/raw-DIB/ROP coherence and production activation remain
 G4b.2. The experiment is still isolated from Paint/Win32 GDI and the production

@@ -4,7 +4,8 @@
 
 namespace ui {
 // G4a isolated multi-target/presentation bridge, not a production GDI backend.
-// One dedicated current GL context and native owner thread, as in G3.
+// One current GL 3.3 core context/native owner thread; bounded state handoff
+// preserves another renderer. See docs/G4B2_SHARED_CONTEXT.md.
 class GpuGdiTargets {
 public:
     using Handle=uint64_t;

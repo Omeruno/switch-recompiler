@@ -1,4 +1,5 @@
 #include "gpu_gdi_prototype.h"
+#include "gdi_gl_scope.h"
 #include <algorithm>
 #include <cstring>
 #include <utility>
@@ -75,6 +76,7 @@ bool GpuGdiPrototype::Copy(Rect r,const uint32_t* pixels,size_t count) {
 }
 bool GpuGdiPrototype::FlushGpu() {
     if(mode_!=Mode::Gpu)return false;
+    detail::GdiGlScope glScope;
     while(flushed_<count_) {
         size_t end=flushed_+1;
         if(batching_ && !commands_[flushed_].copy) {
@@ -92,6 +94,7 @@ bool GpuGdiPrototype::FlushGpu() {
 }
 const Surface* GpuGdiPrototype::CpuRead() {
     if(mode_==Mode::Empty)return nullptr;
+    detail::GdiGlScope glScope(mode_==Mode::Gpu);
     if(mode_==Mode::Gpu) {
         if(FlushGpu()) {
             // Read into separate storage. Failed/partial read must not damage
@@ -135,8 +138,10 @@ GLuint Program(const char* vertex,const char* fragment) {
 }
 }
 bool GpuGdiPrototype::OpenDevice() {
+    detail::GdiGlScope glScope;
     static_assert(MaxCommands==64,"batch shader uniform capacity must match command limit");
     if(glGetError()!=GL_NO_ERROR)return false;
+    glActiveTexture(GL_TEXTURE0);
     program_=Program(vs,fs);batchProgram_=Program(batchVs,batchFs);if(!program_ || !batchProgram_)return false;
     locations_.operation=glGetUniformLocation(program_,"operation");locations_.image=glGetUniformLocation(program_,"image");
     locations_.origin=glGetUniformLocation(program_,"origin");locations_.fill=glGetUniformLocation(program_,"fillColor");
@@ -161,6 +166,7 @@ bool GpuGdiPrototype::OpenDevice() {
     return glGetError()==GL_NO_ERROR;
 }
 void GpuGdiPrototype::DeleteDevice() {
+    detail::GdiGlScope glScope(target_ || upload_ || fbo_ || vao_ || program_ || batchProgram_);
     if(target_)glDeleteTextures(1,&target_);
     if(upload_)glDeleteTextures(1,&upload_);
     if(fbo_)glDeleteFramebuffers(1,&fbo_);
@@ -170,6 +176,7 @@ void GpuGdiPrototype::DeleteDevice() {
     target_=upload_=fbo_=vao_=program_=batchProgram_=0;
 }
 bool GpuGdiPrototype::Draw(const Command& c) {
+    detail::GdiGlScope glScope;
     if(glGetError()!=GL_NO_ERROR)return false;
     glBindFramebuffer(GL_FRAMEBUFFER,fbo_);glViewport(0,0,surface_.width,surface_.height);
     glUseProgram(program_);glBindVertexArray(vao_);glEnable(GL_SCISSOR_TEST);
@@ -187,6 +194,7 @@ bool GpuGdiPrototype::Draw(const Command& c) {
     glDrawArrays(GL_TRIANGLES,0,3);++stats_.draws;++stats_.submittedCommands;return glGetError()==GL_NO_ERROR;
 }
 bool GpuGdiPrototype::DrawFillBatch(size_t first,size_t count) {
+    detail::GdiGlScope glScope;
     if(glGetError()!=GL_NO_ERROR)return false;
     std::array<GLint,MaxCommands*4> rectangles{};std::array<GLfloat,MaxCommands*3> colors{};
     for(size_t i=0;i<count;++i) {
@@ -202,6 +210,7 @@ bool GpuGdiPrototype::DrawFillBatch(size_t first,size_t count) {
     stats_.submittedCommands+=count;stats_.batchedCommands+=count;return glGetError()==GL_NO_ERROR;
 }
 bool GpuGdiPrototype::ReadDevice() {
+    detail::GdiGlScope glScope;
     if(glGetError()!=GL_NO_ERROR)return false;
     glBindFramebuffer(GL_READ_FRAMEBUFFER,fbo_);glPixelStorei(GL_PACK_ALIGNMENT,4);glPixelStorei(GL_PACK_ROW_LENGTH,0);
     glBindBuffer(GL_PIXEL_PACK_BUFFER,0);glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
