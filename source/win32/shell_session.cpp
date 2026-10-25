@@ -106,7 +106,7 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     if(ObserveTask())Refresh();
     Copy(outputSurface_,guest,{0,0,W,H});
     Copy(outputSurface_,chromeSurface_,{0,680,W,H});
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,{218,100,1166,630});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,ui::DesktopShell::PanelArea());
     if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)Copy(outputSurface_,chromeSurface_,{396,196,1034,552});
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return outputSurface_;
@@ -135,7 +135,7 @@ ui::WindowSceneView ShellSession::Scene() {
         for(int y=rect.top;y<rect.bottom;++y)for(int x=rect.left;x<rect.right;++x)owners_[size_t(y)*W+x]=nativeToken;
     };
     cover({0,680,W,H});
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover({218,100,1166,630});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover(ui::DesktopShell::PanelArea());
     if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)cover({396,196,1034,552});
     if(shell_.StartOpen())cover({0,284,484,680});
     // Unretained guest owners reconcile to canonical RGB in PresentationLayers.
@@ -144,7 +144,7 @@ ui::WindowSceneView ShellSession::Scene() {
 }
 bool ShellSession::ShellPoint(int x,int y) const {
     if(y>=680 || shell_.StartOpen() || shell_.ModalActive())return true;
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && Rect(218,100,1166,630).Contains(x,y))return true;
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && ui::DesktopShell::PanelArea().Contains(x,y))return true;
     return !WindowFromPoint(x,y,false); // exposed native desktop, never guest chrome
 }
 bool ShellSession::ObserveTask() {

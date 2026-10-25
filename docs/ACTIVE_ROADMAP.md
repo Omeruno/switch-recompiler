@@ -134,3 +134,12 @@ HLE frames or each opcode; it stays disabled without an explicit flag.
 See G2_BLIT_AND_PHASES.md. Next independent package: coherent GPU-GDI command/
 target/readback contract and real-EGL CPU comparison prototype. No Switch FPS
 claim or deferred hardware acceptance is added; Luna/D/installer work stays open.
+
+
+Claude's five Luna commits through466bcfd are retained and reviewed.
+[Luna integration review](LUNA_INTEGRATION_REVIEW.md) records their scope,
+remaining decorative caption controls and the corrected active-workspace panel
+geometry/input/ownership mismatch. New shared PanelArea is checked against real
+x86 guest overlap and independent full-panel pixels, including actual EGL. G2
+exact CI6/6 and clean comparison artifact verified; G3 prototype remains next.
+No physical tests requested from the user.

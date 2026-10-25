@@ -30,6 +30,8 @@ public:
     static Rect ImageViewport() {return {416,280,1006,492};}
     // Область содержимого окна проводника (справа от панели задач)
     static Rect ContentArea() {return {391,126,1254,646};}
+    // Shared by drawing, active-workspace composition, ownership and input.
+    static Rect PanelArea() {return {156,8,1258,676};}
     bool ImageFitted() const {return imageFit_;}
     int ImagePanX() const {return imagePanX_;}
     int ImagePanY() const {return imagePanY_;}

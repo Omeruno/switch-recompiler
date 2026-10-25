@@ -79,6 +79,23 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
                 // No click-through; shell explorer uses its host VFS and cannot launch another EXE.
                 Start();Click(Shell::MenuComputer);CHECK(shell.ActivePanel()==Shell::Panel::Explorer);
                 CHECK(!shell.Enabled(Shell::MenuRun));CHECK(!shell.Enabled(Shell::Exit));
+                // Luna's expanded frame must be composed in full, including
+                // the caption/right/bottom areas outside the old panel box.
+                ui::OwnedSurface expectedChrome;expectedChrome.Allocate(1280,720);shell.Render(expectedChrome.s,u"14:32");
+                const auto& luna=bridge.Compose(user::S().screen.s);const auto panel=Shell::PanelArea();
+                for(int y=panel.top;y<panel.bottom;++y)for(int x=panel.left;x<panel.right;++x)
+                    CHECK(luna.Get(x,y)==expectedChrome.s.Get(x,y));
+                const auto scene=bridge.Scene();
+                for(auto point:{ui::Point{panel.left+1,panel.top+1},ui::Point{panel.right-2,panel.bottom-2}})
+                    CHECK(scene.owners[size_t(point.y)*scene.width+point.x]==scene.layers[scene.count-1].token);
+                // Cover a real guest client area that used to extend beyond
+                // the old overlay; clicks must remain native-owned there.
+                user::ShowWindowInternal(handles[0],3); // maximize under native Explorer
+                checkLayers();
+                const auto beforeClicks=m.Read32(clicks);
+                Send(IE::MouseDown,panel.right-12,300);Send(IE::MouseUp,panel.right-12,300);Flush();
+                CHECK(user::Q().input.empty() && m.Read32(clicks)==beforeClicks);
+                user::ShowWindowInternal(handles[0],9);
                 checkLayers();
                 Click(Shell::Close);CHECK(shell.ActivePanel()==Shell::Panel::Desktop);
                 Start();Click(Shell::MenuPrograms);CHECK(shell.Count()==1);

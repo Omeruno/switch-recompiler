@@ -106,7 +106,7 @@ void WrapText(Surface& s,Rect r,const std::u16string& text,uint32_t color,int si
     flush();
 }
 // Геометрия окна оболочки (логические координаты 1280x720)
-Rect WindowRect() {return {156,8,1258,676};}
+Rect WindowRect() {return DesktopShell::PanelArea();}
 Rect TaskPaneRect() {return {160,126,390,646};}
 Rect ContentRect() {return DesktopShell::ContentArea();}
 Rect StatusRect() {return {160,646,1254,672};}

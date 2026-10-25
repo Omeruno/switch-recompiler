@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`9d4f8760987a26b96749e7b8d5797d5a213a89a1` (2026-10-25).
-[CI 40141901580](https://github.com/Omeruno/switch-recompiler/actions/runs/40141901580)
+`466bcfd818407071e400de31bfac137c615b5554` (2026-10-25).
+[CI 40148776172](https://github.com/Omeruno/switch-recompiler/actions/runs/40148776172)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -1464,3 +1464,35 @@ passed under QEMU ARM64 and is added to the existing ARM64 CI job. This is not
 a local Switch SDK/build. No runtime code followed the full suite; only docs and
 the additional ARM64 CI gate. Publish normally and verify exact new-SHA six jobs,
 clean G2 report and fixture hash before completion. User hardware tests deferred.
+
+
+## 2026-10-25 Claude Luna updates: preserve, audit and join active workspace
+
+User requested reviewing Claude's latest UI work and resuming our graphics plan.
+Explicit branch fetch found five descendants of G2:9ca8ff7/5dba613/6034b12/
+c881653/466bcfd. Fast-forwarded only; no reset or discarded change. All have
+successful CI, latest466bcfd run40148776172 verified all six jobs. G2 run
+40143458222 also completed six success, including the new ARM64 GDI step; its
+clean126-sample report and unchanged public fixture SHA verified. CI tile ratio
+fast/reference about0.812, a host observation only. See LUNA_INTEGRATION_REVIEW.md.
+
+Reviewed procedural cached wallpaper, vector icon cache/desktop labels, larger
+Explorer geometry/toolbar/task pane/status and two-column Start menu. Native
+minimize/maximize caption glyphs are currently decorative; do not claim those
+window operations, full XP styling or GPU GDI from theme changes. Preserved all
+Claude artwork and actions. Found a real integration defect: ShellSession still
+used the old218/100/1166/630 rectangle for composition, retained ownership and
+input after the panel moved to156/8/1258/676. Idle UI and GPU-vs-the-same-broken-
+canonical comparisons did not catch it. Added shared DesktopShell::PanelArea
+and used it in drawing and all three active-guest paths.
+
+Extended actual-x86 workspace test independently compares every full-panel
+pixel with native rendering, expanded-corner native owners and right-edge input
+isolation over a maximized real guest. Complete fresh rootless MinGW/Mesa suite
+passed final code/test tree, including both actual-EGL workspace/composition
+oracles, G1/G2, icons,22 F groups and prior lifecycle/file regressions. Actual
+Start/Programs snapshots inspected. Source/doc/diff checks and exact published-
+SHA six-job CI remain publication gates; local SDK absent, physical tests deferred.
+Continue where G2 stopped: bounded real-EGL GPU-GDI/coherence/readback/recovery
+prototype before production activation. Do not require hardware logs/flag setup
+from the user. D Pinball/installer/archives and visual refinements stay open.
