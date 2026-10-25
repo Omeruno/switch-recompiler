@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-25, после G4b.2a.
-Проверенный код `7ffbf95ed6658c05a93a5fb90dd33485c4cdc452`:
-[CI40202733317, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317).
+Дата обновления: 2026-10-25, после G4b.2b.
+Проверенный код `1d3f15588f51745c92292d073c686c2591f81a85`:
+[CI40204271361, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -23,9 +23,9 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 реализованными возможностями. Совместимость конкретных программ, скорость и
 визуальная полнота — отдельные критерии; красивый desktop не закрывает Win32 API.
 
-**Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1 и G4b.2a реализованы
-в изолированном GPU-пути с проверенным shared-context handoff. Следующий рубеж — G4b.2, подключение окон,
-памяти и основного вывода. D, физическая E/F, H/I и расширения среды открыты.**
+**Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1/G4b.2a/b реализованы
+в изолированном GPU/native-пути с shared-context handoff и HWND/DC leases.
+Остаток G4b.2 — CPU/GPU-память, resize/fallback и владение кадром основного вывода. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
 или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
@@ -130,7 +130,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G3 | [GL fill/copy/readback/recovery](G3_GPU_GDI_PROTOTYPE.md) | Изолированный bounded prototype |
 | G4a | [Targets/generations/direct texture composition](G4A_GPU_TARGETS.md) | Изолированный prototype, без readback ради каждой композиции |
 | G4b.1 | [Ordered instanced fills](G4B_GPU_BATCHES.md), cached uniforms, pixel/count/timing comparison | 64 disjoint fills →1 draw; копии/пересечения в порядке; prototype |
-| **G4b.2** | HWND/DC lifecycle, raw-DIB/ROP/read barriers, GL-state и production texture bridge | **Следующий незавершённый рубеж** |
+| G4b.2a/b | [GL-state handoff](G4B2_SHARED_CONTEXT.md), [native HWND/DC resource leases](G4B2B_WINDOW_BINDINGS.md) | Bounded bridge, без автоматического GDI dispatch |
+| **Остаток G4b.2** | CPU/DIB/ROP/read/save/resize/fallback coherence и owning production texture bridge | **Следующий незавершённый рубеж** |
 
 До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
 измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
@@ -160,7 +161,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. G4b.2 — окно/память/presenter bridge с CPU fallback и публичными проверками.
+1. Остаток G4b.2 — CPU/GPU-память/resize/fallback и owning presenter bridge с публичными проверками.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -174,6 +175,6 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 проверять HEAD/tree/handoff; после пакета обновлять карту, выполнять положенные
 проверки и проверять все шесть CI jobs точного опубликованного SHA.
 
-G4b.2 уточнение: [сохранение GL-состояния и чередование с production renderer](G4B2_SHARED_CONTEXT.md)
-реализованы отдельным пакетом G4b.2a. Дальше — реальные HWND/DC, CPU/DIB/ROP
-барьеры и основной texture bridge; активация в приложениях не выполнена.
+Контракты текущих подшагов: [G4b.2a GL-state](G4B2_SHARED_CONTEXT.md),
+[G4b.2b HWND/DC](G4B2B_WINDOW_BINDINGS.md). Их наличие не заменяет согласование
+CPU/GPU-данных, production frame ownership, игровой renderer или dynarec.

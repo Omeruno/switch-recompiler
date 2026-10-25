@@ -96,6 +96,7 @@ struct WndClass {
 };
 
 struct Window {
+    uint64_t rasterIdentity=0; // native-only, never a guest HWND or persistent ID
     uint32_t hwnd = 0;
     uint32_t threadId = 0;
     WndClass* cls = nullptr;

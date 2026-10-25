@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: G4b.2a shared GL-state handoff implemented; next G4b.2 window/DC identity, coherence/
-production-presenter integration.** Runtime baseline `7ffbf95ed6658c05a93a5fb90dd33485c4cdc452`
-passed [CI40202733317, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317).
+**Current position: G4b.2b bounded real HWND/DC resource binding implemented; next G4b.2 CPU/GPU coherence/
+production-presenter integration.** Runtime baseline `1d3f15588f51745c92292d073c686c2591f81a85`
+passed [CI40204271361, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -19,7 +19,7 @@ Paint/Minesweeper are common-path fixtures, not product limits. See
 [TARGET_GAMES_RU.md](TARGET_GAMES_RU.md): full x86→ARM64 dynarec, real GPU API/shader
 translation (prioritize auditing D3D9), audio, memory/streaming, thread correctness
 and exact-version application acceptance. Do not promise full hardware utilization
-or FPS, or add per-EXE shortcuts. Preserve current HWND/DC integration queue;
+or FPS, or add per-EXE shortcuts. Preserve the remaining CPU/GPU coherence and production integration queue;
 choose subsequent CPU/H/D work by measured bottlenecks and actual dependencies.
 
 ## Global state
@@ -68,7 +68,8 @@ recursive file-manager features and arbitrary Windows shell/COM are not implied.
 | G4a | [Generation-checked targets and direct texture composition](G4A_GPU_TARGETS.md) | No per-frame CPU readback merely for composition; not live HWND bindings |
 | G4b.1 | [Ordered instanced fill batches](G4B_GPU_BATCHES.md), cached uniforms,42-sample same-build pixel/count/timing report | Copies/intersections preserve order; bounded journal/checkpoints retained |
 | G4b.2a | [Bounded shared GL-state handoff](G4B2_SHARED_CONTEXT.md), actual EGL interleaving with production renderer | Implemented prerequisite; no live GDI activation |
-| Remaining G4b.2 | HWND/DC/visible ownership, raw-DIB/ROP/read barriers and production texture bridge | **Next, not implemented/activated** |
+| G4b.2b | [Actual HWND/DC identities, validated leases and bounded native target resources](G4B2B_WINDOW_BINDINGS.md); stale CPU DC→reused HWND rejection | Explicit native bridge; ordinary GDI remains CPU-authoritative |
+| Remaining G4b.2 | CPU/DIB/ROP/read/save/resize coherence and owning production texture bridge | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -77,10 +78,10 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 ## Next package and activation gates
 
-1. Bind native GPU target identity/lifetime to supported HWND/DC operations.
-   Reject stale window/target generations and preserve destroyed-frame ownership.
-2. Define genuine CPU barriers for GetPixel/GetDIBits, CPU ROP/source access and
-   raw guest DIB writes. Keep unsupported cases CPU-authoritative and report
+1. Preserve the [bounded HWND/DC bridge](G4B2B_WINDOW_BINDINGS.md) and shared GL-state
+   contract. Native target leases are not owning production frames.
+2. **Next:** define genuine CPU barriers for GetPixel/GetDIBits, CPU ROP/source access and
+   raw guest DIB writes; define resize/repaint/fallback authority. Keep unsupported cases CPU-authoritative and report
    unsupported operations honestly; no successful stubs or EXE-name exceptions.
 3. Preserve the [implemented shared-context handoff](G4B2_SHARED_CONTEXT.md) and build a texture-aware bridge to the
    existing presenter. ShellSession currently reads canonical CPU pixels: adding

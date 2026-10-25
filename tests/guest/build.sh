@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O1 -nostdlib -e _start@0 "$here/gpu_window_bindings.c" \
+    -o "$out/gpu_window_bindings.exe" -lkernel32 -luser32 -lgdi32
 $cc -O1 -nostdlib -e _start@0 "$here/graphics_workload.c" \
     -o "$out/graphics_workload.exe" -lkernel32 -luser32 -lgdi32
 # DLL без CRT, намеренно с той же базой, что и EXE: загрузчик обязан её сдвинуть

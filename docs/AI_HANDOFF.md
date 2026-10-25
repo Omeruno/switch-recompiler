@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`7ffbf95ed6658c05a93a5fb90dd33485c4cdc452` (2026-10-25).
-[CI 40202733317](https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317)
+`1d3f15588f51745c92292d073c686c2591f81a85` (2026-10-25).
+[CI 40204271361](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.2a (2026-10-25)
+## Current position after G4b.2b (2026-10-25)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -19,8 +19,10 @@ ordered instanced fill batches. They are NOT activated for live Paint/Win32 GDI.
 
 G4b.2a implements bounded GL-state preservation and interleaving with the real
 production renderer; see [contract/evidence](G4B2_SHARED_CONTEXT.md).
-Next is remaining G4b.2: HWND/DC/visible ownership and lifetime, raw-DIB and CPU
-ROP/read barriers, then a texture-aware production presenter bridge.
+G4b.2b adds [real HWND/DC native identity/resource leases](G4B2B_WINDOW_BINDINGS.md)
+and rejects CPU DC aliasing onto reused HWNDs. It is not automatic GDI dispatch.
+Next is CPU/GPU/DIB/ROP/read/save/resize/fallback coherence and owning production
+frames/texture-aware presentation.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -45,7 +47,7 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current next implementation is still HWND/DC identity/lifetime.
+deferred; current next implementation is CPU/GPU coherence after bounded HWND/DC binding.
 
 ## Working agreement
 
@@ -1756,3 +1758,48 @@ no blind mandatory large DirectDraw prerequisite. Current HWND/DC queue retained
 Updated global/active/user/visual maps without claiming a game was inspected or
 launched, x64 support, hardware results, FPS or full-resource access. No runtime
 changes; map/link/browser/diff checks plus exact-SHA core CI/Pages are the gates.
+
+## G4b.2b: real window/DC identity and explicit native GPU bindings
+
+Incoming1d3f155/FETCH_HEAD unchanged; exact core CI40204271361 six success and
+updated public game-goal Pages verified. User continues autonomous development;
+no hardware request. Added monotonic native window/DC identities, captured DC
+window lifetime and identity-only provider query. Real provider rejects stale
+identity before allocating/capturing a replacement window's raster plane. CPU
+Target also rejects mismatch, fixing stale DC → reused HWND aliasing.
+
+Gdi::DescribeWindowTarget owns frame/origin/effective visible/paint/selected clip
+and lifetime/layout metadata. WindowGpuBindings manages four bounded real targets
+with per-command revalidated leases, shared per-window image across DCs, checked
+MM_TEXT fill translation/clipping, explicit read, resize/drop/prune/session
+retirement and notified context-loss CPU continuation. No borrowed USER/GDI
+pointers, asynchronous wrong-thread GL deletion or ordinary GDI activation.
+See G4B2B_WINDOW_BINDINGS.md: target initialization/resize is black, not a CPU
+checkpoint; canonical/production frame authority remains a gate.
+
+New redistributable PE32 fixture and actual-EGL inspector cover20 lifecycle
+stages across two fresh sessions reusing numeric HWND/HDC, independent clipping
+pixels, CPU canonical unchanged and a third actual context-loss/host-abort case.
+A negative control removing the CPU guard fails at stale Target. An initial
+harness forgot EnableUi and selected legacy imports; fixed only the test setup,
+no API stub. A prior local suite was stopped/rebuilt when lifetime prevalidation
+was tightened to reject before write-capture allocation. Final full suite and
+focused strict/sanitizer checks follow; only successful final-tree results count.
+
+Next CPU/GPU/DIB/ROP/read/save/resize/fallback coherence, then owning texture
+frames/production activation. Preserve Luna/G2, CPU fallback, native1280x720,
+input, session cleanup and PC-game direction. SDK absent, hardware deferred.
+Publish normally, verify exact new-SHA six-job CI, native-binding artifact and
+Pages site before completion; never infer full G4b.2/game/H/dynarec completion.
+
+Final local G4b.2b validation: complete fresh rootless COMPOSITION_GL_TEST=1
+MinGW/Mesa suite passed final implementation/test sources, including20 x86
+binding lifecycle stages plus actual context loss/host abort, G3/G4a/G4b.1/2a,
+G1/G2, both actual-x86 composition/workspace/input paths, Stage C/six E9,22 F
+groups and prior sessions/files/dialogs. Strict O2 host bridge/harness and
+CRT-free MinGW fixture passed. Focused ASan/UBSan bridge/GDI/USER-window/GPU
+modules passed (remaining runtime objects uninstrumented, driver leak scanning
+disabled; sanitizer reports its known makecontext/swapcontext limitation).
+The negative CPU-guard control failed at the intended reused-HWND stale Target
+assertion. No implementation changes followed the successful final suite; only
+docs/map/checks remain before normal publication and exact-SHA CI/Pages proof.

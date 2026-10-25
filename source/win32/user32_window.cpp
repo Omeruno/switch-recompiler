@@ -8,6 +8,7 @@
 #include "../runtime/clock.h"
 #include "../runtime/guest_execution.h"
 #include "user32.h"
+#include "../ui/raster_identity.h"
 
 namespace win32 {
 namespace user {
@@ -61,11 +62,14 @@ bool EqualNoCase(const std::u16string& a, const std::u16string& b) {
 // Видимая часть окна для контекстов устройства (см. ui::WindowDcProvider)
 bool DcProvider(uint32_t hwnd, bool wholeWindow, ui::WindowDcInfo& out) {
     Window* w = Win(hwnd);
-    if (!w) return false;
+    if (!w || (out.expectedWindowIdentity && out.expectedWindowIdentity!=w->rasterIdentity))return false;
     Window* desk = Desktop();
     Rect base = w == desk ? Rect(0, 0, S().screenW, S().screenH) : (wholeWindow ? ScreenRect(w) : ScreenClientRect(w));
     out.originX = base.left;
     out.originY = base.top;
+    out.windowIdentity=w->rasterIdentity;
+    out.frame=ScreenRect(w);
+    if(out.identityOnly)return true;
     if (!IsVisibleChain(w)) { out.visible = Region(); return true; }
     Region vis(base);
     for (Window* cur = w; cur && cur != desk;) {
@@ -575,6 +579,7 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
 
     std::unique_ptr<Window> win(new Window);
     Window* w = win.get();
+    w->rasterIdentity=ui::detail::NextRasterIdentity();
     Q();
     w->threadId=CurrentGuiThread();
     w->hwnd = AllocHandle();
@@ -1296,6 +1301,7 @@ void Init() {
     ui::g_gdi.SetScreen(&s.screen.s);
     ui::g_gdi.SetWindowDcProvider(&DcProvider);
     std::unique_ptr<Window> desk(new Window);
+    desk->rasterIdentity=ui::detail::NextRasterIdentity();
     desk->hwnd = AllocHandle();
     desk->style = WS_VISIBLE | WS_POPUP | WS_CLIPCHILDREN;
     desk->rect = Rect(0, 0, s.screenW, s.screenH);

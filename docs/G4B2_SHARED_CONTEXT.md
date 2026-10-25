@@ -1,5 +1,8 @@
 # G4b.2a: bounded shared-context handoff
 
+Follow-on: [G4b.2b binds native targets to actual HWND/DC identities](G4B2B_WINDOW_BINDINGS.md).
+Remaining production gates are CPU/GPU coherence and owning texture frames.
+
 Incoming `f4a5ecfe330c2a5ff9ea08065cd8403bad19045a` passed all six core CI jobs
 in [run 40200041032](https://github.com/Omeruno/switch-recompiler/actions/runs/40200041032).
 This closes the GL-state slice of G4b.2. **HWND/DC identity, raw-DIB/CPU-ROP

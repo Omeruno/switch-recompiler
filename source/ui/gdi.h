@@ -92,6 +92,7 @@ struct DcState {
 enum class DcKind : uint8_t { Memory, Window, Screen, Info };
 
 struct DcObj {
+    uint64_t identity=0,windowIdentity=0; // native-only lifetime, not guest handles
     DcKind kind = DcKind::Memory;
     uint32_t hwnd = 0;
     bool wholeWindow = false;       // GetWindowDC: с неклиентской областью
@@ -104,12 +105,28 @@ struct DcObj {
 // Связь с оконной подсистемой: где на экране контекст окна и что из него
 // видно. Возвращает false, если окна уже нет.
 struct WindowDcInfo {
+    uint64_t expectedWindowIdentity=0,windowIdentity=0;
+    Rect frame;
+    bool identityOnly=false; // lifetime metadata only: no clip/capture allocation
     int originX = 0, originY = 0;   // координаты устройства (0,0) на экране
     Region visible;                 // видимая часть в координатах экрана
     bool captureWrites=false;
     const SurfaceWriteCapture* capture=nullptr;
 };
 using WindowDcProvider = bool (*)(uint32_t hwnd, bool wholeWindow, WindowDcInfo& out);
+
+// Owned synchronous snapshot. A descriptor is not authority to retain a raw
+// window/DC/surface pointer or to bypass later lifetime/layout validation.
+struct WindowRasterTarget {
+    uint64_t windowIdentity=0,dcIdentity=0,layoutGeneration=0;
+    uint32_t hwnd=0,hdc=0;
+    Rect frame;
+    int originX=0,originY=0;
+    Point windowOrg,viewportOrg;
+    Region clip;
+    bool wholeWindow=false;
+};
+
 
 class Gdi {
 public:
@@ -155,6 +172,7 @@ public:
     uint32_t CreateDc(DcKind kind, uint32_t hwnd = 0, bool wholeWindow = false);
     uint32_t CreateCompatibleDc(uint32_t hdc);
     bool DeleteDc(uint32_t hdc);
+    bool DescribeWindowTarget(uint32_t hdc,WindowRasterTarget& out);
     uint32_t SelectObject(uint32_t hdc, uint32_t obj); // старый объект, для региона — тип
     int SaveDc(uint32_t hdc);
     bool RestoreDc(uint32_t hdc, int level);

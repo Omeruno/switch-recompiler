@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>G4b.2a пройден → HWND/DC</span></div><h2>Мост GPU к реальным окнам</h2><p>Общий GL-контекст проверен. Следом — окна, память и основной вывод. Живой Paint пока выполняет GDI на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>G4b.2b пройден → память</span></div><h2>Согласование GPU и памяти</h2><p>Контекст и native HWND/DC-мост проверены. Следом — CPU/GPU-барьеры и основной вывод. Обычный GDI пока выполняется на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Прототип ≠ живой Paint</strong><span>Нужен мост к приложениям</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-25",
-  "runtimeSha": "7ffbf95ed6658c05a93a5fb90dd33485c4cdc452",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40202733317",
+  "runtimeSha": "1d3f15588f51745c92292d073c686c2591f81a85",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -181,11 +181,12 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "current",
-      "summary": "G4b.2a готов. Следом — привязка HWND/DC, память и основной вывод.",
+      "summary": "G4b.2b готов. Следом — CPU/GPU-память, барьеры и основной вывод.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
-        "G4b.2a: общий GL-контекст с восстановлением состояния, проверенный с основным композитором."
+        "G4b.2a: общий GL-контекст с восстановлением состояния, проверенный с основным композитором.",
+        "G4b.2b: ресурсы HWND/DC с проверками жизни, clip и сеансов; явный native-путь."
       ],
       "todo": [
         "Привязка к окнам/DC, памяти и основному выводу.",
@@ -411,40 +412,47 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G4b.2",
       "title": "Мост к реальным окнам",
       "status": "current",
-      "summary": "Первый шаг готов: общий GL-контекст. Дальше — реальные HWND/DC и память.",
+      "summary": "Общий GL-контекст и native HWND/DC-мост готовы. Дальше — согласование памяти.",
       "done": [
-        "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте."
+        "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте.",
+        "G4b.2b: привязка ресурсов к реальным HWND/DC, проверки жизни/clip и публичный x86/EGL тест."
       ],
       "todo": [
-        "Связать HWND/DC с GPU-ресурсами и их временем жизни.",
+        "Согласовать CPU/GPU-данные, resize/repaint и владение последним кадром перед автоматическим подключением.",
         "Согласовать DIB/ROP/чтение пикселей и CPU fallback.",
         "Подключить texture-aware путь к основному presenter."
       ],
       "gate": "Публичный x86-гость проходит GPU-рисование, readback и lifecycle с теми же пикселями, что CPU.",
       "docs": [
+        "docs/G4B2B_WINDOW_BINDINGS.md",
         "docs/G4B2_SHARED_CONTEXT.md",
         "docs/ACTIVE_ROADMAP.md",
         "docs/G4B_GPU_BATCHES.md"
       ],
-      "limit": "Простое включение прототипа для Paint сейчас некорректно. Нужны память, ownership и GL-state контракт.",
+      "limit": "Native-мост не обновляет обычный CPU-экран. Нужны coherence и основной texture presenter.",
       "kind": "Рубеж"
     },
     {
       "id": "window",
       "code": "01",
       "title": "Окна и время жизни",
-      "status": "planned",
-      "summary": "Привязать HWND/DC к корректному GPU target.",
-      "done": [],
+      "status": "prototype",
+      "summary": "G4b.2b: реальные HWND/DC связаны с native GPU-ресурсами.",
+      "done": [
+        "Отдельные идентификаторы окна/DC, проверяемые leases, clip/origin, resize/prune и сеансы.",
+        "20 настоящих x86-этапов, повторные HWND/HDC, потеря EGL-контекста и остановка гостя.",
+        "Старый CPU DC не пишет в новое окно с повторно выданным HWND."
+      ],
       "todo": [
-        "Обработка create/move/hide/destroy/abort/relaunch.",
-        "Поколения и владение кадром после уничтожения окна."
+        "Согласование GPU-dirty данных при resize/repaint и CPU fallback.",
+        "Владение последним production-кадром и автоматическое подключение после coherence gate."
       ],
       "gate": "Устаревшее окно не пишет в новый target, последний кадр не теряется.",
       "docs": [
+        "docs/G4B2B_WINDOW_BINDINGS.md",
         "docs/ACTIVE_ROADMAP.md"
       ],
-      "limit": "Задача внутри G4b.2; её реализация ещё не завершена.",
+      "limit": "Ограниченный явный native-мост; обычные GDI-команды пока выполняются на CPU.",
       "kind": "Ближайшая задача"
     },
     {

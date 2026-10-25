@@ -1,6 +1,7 @@
 // gdi.cpp — объекты GDI, контексты устройств и растеризация (см. gdi.h)
 
 #include "gdi.h"
+#include "raster_identity.h"
 #include "performance_metrics.h"
 
 #include <algorithm>
@@ -276,6 +277,11 @@ uint32_t Gdi::CreateDc(DcKind kind, uint32_t hwnd, bool wholeWindow) {
     if (!h) return 0;
     s->dc.reset(new DcObj);
     DcObj& d = *s->dc;
+    d.identity=detail::NextRasterIdentity();
+    if(kind==DcKind::Window && provider_) {
+        WindowDcInfo info;info.identityOnly=true;
+        if(provider_(hwnd,wholeWindow,info))d.windowIdentity=info.windowIdentity;
+    }
     d.kind = kind;
     d.hwnd = hwnd;
     d.wholeWindow = wholeWindow;
@@ -291,6 +297,23 @@ uint32_t Gdi::CreateDc(DcKind kind, uint32_t hwnd, bool wholeWindow) {
 }
 
 uint32_t Gdi::CreateCompatibleDc(uint32_t) { return CreateDc(DcKind::Memory); }
+
+bool Gdi::DescribeWindowTarget(uint32_t hdc,WindowRasterTarget& out) {
+    out={};
+    const auto* dc=Dc(hdc);
+    if(!dc || dc->kind!=DcKind::Window || !dc->identity || !dc->windowIdentity ||
+       dc->st.mapMode!=1 || dc->st.layout!=0 || !provider_)return false;
+    WindowDcInfo info;info.identityOnly=true;info.expectedWindowIdentity=dc->windowIdentity;
+    if(!provider_(dc->hwnd,dc->wholeWindow,info) || info.windowIdentity!=dc->windowIdentity)return false;
+    Surface* surface=nullptr;int x=0,y=0;Region clip;
+    if(!Target(hdc,surface,x,y,clip))return false; // read-only: never captures pixels
+    out.windowIdentity=info.windowIdentity;out.dcIdentity=dc->identity;
+    out.layoutGeneration=layoutGeneration_;out.hwnd=dc->hwnd;out.hdc=hdc;
+    out.frame=info.frame;out.originX=x;out.originY=y;out.clip=std::move(clip);
+    out.windowOrg=dc->st.windowOrg;out.viewportOrg=dc->st.viewportOrg;
+    out.wholeWindow=dc->wholeWindow;return true;
+}
+
 
 bool Gdi::DeleteDc(uint32_t hdc) {
     Slot* s = Find(hdc);
@@ -399,9 +422,10 @@ bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip,const
         if (!screen_ || !screen_->Valid()) return false;
         s = screen_;
         if (dc->kind == DcKind::Window) {
-            WindowDcInfo info;
+            WindowDcInfo info;info.expectedWindowIdentity=dc->windowIdentity;
             info.captureWrites=capture!=nullptr;
             if (!provider_ || !provider_(dc->hwnd, dc->wholeWindow, info)) return false;
+            if(dc->windowIdentity!=info.windowIdentity)return false;
             if(capture)*capture=info.capture;
             ox = info.originX;
             oy = info.originY;
