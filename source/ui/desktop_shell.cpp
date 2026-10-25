@@ -2,6 +2,7 @@
 #include "font.h"
 #include "shell_icons.h"
 #include "xp_theme.h"
+#include "xp_icons.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -61,6 +62,32 @@ void Text(Surface& s,Rect r,std::u16string text,uint32_t color=0x182943,int size
         text+=u"…";
     }
     font->Draw(s,Region(r),r.left,r.top,text,color);
+}
+// Подпись значка рабочего стола как в XP: по центру, до двух строк, белая с
+// тенью; у выделенного — синяя подложка под текстом
+void DesktopLabel(Surface& s,Rect cell,int top,const std::u16string& text,bool selected,bool enabled) {
+    FontDesc desc;desc.face="Liberation Sans";desc.height=-14;desc.weight=400;
+    auto* font=FontCache::Get(desc);
+    const int maxWidth=cell.Width()-6;
+    std::vector<std::u16string> lines;std::u16string line;
+    size_t i=0;
+    while(i<text.size() && lines.size()<2) {
+        size_t space=text.find(u' ',i);std::u16string word=text.substr(i,space==std::u16string::npos?std::u16string::npos:space-i);
+        i=space==std::u16string::npos?text.size():space+1;
+        std::u16string next=line.empty()?word:line+u" "+word;
+        if(!line.empty() && font->MeasureWidth(next)>maxWidth){lines.push_back(line);line=word;}
+        else line=next;
+    }
+    if(!line.empty() && lines.size()<2)lines.push_back(line);
+    if(i<text.size() && !lines.empty())lines.back()+=u"…";
+    for(size_t n=0;n<lines.size();++n) {
+        auto& l=lines[n];
+        while(l.size()>1 && font->MeasureWidth(l)>maxWidth){l.pop_back();if(l.back()!=u'…'){l.pop_back();l+=u"…";}}
+        const int w=font->MeasureWidth(l),x=cell.left+(cell.Width()-w)/2,y=top+int(n)*16;
+        if(selected)Fill(s,{x-2,y,x+w+2,y+16},0x316AC5);
+        else font->Draw(s,Region(Rect(x+1,y+1,x+w+2,y+18)),x+1,y+1,l,0x0A1F3A);
+        font->Draw(s,Region(Rect(x,y,x+w+1,y+17)),x,y,l,enabled?0xFFFFFF:0xC8D2DC);
+    }
 }
 void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
     for(int iy=0;iy<32;++iy)for(int ix=0;ix<32;++ix) {
@@ -772,8 +799,13 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(s.width!=Width || s.height!=Height || !s.Valid() || s.bpp!=32)return;
     xp::DrawWallpaper(s,{0,0,Width,680});
 
-    if(!guestActive_)Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
-    Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():linkTruncated_?u"Список ярлыков неполный: достигнут предел.":linkErrors_?u"Некоторые ярлыки недоступны.":Wide(status_),0xC1DCF4,12);
+    // подсказки управления и строка состояния — с тенью, чтобы читались на обоях
+    if(!guestActive_) {
+        const std::u16string hints=u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход";
+        Text(s,{23,641,1251,664},hints,0x0A1F3A,14);Text(s,{22,640,1250,663},hints,0xF2F7FC,14);
+    }
+    const std::u16string status=browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():linkTruncated_?u"Список ярлыков неполный: достигнут предел.":linkErrors_?u"Некоторые ярлыки недоступны.":Wide(status_);
+    Text(s,{23,664,1251,681},status,0x0A1F3A,12);Text(s,{22,663,1250,680},status,0xE4EEF8,12);
     auto control=[&](int target,std::u16string label,Rect r) {
         const bool enabled=Enabled(target),hot=hover_==target && enabled,down=pressed_==target && hot;
         Gradient(s,r,target==Close?(down?0xA22917:0xEE9A84):down?0x255BB3:hot?0xFCFCFF:0xFFFFFF,
@@ -782,18 +814,20 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         if(focus_==target && enabled)Frame(s,{r.left+3,r.top+3,r.right-3,r.bottom-3},0x6684AE);
         Text(s,{r.left+10,r.top+7,r.right-7,r.bottom-2},label,target==Close?0xFFFFFF:!enabled?0x8793A0:down?0xFFFFFF:0x162B47,15,true);
     };
-    for(int t:{Programs,Computer,Documents}) {
-        const auto r=Bounds(t);const bool selected=focus_==t,enabled=Enabled(t);
-        if(selected || (hover_==t && enabled)){Fill(s,r,pressed_==t?0x15457E:0x285F97);Frame(s,r,0x81B4ED);}
-        Icon(s,r.left+40,r.top+6,t==Programs?shell_art::programs:t==Computer?shell_art::computer:shell_art::folder);
-        Text(s,{r.left+4,r.top+44,r.right-2,r.top+66},t==Programs?u"Программы":t==Computer?u"Мой":u"Мои",enabled?0xFFFFFF:0xA7BDD3,14,true);
-        if(t!=Programs)Text(s,{r.left+4,r.top+64,r.right-2,r.bottom},t==Computer?u"компьютер":u"документы",enabled?0xFFFFFF:0xA7BDD3,14,true);
-    }
+    // Значки рабочего стола: 48 px по центру ячейки, подпись под ним
+    auto desktopIcon=[&](int target,xp::IconKind kind,const std::u16string& label,bool link) {
+        const auto r=Bounds(target);const bool enabled=Enabled(target);
+        const bool selected=focus_==target || (hover_==target && enabled);
+        xp::DrawIcon(s,kind,r.left+(r.Width()-48)/2,r.top+2,48,selected);
+        if(link)xp::DrawIcon(s,xp::IconKind::Shortcut,r.left+(r.Width()-48)/2,r.top+2,48);
+        DesktopLabel(s,r,r.top+54,label,selected,enabled);
+    };
+    desktopIcon(Programs,xp::IconKind::Programs,u"Программы",false);
+    desktopIcon(Computer,xp::IconKind::Computer,u"Мой компьютер",false);
+    desktopIcon(Documents,xp::IconKind::Documents,u"Мои документы",false);
     for(size_t i=0;i<desktopLinks_.size();++i) {
-        const int target=DesktopLinkBase+int(i);const auto r=Bounds(target);const bool hot=focus_==target || hover_==target;
-        if(hot){Fill(s,r,0x285F97);Frame(s,r,0x81B4ED);}Icon(s,r.left+40,r.top+6,shell_art::programs);
         const auto name=desktopLinks_[i].substr(desktopLinks_[i].find_last_of('\\')+1);
-        Text(s,{r.left+4,r.top+44,r.right-2,r.bottom},Wide(name.substr(0,name.size()-4)),Enabled(target)?0xffffff:0xa7bdd3,14,true);
+        desktopIcon(DesktopLinkBase+int(i),xp::IconKind::Application,Wide(name.substr(0,name.size()-4)),true);
     }
     if(panel_!=Panel::Desktop) {
         Fill(s,{224,106,1166,630},0x13385B);

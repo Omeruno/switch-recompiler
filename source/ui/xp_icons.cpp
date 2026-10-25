@@ -343,7 +343,7 @@ void DrawIcon(Surface& s, IconKind kind, int x, int y, int size, bool selected) 
             uint32_t alpha = c >> 24;
             if (!alpha) continue;
             uint32_t rgb = c & 0xFFFFFF;
-            if (selected) rgb = Mix(rgb, 0x316AC5, 0.45f);  // синяя подсветка выделения
+            if (selected) rgb = Mix(rgb, 0x316AC5, 0.38f);  // синяя подсветка выделения
             s.Set(sx, sy, Mix(s.Get(sx, sy), rgb, alpha / 255.0f));
         }
 }
