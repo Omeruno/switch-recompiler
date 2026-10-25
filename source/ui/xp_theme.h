@@ -26,5 +26,33 @@ void DrawTaskButton(Surface& s, const Rect& r, bool active, bool hot);
 // Область уведомлений (часы) у правого края
 void DrawTray(Surface& s, const Rect& r);
 
+// --- Окна ---
+
+// Окно Luna: синяя рамка, заголовок высоты titleH со скруглёнными верхними
+// углами, серо-бежевая клиентская область. Текст заголовка рисует вызывающий.
+void DrawWindowFrame(Surface& s, const Rect& r, int titleH, bool active = true);
+enum class CaptionButton { Minimize, Maximize, Close };
+void DrawCaptionButton(Surface& s, const Rect& r, CaptionButton kind, bool hot, bool pressed);
+// Кнопка XP (OK, Отмена и т.п.); focused — пунктир внутри
+void DrawPushButton(Surface& s, const Rect& r, bool enabled, bool hot, bool pressed, bool focused);
+// Плоская кнопка панели инструментов: рамка видна только при наведении
+void DrawToolButton(Surface& s, const Rect& r, bool hot, bool pressed);
+// Разделитель панели инструментов и строки меню
+void DrawToolSeparator(Surface& s, int x, int top, int bottom);
+// Значки панели инструментов (размер size x size)
+enum class ToolGlyph { Back, Forward, Up, Search, Folders, Views, Go };
+void DrawToolGlyph(Surface& s, ToolGlyph kind, int x, int y, int size, bool enabled);
+// Синяя панель задач проводника слева
+void DrawTaskPane(Surface& s, const Rect& r);
+// Группа панели задач: заголовок headerH (особая группа — тёмно-синяя) и тело;
+// подпись заголовка рисует вызывающий
+void DrawTaskGroup(Surface& s, const Rect& r, int headerH, bool special);
+// Белое поле ввода с утопленной рамкой (адресная строка)
+void DrawEditField(Surface& s, const Rect& r);
+// Строка состояния окна
+void DrawStatusBar(Surface& s, const Rect& r);
+// Пунктирная рамка фокуса
+void DrawFocusRect(Surface& s, const Rect& r);
+
 } // namespace xp
 } // namespace ui

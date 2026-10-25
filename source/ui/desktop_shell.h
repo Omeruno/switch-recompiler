@@ -28,6 +28,8 @@ public:
     const std::vector<std::string>& DesktopLinks() const {return desktopLinks_;}
     const BitmapDocument& Image() const {return image_;}
     static Rect ImageViewport() {return {416,280,1006,492};}
+    // Область содержимого окна проводника (справа от панели задач)
+    static Rect ContentArea() {return {391,126,1254,646};}
     bool ImageFitted() const {return imageFit_;}
     int ImagePanX() const {return imagePanX_;}
     int ImagePanY() const {return imagePanY_;}

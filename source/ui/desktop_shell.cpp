@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 
 namespace ui {
@@ -89,6 +90,76 @@ void DesktopLabel(Surface& s,Rect cell,int top,const std::u16string& text,bool s
         font->Draw(s,Region(Rect(x,y,x+w+1,y+17)),x,y,l,enabled?0xFFFFFF:0xC8D2DC);
     }
 }
+int TextWidth(const std::u16string& text,int size,bool bold) {
+    FontDesc desc;desc.face="Liberation Sans";desc.height=-size;desc.weight=bold?700:400;
+    return FontCache::Get(desc)->MeasureWidth(text);
+}
+// Текст с переносом по словам в пределах r
+void WrapText(Surface& s,Rect r,const std::u16string& text,uint32_t color,int size) {
+    std::u16string line;int y=r.top;const int step=size+4;
+    size_t i=0;
+    auto flush=[&]() {if(!line.empty() && y+step<=r.bottom+2)Text(s,{r.left,y,r.right,y+step},line,color,size);y+=step;line.clear();};
+    while(i<text.size()) {
+        size_t space=text.find(u' ',i);
+        std::u16string word=text.substr(i,space==std::u16string::npos?std::u16string::npos:space-i);
+        i=space==std::u16string::npos?text.size():space+1;
+        std::u16string next=line.empty()?word:line+u" "+word;
+        if(!line.empty() && TextWidth(next,size,false)>r.Width()){flush();line=word;}
+        else line=next;
+    }
+    flush();
+}
+// Геометрия окна оболочки (логические координаты 1280x720)
+Rect WindowRect() {return {156,8,1258,676};}
+Rect TaskPaneRect() {return {160,126,390,646};}
+Rect ContentRect() {return DesktopShell::ContentArea();}
+Rect StatusRect() {return {160,646,1254,672};}
+// Значок, тип и размер объекта проводника
+xp::IconKind EntryIcon(const ShellBrowser::Entry& e) {
+    auto lower=[](std::string v){for(char& c:v)if(c>='A' && c<='Z')c=char(c+32);return v;};
+    if(e.kind==ShellBrowser::Kind::Drive) {
+        const char d=e.name.empty()?'C':e.name[0];
+        return d=='S'?xp::IconKind::SdCard:d=='R' || e.readOnly?xp::IconKind::CdDrive:xp::IconKind::HardDrive;
+    }
+    const auto name=lower(e.name);
+    if(e.kind==ShellBrowser::Kind::Directory) {
+        if(name=="my documents" || name=="мои документы")return xp::IconKind::Documents;
+        if(name=="my pictures" || name=="мои рисунки")return xp::IconKind::Pictures;
+        if(name=="programs" || name=="program files")return xp::IconKind::Programs;
+        return xp::IconKind::Folder;
+    }
+    auto ends=[&](const char* ext){const size_t n=std::strlen(ext);return name.size()>n && name.compare(name.size()-n,n,ext)==0;};
+    if(ends(".exe"))return xp::IconKind::Application;
+    if(ends(".txt") || ends(".ini") || ends(".log"))return xp::IconKind::TextFile;
+    if(ends(".bmp") || ends(".png") || ends(".jpg") || ends(".jpeg") || ends(".gif"))return xp::IconKind::ImageFile;
+    if(ends(".lnk"))return xp::IconKind::Application;
+    return xp::IconKind::File;
+}
+std::u16string EntryType(const ShellBrowser::Entry& e) {
+    switch(EntryIcon(e)) {
+    case xp::IconKind::HardDrive:return u"Локальный диск";
+    case xp::IconKind::SdCard:return u"SD-карта";
+    case xp::IconKind::CdDrive:return u"Только чтение (ROMFS)";
+    case xp::IconKind::Folder:case xp::IconKind::Documents:case xp::IconKind::Pictures:case xp::IconKind::Programs:return u"Папка с файлами";
+    case xp::IconKind::Application:return u"Приложение";
+    case xp::IconKind::TextFile:return u"Текстовый документ";
+    case xp::IconKind::ImageFile:return u"Рисунок";
+    default:return u"Файл";
+    }
+}
+std::u16string FormatBytes(uint64_t v) {
+    char out[48];
+    if(v>=1024ull*1024*1024)std::snprintf(out,sizeof(out),"%.1f ГБ",double(v)/(1024.0*1024*1024));
+    else if(v>=1024*1024)std::snprintf(out,sizeof(out),"%.1f МБ",double(v)/(1024.0*1024));
+    else if(v>=1024)std::snprintf(out,sizeof(out),"%.1f КБ",double(v)/1024);
+    else std::snprintf(out,sizeof(out),"%llu байт",static_cast<unsigned long long>(v));
+    return Wide(out);
+}
+std::u16string EntrySize(const ShellBrowser::Entry& e) {
+    if(e.kind==ShellBrowser::Kind::Directory)return u"";
+    if(e.kind==ShellBrowser::Kind::Drive)return e.readOnly && !e.size?u"":u"Свободно: "+FormatBytes(e.size);
+    return FormatBytes(e.size);
+}
 void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
     for(int iy=0;iy<32;++iy)for(int ix=0;ix<32;++ix) {
         const int px=x+ix,py=y+iy;
@@ -101,7 +172,7 @@ void Icon(Surface& s,int x,int y,const uint32_t* pixels) {
 
 Rect DesktopShell::Bounds(int t) {
     switch(t) {
-    case FolderTreeButton:return {652,150,758,178};
+    case FolderTreeButton:return {450,63,540,91};
     case TreeExpand:return {416,504,554,540};
     case TreeCollapse:return {560,504,698,540};
     case TreeOpen:return {704,504,834,540};
@@ -121,14 +192,14 @@ Rect DesktopShell::Bounds(int t) {
     case AssociationChange:return {600,392,790,428};
     case AssociationForget:return {798,392,1006,428};
     case PreferenceSave:return {416,504,630,540};
-    case FileActions:return {876,108,984,138};
-    case FolderActions:return {992,108,1106,138};
-    case Copy:return {522,578,628,614};
-    case Paste:return {636,578,744,614};
-    case NewFolder:return {240,430,406,458};
-    case Rename:return {240,462,406,490};
-    case Delete:return {240,494,406,522};
-    case Properties:return {240,526,406,554};
+    case FileActions:return {162,40,212,58};
+    case FolderActions:return {214,40,276,58};
+    case Copy:return {178,258,378,278};
+    case Paste:return {178,280,378,300};
+    case NewFolder:return {178,214,378,234};
+    case Rename:return {178,236,378,256};
+    case Delete:return {178,302,378,322};
+    case Properties:return {178,324,378,344};
     case ConfirmDelete:return {664,504,828,540};
     case CancelDialog:return {840,504,1006,540};
     case GuestTask:return {158,684,468,716};
@@ -142,27 +213,27 @@ Rect DesktopShell::Bounds(int t) {
     case MenuRun:return {250,474,466,518};
     case About:return {16,430,234,482};
     case Exit:return {266,632,466,668};
-    case Close:return {1118,108,1150,138};
-    case Launch:return {954,578,1138,614};
-    case Previous:return {240,578,364,614};
-    case Next:return {374,578,498,614};
-    case OpenWith:return {752,578,944,614};
-    case NavBack:return {240,150,326,178};
-    case NavUp:return {332,150,406,178};
-    case Refresh:return {412,150,516,178};
-    case Sort:return {522,150,644,178};
-    case Address:return {766,150,1138,178};
-    case QuickComputer:return {240,194,406,230};
-    case QuickDocuments:return {240,238,406,274};
-    case QuickC:return {240,300,406,336};
-    case QuickS:return {240,344,406,380};
-    case QuickR:return {240,388,406,424};
+    case Close:return {1226,12,1250,34};
+    case Launch:return {178,170,378,190};
+    case Previous:return {1170,649,1208,669};
+    case Next:return {1212,649,1250,669};
+    case OpenWith:return {178,192,378,212};
+    case NavBack:return {162,63,262,91};
+    case NavUp:return {306,63,344,91};
+    case Refresh:return {1162,99,1252,123};
+    case Sort:return {552,63,680,91};
+    case Address:return {216,99,1158,123};
+    case QuickComputer:return {178,392,378,412};
+    case QuickDocuments:return {178,414,378,434};
+    case QuickC:return {178,436,378,456};
+    case QuickS:return {178,458,378,478};
+    case QuickR:return {178,480,378,500};
     default:
         if(t>=DesktopLinkBase && t<DesktopLinkBase+24){const int n=t-DesktopLinkBase;return {160+(n/5)*132,26+(n%5)*112,272+(n/5)*132,116+(n%5)*112};}
         if(t>=TreeRowBase && t<TreeRowBase+7)return {416,270+(t-TreeRowBase)*30,1006,300+(t-TreeRowBase)*30};
         if(t>=TextLineBase && t<TextLineBase+5)return {416,300+(t-TextLineBase)*28,1006,328+(t-TextLineBase)*28};
-        if(t>=BrowserRowBase && t<BrowserRowBase+Rows)return {422,184+(t-BrowserRowBase)*26,1138,210+(t-BrowserRowBase)*26};
-        if(t>=RowBase && t<RowBase+Rows)return {240,184+(t-RowBase)*26,1138,210+(t-RowBase)*26};
+        if(t>=BrowserRowBase && t<BrowserRowBase+Rows){const int n=t-BrowserRowBase,col=n%2,row=n/2;return {400+col*352,134+row*72,400+col*352+344,134+row*72+68};}
+        if(t>=RowBase && t<RowBase+Rows)return {400,134+(t-RowBase)*36,1246,168+(t-RowBase)*36};
         return {};
     }
 }
@@ -491,7 +562,7 @@ void DesktopShell::ShowContext(bool folder,int x,int y) {
         add(Properties);
     }
     const int height=8+int(contextCount_)*30;
-    x=std::max(422,std::min(x,1138-252));y=std::max(184,std::min(y,554-height));
+    x=std::max(ContentRect().left,std::min(x,ContentRect().right-252));y=std::max(ContentRect().top,std::min(y,ContentRect().bottom-height));
     contextRect_={x,y,x+252,y+height};contextOpen_=true;pressed_=hover_=None;
     const auto order=FocusOrder();focus_=order.front();
 }
@@ -501,7 +572,7 @@ void DesktopShell::OpenContext(bool folder) {
     ShowContext(folder || focus_==FolderActions,row.left+40,row.top);
 }
 int DesktopShell::SecondaryTarget(int x,int y) const {
-    if(!Rect(422,184,1138,554).Contains(x,y))return -2;
+    if(!ContentRect().Contains(x,y))return -2;
     const int target=HitTest(x,y);
     return target>=BrowserRowBase && target<BrowserRowBase+Rows && Enabled(target)?target:-1;
 }
@@ -800,7 +871,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     xp::DrawWallpaper(s,{0,0,Width,680});
 
     // подсказки управления и строка состояния — с тенью, чтобы читались на обоях
-    if(!guestActive_) {
+    if(!guestActive_ && panel_==Panel::Desktop) {
         const std::u16string hints=u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход";
         Text(s,{23,641,1251,664},hints,0x0A1F3A,14);Text(s,{22,640,1250,663},hints,0xF2F7FC,14);
     }
@@ -808,11 +879,9 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     Text(s,{23,664,1251,681},status,0x0A1F3A,12);Text(s,{22,663,1250,680},status,0xE4EEF8,12);
     auto control=[&](int target,std::u16string label,Rect r) {
         const bool enabled=Enabled(target),hot=hover_==target && enabled,down=pressed_==target && hot;
-        Gradient(s,r,target==Close?(down?0xA22917:0xEE9A84):down?0x255BB3:hot?0xFCFCFF:0xFFFFFF,
-                 target==Close?0xC43A22:down?0x3E79CF:0xE4E1D1);
-        Frame(s,r,enabled?0x3465A4:0xA0ABBA);
-        if(focus_==target && enabled)Frame(s,{r.left+3,r.top+3,r.right-3,r.bottom-3},0x6684AE);
-        Text(s,{r.left+10,r.top+7,r.right-7,r.bottom-2},label,target==Close?0xFFFFFF:!enabled?0x8793A0:down?0xFFFFFF:0x162B47,15,true);
+        xp::DrawPushButton(s,r,enabled,hot,down,focus_==target && enabled);
+        const int w=TextWidth(label,14,false);
+        Text(s,{std::max(r.left+6,r.left+(r.Width()-w)/2)+(down?1:0),r.top+(r.Height()-17)/2+(down?1:0),r.right-4,r.bottom-2},label,enabled?0x000000:0xA19F92,14);
     };
     // Значки рабочего стола: 48 px по центру ячейки, подпись под ним
     auto desktopIcon=[&](int target,xp::IconKind kind,const std::u16string& label,bool link) {
@@ -830,89 +899,198 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         desktopIcon(DesktopLinkBase+int(i),xp::IconKind::Application,Wide(name.substr(0,name.size()-4)),true);
     }
     if(panel_!=Panel::Desktop) {
-        Fill(s,{224,106,1166,630},0x13385B);
-        Fill(s,{218,100,1160,624},0xECE9D8);Frame(s,{218,100,1160,624},0x0646A4);
-        Gradient(s,{220,102,1158,112},0x5C9CFF,0x0A5AE7);
-        Gradient(s,{220,112,1158,146},0x0868F4,0x0347BD);
-        Text(s,{234,110,1100,142},panel_==Panel::Programs?u"Все программы — запуск EXE":panel_==Panel::Explorer?u"Проводник":u"О Switch Recompiler",0xFFFFFF,20,true);
-        control(Close,u"×",Bounds(Close));
-        if(panel_==Panel::Explorer){control(FileActions,u"Файл",Bounds(FileActions));control(FolderActions,u"Папка",Bounds(FolderActions));}
-        if(panel_==Panel::Programs) {
-            Fill(s,{240,184,1138,554},0xFFFFFF);Frame(s,{239,183,1139,555},0x9EACB9);
-            Text(s,{240,151,1138,179},u"ROMFS / SD / drive_c/Programs  •  Список доступных программ",0x42576B,14);
-            for(size_t i=First();i<files_.size() && i<First()+Rows;++i) {
-                const int target=RowBase+int(i-First());const auto r=Bounds(target);
-                const bool chosen=i==selected_;
-                if(chosen)Fill(s,r,0x316AC5);else if(hover_==target)Fill(s,r,0xE6F0FF);
-                if(focus_==target)Frame(s,r,0x92B8EF);
-                Text(s,{r.left+8,r.top+3,r.right-8,r.bottom-1},Wide(files_[i]),chosen?0xFFFFFF:0x203044,14);
-            }
-            if(files_.empty())Text(s,{260,204,1118,250},u"EXE не найдены. Добавьте программу на SD и откройте оболочку снова.",0x536376,16);
-            control(Previous,u"← Назад",Bounds(Previous));control(Next,u"Далее →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
-            char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",files_.empty()?0:selected_+1,files_.size());
-            Text(s,{522,584,682,610},Wide(count),0x42576B,16);
-            Text(s,{242,556,1136,577},(truncated_ || linkTruncated_)?u"Достигнут лимит поиска: список неполный.":(errors_ || linkErrors_)?u"Часть каталогов недоступна: список может быть неполным.":u"Новый UI по умолчанию. L: прежний режим; ZL: программный вывод.",0x5A6574,13);
-        } else if(panel_==Panel::Explorer) {
-            control(FolderTreeButton,u"Папки",Bounds(FolderTreeButton));
-            control(NavBack,u"← Назад",Bounds(NavBack));control(NavUp,u"Вверх",Bounds(NavUp));
-            control(Refresh,u"Обновить",Bounds(Refresh));
-            control(Sort,browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",Bounds(Sort));
-            control(Address,browser_.Path().empty()?u"Мой компьютер":Wide(browser_.Path()),Bounds(Address));
-            Fill(s,{240,184,406,554},0xD8E8F7);
-            control(QuickComputer,u"Мой компьютер",Bounds(QuickComputer));
-            control(QuickDocuments,u"Мои документы",Bounds(QuickDocuments));
-            control(QuickC,u"C:  Система",Bounds(QuickC));control(QuickS,u"S:  SD-карта",Bounds(QuickS));
-            control(QuickR,u"R:  ROMFS",Bounds(QuickR));
-            control(NewFolder,u"Новая папка…",Bounds(NewFolder));control(Rename,u"Переименовать…",Bounds(Rename));
-            control(Delete,u"Удалить…",Bounds(Delete));control(Properties,u"Свойства",Bounds(Properties));
-            Fill(s,{422,184,1138,554},0xFFFFFF);Frame(s,{421,183,1139,555},0x9EACB9);
+        // Окно в стиле Windows XP: заголовок, строка меню, панель кнопок,
+        // адресная строка, синяя панель задач слева, содержимое справа
+        const Rect win=WindowRect();
+        xp::DrawWindowFrame(s,win,30);
+        const bool explorer=panel_==Panel::Explorer,programs=panel_==Panel::Programs;
+        const std::u16string location=browser_.Path().empty()?u"Мой компьютер":Wide(browser_.Path());
+        std::u16string title=programs?u"Все программы":explorer?location:u"О программе Switch Recompiler";
+        if(explorer && !browser_.Path().empty()) {
+            auto p=browser_.Path();while(p.size()>3 && (p.back()=='\\' || p.back()=='/'))p.pop_back();
+            const auto cut=p.find_last_of("\\/");if(cut!=std::string::npos && cut+1<p.size())title=Wide(p.substr(cut+1));
+        }
+        xp::DrawIcon(s,explorer?(browser_.Path().empty()?xp::IconKind::Computer:xp::IconKind::FolderOpen):programs?xp::IconKind::Programs:xp::IconKind::Computer,win.left+8,win.top+7,16);
+        Text(s,{win.left+31,win.top+7,win.right-90,win.top+28},title,0x0A246A,15,true);
+        Text(s,{win.left+30,win.top+6,win.right-90,win.top+27},title,0xFFFFFF,15,true);
+        const auto close=Bounds(Close);
+        xp::DrawCaptionButton(s,{close.left-52,close.top,close.left-28,close.bottom},xp::CaptionButton::Minimize,false,false);
+        xp::DrawCaptionButton(s,{close.left-26,close.top,close.left-2,close.bottom},xp::CaptionButton::Maximize,false,false);
+        xp::DrawCaptionButton(s,close,xp::CaptionButton::Close,hover_==Close,pressed_==Close && hover_==Close);
+        if(focus_==Close)xp::DrawFocusRect(s,{close.left-2,close.top-2,close.right+2,close.bottom+2});
+
+        // строка меню: «Файл» и «Правка» открывают меню объекта и папки
+        Fill(s,{win.left+4,win.top+30,win.right-4,win.top+52},0xECE9D8);
+        Fill(s,{win.left+4,win.top+52,win.right-4,win.top+53},0xD6D2C2);
+        auto menuItem=[&](int target,const std::u16string& label,Rect r) {
+            const bool on=target!=None && Enabled(target);
+            if(on && (hover_==target || pressed_==target))Fill(s,r,0x316AC5);
+            Text(s,{r.left+7,r.top+2,r.right,r.bottom},label,on && (hover_==target || pressed_==target)?0xFFFFFF:on || target==None?0x000000:0xA0A0A0,14);
+            if(on && focus_==target)xp::DrawFocusRect(s,r);
+        };
+        menuItem(explorer?FileActions:None,u"Файл",Bounds(FileActions));
+        menuItem(explorer?FolderActions:None,u"Правка",Bounds(FolderActions));
+        int mx=Bounds(FolderActions).right+4;
+        for(const char16_t* m:{u"Вид",u"Избранное",u"Сервис",u"Справка"}) {
+            const int w=TextWidth(m,14,false)+14;menuItem(None,m,{mx,win.top+32,mx+w,win.top+50});mx+=w+2;
+        }
+
+        // панель кнопок
+        Fill(s,{win.left+4,win.top+53,win.right-4,win.top+92},0xECE9D8);
+        Fill(s,{win.left+4,win.top+92,win.right-4,win.top+93},0xD6D2C2);
+        auto toolButton=[&](int target,xp::ToolGlyph glyph,const std::u16string& label,Rect r) {
+            const bool on=target!=None && Enabled(target);
+            xp::DrawToolButton(s,r,on && hover_==target,on && pressed_==target && hover_==target);
+            xp::DrawToolGlyph(s,glyph,r.left+5,r.top+(r.Height()-24)/2,24,on);
+            if(!label.empty())Text(s,{r.left+33,r.top+9,r.right-2,r.bottom},label,on?0x000000:0xA0A0A0,14);
+            if(on && focus_==target)xp::DrawFocusRect(s,{r.left+2,r.top+2,r.right-2,r.bottom-2});
+        };
+        const auto back=Bounds(NavBack);
+        toolButton(explorer?NavBack:None,xp::ToolGlyph::Back,u"Назад",back);
+        toolButton(None,xp::ToolGlyph::Forward,u"",{back.right+2,back.top,back.right+40,back.bottom});
+        toolButton(explorer?NavUp:None,xp::ToolGlyph::Up,u"",Bounds(NavUp));
+        xp::DrawToolSeparator(s,Bounds(NavUp).right+5,back.top+3,back.bottom-3);
+        toolButton(None,xp::ToolGlyph::Search,u"Поиск",{Bounds(NavUp).right+11,back.top,Bounds(FolderTreeButton).left-2,back.bottom});
+        toolButton(explorer?FolderTreeButton:None,xp::ToolGlyph::Folders,u"Папки",Bounds(FolderTreeButton));
+        xp::DrawToolSeparator(s,Bounds(FolderTreeButton).right+5,back.top+3,back.bottom-3);
+        toolButton(explorer?Sort:None,xp::ToolGlyph::Views,!explorer?u"":browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",Bounds(Sort));
+
+        // адресная строка с кнопкой «Переход» (обновляет текущую папку)
+        Fill(s,{win.left+4,win.top+93,win.right-4,win.top+122},0xECE9D8);
+        Text(s,{win.left+10,win.top+99,win.left+60,win.top+120},u"Адрес",0x7A7A7A,14);
+        const auto address=Bounds(Address);
+        xp::DrawEditField(s,address);
+        xp::DrawIcon(s,explorer?(browser_.Path().empty()?xp::IconKind::Computer:xp::IconKind::Folder):xp::IconKind::Programs,address.left+3,address.top+4,16);
+        Text(s,{address.left+24,address.top+4,address.right-6,address.bottom},explorer?location:programs?u"Все программы (ROMFS, SD, C:\\Programs)":u"Switch Recompiler",0x000000,14);
+        if(explorer && hover_==Address)Frame(s,address,0x316AC5);
+        if(explorer && focus_==Address)xp::DrawFocusRect(s,{address.left+2,address.top+2,address.right-2,address.bottom-2});
+        const auto go=Bounds(Refresh);
+        xp::DrawToolButton(s,go,explorer && hover_==Refresh,explorer && pressed_==Refresh && hover_==Refresh);
+        xp::DrawToolGlyph(s,xp::ToolGlyph::Go,go.left+4,go.top+3,18,explorer);
+        Text(s,{go.left+26,go.top+4,go.right,go.bottom},u"Переход",explorer?0x000000:0xA0A0A0,14);
+        if(explorer && focus_==Refresh)xp::DrawFocusRect(s,go);
+
+        // тело окна: синяя панель задач слева, белая область справа
+        const Rect pane=TaskPaneRect(),content=ContentRect(),status=StatusRect();
+        xp::DrawTaskPane(s,pane);
+        Fill(s,content,0xFFFFFF);
+        Fill(s,{content.left-1,content.top,content.left,content.bottom},0x7F9DB9);
+        auto group=[&](int top,int bottom,const std::u16string& caption,bool special) {
+            xp::DrawTaskGroup(s,{pane.left+10,top,pane.right-10,bottom},25,special);
+            Text(s,{pane.left+20,top+6,pane.right-32,top+24},caption,special?0xFFFFFF:0x215DC6,12,true);
+        };
+        auto link=[&](int target,xp::IconKind icon,const std::u16string& label) {
+            const auto r=Bounds(target);const bool on=Enabled(target),hot=on && (hover_==target || pressed_==target);
+            xp::DrawIcon(s,icon,r.left,r.top+1,16);
+            const uint32_t color=!on?0x8D9AC0:hot?0x428EFF:0x215DC6;
+            Text(s,{r.left+22,r.top+2,r.right,r.bottom},label,color,13);
+            if(hot)Fill(s,{r.left+22,r.bottom-3,std::min(r.right,r.left+22+TextWidth(label,13,false)),r.bottom-2},color);
+            if(on && focus_==target)xp::DrawFocusRect(s,{r.left+20,r.top,std::min(r.right,r.left+26+TextWidth(label,13,false)),r.bottom});
+        };
+        auto details=[&](int top,const std::u16string& heading,const std::u16string& text) {
+            group(top,pane.bottom-10,u"Подробно",false);
+            Text(s,{pane.left+20,top+32,pane.right-20,top+50},heading,0x000000,13,true);
+            WrapText(s,{pane.left+20,top+52,pane.right-20,pane.bottom-14},text,0x000000,12);
+        };
+        if(explorer) {
+            group(Bounds(Launch).top-30,Bounds(Properties).bottom+6,u"Задачи для файлов и папок",true);
+            link(Launch,xp::IconKind::Application,u"Открыть");
+            link(OpenWith,xp::IconKind::Application,u"Открыть с помощью…");
+            link(NewFolder,xp::IconKind::Folder,u"Создать новую папку");
+            link(Rename,xp::IconKind::File,u"Переименовать");
+            link(Copy,xp::IconKind::File,u"Копировать");
+            link(Paste,xp::IconKind::FolderOpen,u"Вставить");
+            link(Delete,xp::IconKind::RecycleBin,u"Удалить");
+            link(Properties,xp::IconKind::File,u"Свойства");
+            group(Bounds(QuickComputer).top-30,Bounds(QuickR).bottom+6,u"Другие места",false);
+            link(QuickComputer,xp::IconKind::Computer,u"Мой компьютер");
+            link(QuickDocuments,xp::IconKind::Documents,u"Мои документы");
+            link(QuickC,xp::IconKind::HardDrive,u"Локальный диск (C:)");
+            link(QuickS,xp::IconKind::SdCard,u"SD-карта (S:)");
+            link(QuickR,xp::IconKind::CdDrive,u"ROMFS (R:)");
+
+            // содержимое: плитки — крупный значок, имя, тип и размер
             const auto& entries=browser_.Entries();const size_t first=browser_.Selected()/Rows*Rows;
             for(size_t i=first;i<entries.size() && i<first+Rows;++i) {
                 const auto& e=entries[i];const int target=BrowserRowBase+int(i-first);const auto r=Bounds(target);
                 const bool chosen=i==browser_.Selected();
-                if(chosen)Fill(s,r,0x316AC5);else if(hover_==target)Fill(s,r,0xE6F0FF);
-                if(focus_==target)Frame(s,r,0x92B8EF);
-                const uint32_t color=chosen?0xFFFFFF:0x203044;
-                Text(s,{r.left+8,r.top+3,860,r.bottom-1},Wide(e.name),color,14);
-                const bool exe=ShellBrowser::IsExecutable(e.path);
-                Text(s,{866,r.top+3,994,r.bottom-1},e.kind==ShellBrowser::Kind::Drive?u"Том":e.kind==ShellBrowser::Kind::Directory?u"Папка":exe?u"Приложение":u"Документ",color,13);
-                if(e.kind!=ShellBrowser::Kind::Directory) {
-                    char size[48];
-                    if(e.size>=1024*1024*1024ull)std::snprintf(size,sizeof(size),"%.1f GiB",double(e.size)/(1024*1024*1024ull));
-                    else if(e.size>=1024*1024)std::snprintf(size,sizeof(size),"%.1f MiB",double(e.size)/(1024*1024));
-                    else if(e.size>=1024)std::snprintf(size,sizeof(size),"%.1f KiB",double(e.size)/1024);
-                    else std::snprintf(size,sizeof(size),"%llu B",static_cast<unsigned long long>(e.size));
-                    Text(s,{1000,r.top+3,r.right-5,r.bottom-1},e.kind==ShellBrowser::Kind::Drive && e.readOnly?u"только чтение":Wide(size),color,12);
-                }
+                xp::DrawIcon(s,EntryIcon(e),r.left+6,r.top+(r.Height()-48)/2,48,chosen);
+                const int tx=r.left+62;
+                const auto name=Wide(e.name);
+                const int nw=std::min(r.right-tx,TextWidth(name,14,false)+4);
+                if(chosen)Fill(s,{tx-2,r.top+10,tx+nw,r.top+28},0x316AC5);
+                Text(s,{tx,r.top+11,r.right-4,r.top+28},name,chosen?0xFFFFFF:0x000000,14);
+                Text(s,{tx,r.top+30,r.right-4,r.top+46},EntryType(e),0x7F7F7F,12);
+                const auto extra=EntrySize(e);
+                if(!extra.empty())Text(s,{tx,r.top+46,r.right-4,r.top+62},extra,0x7F7F7F,12);
+                if(focus_==target)xp::DrawFocusRect(s,{tx-2,r.top+10,tx+nw,r.top+28});
             }
-            if(entries.empty())Text(s,{440,204,1118,252},browser_.Errors() || browser_.Truncated()?u"Нет записей для отображения. См. сообщение ниже.":u"Папка пуста.",0x536376,16);
+            if(entries.empty())Text(s,{content.left+20,content.top+20,content.right-20,content.top+44},browser_.Errors() || browser_.Truncated()?u"Нет объектов для отображения.":u"Эта папка пуста.",0x7F7F7F,14);
+
             std::u16string note;
             if(browser_.LastError()!=ShellBrowser::Error::None)note=ShellBrowser::ErrorText(browser_.LastError());
             else if(browser_.PreferenceWarning())note=browser_.PreferenceText();
             else if(!operationNotice_.empty())note=operationNotice_;
             else {
-                if(browser_.Truncated())note+=u"Лимит просмотра: список неполный. ";
-                if(browser_.Errors())note+=u"Некоторые записи недоступны. ";
+                if(browser_.Truncated())note+=u"Список неполный: достигнут предел просмотра. ";
+                if(browser_.Errors())note+=u"Некоторые объекты недоступны. ";
                 if(note.empty() && browser_.CanChooseApplication()) {
                     const auto app=browser_.ApplicationFor(browser_.SelectedDocument());
-                    note=app.empty()?u"Открыть: выбрать приложение. Ассоциации сохраняются в профиле.":u"Приложение: "+Wide(app.substr(app.find_last_of('\\')+1))+u"";
+                    note=app.empty()?u"Для этого файла не выбрана программа: «Открыть с помощью…».":u"Открывается программой "+Wide(app.substr(app.find_last_of('\\')+1))+u".";
                 }
-                if(note.empty())note=browser_.Path().empty()?u"Для томов показано доступное место. R: только чтение.":browser_.ReadOnly()?u"Только чтение. Адресная строка открывает ввод пути.":u"Документы: Открыть или Выбрать приложение. Настройки — в Пуске.";
+                if(note.empty() && !entries.empty() && browser_.Selected()<entries.size())note=EntryType(entries[browser_.Selected()])+u". "+EntrySize(entries[browser_.Selected()]);
             }
-            Text(s,{240,556,1138,577},note,browser_.LastError()!=ShellBrowser::Error::None?0xA33C22:0x5A6574,13);
-            control(OpenWith,u"Выбрать приложение",Bounds(OpenWith));
-            control(Previous,u"← Страница",Bounds(Previous));control(Next,u"Страница →",Bounds(Next));control(Launch,u"Открыть",Bounds(Launch));
-            char count[80];std::snprintf(count,sizeof(count),"%zu / %zu",entries.empty()?0:browser_.Selected()+1,entries.size());
-            Text(s,{242,278,404,298},Wide(count),0x42576B,12);
-            control(Copy,u"Копировать",Bounds(Copy));control(Paste,u"Вставить…",Bounds(Paste));
+            const std::u16string heading=entries.empty() || browser_.Selected()>=entries.size()?title:Wide(entries[browser_.Selected()].name);
+            details(Bounds(QuickR).bottom+18,heading,note);
+            xp::DrawStatusBar(s,status);
+            char count[96];std::snprintf(count,sizeof(count),"Объектов: %zu",entries.size());
+            Text(s,{status.left+8,status.top+5,status.left+300,status.bottom},Wide(count),browser_.LastError()!=ShellBrowser::Error::None?0xA33C22:0x000000,13);
+        } else if(programs) {
+            group(Bounds(Launch).top-30,Bounds(Launch).bottom+6,u"Задачи для программ",true);
+            link(Launch,xp::IconKind::Application,u"Запустить программу");
+            const std::u16string note=(truncated_ || linkTruncated_)?u"Достигнут предел поиска: список неполный.":(errors_ || linkErrors_)?u"Часть папок недоступна: список может быть неполным.":u"Программы из ROMFS, с SD-карты и из C:\\Programs. L при запуске — прежний режим, ZL — программный вывод.";
+            details(Bounds(Launch).bottom+18,files_.empty()?u"Программы не найдены":Wide(files_[selected_].substr(files_[selected_].find_last_of("\\/")+1)),note);
+            for(size_t i=First();i<files_.size() && i<First()+Rows;++i) {
+                const int target=RowBase+int(i-First());const auto r=Bounds(target);
+                const bool chosen=i==selected_;
+                xp::DrawIcon(s,xp::IconKind::Application,r.left+4,r.top+(r.Height()-24)/2,24,chosen);
+                // имя файла, а за ним серым — папка, где он лежит
+                const auto cut=files_[i].find_last_of("\\/");
+                const auto name=Wide(cut==std::string::npos?files_[i]:files_[i].substr(cut+1));
+                const int nw=std::min(r.right-r.left-36,TextWidth(name,14,false)+4);
+                if(chosen)Fill(s,{r.left+32,r.top+7,r.left+34+nw,r.top+25},0x316AC5);
+                Text(s,{r.left+34,r.top+8,r.right-4,r.top+26},name,chosen?0xFFFFFF:0x000000,14);
+                if(cut!=std::string::npos)Text(s,{r.left+44+nw,r.top+9,r.right-4,r.top+26},Wide(files_[i].substr(0,cut)),0x7F7F7F,12);
+                if(focus_==target)xp::DrawFocusRect(s,{r.left+32,r.top+7,r.left+34+nw,r.top+25});
+            }
+            if(files_.empty())Text(s,{content.left+20,content.top+20,content.right-20,content.top+44},u"Программы не найдены. Добавьте EXE на SD-карту и откройте оболочку снова.",0x7F7F7F,14);
+            xp::DrawStatusBar(s,status);
+            char count[96];std::snprintf(count,sizeof(count),"Программа %zu из %zu",files_.empty()?0:selected_+1,files_.size());
+            Text(s,{status.left+8,status.top+5,status.left+300,status.bottom},Wide(count),0x000000,13);
         } else {
-            Icon(s,256,184,shell_art::computer);
-            Text(s,{312,184,1120,220},u"Switch Recompiler",0x123D75,26,true);
-            Text(s,{256,254,1120,288},u"Native-оболочка для поддерживаемых Win32-приложений.",0x24354A,19);
-            Text(s,{256,306,1120,336},u"Постоянный C: — SD / switch-recompiler / drive_c",0x24354A,17);
-            Text(s,{256,346,1120,376},u"S: — реальная SD-карта    •    R: — ROMFS, только чтение",0x24354A,17);
-            Text(s,{256,410,1120,442},u"Иконки Tango: Public Domain. Шрифты Liberation: OFL.",0x526477,16);
-            Text(s,{256,454,1120,484},u"После выхода из приложения вы вернётесь в прежнюю папку.",0x526477,16);
+            group(pane.top+12,pane.top+140,u"Switch Recompiler",true);
+            Text(s,{pane.left+20,pane.top+46,pane.right-20,pane.top+64},u"Версия для Nintendo Switch",0x000000,13);
+            details(pane.top+156,u"Сведения",u"Значки и обои нарисованы в духе Windows XP; картинки Microsoft не используются. Шрифты Liberation: OFL.");
+            xp::DrawIcon(s,xp::IconKind::Computer,content.left+30,content.top+30,48);
+            Text(s,{content.left+96,content.top+36,content.right-20,content.top+70},u"Switch Recompiler",0x0A246A,26,true);
+            Text(s,{content.left+96,content.top+100,content.right-20,content.top+126},u"Оболочка для запуска поддерживаемых программ Win32.",0x000000,16);
+            Text(s,{content.left+96,content.top+140,content.right-20,content.top+164},u"C: — постоянный диск: SD / switch-recompiler / drive_c",0x000000,15);
+            Text(s,{content.left+96,content.top+170,content.right-20,content.top+194},u"S: — SD-карта целиком    •    R: — ROMFS, только чтение",0x000000,15);
+            Text(s,{content.left+96,content.top+220,content.right-20,content.top+244},u"После выхода из программы вы вернётесь в прежнюю папку.",0x4D4D4D,15);
+            xp::DrawStatusBar(s,status);
+        }
+        if(explorer || programs) {
+            // листание страниц в строке состояния
+            auto pageButton=[&](int target,const std::u16string& label) {
+                const auto r=Bounds(target);const bool on=Enabled(target);
+                xp::DrawPushButton(s,r,on,on && hover_==target,on && pressed_==target && hover_==target,on && focus_==target);
+                Text(s,{r.left+(r.Width()-TextWidth(label,12,true))/2,r.top+3,r.right,r.bottom},label,on?0x000000:0xA0A0A0,12,true);
+            };
+            const size_t total=explorer?browser_.Entries().size():files_.size(),first=explorer?browser_.Selected()/Rows*Rows:First();
+            char page[64];std::snprintf(page,sizeof(page),"%zu–%zu",total?first+1:0,std::min(total,first+size_t(Rows)));
+            const auto prev=Bounds(Previous);
+            Text(s,{prev.left-120,status.top+5,prev.left-8,status.bottom},Wide(page),0x000000,13);
+            pageButton(Previous,u"◄");pageButton(Next,u"►");
         }
     }
     // Панель задач Luna: зелёная «пуск», кнопка программы, трей с часами
@@ -958,9 +1136,10 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         }
     }
     if(dialog_!=Dialog::None) {
-        Fill(s,{402,202,1034,552},0x13385B);Fill(s,{396,196,1028,546},0xECE9D8);
-        Frame(s,{396,196,1028,546},0x0646A4);Gradient(s,{398,198,1026,236},0x0868F4,0x0347BD);
-        Text(s,{410,204,1010,232},dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::ImageViewer?u"Просмотр BMP":dialog_==Dialog::FolderTree?u"Дерево папок":u"Свойства",0xFFFFFF,19,true);
+        // диалог — окно XP поверх проводника
+        xp::DrawWindowFrame(s,{396,196,1028,546},34);
+        const std::u16string dialogTitle=dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::ImageViewer?u"Просмотр BMP":dialog_==Dialog::FolderTree?u"Дерево папок":u"Свойства";
+        Text(s,{411,204,1010,230},dialogTitle,0x0A246A,16,true);Text(s,{410,203,1009,229},dialogTitle,0xFFFFFF,16,true);
         const auto slash=operationPath_.find_last_of('\\');
         if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::FolderTree)Text(s,{416,250,1006,278},Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
         if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::FolderTree)Text(s,{416,282,1006,304},Wide(operationPath_),0x42576B,13);

@@ -183,5 +183,253 @@ void DrawTray(Surface& s, const Rect& r) {
     Fill(s, Rect(r.left + 1, r.top, r.left + 2, r.bottom), 0x3CC1FF);
 }
 
+
+// --- Окна ---
+
+namespace {
+// Скруглённый прямоугольник: покрытие пикселя (x, y) с радиусом rad
+float RoundCover(const Rect& r, int x, int y, float rad, bool top, bool bottom) {
+    float px = x + 0.5f, py = y + 0.5f;
+    float cx = px, cy = py;
+    if (top && py < r.top + rad) cy = r.top + rad;
+    else if (bottom && py > r.bottom - rad) cy = r.bottom - rad;
+    else return 1;
+    if (px < r.left + rad) cx = r.left + rad;
+    else if (px > r.right - rad) cx = r.right - rad;
+    else return 1;
+    return std::min(1.0f, std::max(0.0f, rad - std::hypot(px - cx, py - cy) + 0.5f));
+}
+void Blend(Surface& s, int x, int y, uint32_t c, float a) {
+    if (x < 0 || y < 0 || x >= s.width || y >= s.height || a <= 0) return;
+    s.Set(x, y, a >= 1 ? c : Mix(s.Get(x, y), c, a));
+}
+void Frame(Surface& s, const Rect& r, uint32_t c) {
+    Fill(s, Rect(r.left, r.top, r.right, r.top + 1), c);
+    Fill(s, Rect(r.left, r.bottom - 1, r.right, r.bottom), c);
+    Fill(s, Rect(r.left, r.top, r.left + 1, r.bottom), c);
+    Fill(s, Rect(r.right - 1, r.top, r.right, r.bottom), c);
+}
+// Заливка скруглённого прямоугольника вертикальным градиентом по опорным точкам
+template <size_t N>
+void RoundRamp(Surface& s, const Rect& r, float rad, const Stop (&stops)[N], bool top = true, bool bottom = true) {
+    for (int y = r.top; y < r.bottom; ++y) {
+        uint32_t c = Ramp(stops, static_cast<float>(y - r.top) / std::max(1, r.Height() - 1));
+        for (int x = r.left; x < r.right; ++x) Blend(s, x, y, c, RoundCover(r, x, y, rad, top, bottom));
+    }
+}
+void Disc(Surface& s, float cx, float cy, float rad, uint32_t c0, uint32_t c1) {
+    for (int y = static_cast<int>(cy - rad - 1); y <= static_cast<int>(cy + rad + 1); ++y)
+        for (int x = static_cast<int>(cx - rad - 1); x <= static_cast<int>(cx + rad + 1); ++x) {
+            float d = std::hypot(x + 0.5f - cx, y + 0.5f - cy);
+            Blend(s, x, y, Mix(c0, c1, (y - (cy - rad)) / (2 * rad)), std::min(1.0f, std::max(0.0f, rad - d + 0.5f)));
+        }
+}
+// Толстая сглаженная линия
+void Thick(Surface& s, float x0, float y0, float x1, float y1, float w, uint32_t c) {
+    int minx = static_cast<int>(std::min(x0, x1) - w - 1), maxx = static_cast<int>(std::max(x0, x1) + w + 1);
+    int miny = static_cast<int>(std::min(y0, y1) - w - 1), maxy = static_cast<int>(std::max(y0, y1) + w + 1);
+    float vx = x1 - x0, vy = y1 - y0, len2 = std::max(1e-6f, vx * vx + vy * vy);
+    for (int y = miny; y <= maxy; ++y)
+        for (int x = minx; x <= maxx; ++x) {
+            float px = x + 0.5f - x0, py = y + 0.5f - y0;
+            float t = std::max(0.0f, std::min(1.0f, (px * vx + py * vy) / len2));
+            float d = std::hypot(px - vx * t, py - vy * t);
+            Blend(s, x, y, c, std::min(1.0f, std::max(0.0f, w / 2 - d + 0.5f)));
+        }
+}
+
+const Stop kTitle[] = {{0.0f, 0x0997FF}, {0.08f, 0x0053EE}, {0.4f, 0x0050EE}, {0.86f, 0x0066FF}, {1.0f, 0x0058E8}};
+const Stop kTitleInactive[] = {{0.0f, 0xA9C2F1}, {0.1f, 0x8AABEB}, {0.6f, 0x7A9EE6}, {1.0f, 0x8FB1EF}};
+} // namespace
+
+void DrawWindowFrame(Surface& s, const Rect& r, int titleH, bool active) {
+    const float rad = 8;
+    // заголовок с верхними скруглениями
+    Rect title(r.left, r.top, r.right, r.top + titleH);
+    if (active) RoundRamp(s, title, rad, kTitle, true, false);
+    else RoundRamp(s, title, rad, kTitleInactive, true, false);
+    // рамка окна: синяя, 4 px по бокам и снизу
+    const uint32_t border = active ? 0x0841D2 : 0x7D9CE4;
+    Fill(s, Rect(r.left, r.top + titleH, r.left + 4, r.bottom), border);
+    Fill(s, Rect(r.right - 4, r.top + titleH, r.right, r.bottom), border);
+    Fill(s, Rect(r.left, r.bottom - 4, r.right, r.bottom), border);
+    Fill(s, Rect(r.left + 1, r.top + titleH, r.left + 2, r.bottom - 1), active ? 0x166AEE : 0xA5BDF1);
+    Fill(s, Rect(r.left + 4, r.top + titleH, r.right - 4, r.bottom - 4), 0xECE9D8);
+    // тёмная кромка снаружи
+    Fill(s, Rect(r.left, r.top + titleH, r.left + 1, r.bottom), active ? 0x0019CF : 0x6E8AD3);
+    Fill(s, Rect(r.right - 1, r.top + titleH, r.right, r.bottom), active ? 0x0019CF : 0x6E8AD3);
+    Fill(s, Rect(r.left, r.bottom - 1, r.right, r.bottom), active ? 0x0019CF : 0x6E8AD3);
+}
+
+void DrawCaptionButton(Surface& s, const Rect& r, CaptionButton kind, bool hot, bool pressed) {
+    const Stop blue[] = {{0.0f, 0x7DA8F5}, {0.45f, 0x3D78EC}, {1.0f, 0x2F64E0}};
+    const Stop blueHot[] = {{0.0f, 0xA3C3FB}, {0.45f, 0x5E92F6}, {1.0f, 0x4A7FF0}};
+    const Stop blueDown[] = {{0.0f, 0x1C46B8}, {1.0f, 0x2D5FD8}};
+    const Stop red[] = {{0.0f, 0xF29B84}, {0.45f, 0xE2593B}, {1.0f, 0xC93A20}};
+    const Stop redHot[] = {{0.0f, 0xF8B9A6}, {0.45f, 0xEC7558}, {1.0f, 0xD54B30}};
+    const Stop redDown[] = {{0.0f, 0xA62A12}, {1.0f, 0xC53C22}};
+    Rect in(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1);
+    // белая кайма и цветная середина
+    const Stop rim[] = {{0.0f, 0xFFFFFF}, {0.5f, 0xF0F4FF}, {1.0f, 0xE0E8FA}};
+    RoundRamp(s, r, 4, rim);
+    if (kind == CaptionButton::Close) {
+        if (pressed) RoundRamp(s, in, 3, redDown); else if (hot) RoundRamp(s, in, 3, redHot); else RoundRamp(s, in, 3, red);
+    } else {
+        if (pressed) RoundRamp(s, in, 3, blueDown); else if (hot) RoundRamp(s, in, 3, blueHot); else RoundRamp(s, in, 3, blue);
+    }
+    float cx = (r.left + r.right) / 2.0f, cy = (r.top + r.bottom) / 2.0f, k = r.Width() / 24.0f;
+    const uint32_t w = 0xFFFFFF;
+    switch (kind) {
+    case CaptionButton::Close:
+        Thick(s, cx - 5 * k, cy - 5 * k, cx + 5 * k, cy + 5 * k, 2.6f * k, w);
+        Thick(s, cx + 5 * k, cy - 5 * k, cx - 5 * k, cy + 5 * k, 2.6f * k, w);
+        break;
+    case CaptionButton::Minimize:
+        Fill(s, Rect(static_cast<int>(cx - 6 * k), static_cast<int>(cy + 3 * k), static_cast<int>(cx + 2 * k), static_cast<int>(cy + 6 * k)), w);
+        break;
+    case CaptionButton::Maximize: {
+        Rect box(static_cast<int>(cx - 6 * k), static_cast<int>(cy - 6 * k), static_cast<int>(cx + 6 * k), static_cast<int>(cy + 6 * k));
+        Frame(s, box, w);
+        Fill(s, Rect(box.left, box.top, box.right, box.top + static_cast<int>(3 * k)), w);
+        break;
+    }
+    }
+}
+
+void DrawPushButton(Surface& s, const Rect& r, bool enabled, bool hot, bool pressed, bool focused) {
+    const Stop normal[] = {{0.0f, 0xFFFFFF}, {0.7f, 0xF4F4F0}, {0.9f, 0xE6E4DA}, {1.0f, 0xD6D0C5}};
+    const Stop down[] = {{0.0f, 0xE3E1D7}, {1.0f, 0xF0EFE9}};
+    const Stop border[] = {{0.0f, 0x003C74}, {1.0f, 0x003C74}};
+    const Stop disabledBorder[] = {{0.0f, 0xC9C7BA}, {1.0f, 0xC9C7BA}};
+    if (enabled) RoundRamp(s, r, 3, border); else RoundRamp(s, r, 3, disabledBorder);
+    Rect in(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1);
+    const Stop flat[] = {{0.0f, 0xF5F4EA}, {1.0f, 0xF5F4EA}};
+    if (!enabled) { RoundRamp(s, in, 2, flat); return; }
+    if (pressed) RoundRamp(s, in, 2, down); else RoundRamp(s, in, 2, normal);
+    if (hot && !pressed) {
+        // оранжевая подсветка наведения
+        Frame(s, Rect(in.left, in.top, in.right, in.bottom), 0xF8B330);
+        Frame(s, Rect(in.left + 1, in.top + 1, in.right - 1, in.bottom - 1), 0xFDD889);
+    } else if (focused) {
+        Frame(s, Rect(in.left, in.top, in.right, in.bottom), 0x99B4E8);
+        Frame(s, Rect(in.left + 1, in.top + 1, in.right - 1, in.bottom - 1), 0xCEE7FF);
+    }
+    if (focused) DrawFocusRect(s, Rect(r.left + 4, r.top + 4, r.right - 4, r.bottom - 4));
+}
+
+void DrawToolButton(Surface& s, const Rect& r, bool hot, bool pressed) {
+    if (!hot && !pressed) return;
+    const Stop hover[] = {{0.0f, 0xFFFFFF}, {0.6f, 0xF7F6F1}, {1.0f, 0xE1DED3}};
+    const Stop down[] = {{0.0f, 0xD8D5C8}, {1.0f, 0xE9E7DE}};
+    const Stop edge[] = {{0.0f, 0xC5C2B2}, {1.0f, 0xC5C2B2}};
+    RoundRamp(s, r, 3, edge);
+    Rect in(r.left + 1, r.top + 1, r.right - 1, r.bottom - 1);
+    if (pressed) RoundRamp(s, in, 2, down); else RoundRamp(s, in, 2, hover);
+}
+
+void DrawToolSeparator(Surface& s, int x, int top, int bottom) {
+    Fill(s, Rect(x, top, x + 1, bottom), 0xC5C2B2);
+    Fill(s, Rect(x + 1, top, x + 2, bottom), 0xFFFFFF);
+}
+
+void DrawToolGlyph(Surface& s, ToolGlyph kind, int x, int y, int size, bool enabled) {
+    const float k = size / 24.0f, cx = x + size / 2.0f, cy = y + size / 2.0f;
+    auto greenDisc = [&]() {
+        Disc(s, cx, cy, 11 * k, enabled ? 0x2A8A2A : 0x9A9A9A, enabled ? 0x2A8A2A : 0x9A9A9A);
+        Disc(s, cx, cy, 10 * k, enabled ? 0x8BDA6E : 0xD6D6D6, enabled ? 0x2F9E2F : 0xAAAAAA);
+    };
+    switch (kind) {
+    case ToolGlyph::Back:
+    case ToolGlyph::Forward: {
+        greenDisc();
+        float d = kind == ToolGlyph::Back ? -1.0f : 1.0f;
+        Thick(s, cx - 5 * k * d, cy, cx + 5 * k * d, cy, 3.2f * k, 0xFFFFFF);
+        Thick(s, cx + 5 * k * d, cy, cx + 0.5f * k * d, cy - 4.5f * k, 3.2f * k, 0xFFFFFF);
+        Thick(s, cx + 5 * k * d, cy, cx + 0.5f * k * d, cy + 4.5f * k, 3.2f * k, 0xFFFFFF);
+        break;
+    }
+    case ToolGlyph::Go:
+        Fill(s, Rect(x, y, x + size, y + size), enabled ? 0x2E9E2E : 0xA0A0A0);
+        Frame(s, Rect(x, y, x + size, y + size), 0x1E6A1E);
+        Thick(s, cx - 4 * k, cy, cx + 4 * k, cy, 2.6f * k, 0xFFFFFF);
+        Thick(s, cx + 4 * k, cy, cx, cy - 4 * k, 2.6f * k, 0xFFFFFF);
+        Thick(s, cx + 4 * k, cy, cx, cy + 4 * k, 2.6f * k, 0xFFFFFF);
+        break;
+    case ToolGlyph::Up:
+        // папка со стрелкой вверх
+        Fill(s, Rect(static_cast<int>(x + 2 * k), static_cast<int>(y + 9 * k), static_cast<int>(x + 22 * k), static_cast<int>(y + 21 * k)), enabled ? 0xF1C04E : 0xC8C8C8);
+        Fill(s, Rect(static_cast<int>(x + 2 * k), static_cast<int>(y + 7 * k), static_cast<int>(x + 10 * k), static_cast<int>(y + 9 * k)), enabled ? 0xE2AD38 : 0xBBBBBB);
+        Frame(s, Rect(static_cast<int>(x + 2 * k), static_cast<int>(y + 9 * k), static_cast<int>(x + 22 * k), static_cast<int>(y + 21 * k)), enabled ? 0xAE7E1A : 0x909090);
+        Thick(s, cx + 2 * k, y + 18 * k, cx + 2 * k, y + 4 * k, 3.4f * k, enabled ? 0x2F9E2F : 0x909090);
+        Thick(s, cx + 2 * k, y + 3 * k, cx - 3 * k, y + 8 * k, 3.0f * k, enabled ? 0x2F9E2F : 0x909090);
+        Thick(s, cx + 2 * k, y + 3 * k, cx + 7 * k, y + 8 * k, 3.0f * k, enabled ? 0x2F9E2F : 0x909090);
+        break;
+    case ToolGlyph::Search:
+        Disc(s, x + 10 * k, y + 10 * k, 7 * k, 0x3A6EA5, 0x3A6EA5);
+        Disc(s, x + 10 * k, y + 10 * k, 5.2f * k, 0xD8ECFF, 0x9CC8F2);
+        Thick(s, x + 15 * k, y + 15 * k, x + 21 * k, y + 21 * k, 3.6f * k, 0x7A5A2A);
+        break;
+    case ToolGlyph::Folders:
+        Fill(s, Rect(static_cast<int>(x + 3 * k), static_cast<int>(y + 6 * k), static_cast<int>(x + 11 * k), static_cast<int>(y + 9 * k)), 0xE2AD38);
+        Fill(s, Rect(static_cast<int>(x + 3 * k), static_cast<int>(y + 9 * k), static_cast<int>(x + 21 * k), static_cast<int>(y + 20 * k)), 0xF6CD62);
+        Frame(s, Rect(static_cast<int>(x + 3 * k), static_cast<int>(y + 9 * k), static_cast<int>(x + 21 * k), static_cast<int>(y + 20 * k)), 0xAE7E1A);
+        break;
+    case ToolGlyph::Views:
+        for (int row = 0; row < 2; ++row)
+            for (int col = 0; col < 2; ++col) {
+                Rect t(static_cast<int>(x + (3 + col * 10) * k), static_cast<int>(y + (3 + row * 10) * k),
+                       static_cast<int>(x + (11 + col * 10) * k), static_cast<int>(y + (11 + row * 10) * k));
+                Fill(s, t, 0x5A8FE0);
+                Frame(s, t, 0x1D4B9E);
+            }
+        break;
+    }
+}
+
+void DrawTaskPane(Surface& s, const Rect& r) {
+    const Stop pane[] = {{0.0f, 0x7BA2E7}, {1.0f, 0x6375D6}};
+    for (int y = r.top; y < r.bottom; ++y)
+        Fill(s, Rect(r.left, y, r.right, y + 1), Ramp(pane, static_cast<float>(y - r.top) / std::max(1, r.Height() - 1)));
+}
+
+void DrawTaskGroup(Surface& s, const Rect& r, int headerH, bool special) {
+    Rect head(r.left, r.top, r.right, r.top + headerH);
+    for (int y = head.top; y < head.bottom; ++y)
+        for (int x = head.left; x < head.right; ++x) {
+            float t = static_cast<float>(x - head.left) / std::max(1, head.Width() - 1);
+            uint32_t c = special ? Mix(0x0055E5, 0x2D74E9, t) : Mix(0xFFFFFF, 0xC6D3F7, t);
+            Blend(s, x, y, c, RoundCover(head, x, y, 4, true, false));
+        }
+    // кнопка свёртки: круг с шевроном
+    float cx = head.right - 14.0f, cy = head.top + headerH / 2.0f;
+    Disc(s, cx, cy, 8.5f, special ? 0x5A8CEB : 0xB8C8EE, special ? 0x5A8CEB : 0xB8C8EE);
+    Disc(s, cx, cy, 7.5f, 0xFFFFFF, special ? 0xD8E4FB : 0xEDF2FC);
+    uint32_t ch = special ? 0x0055E5 : 0x3A5FCD;
+    for (int i = 0; i < 2; ++i) {
+        float yy = cy - 1.5f + i * 3.5f;
+        Thick(s, cx - 3, yy + 1.5f, cx, yy - 1.5f, 1.6f, ch);
+        Thick(s, cx, yy - 1.5f, cx + 3, yy + 1.5f, 1.6f, ch);
+    }
+    Rect body(r.left, r.top + headerH, r.right, r.bottom);
+    Fill(s, body, special ? 0xEFF3FF : 0xD6DFF7);
+    Frame(s, body, 0xFFFFFF);
+}
+
+void DrawEditField(Surface& s, const Rect& r) {
+    Fill(s, r, 0xFFFFFF);
+    Frame(s, r, 0x7F9DB9);
+}
+
+void DrawStatusBar(Surface& s, const Rect& r) {
+    Fill(s, r, 0xECE9D8);
+    Fill(s, Rect(r.left, r.top, r.right, r.top + 1), 0xD6D2C2);
+    Fill(s, Rect(r.left, r.top + 1, r.right, r.top + 2), 0xFFFFFF);
+}
+
+void DrawFocusRect(Surface& s, const Rect& r) {
+    for (int x = r.left; x < r.right; x += 2) { Blend(s, x, r.top, 0x000000, 0.7f); Blend(s, x, r.bottom - 1, 0x000000, 0.7f); }
+    for (int y = r.top; y < r.bottom; y += 2) { Blend(s, r.left, y, 0x000000, 0.7f); Blend(s, r.right - 1, y, 0x000000, 0.7f); }
+}
+
 } // namespace xp
 } // namespace ui

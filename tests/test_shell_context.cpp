@@ -43,7 +43,7 @@ int main(int argc,char** argv) {
     auto r=Shell::Bounds(notes),r2=Shell::Bounds(other);s.SecondaryDown(r.left+8,r.top+8);s.SecondaryUp(r2.left+8,r2.top+8);CHECK(!s.ContextOpen());
     Right(s,notes);CHECK(s.ContextOpen() && s.ModalActive() && s.Browser().Entries()[s.Browser().Selected()].name=="notes.txt" && s.LaunchPath().empty());
     CHECK(Item(s,Shell::Launch) && Item(s,Shell::OpenWith) && Item(s,Shell::Copy) && Item(s,Shell::Properties));
-    for(size_t i=0;i<s.ContextCount();++i){const auto box=s.ContextBounds(Shell::ContextBase+int(i));CHECK(box.left>=422 && box.top>=184 && box.right<=1138 && box.bottom<=554);}
+    for(size_t i=0;i<s.ContextCount();++i){const auto box=s.ContextBounds(Shell::ContextBase+int(i));const auto area=Shell::ContentArea();CHECK(box.left>=area.left && box.top>=area.top && box.right<=area.right && box.bottom<=area.bottom);}
     Screenshot(s,argc>2?argv[2]:nullptr);
     const auto copyBox=s.ContextBounds(Item(s,Shell::Copy));s.PointerMove(copyBox.left+10,copyBox.top+10);
     CHECK(s.Focus()==Item(s,Shell::Copy));
