@@ -1,6 +1,7 @@
 #include "desktop_shell.h"
 #include "font.h"
 #include "shell_icons.h"
+#include "xp_theme.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -769,7 +770,7 @@ void DesktopShell::Activate(int target) {
 }
 void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(s.width!=Width || s.height!=Height || !s.Valid() || s.bpp!=32)return;
-    Fill(s,{0,0,Width,680},0x3A6EA5);
+    xp::DrawWallpaper(s,{0,0,Width,680});
 
     if(!guestActive_)Text(s,{22,640,1250,663},u"Стик: курсор  •  A/X: открыть  •  Y: кнопки  •  R: Пуск  •  B: назад  •  +: выход",0xD3E6FA,14);
     Text(s,{22,663,1250,680},browser_.LastError()!=ShellBrowser::Error::None?ShellBrowser::ErrorText(browser_.LastError()):browser_.PreferenceWarning()?browser_.PreferenceText():linkTruncated_?u"Список ярлыков неполный: достигнут предел.":linkErrors_?u"Некоторые ярлыки недоступны.":Wide(status_),0xC1DCF4,12);
@@ -880,21 +881,21 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             Text(s,{256,454,1120,484},u"После выхода из приложения вы вернётесь в прежнюю папку.",0x526477,16);
         }
     }
-    Gradient(s,{0,680,Width,720},0x397FE5,0x1955BA);Fill(s,{0,680,Width,682},0x70ACFA);
-    Gradient(s,Bounds(Start),(startOpen_ || pressed_==Start)?0x1B7435:0x5BB464,(startOpen_ || pressed_==Start)?0x195A2F:0x248337);
-    Frame(s,Bounds(Start),0x1C6332);
-    if(focus_==Start || hover_==Start)Frame(s,{3,683,139,717},0xADDEAB);
-    Fill(s,{14,691,32,709},0xE8FAEB);Text(s,{16,689,34,712},u"S",0x21713D,14,true);
-    Text(s,{45,685,137,717},u"Пуск",0xFFFFFF,22,true);
+    // Панель задач Luna: зелёная «пуск», кнопка программы, трей с часами
+    xp::DrawTaskbar(s,{0,680,Width,720});
+    const bool startDown=startOpen_ || pressed_==Start;
+    xp::DrawStartButton(s,Bounds(Start),startDown,focus_==Start || hover_==Start);
+    xp::DrawStartGlyph(s,12+(startDown?1:0),690+(startDown?1:0));
+    Text(s,{41+(startDown?1:0),688+(startDown?1:0),137,717},u"пуск",0x1D4E1D,23,true); // тень
+    Text(s,{40+(startDown?1:0),687+(startDown?1:0),136,716},u"пуск",0xFFFFFF,23,true);
     if(guestActive_) {
         const auto task=Bounds(GuestTask);
-        Gradient(s,task,guestMinimized_?0x5E9CF0:0x174DAA,guestMinimized_?0x397DE0:0x2562BB);
-        Frame(s,task,guestMinimized_?0x91B8F2:0x103C8C);
+        xp::DrawTaskButton(s,task,!guestMinimized_,hover_==GuestTask);
         Icon(s,task.left+3,task.top,shell_art::programs);
         Text(s,{task.left+40,task.top+7,task.right-8,task.bottom},(guestTaskPending_?u"Ожидание · ":u"")+Wide(guestLabel_),0xFFFFFF,14,true);
     }
-    Gradient(s,{1158,682,1280,720},0x2598DE,0x127BBD);
-    Text(s,{1180,689,1272,716},clock,0xFFFFFF,17);
+    xp::DrawTray(s,{1158,680,1280,720});
+    Text(s,{1186,690,1272,716},clock,0xFFFFFF,16);
     if(startOpen_) {
         Fill(s,{4,288,484,680},0x163B64);Fill(s,{0,284,480,680},0xFFFFFF);
         Fill(s,{242,352,478,630},0xD8E8F7);Frame(s,{0,284,480,680},0x1555AD);

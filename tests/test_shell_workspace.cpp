@@ -1,3 +1,4 @@
+#include "source/ui/xp_theme.h"
 #include "source/runtime/guest_session.h"
 #include "source/runtime/guest_execution.h"
 #include "source/runtime/clock.h"
@@ -54,8 +55,8 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
                 inspected=true;auto* desk=user::Desktop();CHECK(desk&&desk->children.size()==2);
                 const auto handles=desk->children;std::vector<ui::Rect> rects;
                 for(auto h:handles)rects.push_back(user::Win(h)->rect);
-                CHECK(user::S().screen.s.Get(1220,200)==0x3A6EA5);
-                const auto& image=bridge.Compose(user::S().screen.s);CHECK(image.Get(1220,200)==0x3A6EA5);
+                CHECK(user::S().screen.s.Get(1220,200)==ui::xp::WallpaperPixel(1280,680,1220,200));
+                const auto& image=bridge.Compose(user::S().screen.s);CHECK(image.Get(1220,200)==ui::xp::WallpaperPixel(1280,680,1220,200));
                 Snapshot(image,screenshot);oracle->Check(image,bridge.Scene());
                 // Actual production ingestion filters both keyboard edges before USER queues.
                 const auto screenChanges=ui::g_gdi.ScreenChangeCounter();
@@ -67,7 +68,7 @@ static void Run(Shell& shell,const char* exe,bool abort,const char* screenshot) 
                 Start();CHECK(!shell.StartOpen());
                 Click(Shell::GuestTask);for(auto h:handles)CHECK(user::Win(h)->style&user::WS_MINIMIZE);
                 checkLayers();
-                CHECK(user::S().screen.s.Get(400,250)==0x3A6EA5);
+                CHECK(user::S().screen.s.Get(400,250)==ui::xp::WallpaperPixel(1280,680,400,250));
                 Click(Shell::GuestTask);
                 for(size_t n=0;n<handles.size();++n)CHECK(user::Win(handles[n])->rect==rects[n]);
                 // Maximize respects taskbar; restore remembers exact pre-maximized geometry.
