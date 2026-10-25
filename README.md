@@ -1,5 +1,7 @@
 # switch-recompiler
 
+[Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](docs/roadmap/index.html) · [Как открыть и публиковать](docs/roadmap/README.md)
+
 > **Статус: активная разработка (v2).** После итога v1.0 (см.
 > [`docs/POSTMORTEM.md`](docs/POSTMORTEM.md)) проект продолжен: новое ядро
 > x86, сверенное с настоящим процессором, загрузчик DLL и рантайм Win32.

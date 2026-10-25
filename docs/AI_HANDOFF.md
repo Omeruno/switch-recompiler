@@ -1669,3 +1669,24 @@ broader-image limitations; real paths/links do not certify installers. Hardware
 checks remain deferred, SD closed, local SDK absent and CI NRO build distinct.
 Only documentation changed; link/fence/source/diff checks and exact published-
 SHA CI are the gates. No runtime test rerun or code/fixture behavior claimed.
+
+## Visual roadmap — 2026-10-25
+
+Added a self-contained [interactive offline HTML roadmap](roadmap/index.html): 23 Russian cards, linked
+A–I / GPU / next-work views, global search/status filters, keyboard navigation,
+mobile layout and shareable card hashes. The data snapshot identifies runtime
+`2c4f849` and its six-job CI separately from site revisions. G4b.2 remains next;
+no runtime behavior or hardware acceptance changed. Update the embedded JSON
+and hero alongside this handoff/map; see [authoring notes](roadmap/README.md).
+
+`tools/check_roadmap_site.py` checks IDs, states, view memberships/edges and
+existing subsystem documents in the host CI job. Separate Roadmap Pages workflow
+publishes this branch's static folder; core CI remains six jobs. Browser checks
+cover desktop/mobile rendering, tabs, search, filters, deep links and drawer
+controls; no external front-end dependencies are required.
+
+Initial API activation returned HTTP 403; the owner then enabled Pages with
+GitHub Actions. API now confirms `build_type: workflow` and
+https://omeruno.github.io/switch-recompiler/. The workflow validates/uploads
+the site and deploys when Pages is accessible. Check the actual deployment
+and core CI for the published SHA before reporting the site live.

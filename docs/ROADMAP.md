@@ -1,5 +1,7 @@
 # Switch Recompiler — глобальная дорожная карта A–I
 
+[Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
+
 Дата обновления: 2026-10-25, после G4b.1.
 Проверенный код `2c4f8497926ec638fdf94441b77961769618b624`:
 [CI40196352908, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908).

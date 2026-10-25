@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#152238">
+<meta name="description" content="Интерактивная карта Switch Recompiler: этапы A–I, готовые функции, GPU-прототипы и ближайшие задачи.">
+<title>Карта проекта · Switch Recompiler</title>
+<style>
+:root{color-scheme:light;--ink:#18283f;--muted:#66758a;--line:#dfe6ef;--blue:#2563db;--paper:#f4f7fb;--node-w:220px;--node-h:184px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-size:15px;line-height:1.5}button,input,select{font:inherit}button,a,input,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #759ef7;outline-offset:3px}a{color:#245bc5;text-decoration:none}a:hover{text-decoration:underline}button{color:inherit}button:disabled{cursor:default;opacity:.45}[hidden]{display:none!important}
+.topbar{background:#152238;color:#fff;position:relative;z-index:20}.top-inner{max-width:1300px;margin:auto;min-height:76px;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;gap:13px;align-items:center;color:#fff}.brand:hover{text-decoration:none}.mark{display:grid;place-items:center;width:41px;height:41px;border-radius:12px;background:linear-gradient(145deg,#8c81fa,#4075e5);box-shadow:0 5px 15px #050d2033;font-size:15px;letter-spacing:-1px;font-weight:800}.brand strong{display:block;font-size:17px;letter-spacing:-.3px}.brand small{display:block;color:#a9bad3;font-size:11px;letter-spacing:1.4px;text-transform:uppercase}.top-links{display:flex;gap:18px;align-items:center;font-size:13px}.top-links a{color:#dce7fb}.ci{background:#1f3f3c;padding:6px 11px;border:1px solid #386155;border-radius:100px;color:#acf1c5!important;white-space:nowrap}.ci-dot{display:inline-block;width:6px;height:6px;margin-right:7px;background:#84dea6;border-radius:50%}
+main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid-template-columns:1.2fr 1fr;gap:48px;align-items:center;margin-bottom:27px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;font-weight:750;color:#647898;margin:0 0 10px}h1{font-size:clamp(27px,3.2vw,40px);line-height:1.15;letter-spacing:-1.3px;margin:0 0 13px;max-width:620px}.intro{color:var(--muted);max-width:590px;margin:0;font-size:15px}.current-box{background:linear-gradient(120deg,#eaf0ff,#f1efff);border:1px solid #d1ddfa;border-radius:18px;padding:20px 22px;position:relative;overflow:hidden}.current-box:after{content:"";position:absolute;right:-30px;top:-42px;width:150px;height:150px;border:24px solid #dde3fb66;border-radius:50%;pointer-events:none}.current-top{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:750;letter-spacing:.8px;color:#4266a5}.current-tag{background:#2c64d8;color:#fff;padding:3px 8px;border-radius:6px;letter-spacing:.3px}.current-box h2{font-size:21px;letter-spacing:-.5px;margin:9px 0 4px}.current-box p{font-size:13px;color:#596b89;margin:0;max-width:400px}.text-button{border:0;background:transparent;padding:0;color:#245bc5;font-weight:700;font-size:13px;margin-top:13px}.text-button:hover{text-decoration:underline}.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:26px}.fact{display:block;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px 16px;min-height:81px;transition:box-shadow .15s}.fact:hover{box-shadow:0 5px 16px #2436550b}.fact small{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#6b7e99;font-weight:700}.fact strong{display:block;font-size:14px;margin:3px 0 1px}.fact span{font-size:12px;color:var(--muted)}
+.board{background:#fff;border:1px solid #dbe3ee;border-radius:17px;box-shadow:0 7px 28px #21385605;overflow:hidden}.toolbar{padding:16px 20px 13px;display:flex;align-items:center;gap:15px;justify-content:space-between;border-bottom:1px solid #e6edf5;flex-wrap:wrap}.tabs{display:flex;gap:3px;background:#f0f3f8;border:1px solid #e5eaf1;border-radius:9px;padding:4px}.tab{background:none;border:0;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:650;color:#66758a;white-space:nowrap}.tab[aria-selected=true]{background:#fff;box-shadow:0 1px 5px #273d5f19;color:#244c8b}.filters{display:flex;gap:8px;align-items:center}.search-wrap{position:relative}.search-icon{position:absolute;left:12px;top:9px;color:#92a0b3;pointer-events:none}.search{width:228px;border:1px solid #dce4ef;border-radius:8px;background:#fff;padding:9px 28px 9px 34px;font-size:12px;color:var(--ink)}.search::placeholder{color:#8a97aa}.clear-search{position:absolute;right:5px;top:5px;width:26px;height:26px;border:0;background:transparent;color:#65768d;font-size:18px}.filter-select{font-size:12px;border:1px solid #dce4ef;border-radius:8px;padding:9px 25px 9px 10px;background:#fff;max-width:180px;color:#51647f}
+.board-info{display:flex;justify-content:space-between;align-items:center;padding:13px 20px;gap:16px}.board-caption{font-size:12px;color:#78879c;margin:0}.zoom-controls{display:flex;align-items:center;gap:2px;flex-shrink:0}.zoom-controls button{height:30px;min-width:31px;border:1px solid #e1e7ef;background:#fff;border-radius:6px;font-size:15px}.zoom-controls .fit{padding:0 9px;font-size:11px;min-width:64px;margin-left:5px}.zoom-value{display:inline-block;min-width:43px;text-align:center;font-size:11px;color:#73849d;font-variant-numeric:tabular-nums}.map-scroll{overflow:auto;position:relative;height:628px;overscroll-behavior:contain;background-color:#f8faff;background-image:radial-gradient(#cad6e5 1px,transparent 1px);background-size:22px 22px;cursor:grab;scrollbar-width:thin;scrollbar-color:#cad4e4 transparent;touch-action:pan-x pan-y}.map-scroll.dragging{cursor:grabbing;user-select:none}.graph-shell{position:relative;min-width:100%;min-height:100%}.graph{position:relative;transform-origin:0 0}.edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}.edge{fill:none;stroke:#c2cedf;stroke-width:2.1;stroke-linecap:round}.edge.extra{stroke-dasharray:5 6;stroke:#bbc6d7}.edge.active{stroke:#4c7fe0;stroke-width:2.7}.node{--tone:#63758c;--soft:#edf2f7;position:absolute;width:var(--node-w);height:var(--node-h);padding:16px 16px 13px;text-align:left;background:#fff;border:1px solid #dae3ef;border-radius:12px;box-shadow:0 4px 12px #24395708;display:flex;flex-direction:column;gap:0;cursor:pointer;transition:box-shadow .15s,border-color .15s}.node:hover{border-color:#9fb8dd;box-shadow:0 8px 22px #24406817}.node[data-status=base],.node[data-status=accepted]{--tone:#23724d;--soft:#e8f5ec}.node[data-status=prototype]{--tone:#7544a7;--soft:#f1eafa}.node[data-status=current]{--tone:#235cc5;--soft:#e9f0ff;border:2px solid #6c95ef;padding:15px 15px 12px;box-shadow:0 0 0 4px #dce8ff80,0 6px 19px #265ee414}.node[data-status=partial]{--tone:#8c6317;--soft:#fff4d9}.node[data-status=deferred]{--tone:#596a87;--soft:#eaf0f8}.node[data-status=ongoing],.node[data-status=tool]{--tone:#216e82;--soft:#e7f3f6}.node.selected{box-shadow:0 0 0 3px #9bb8ef8a,0 8px 23px #24406812;border-color:#6d97e3}.node[data-status=current]:before{content:"МЫ ЗДЕСЬ · СЛЕДУЮЩИЙ РУБЕЖ";position:absolute;top:-15px;left:13px;font-size:8px;font-weight:800;letter-spacing:.7px;padding:4px 7px;background:#2d65d9;color:#fff;border-radius:5px;white-space:nowrap}.node-bar{display:flex;justify-content:space-between;gap:5px;align-items:center;min-height:21px}.node-code{font-size:12px;font-weight:800;color:#566a89;letter-spacing:.2px}.node-status{font-size:9px;line-height:1.5;font-weight:750;color:var(--tone);background:var(--soft);padding:3px 7px;border-radius:100px;white-space:nowrap}.node-title{font-size:17px;letter-spacing:-.4px;line-height:1.25;font-weight:750;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:10px;min-height:22px}.node-summary{font-size:11px;color:#738199;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:8px}.node-foot{margin-top:auto;padding-top:8px;color:#7789a3;display:flex;justify-content:space-between;align-items:center;font-size:10px}.node-foot b{font-size:15px;color:#9cacbf;font-weight:400}.board-footer{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:13px 20px;border-top:1px solid #e4ebf4;font-size:10px;color:#7a8ca4}.legend{display:flex;gap:13px;flex-wrap:wrap}.legend span{white-space:nowrap}.legend i{display:inline-block;width:7px;height:7px;background:var(--c);border-radius:50%;margin-right:5px}.hint{font-size:10px;color:#8997aa;text-align:right;white-space:nowrap}.results{padding:21px;background:#f8faff;min-height:350px}.result-count{font-size:12px;color:#6b7f9c;margin:0 0 15px}.results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:17px}.results .node{position:relative;width:100%}.empty{text-align:center;color:#71849c;padding:65px 20px}.empty strong{display:block;color:#526780;font-size:18px;margin-bottom:7px}.page-footer{display:flex;justify-content:space-between;gap:15px;margin-top:18px;font-size:11px;color:#8391a5}.page-footer a{color:#627b9d}
+.overlay{position:fixed;inset:0;background:#13244077;z-index:60}.drawer{position:fixed;right:18px;top:18px;bottom:18px;width:406px;max-width:calc(100vw - 28px);background:#fff;z-index:70;border:1px solid #d9e2ef;border-radius:17px;box-shadow:-10px 12px 65px #14274030;display:flex;flex-direction:column;overflow:hidden}.drawer-head{padding:24px 24px 18px;border-bottom:1px solid #e5ecf5;background:#fafcff}.drawer-meta{display:flex;align-items:center;gap:10px;padding-right:30px;font-size:11px;color:#778ba7}.drawer-head h2{margin:11px 0 7px;font-size:25px;line-height:1.2;letter-spacing:-.8px}.drawer-head p{font-size:13px;color:#6b7e98;margin:0}.close-drawer{position:absolute;right:14px;top:14px;border:1px solid #dfe7f2;background:#fff;border-radius:8px;width:33px;height:33px;font-size:23px;line-height:20px;color:#71829b}.drawer-content{overflow:auto;padding:21px 24px 27px;flex:1}.detail-section{margin-bottom:22px}.detail-section h3{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#7a8ba5;margin:0 0 10px}.detail-section ul{margin:0;padding:0;list-style:none}.detail-section li{position:relative;padding-left:18px;font-size:13px;color:#405571;margin-bottom:9px;line-height:1.55}.detail-section li:before{content:"•";position:absolute;left:1px;color:#7a97c3}.done-list li:before{content:"✓";font-size:12px;color:#3e9468}.gate{border:1px solid #d8e7fc;background:#f1f6ff;padding:13px 15px;border-radius:10px;font-size:13px;color:#345988}.limits{font-size:12px;color:#796b4f;background:#fcf8ef;border:1px solid #eee3ce;border-radius:9px;padding:12px 14px;margin-bottom:22px}.limits strong{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;color:#948362}.doc-links{display:flex;flex-direction:column;gap:7px}.doc-links a{font-size:11px;word-break:break-word;color:#5476aa}.connections{display:flex;gap:6px;flex-wrap:wrap}.connections button{font-size:10px;color:#617a9d;border:1px solid #dfe7f1;background:#f8fafd;border-radius:6px;padding:5px 8px}.drawer-actions{display:flex;gap:8px;padding:14px 24px;border-top:1px solid #e5ecf4;background:#fafcff}.action{border:1px solid #d6e1f0;background:#fff;border-radius:8px;font-size:11px;font-weight:650;padding:9px 11px}.action.primary{background:#2c63d2;color:#fff;border-color:#2c63d2}.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#203852;color:#fff;padding:10px 19px;border-radius:10px;box-shadow:0 8px 25px #18304b26;font-size:13px;z-index:100;max-width:90vw;text-align:center}
+@media(min-width:761px){.overlay{display:none!important}}
+@media(max-width:1000px){.hero{gap:25px;grid-template-columns:1fr 1fr}.toolbar{gap:10px}.filters{flex:1;justify-content:flex-end}.search{width:200px}.facts{gap:9px}.fact{padding:12px}.fact strong{font-size:13px}.legend{gap:9px}.hint{display:none}}
+@media(max-width:760px){body.drawer-open{overflow:hidden}.top-inner{min-height:66px;padding:13px 18px}.brand strong{font-size:14px}.brand small{font-size:9px}.mark{width:35px;height:35px}.top-links{gap:8px}.repo-link{display:none}.ci{font-size:10px;padding:5px 8px}main{padding:24px 15px 20px}.hero{grid-template-columns:1fr;gap:19px;margin-bottom:17px}h1{font-size:29px;letter-spacing:-1px}.intro{font-size:13px}.current-box{padding:17px 18px;border-radius:13px}.current-box h2{font-size:20px}.facts{grid-template-columns:1fr 1fr;margin-bottom:19px}.fact{min-height:86px}.toolbar{padding:12px;gap:12px;display:block}.tabs{width:100%;margin-bottom:10px}.tab{flex:1;padding:9px 5px;font-size:12px}.filters{width:100%;gap:7px}.search-wrap{flex:1;min-width:0}.search{width:100%;min-width:0;padding-left:30px;font-size:11px}.filter-select{width:120px;font-size:10px;padding:9px 4px 9px 7px}.board-info{padding:10px 12px;gap:10px}.board-caption{font-size:10px;max-width:60%}.zoom-controls .fit{display:none}.zoom-controls button{min-width:28px;height:28px}.zoom-value{min-width:35px;font-size:10px}.map-scroll{height:66vh;min-height:380px;max-height:690px;cursor:default}.node{font-size:14px;--node-h:174px;padding:17px 18px 13px}.node-title{font-size:19px}.node-summary{font-size:12px}.node-code{font-size:13px}.node-status{font-size:10px}.node-foot{font-size:11px}.node[data-status=current]{padding:16px 17px 12px}.board-footer{padding:12px}.legend{font-size:9px;gap:7px 12px}.page-footer{font-size:10px;flex-direction:column;gap:6px}.drawer{inset:0 0 0 auto;bottom:0;width:420px;max-width:100%;border-radius:0;border-width:0 0 0 1px}.drawer-head{padding-top:32px}.drawer-actions{padding-bottom:max(15px,env(safe-area-inset-bottom))}.results{padding:15px}.results-grid{gap:13px;grid-template-columns:1fr}.results .node{height:174px}.zoom-controls .fit{display:none}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media print{.topbar,.filters,.zoom-controls,.drawer,.overlay,.hero .current-box,.board-footer,.page-footer,.facts{display:none!important}main{padding:0}.hero{display:block}.board{border:0;box-shadow:none}.map-scroll{height:auto!important;overflow:visible;background:none}.graph-shell,.graph{width:100%!important;height:auto!important;transform:none!important}.graph{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.edges{display:none}.node{position:relative!important;left:auto!important;top:auto!important;width:100%!important;break-inside:avoid}.node[data-status=current]:before{display:none}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<main>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">От EXE до рабочей среды</h1><p class="intro">Что уже работает, что проверяется отдельно и что ещё впереди. Открой карточку — внутри результат, ограничения и следующий критерий.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>G4b.1 пройден → G4b.2</span></div><h2>Мост GPU к реальным окнам</h2><p>Прототип проверен. Следом — окна, память и основной вывод. Живой Paint пока выполняет GDI на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Прототип ≠ живой Paint</strong><span>Нужен мост к приложениям</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
+<section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
+<div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
+<div id="map-pane" role="tabpanel"><div id="map-scroll" class="map-scroll" tabindex="0" aria-label="Карта этапов. Карточки доступны клавишей Tab, фон можно перетаскивать."><div id="graph-shell" class="graph-shell"><div id="graph" class="graph"></div></div></div><div id="results" class="results" hidden><p class="result-count" id="result-count" aria-live="polite"></p><div id="results-grid" class="results-grid"></div></div></div>
+<div class="board-footer"><div class="legend" aria-label="Условные обозначения"><span><i style="--c:#47966a"></i>База готова</span><span><i style="--c:#c99b39"></i>Частично</span><span><i style="--c:#9771c6"></i>Прототип</span><span><i style="--c:#4a7cdd"></i>Следующий рубеж</span><span><i style="--c:#a1adbe"></i>Впереди / отложено</span></div><span class="hint">Перетаскивай фон · Ctrl + колесо — масштаб</span></div></section>
+<footer class="page-footer"><span>Линии показывают порядок и связи. Открытые D/E/F продолжаются параллельно.</span><span>Без общего процента готовности · <a id="status-doc" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Полная текстовая карта →</a></span></footer>
+</main>
+<button class="overlay" id="overlay" aria-label="Закрыть карточку" hidden></button>
+<aside class="drawer" id="drawer" role="dialog" aria-label="Подробности этапа" aria-modal="false" hidden><button id="close-drawer" class="close-drawer" aria-label="Закрыть карточку">×</button><div id="drawer-head" class="drawer-head"></div><div id="drawer-content" class="drawer-content"></div><div class="drawer-actions"><button class="action primary" id="locate-node">На карте</button><button class="action" id="share-node">Ссылка на карточку →</button></div></aside>
+<div class="toast" id="toast" role="status" hidden></div>
+<script id="roadmap-data" type="application/json">{
+  "schema": 1,
+  "updated": "2026-10-25",
+  "runtimeSha": "2c4f8497926ec638fdf94441b77961769618b624",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908",
+  "current": "g4b2",
+  "repo": "https://github.com/Omeruno/switch-recompiler",
+  "branch": "claude/wonderful-hawking-10mpr0",
+  "nodes": [
+    {
+      "id": "A",
+      "code": "A",
+      "title": "Корректность и тесты",
+      "status": "ongoing",
+      "summary": "Проверяем изменения и сохраняем рабочую базу.",
+      "done": [
+        "Host/MinGW, CPU oracle, ARM64/QEMU, EGL и Switch CI.",
+        "Публичные воспроизводимые тесты и диагностические сборки."
+      ],
+      "todo": [
+        "Продолжать регрессии при каждом расширении.",
+        "Пополнять матрицу реальных приложений."
+      ],
+      "gate": "Каждый пакет воспроизводим, проверки относятся к его точному SHA.",
+      "docs": [
+        "docs/ROADMAP.md",
+        "docs/AI_HANDOFF.md"
+      ],
+      "limit": "Это постоянная работа, у неё нет финальной отметки «всё навсегда готово».",
+      "kind": "Этап"
+    },
+    {
+      "id": "B",
+      "code": "B",
+      "title": "Исполнение x86",
+      "status": "base",
+      "summary": "Интерпретатор, потоки и корректное завершение.",
+      "done": [
+        "Гостевые потоки, TEB/TLS, кванты исполнения и callbacks.",
+        "Изоляция последовательных запусков."
+      ],
+      "todo": [
+        "Пограничные инструкции и ABI реальных программ.",
+        "Дальнейшее ускорение CPU."
+      ],
+      "gate": "Сохраняются CPU oracle, правильные исключения и interpreter fallback.",
+      "docs": [
+        "docs/ROADMAP.md"
+      ],
+      "limit": "Поддерживается x86-32. x64 и полноценный dynarec не реализованы.",
+      "kind": "Этап"
+    },
+    {
+      "id": "C",
+      "code": "C",
+      "title": "Объекты и ожидания",
+      "status": "accepted",
+      "summary": "Ограниченная модель принята на Switch.",
+      "done": [
+        "HANDLE, waits, APC, timers и владение GUI.",
+        "Startup/exit/cancellation в модели одного Process."
+      ],
+      "todo": [
+        "Межпроцессная модель и другие NT-расширения."
+      ],
+      "gate": "Ограниченная приёмка C уже пройдена; новые расширения проверяются отдельно.",
+      "docs": [
+        "docs/STAGE_C_ACCEPTANCE.md"
+      ],
+      "limit": "Это прежняя ограниченная аппаратная приёмка, а не подтверждение всех возможностей Windows или каждого нового SHA.",
+      "kind": "Этап"
+    },
+    {
+      "id": "D",
+      "code": "D",
+      "title": "Совместимость Windows",
+      "status": "partial",
+      "summary": "Много Win32/CRT уже есть; пробелы ещё блокируют EXE.",
+      "done": [
+        "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
+        "Существенный Win32/CRT и ограниченный SEH."
+      ],
+      "todo": [
+        "Защита страниц, полный unwind/SEH и COM.",
+        "API и зависимости конкретных программ."
+      ],
+      "gate": "Реальная программа проходит нужные API и сообщает настоящие ошибки.",
+      "docs": [
+        "docs/ROADMAP.md",
+        "docs/PROJECT_STATUS_RU.md"
+      ],
+      "limit": "У Pinball x86 первый установленный host-барьер — отсутствующий RegCreateKeyExA. GPU-работы сами по себе его не закрывают.",
+      "kind": "Этап"
+    },
+    {
+      "id": "E",
+      "code": "E",
+      "title": "Вывод и композиция",
+      "status": "partial",
+      "summary": "GPU-композитор есть; GDI приложений ещё на CPU.",
+      "done": [
+        "CPU GDI, GPU-вывод и software fallback.",
+        "Оконные слои, ownership, кэши и метрики."
+      ],
+      "todo": [
+        "Приёмка текущего вывода и измерения на Switch.",
+        "Связать новый GPU-GDI с рабочим presenter."
+      ],
+      "gate": "Пиксели, ввод и fallback корректны в проверках и на целевой консоли.",
+      "docs": [
+        "docs/STAGE_E_COMPOSITION.md",
+        "docs/STAGE_E_PERFORMANCE.md"
+      ],
+      "limit": "Host EGL/Mesa проверяет GL-семантику, но не доказывает физический FPS или input-to-photon.",
+      "kind": "Этап"
+    },
+    {
+      "id": "F",
+      "code": "F",
+      "title": "Оболочка и файлы",
+      "status": "base",
+      "summary": "Программная база F0–F5 готова в своём scope.",
+      "done": [
+        "Постоянные C/S/R, Пуск, проводник, дерево и реальные .lnk.",
+        "Папки, свойства, Copy/Paste, контекстные меню и настройки.",
+        "Native TXT/BMP и проверяемое сохранение/повторное открытие.",
+        "Один активный guest, выход/ошибка/отмена и возврат."
+      ],
+      "todo": [
+        "Аппаратная приёмка F.",
+        "Полное поведение окон XP и дальнейшее расширение среды."
+      ],
+      "gate": "22 программные группы F проходят; физическая приёмка остаётся отдельно.",
+      "docs": [
+        "docs/F_ACCEPTANCE.md",
+        "docs/LUNA_INTEGRATION_REVIEW.md"
+      ],
+      "limit": "Один активный EXE с несколькими его окнами. Native min/max пока декоративны; несколько одновременных EXE и полная среда XP не готовы.",
+      "kind": "Этап"
+    },
+    {
+      "id": "G",
+      "code": "G",
+      "title": "Ускорение CPU / GDI",
+      "status": "current",
+      "summary": "G4b.1 готов. Следующий рубеж — G4b.2.",
+      "done": [
+        "G1 измерения и включённый CPU fast path G2.",
+        "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1."
+      ],
+      "todo": [
+        "Привязка к окнам/DC, памяти и основному выводу.",
+        "Затем замеры настоящих приложений и дальнейшее CPU-ускорение."
+      ],
+      "gate": "Поддержанный живой x86 GDI-путь рисует через GPU с точным чтением и CPU fallback.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md",
+        "docs/G4B_GPU_BATCHES.md"
+      ],
+      "limit": "GPU-прототип ещё не включён для Paint. Dynarec остаётся отдельной незавершённой работой.",
+      "kind": "Этап"
+    },
+    {
+      "id": "H",
+      "code": "H",
+      "title": "DirectDraw / Direct3D",
+      "status": "planned",
+      "summary": "Отдельный будущий блок игровой графики.",
+      "done": [],
+      "todo": [
+        "Поддержанный DirectDraw subset и затем выбранное поколение D3D.",
+        "Перевод API и проверки целевых игр."
+      ],
+      "gate": "Реальные API и игры работают с корректными ресурсами и жизненным циклом.",
+      "docs": [
+        "docs/ROADMAP.md"
+      ],
+      "limit": "Наличие OpenGL-композитора или GPU-GDI не означает готовую поддержку DirectX.",
+      "kind": "Этап"
+    },
+    {
+      "id": "I",
+      "code": "I",
+      "title": "Готовый продукт",
+      "status": "planned",
+      "summary": "Сборки есть; выпуск продукта ещё впереди.",
+      "done": [
+        "NRO, CI, логи и публичные тестовые артефакты."
+      ],
+      "todo": [
+        "Матрица совместимости, конфигурация и доставка.",
+        "Стабильность и итоговая приёмка целевого набора приложений."
+      ],
+      "gate": "Целевые программы воспроизводимо работают на Switch с понятными ограничениями.",
+      "docs": [
+        "docs/ROADMAP.md"
+      ],
+      "limit": "Полная Windows-совместимость и поддержка всех EXE не заявлены.",
+      "kind": "Этап"
+    },
+    {
+      "id": "hardware",
+      "code": "Switch",
+      "title": "Проверки на консоли",
+      "status": "deferred",
+      "summary": "Один объединённый прогон позже, когда будет удобно.",
+      "done": [
+        "Список физических проверок собран в одном месте.",
+        "Ранее приняты ограниченный C и прежние Paint baseline."
+      ],
+      "todo": [
+        "Текущие Paint/GPU/fallback/Lite/ввод и повторные запуски.",
+        "Замеры реальных нагрузок и стабильности."
+      ],
+      "gate": "Пройден объединённый список на NRO точного SHA, сохранены результаты.",
+      "docs": [
+        "docs/STAGE_E_PERFORMANCE.md"
+      ],
+      "limit": "Сейчас тестов от пользователя не требуется. Это не блокирует независимую host-разработку.",
+      "kind": "Приёмка"
+    },
+    {
+      "id": "install",
+      "code": "F+",
+      "title": "Установщики приложений",
+      "status": "planned",
+      "summary": "Реальные папки и ярлыки уже есть; installer-путь ещё нет.",
+      "done": [
+        "Постоянное хранилище, profile paths и native Desktop/Start .lnk."
+      ],
+      "todo": [
+        "Публичный installer с реальными payload/ошибками/отменой.",
+        "Необходимые API и определённые update/remove операции."
+      ],
+      "gate": "Поддержанный installer действительно устанавливает и запускает приложение после нового сеанса.",
+      "docs": [
+        "docs/F_INSTALL_AND_ARCHIVES.md"
+      ],
+      "limit": "Произвольные EXE/MSI, COM, child-process и services не поддержаны автоматически.",
+      "kind": "Расширение"
+    },
+    {
+      "id": "archives",
+      "code": "F+",
+      "title": "ZIP, затем RAR",
+      "status": "planned",
+      "summary": "Записано в план; распаковка пока не реализована.",
+      "done": [],
+      "todo": [
+        "Безопасное извлечение ZIP с сохранностью файлов и настоящими ошибками.",
+        "Позднее RAR и другие форматы."
+      ],
+      "gate": "Поддержанные архивы корректно распаковываются в выбранную реальную папку.",
+      "docs": [
+        "docs/F_INSTALL_AND_ARCHIVES.md"
+      ],
+      "limit": "Установка игры и совместимость её запуска — разные задачи.",
+      "kind": "Расширение"
+    },
+    {
+      "id": "g1",
+      "code": "G0–G1",
+      "title": "Измерения исполнения",
+      "status": "tool",
+      "summary": "Частоты инструкций/API и публичный PE-тест.",
+      "done": [
+        "Воспроизводимые CPU/плиточные/линейные нагрузки.",
+        "Фазы и стоимость включённых счётчиков."
+      ],
+      "todo": [
+        "Применять измерения при выборе следующей оптимизации."
+      ],
+      "gate": "Пиксели/результаты совпадают, измерения привязаны к коду.",
+      "docs": [
+        "docs/G1_MEASUREMENTS.md"
+      ],
+      "limit": "Счётчики и host-замеры сами по себе не дают ускорения.",
+      "kind": "Пакет"
+    },
+    {
+      "id": "g2",
+      "code": "G2",
+      "title": "Быстрый CPU SRCCOPY",
+      "status": "base",
+      "summary": "Проверенный быстрый путь уже включён.",
+      "done": [
+        "32-битная копия без масштабирования.",
+        "Совпадение с прежним путём, clipping и оконный capture."
+      ],
+      "todo": [
+        "Сохранять регрессии и измерять целевые нагрузки."
+      ],
+      "gate": "Поддержанный fast path сохраняет пиксели, владение и readback.",
+      "docs": [
+        "docs/G2_BLIT_AND_PHASES.md"
+      ],
+      "limit": "Это CPU-оптимизация, а не перенос Paint на GPU.",
+      "kind": "Пакет"
+    },
+    {
+      "id": "g3",
+      "code": "G3",
+      "title": "GL-рисование и recovery",
+      "status": "prototype",
+      "summary": "Реальные fill/copy, readback и восстановление.",
+      "done": [
+        "GLSL/FBO исполняет заливки и копии.",
+        "Ограниченный журнал и CPU fallback после ошибок/потери контекста."
+      ],
+      "todo": [
+        "Дальнейшая интеграция с реальными окнами и выводом."
+      ],
+      "gate": "CPU/EGL пиксели совпадают, принятые команды не теряются при отказах.",
+      "docs": [
+        "docs/G3_GPU_GDI_PROTOTYPE.md"
+      ],
+      "limit": "Изолированный dedicated-context прототип, не live Win32 GDI.",
+      "kind": "Пакет"
+    },
+    {
+      "id": "g4a",
+      "code": "G4a",
+      "title": "Несколько GPU-поверхностей",
+      "status": "prototype",
+      "summary": "Поколения, время жизни и прямой вывод текстур.",
+      "done": [
+        "Защита от stale/foreign IDs и ресурсные бюджеты.",
+        "Перекрытие/масштабирование до вывода 1280×720.",
+        "Композиция неизменённых текстур без CPU readback ради кадра."
+      ],
+      "todo": [
+        "Связь идентичности targets с HWND/DC."
+      ],
+      "gate": "Пиксели и fallback точны при движении, удалении и потере контекста.",
+      "docs": [
+        "docs/G4A_GPU_TARGETS.md"
+      ],
+      "limit": "Targets ограничены prototype-бюджетами; это ещё не окна Paint.",
+      "kind": "Пакет"
+    },
+    {
+      "id": "g4b1",
+      "code": "G4b.1",
+      "title": "Пакеты GPU-команд",
+      "status": "prototype",
+      "summary": "64 непересекающиеся заливки → 1 draw.",
+      "done": [
+        "Instanced drawing и кеш uniform locations.",
+        "Копии и пересечения сохраняют порядок.",
+        "Сравнение reference/batched: пиксели, вызовы и 42 сырых замера."
+      ],
+      "todo": [
+        "Использовать механизм в согласованном live-пути G4b.2."
+      ],
+      "gate": "Меньше draw calls при тех же результатах и необходимых барьерах.",
+      "docs": [
+        "docs/G4B_GPU_BATCHES.md"
+      ],
+      "limit": "Число вызовов и host-время не равны FPS Switch; Paint пока не переключён.",
+      "kind": "Пакет"
+    },
+    {
+      "id": "g4b2",
+      "code": "G4b.2",
+      "title": "Мост к реальным окнам",
+      "status": "current",
+      "summary": "Следующий незавершённый рубеж.",
+      "done": [],
+      "todo": [
+        "Связать HWND/DC с GPU-ресурсами и их временем жизни.",
+        "Согласовать DIB/ROP/чтение пикселей и CPU fallback.",
+        "Подключить texture-aware путь к основному presenter."
+      ],
+      "gate": "Публичный x86-гость проходит GPU-рисование, readback и lifecycle с теми же пикселями, что CPU.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md",
+        "docs/G4B_GPU_BATCHES.md"
+      ],
+      "limit": "Простое включение прототипа для Paint сейчас некорректно. Нужны память, ownership и GL-state контракт.",
+      "kind": "Рубеж"
+    },
+    {
+      "id": "window",
+      "code": "01",
+      "title": "Окна и время жизни",
+      "status": "planned",
+      "summary": "Привязать HWND/DC к корректному GPU target.",
+      "done": [],
+      "todo": [
+        "Обработка create/move/hide/destroy/abort/relaunch.",
+        "Поколения и владение кадром после уничтожения окна."
+      ],
+      "gate": "Устаревшее окно не пишет в новый target, последний кадр не теряется.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md"
+      ],
+      "limit": "Задача внутри G4b.2; её реализация ещё не завершена.",
+      "kind": "Ближайшая задача"
+    },
+    {
+      "id": "memory",
+      "code": "02",
+      "title": "Память и CPU-барьеры",
+      "status": "planned",
+      "summary": "GPU и CPU должны видеть одинаковые пиксели.",
+      "done": [],
+      "todo": [
+        "GetPixel/GetDIBits, CPU ROP и source reads.",
+        "Raw DIB writes и честный fallback для неподдержанного пути."
+      ],
+      "gate": "Чтение и сохранение возвращают актуальные данные без ложного успеха.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md"
+      ],
+      "limit": "Не каждая GDI-операция обязана выполняться на GPU.",
+      "kind": "Ближайшая задача"
+    },
+    {
+      "id": "presenter",
+      "code": "03",
+      "title": "Основной вывод",
+      "status": "planned",
+      "summary": "Соединить texture path с рабочим presenter.",
+      "done": [],
+      "todo": [
+        "Владение GL-state и текущим контекстом.",
+        "Ownership masks, native Luna и отказоустойчивый вывод."
+      ],
+      "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md"
+      ],
+      "limit": "Существующий ShellSession пока читает canonical CPU pixels.",
+      "kind": "Ближайшая задача"
+    },
+    {
+      "id": "x86checks",
+      "code": "04",
+      "title": "Живой x86 + EGL",
+      "status": "planned",
+      "summary": "Проверить настоящий путь приложения до включения.",
+      "done": [],
+      "todo": [
+        "Публичные GDI/window/readback/lifecycle fixtures.",
+        "Точное CPU/EGL сравнение и замеры стоимости."
+      ],
+      "gate": "Реальный guest корректен при чтении, ошибках и перезапусках.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md"
+      ],
+      "limit": "Host-проверки не подменяют последующую физическую приёмку.",
+      "kind": "Приёмка"
+    },
+    {
+      "id": "activate",
+      "code": "05",
+      "title": "Выборочное включение",
+      "status": "planned",
+      "summary": "Включить только поддержанный проверенный путь.",
+      "done": [],
+      "todo": [
+        "Eligibility и работающий software fallback.",
+        "Сохранить ввод, Luna и последовательные сеансы."
+      ],
+      "gate": "Поддержанные реальные операции идут через GPU; остальные честно обслуживаются CPU.",
+      "docs": [
+        "docs/ACTIVE_ROADMAP.md"
+      ],
+      "limit": "Это не обещание перевести все GDI/DirectX-вызовы или сразу ускорить каждый EXE.",
+      "kind": "Рубеж"
+    }
+  ],
+  "views": [
+    {
+      "id": "overview",
+      "label": "Вся карта",
+      "subtitle": "A–I и отдельные незавершённые очереди.",
+      "nodes": [
+        {
+          "id": "A",
+          "x": 24,
+          "y": 40
+        },
+        {
+          "id": "B",
+          "x": 288,
+          "y": 40
+        },
+        {
+          "id": "C",
+          "x": 552,
+          "y": 40
+        },
+        {
+          "id": "D",
+          "x": 816,
+          "y": 40
+        },
+        {
+          "id": "H",
+          "x": 24,
+          "y": 286
+        },
+        {
+          "id": "G",
+          "x": 288,
+          "y": 286
+        },
+        {
+          "id": "F",
+          "x": 552,
+          "y": 286
+        },
+        {
+          "id": "E",
+          "x": 816,
+          "y": 286
+        },
+        {
+          "id": "I",
+          "x": 24,
+          "y": 532
+        },
+        {
+          "id": "hardware",
+          "x": 288,
+          "y": 532
+        },
+        {
+          "id": "install",
+          "x": 552,
+          "y": 532
+        },
+        {
+          "id": "archives",
+          "x": 816,
+          "y": 532
+        }
+      ],
+      "edges": [
+        {
+          "from_": "A",
+          "to": "B",
+          "kind": "main"
+        },
+        {
+          "from_": "B",
+          "to": "C",
+          "kind": "main"
+        },
+        {
+          "from_": "C",
+          "to": "D",
+          "kind": "main"
+        },
+        {
+          "from_": "D",
+          "to": "E",
+          "kind": "main"
+        },
+        {
+          "from_": "E",
+          "to": "F",
+          "kind": "main"
+        },
+        {
+          "from_": "F",
+          "to": "G",
+          "kind": "main"
+        },
+        {
+          "from_": "G",
+          "to": "H",
+          "kind": "main"
+        },
+        {
+          "from_": "H",
+          "to": "I",
+          "kind": "main"
+        },
+        {
+          "from_": "E",
+          "to": "hardware",
+          "kind": "extra"
+        },
+        {
+          "from_": "F",
+          "to": "install",
+          "kind": "extra"
+        },
+        {
+          "from_": "install",
+          "to": "archives",
+          "kind": "extra"
+        }
+      ],
+      "mobileOrder": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "hardware",
+        "install",
+        "archives"
+      ]
+    },
+    {
+      "id": "gpu",
+      "label": "Ускорение",
+      "subtitle": "Что пройдено до подключения GPU-GDI к приложениям.",
+      "nodes": [
+        {
+          "id": "g1",
+          "x": 24,
+          "y": 40
+        },
+        {
+          "id": "g2",
+          "x": 288,
+          "y": 40
+        },
+        {
+          "id": "g3",
+          "x": 552,
+          "y": 40
+        },
+        {
+          "id": "g4a",
+          "x": 816,
+          "y": 40
+        },
+        {
+          "id": "hardware",
+          "x": 24,
+          "y": 286
+        },
+        {
+          "id": "activate",
+          "x": 288,
+          "y": 286
+        },
+        {
+          "id": "g4b2",
+          "x": 552,
+          "y": 286
+        },
+        {
+          "id": "g4b1",
+          "x": 816,
+          "y": 286
+        }
+      ],
+      "edges": [
+        {
+          "from_": "g1",
+          "to": "g2",
+          "kind": "main"
+        },
+        {
+          "from_": "g2",
+          "to": "g3",
+          "kind": "main"
+        },
+        {
+          "from_": "g3",
+          "to": "g4a",
+          "kind": "main"
+        },
+        {
+          "from_": "g4a",
+          "to": "g4b1",
+          "kind": "main"
+        },
+        {
+          "from_": "g4b1",
+          "to": "g4b2",
+          "kind": "main"
+        },
+        {
+          "from_": "g4b2",
+          "to": "activate",
+          "kind": "main"
+        },
+        {
+          "from_": "activate",
+          "to": "hardware",
+          "kind": "main"
+        }
+      ],
+      "mobileOrder": [
+        "g1",
+        "g2",
+        "g3",
+        "g4a",
+        "g4b1",
+        "g4b2",
+        "activate",
+        "hardware"
+      ]
+    },
+    {
+      "id": "next",
+      "label": "Что дальше",
+      "subtitle": "Ближайшие ворота G4b.2; это план, не уже включённые функции.",
+      "nodes": [
+        {
+          "id": "g4b2",
+          "x": 24,
+          "y": 40
+        },
+        {
+          "id": "window",
+          "x": 288,
+          "y": 40
+        },
+        {
+          "id": "memory",
+          "x": 552,
+          "y": 40
+        },
+        {
+          "id": "presenter",
+          "x": 816,
+          "y": 40
+        },
+        {
+          "id": "hardware",
+          "x": 24,
+          "y": 286
+        },
+        {
+          "id": "activate",
+          "x": 288,
+          "y": 286
+        },
+        {
+          "id": "x86checks",
+          "x": 552,
+          "y": 286
+        }
+      ],
+      "edges": [
+        {
+          "from_": "g4b2",
+          "to": "window",
+          "kind": "main"
+        },
+        {
+          "from_": "window",
+          "to": "memory",
+          "kind": "main"
+        },
+        {
+          "from_": "memory",
+          "to": "presenter",
+          "kind": "main"
+        },
+        {
+          "from_": "presenter",
+          "to": "x86checks",
+          "kind": "main"
+        },
+        {
+          "from_": "x86checks",
+          "to": "activate",
+          "kind": "main"
+        },
+        {
+          "from_": "activate",
+          "to": "hardware",
+          "kind": "main"
+        }
+      ],
+      "mobileOrder": [
+        "g4b2",
+        "window",
+        "memory",
+        "presenter",
+        "x86checks",
+        "activate",
+        "hardware"
+      ]
+    }
+  ]
+}</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('roadmap-data').textContent);
+const nodes=new Map(data.nodes.map(n=>[n.id,n]));
+const statuses={base:{label:'База готова',group:'ready'},accepted:{label:'Принято ограниченно',group:'ready'},partial:{label:'Частично',group:'partial'},prototype:{label:'Прототип',group:'prototype'},current:{label:'Следующий рубеж',group:'current'},planned:{label:'В плане',group:'planned'},deferred:{label:'Отложено',group:'deferred'},ongoing:{label:'Постоянно',group:'ongoing'},tool:{label:'Инструмент готов',group:'ready'}};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const docUrl=path=>data.repo+'/blob/'+data.branch+'/'+path;
+const small=()=>window.matchMedia('(max-width:760px)').matches;
+const reduced=()=>window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const state={view:'overview',selected:null,query:'',filter:'all',zoom:1};
+let layout=null,lastFocus=null,toastTimer=null,resizeTimer=null;
+function card(n){const s=statuses[n.status];return `<button class="node${state.selected===n.id?' selected':''}" data-id="${esc(n.id)}" data-status="${esc(n.status)}" aria-label="${esc(n.code+': '+n.title+'. '+s.label)}"><span class="node-bar"><span class="node-code">${esc(n.code)}</span><span class="node-status">${esc(s.label)}</span></span><span class="node-title">${esc(n.title)}</span><span class="node-summary">${esc(n.summary)}</span><span class="node-foot"><span>${esc(n.kind)}</span><b aria-hidden="true">→</b></span></button>`;}
+function activeView(){return data.views.find(v=>v.id===state.view);}
+function viewFor(id){return activeView().nodes.some(n=>n.id===id)?state.view:(data.views.find(v=>v.nodes.some(n=>n.id===id))||data.views[0]).id;}
+function route(){const p=new URLSearchParams();p.set('view',state.view);if(state.selected){p.set('stage',state.selected);p.set('view',viewFor(state.selected));}history.replaceState(null,'','#'+p.toString());}
+function scaleGraph(){if(!layout)return;const z=state.zoom;$('graph').style.transform=`scale(${z})`;$('graph-shell').style.width=Math.ceil(layout.width*z)+'px';$('graph-shell').style.height=Math.ceil(layout.height*z)+'px';$('zoom-value').textContent=Math.round(z*100)+'%';$('zoom-out').disabled=z<=.7;$('zoom-in').disabled=z>=1.6;}
+function path(a,b){const w=layout.nodeWidth,h=layout.nodeHeight;let x1,y1,x2,y2;
+ if(Math.abs(a.y-b.y)<h/2){const right=b.x>a.x;x1=a.x+(right?w:0);y1=a.y+h/2;x2=b.x+(right?0:w);y2=b.y+h/2;const m=(x1+x2)/2;return `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}`;}
+ const down=b.y>a.y;x1=a.x+w/2;y1=a.y+(down?h:0);x2=b.x+w/2;y2=b.y+(down?0:h);const m=(y1+y2)/2;return `M${x1},${y1} C${x1},${m} ${x2},${m} ${x2},${y2}`;
+}
+function renderGraph(){const v=activeView(),mobile=small(),available=$('map-scroll').clientWidth;
+ const nodeWidth=mobile?Math.max(230,Math.min(355,available-48)):220,nodeHeight=mobile?174:184;
+ const positions=mobile?v.mobileOrder.map((id,i)=>({id,x:22,y:38+i*212})):v.nodes.map(n=>({...n,x:n.x+Math.max(0,(available-1060)/2)}));
+ const width=mobile?Math.max(available,nodeWidth+48):Math.max(1060,available),height=Math.max(...positions.map(n=>n.y))+nodeHeight+35;
+ layout={width,height,nodeWidth,nodeHeight,positions};const pos=new Map(positions.map(n=>[n.id,n]));
+ let edges='';for(const e of v.edges){const a=pos.get(e.from_),b=pos.get(e.to);if(mobile && Math.abs(a.y-b.y)>220)continue;const active=nodes.get(e.to).status==='current'||nodes.get(e.from_).status==='current';edges+=`<path class="edge ${e.kind}${active?' active':''}" d="${path(a,b)}" marker-end="url(#${active?'arrow-active':'arrow'})"/>`;}
+ const svg=`<svg class="edges" width="${width}" height="${height}" aria-hidden="true"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#b9c7dc"/></marker><marker id="arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#4c7fe0"/></marker></defs>${edges}</svg>`;
+ $('graph').style.width=width+'px';$('graph').style.height=height+'px';$('graph').innerHTML=svg+positions.map(n=>card(nodes.get(n.id))).join('');
+ for(const p of positions){const el=$('graph').querySelector(`[data-id="${p.id}"]`);el.style.left=p.x+'px';el.style.top=p.y+'px';el.style.width=nodeWidth+'px';el.style.height=nodeHeight+'px';}
+ scaleGraph();
+}
+function render(){const focused=document.activeElement?.dataset?.id;for(const el of document.querySelectorAll('[data-view]')){const on=el.dataset.view===state.view;el.setAttribute('aria-selected',String(on));el.tabIndex=on?0:-1;}
+ const searching=!!state.query.trim()||state.filter!=='all';$('map-scroll').hidden=searching;$('results').hidden=!searching;$('clear-search').hidden=!state.query;
+ const v=activeView();$('map-pane').setAttribute('aria-label',v.label);$('board-caption').textContent=searching?'Поиск по всем этапам и ближайшим задачам.':v.subtitle;
+ if(searching){const q=state.query.trim().toLocaleLowerCase('ru');const found=data.nodes.filter(n=>(state.filter==='all'||statuses[n.status].group===state.filter)&&[n.code,n.title,n.summary,n.limit,n.gate,...n.done,...n.todo].join(' ').toLocaleLowerCase('ru').includes(q));$('result-count').textContent='Найдено карточек: '+found.length;$('results-grid').innerHTML=found.length?found.map(card).join(''):'<div class="empty"><strong>Ничего не найдено</strong>Попробуй другое слово или выбери все состояния.</div>';}else renderGraph();
+ if(focused)document.querySelector(`.node[data-id="${focused}"]`)?.focus({preventScroll:true});
+}
+function changeView(id){if(!data.views.some(v=>v.id===id))return;state.view=id;state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';state.zoom=1;closeDetails(false);render();route();$('map-scroll').scrollTo(0,0);}
+function section(title,items,done){if(!items.length)return `<section class="detail-section"><h3>${title}</h3><p style="font-size:12px;color:#8492a8;margin:0">Этот рубеж ещё не закрыт.</p></section>`;return `<section class="detail-section"><h3>${title}</h3><ul class="${done?'done-list':''}">${items.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></section>`;}
+function openDetails(id){const n=nodes.get(id);if(!n)return;lastFocus=document.activeElement;state.selected=id;
+ $('drawer-head').innerHTML=`<div class="drawer-meta"><strong>${esc(n.code)}</strong><span>${esc(statuses[n.status].label)}</span></div><h2 id="detail-title" tabindex="-1">${esc(n.title)}</h2><p>${esc(n.summary)}</p>`;
+ const related=new Set();for(const v of data.views)for(const e of v.edges){if(e.from_===id)related.add(e.to);if(e.to===id)related.add(e.from_);}related.delete(id);
+ $('drawer-content').innerHTML=section('Уже есть',n.done,true)+section('Осталось',n.todo,false)+`<section class="detail-section"><h3>Критерий завершения</h3><div class="gate">${esc(n.gate)}</div></section>`+(n.limit?`<div class="limits"><strong>Граница возможностей</strong>${esc(n.limit)}</div>`:'')+(related.size?`<section class="detail-section"><h3>Связанные работы</h3><div class="connections">${[...related].map(r=>`<button data-related="${esc(r)}">${esc(nodes.get(r).code+' · '+nodes.get(r).title)}</button>`).join('')}</div></section>`:'')+`<section class="detail-section"><h3>Документы на GitHub</h3><div class="doc-links">${n.docs.map(d=>`<a href="${esc(docUrl(d))}" target="_blank" rel="noopener">${esc(d.replace('docs/',''))} →</a>`).join('')}</div></section>`;
+ document.body.classList.add('drawer-open');$('drawer').hidden=false;$('overlay').hidden=!small();$('drawer').setAttribute('aria-modal',String(small()));$('drawer-content').scrollTop=0;
+ for(const el of document.querySelectorAll('.node'))el.classList.toggle('selected',el.dataset.id===id);
+ route();$('detail-title').focus({preventScroll:true});
+}
+function closeDetails(focus=true){document.body.classList.remove('drawer-open');const was=!$('drawer').hidden;$('drawer').hidden=true;$('overlay').hidden=true;state.selected=null;for(const el of document.querySelectorAll('.node.selected'))el.classList.remove('selected');if(was){route();if(focus&&lastFocus&&document.contains(lastFocus))lastFocus.focus({preventScroll:true});}}
+function locate(id){const view=viewFor(id);state.view=view;state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';state.zoom=1;render();route();const p=layout.positions.find(n=>n.id===id);if(p)$('map-scroll').scrollTo({left:Math.max(0,(p.x+layout.nodeWidth/2)*state.zoom-$('map-scroll').clientWidth/2),top:Math.max(0,p.y*state.zoom-42),behavior:reduced()?'auto':'smooth'});}
+function zoom(delta,point){if($('map-scroll').hidden)return;const el=$('map-scroll'),r=el.getBoundingClientRect(),cx=point?point.x-r.left:el.clientWidth/2,cy=point?point.y-r.top:el.clientHeight/2;const x=(el.scrollLeft+cx)/state.zoom,y=(el.scrollTop+cy)/state.zoom;state.zoom=Math.max(.7,Math.min(1.6,Math.round((state.zoom+delta)*100)/100));scaleGraph();el.scrollLeft=x*state.zoom-cx;el.scrollTop=y*state.zoom-cy;}
+function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,2600);}
+$('ci-link').href=data.ciUrl;$('status-doc').href=docUrl('docs/PROJECT_STATUS_RU.md');$('updated').textContent=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric'}).format(new Date(data.updated+'T12:00:00Z'));
+document.addEventListener('click',e=>{const node=e.target.closest('[data-id]');if(node){openDetails(node.dataset.id);return;}const related=e.target.closest('[data-related]');if(related){openDetails(related.dataset.related);return;}const metric=e.target.closest('[data-open]');if(metric){openDetails(metric.dataset.open);return;}const view=e.target.closest('[data-view]');if(view)changeView(view.dataset.view);});
+$('jump-current').addEventListener('click',()=>{state.view='gpu';locate(data.current);openDetails(data.current);$('map-pane').scrollIntoView({block:'nearest',behavior:reduced()?'auto':'smooth'});});
+$('close-drawer').onclick=()=>closeDetails();$('overlay').onclick=()=>closeDetails();$('locate-node').onclick=()=>{if(state.selected){const id=state.selected;closeDetails(false);locate(id);$('graph').querySelector(`[data-id="${id}"]`).focus({preventScroll:true});$('map-pane').scrollIntoView({block:'nearest'});}};
+$('search').addEventListener('input',e=>{state.query=e.target.value;render();});$('status-filter').onchange=e=>{state.filter=e.target.value;render();};$('clear-search').onclick=()=>{state.query='';$('search').value='';render();$('search').focus();};
+$('zoom-in').onclick=()=>zoom(.1);$('zoom-out').onclick=()=>zoom(-.1);$('fit').onclick=()=>{if(layout){state.zoom=Math.min(1,Math.max(.7,($('map-scroll').clientWidth-8)/layout.width));scaleGraph();$('map-scroll').scrollTo(0,0);}};
+$('share-node').onclick=async()=>{try{await navigator.clipboard.writeText(location.href);toast('Ссылка на карточку скопирована');}catch(e){const t=document.createElement('textarea');t.value=location.href;t.style.position='fixed';t.style.opacity='0';document.body.append(t);t.select();let ok=false;try{ok=document.execCommand('copy');}catch(x){}t.remove();toast(ok?'Ссылка на карточку скопирована':'Скопируй адрес из строки браузера');}};
+$('map-scroll').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoom(e.deltaY<0?.08:-.08,{x:e.clientX,y:e.clientY});}},{passive:false});
+let pan=null;const scroller=$('map-scroll');scroller.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'||e.button!==0||e.target.closest('button'))return;pan={x:e.clientX,y:e.clientY,left:scroller.scrollLeft,top:scroller.scrollTop};scroller.setPointerCapture(e.pointerId);scroller.classList.add('dragging');e.preventDefault();});scroller.addEventListener('pointermove',e=>{if(pan){scroller.scrollLeft=pan.left-e.clientX+pan.x;scroller.scrollTop=pan.top-e.clientY+pan.y;}});for(const type of ['pointerup','pointercancel','lostpointercapture'])scroller.addEventListener(type,()=>{pan=null;scroller.classList.remove('dragging');});
+document.querySelector('.tabs').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const tabs=[...document.querySelectorAll('[data-view]')];let i=tabs.indexOf(document.activeElement);if(i<0)return;e.preventDefault();i=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;changeView(tabs[i].dataset.view);tabs[i].focus();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('drawer').hidden)closeDetails();else if(state.query||state.filter!=='all'){state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();}}if(e.key==='Tab'&&small()&&!$('drawer').hidden){const focus=[...$('drawer').querySelectorAll('button,a[href]')];const i=focus.indexOf(document.activeElement);if(e.shiftKey&&i<=0){e.preventDefault();focus.at(-1).focus();}else if(!e.shiftKey&&(i<0||i===focus.length-1)){e.preventDefault();focus[0].focus();}}});
+window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{render();if(state.selected){$('overlay').hidden=!small();$('drawer').setAttribute('aria-modal',String(small()));}},120);});
+function fromHash(){const p=new URLSearchParams(location.hash.slice(1));if(data.views.some(v=>v.id===p.get('view')))state.view=p.get('view');const id=p.get('stage');render();if(nodes.has(id)){locate(id);openDetails(id);}else closeDetails(false);}
+window.addEventListener('hashchange',fromHash);fromHash();
+</script>
+</body>
+</html>

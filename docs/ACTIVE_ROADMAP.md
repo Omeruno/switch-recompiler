@@ -1,5 +1,7 @@
 # Active implementation map — 2026-10-25
 
+[Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
+
 **Current position: G4b.1 implemented; next gate G4b.2 live-window/coherence/
 production-presenter integration.** Runtime baseline `2c4f8497926ec638fdf94441b77961769618b624`
 passed [CI40196352908, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40196352908).

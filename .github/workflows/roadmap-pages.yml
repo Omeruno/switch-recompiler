@@ -1,0 +1,54 @@
+name: Roadmap Pages
+
+on:
+  push:
+    branches: [claude/wonderful-hawking-10mpr0]
+    paths:
+      - 'docs/roadmap/**'
+      - 'tools/check_roadmap_site.py'
+      - '.github/workflows/roadmap-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: roadmap-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate roadmap and document references
+        run: python3 tools/check_roadmap_site.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/roadmap
+      - name: Check Pages availability
+        id: pages
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.repos.getPages(context.repo);
+              core.setOutput('enabled', 'true');
+            } catch (error) {
+              if (![403, 404].includes(error.status)) throw error;
+              core.setOutput('enabled', 'false');
+              core.notice('Pages is not enabled or accessible. The offline site artifact is available.');
+              await core.summary.addHeading('Roadmap artifact ready; Pages activation required')
+                .addRaw('Owner: Settings → Pages → Source: GitHub Actions; then run this workflow again. No deployment was performed.')
+                .write();
+            }
+      - uses: actions/configure-pages@v5
+        if: steps.pages.outputs.enabled == 'true'
+      - uses: actions/deploy-pages@v4
+        if: steps.pages.outputs.enabled == 'true'
+        id: deployment
