@@ -160,3 +160,11 @@ composition without per-frame CPU readback/reupload, plus explicit read/copy
 barriers and manager-wide fallback. It remains isolated from live USER/GDI and
 the production presenter. Next G4b: bounded batching, HWND/raw-DIB/ROP coherence
 and the real presenter bridge; no physical test request or Paint FPS claim.
+
+
+G4b.1 [ordered GPU batches](G4B_GPU_BATCHES.md) groups contiguous pairwise-
+disjoint fills with instanced drawing and cached uniforms. Copies/intersections
+retain order; journal recovery and read barriers stay intact. Same-build actual
+EGL comparison gates pixels/counts and records wall distributions. G4b.2 remains
+HWND/DC/raw-DIB/ROP coherence plus a production presenter/state bridge and public
+x86 lifecycle checks. No live Paint GPU activation or hardware test request.

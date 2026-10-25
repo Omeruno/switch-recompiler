@@ -1,8 +1,8 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`a98e87e1d759f5e2eb23865124f29cb68051af0d` (2026-10-25).
-[CI 40189429070](https://github.com/Omeruno/switch-recompiler/actions/runs/40189429070)
+`847ba20e9f8151cc9d16b0e3796ba24c97a2150f` (2026-10-25).
+[CI 40193307039](https://github.com/Omeruno/switch-recompiler/actions/runs/40193307039)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
@@ -1596,3 +1596,53 @@ no-RTTI and ASan/UBSan target checks passed; driver leak scanning disabled, owne
 allocator cleanup checked independently. No runtime changed after the full suite.
 Final doc/shell/YAML/diff checks and exact published-SHA six-job/artifact proof
 remain publication gates. User hardware checks stay deferred.
+
+
+## G4b.1: bounded ordered instanced fill batches
+
+Clean847ba20/FETCH_HEAD, no newer remote work/AGENTS; exact incoming
+CI40193307039 independently reverified six success. User requests continued
+autonomous graphics work, hardware gates still deferred. Added contiguous
+pairwise-disjoint fill grouping in the unflushed G3 journal suffix. Overlap and
+copies split groups; no sorting or recovery-record merging. At most64 entries
+use fixed uniform arrays and one instanced draw, singleton/copy original path.
+Locations cached at init; native same-build EnableBatching(false) control.
+Extra shader IDs cleared on context loss; journal replay remains per-command.
+See G4B_GPU_BATCHES.md; this is batching only, not all G4b/live GDI activation.
+
+New native EGL benchmark checks four warm-up plus32 measured128x128 cycles per
+process,64 ops/cycle, full independent pixel checks. Seven paired alternating
+repetitions of tiles/mixed/overlap produce42 raw samples, source dirty/SHA and
+runner hash. Deterministic draw counts2048->32 tiles,2048->96 mixed with copy
+barrier,2048->2048 overlap.32 readbacks and2048 attempted commands preserved.
+Wall phases separate enqueue/submit/readback; never GPU duration/Switch FPS.
+Local initial comparison cycles16.55/3.98ms tiles and15.83/6.46ms mixed, host
+software GL only; timing distributions are recorded with no pass threshold.
+
+Extended CPU GDI/EGL oracle checks clipped/adjacent/disjoint/overlapping fills,
+copy boundaries, exact attempt/group/command counts, repeated flush, recovery
+after already submitted groups and actual context destruction after instanced
+drawing with pending copy. Full fresh rootless MinGW/Mesa suite passed runtime/
+header/test tree, including G3/G4a, G1/G2,22 F groups, Stage C/six E9 and prior
+workspace/composition GL/lifetime gates. Strict targeted O2 and ASan/UBSan passed;
+driver leak scan disabled, injected owned allocator cleanup still required.
+Only docs/report validation follow. Final source/link/shell/YAML checks and exact
+new-SHA six-job/clean artifact verification remain publication gates. SDK absent.
+
+Next G4b.2: HWND/DC identity/visible ownership, raw-DIB and CPU ROP/read barriers,
+shared-context state contract and texture-aware production presenter. Current
+ShellSession canonical CPU memcpy cannot just remain plus duplicate GPU work.
+Actual-x86 public lifecycle/pixel fixtures before activation, no claim Paint is
+GPU drawn. Preserve Luna, G2, physical deferred list and separate D/installer work.
+
+
+Final G4b.1 checks: full clean rootless MinGW/Mesa suite completed successfully
+on final runtime/header/harness tree;42 benchmark samples and exact draw/command/
+copy/readback/pixel gates passed. Final full-suite local phase sums were14.25/
+4.20ms tiles and11.71/6.75ms mixed (32 cycles, host-only). Negative wrong-runner
+test rejected and removed stale evidence; Python syntax, shell syntax, Markdown
+relative links/fences, six-job workflow/new independent GPU gate and git diff
+--check passed. Strict O2 and ASan/UBSan actual-G3 pixel/order/error/context-loss
+test passed on the same runtime. No code followed the full suite, only docs.
+Fetched unchanged847ba20 before normal publication. Verify exact new-SHA all six
+CI jobs and clean42-sample artifact before completion. Hardware remains deferred.

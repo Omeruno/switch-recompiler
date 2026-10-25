@@ -12,7 +12,10 @@ public:
     enum class Mode {Empty,Gpu,CpuFallback};
     static constexpr int MaxSide=512;
     static constexpr size_t MaxCommands=64,MaxInputBytes=4*1024*1024;
-    struct Stats {uint64_t draws=0,uploads=0,readbacks=0,recoveries=0,checkpoints=0;};
+    struct Stats {
+        uint64_t draws=0,uploads=0,readbacks=0,recoveries=0,checkpoints=0;
+        uint64_t submittedCommands=0,batches=0,batchedCommands=0;
+    };
     explicit GpuGdiPrototype(PresentationAllocator* allocator=nullptr);
     ~GpuGdiPrototype();
     GpuGdiPrototype(const GpuGdiPrototype&)=delete;
@@ -31,6 +34,7 @@ public:
     const Stats& Counters() const {return stats_;}
     size_t JournalCommands() const {return count_;}
     size_t InputBytes() const {return inputBytes_;}
+    void EnableBatching(bool enabled) {batching_=enabled;} // native same-build reference control
 private:
     friend class GpuGdiTargets;
     struct Command {Rect rect;uint32_t color=0;bool copy=false;PresentationBuffer<uint32_t> input;};
@@ -42,13 +46,16 @@ private:
     bool OpenDevice();
     void DeleteDevice();
     bool Draw(const Command&);
+    bool DrawFillBatch(size_t first,size_t count);
     bool ReadDevice();
     PresentationAllocator* allocator_;
     PresentationBuffer<uint32_t> checkpoint_,scratch_;
     Surface surface_;
     std::array<Command,MaxCommands> commands_;
     size_t count_=0,flushed_=0,inputBytes_=0;
-    uint32_t target_=0,upload_=0,fbo_=0,vao_=0,program_=0;
+    uint32_t target_=0,upload_=0,fbo_=0,vao_=0,program_=0,batchProgram_=0;
+    struct Locations {int operation=-1,image=-1,origin=-1,fill=-1,rects=-1,colors=-1,size=-1;} locations_;
+    bool batching_=true;
     Mode mode_=Mode::Empty;
     Stats stats_;
 };

@@ -22,6 +22,7 @@ rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
 rm -f "$out/gpu_gdi_targets.log"
+rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
 failed=0
 
 # Verify pinned artwork and committed native RGBA conversion.
@@ -272,6 +273,16 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     # Optional locally, mandatory in CI: replay the same live x86 window scenes
     # through the production GL renderer, not a second synthetic implementation.
     if [ "${COMPOSITION_GL_TEST:-0}" = 1 ]; then
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/benchmark_gpu_gdi.cpp" \
+           "$root/source/ui/gpu_gdi_prototype.cpp" -lEGL -lGL -o "$out/benchmark_gpu_gdi" &&
+           python3 "$root/tools/benchmark_gpu_batches.py" "$out/benchmark_gpu_gdi" "$out/gpu_gdi_batches.json" \
+               > "$out/gpu_gdi_batches.log" 2>&1; then
+            tail -n 1 "$out/gpu_gdi_batches.log"
+        else
+            echo "   GPU GDI BATCH COMPARISON FAILED"
+            tail -n 25 "$out/gpu_gdi_batches.log" 2>/dev/null || true
+            failed=1
+        fi
         if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_gdi_targets.cpp" \
            "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
            -lEGL -lGL -o "$out/test_gpu_gdi_targets" &&

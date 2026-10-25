@@ -64,6 +64,14 @@ jobs:
             docs/G4A_GPU_TARGETS.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-gpu-gdi-batches
+          if-no-files-found: error
+          path: |
+            build-host/gpu_gdi_batches.json
+            build-host/gpu_gdi_batches.log
+            docs/G4B_GPU_BATCHES.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-e-acceptance-exe
           path: |
             build-host/guest-run.*/stage_e_acceptance.exe
@@ -106,6 +114,10 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/test_gpu_gdi_targets.cpp source/ui/gpu_gdi_targets.cpp source/ui/gpu_gdi_prototype.cpp -lEGL -lGL -o /tmp/test_gpu_gdi_targets
           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 /tmp/test_gpu_gdi_targets
+      - name: Ordered GPU batches versus single-command reference
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-exceptions -fno-rtti -DSR_OPENGL_TEST -I. tests/benchmark_gpu_gdi.cpp source/ui/gpu_gdi_prototype.cpp -lEGL -lGL -o /tmp/benchmark_gpu_gdi
+          python3 tools/benchmark_gpu_batches.py /tmp/benchmark_gpu_gdi /tmp/gpu_gdi_batches.json
 
   cpu-oracle:
     name: Сверка CPU с железом

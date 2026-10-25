@@ -48,6 +48,24 @@ int main() {
         allocator.calls=0;allocator.failAt=failure;Gpu gpu(&allocator);assert(!gpu.Initialize(31,23));assert(!allocator.live);
     }
     allocator.failAt=0;
+    for(bool batching:{false,true}) {
+        Gpu gpu(&allocator);assert(gpu.Initialize(31,23));gpu.EnableBatching(batching);Reference ref(31,23);
+        auto fill=[&](ui::Rect r,uint32_t color){assert(gpu.Fill(r,color));ref.Fill(r,color);};
+        fill({-2,-2,8,8},0x123456);fill({8,0,16,8},0xabcdef);
+        assert(gpu.FlushGpu());assert(gpu.Counters().draws==(batching?1u:2u));
+        fill({4,0,12,8},0x719253);fill({0,10,8,18},0x1a2b3c);
+        std::vector<uint32_t> input(4,0xa72468ac);assert(gpu.Copy({6,4,8,6},input.data(),4));ref.Copy({6,4,8,6},input);
+        fill({18,0,27,7},0x012345);fill({18,8,29,21},0x987654);
+        assert(gpu.FlushGpu());assert(gpu.Counters().draws==(batching?4u:7u));
+        assert(gpu.Counters().submittedCommands==7 && gpu.Counters().uploads==1 && gpu.Counters().readbacks==0);
+        assert(gpu.Counters().batches==(batching?3u:0u) && gpu.Counters().batchedCommands==(batching?6u:0u));
+        const auto draws=gpu.Counters().draws;assert(gpu.FlushGpu() && gpu.Counters().draws==draws);
+        Compare(gpu,ref);assert(gpu.Backend()==Gpu::Mode::Gpu);
+        fill({0,0,8,8},0x123456);fill({8,0,16,8},0xabcdef);assert(gpu.FlushGpu());
+        fill({3,3,11,11},0x654321);glEnable(0xffffffffu);assert(!gpu.FlushGpu());Compare(gpu,ref);
+        assert(gpu.Backend()==Gpu::Mode::CpuFallback);
+    }
+    assert(!allocator.live);
     {Gpu invalid;assert(!invalid.Initialize(0,1));assert(!invalid.Initialize(Gpu::MaxSide+1,1));}
     for(auto dimensions:{ui::Point{1,1},ui::Point{31,23},ui::Point{512,512}}) {
         Gpu gpu(&allocator);assert(gpu.Initialize(dimensions.x,dimensions.y));Reference ref(dimensions.x,dimensions.y);
@@ -100,7 +118,9 @@ int main() {
     assert(!allocator.live);
     {
         Gpu gpu(&allocator);assert(gpu.Initialize(31,23));Reference ref(31,23);
-        assert(gpu.Fill({0,0,31,23},0x654321));ref.Fill({0,0,31,23},0x654321);assert(gpu.FlushGpu());
+        assert(gpu.Fill({0,0,15,23},0x654321));ref.Fill({0,0,15,23},0x654321);
+        assert(gpu.Fill({15,0,31,23},0x123456));ref.Fill({15,0,31,23},0x123456);
+        assert(gpu.FlushGpu() && gpu.Counters().batches==1);
         std::vector<uint32_t> tile(12,0xabcdef);assert(gpu.Copy({2,3,6,6},tile.data(),tile.size()));ref.Copy({2,3,6,6},tile);
         assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));assert(eglDestroyContext(display,context));
         gpu.ContextLost();Compare(gpu,ref);assert(gpu.Backend()==Gpu::Mode::CpuFallback);

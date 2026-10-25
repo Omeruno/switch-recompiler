@@ -44,7 +44,7 @@ void GpuGdiPrototype::Replay() {
 void GpuGdiPrototype::Recover(bool contextAlive) {
     // Last verified CPU checkpoint + all owned commands, including GPU-flushed
     // commands, survives partial batches, readback failure and lost contexts.
-    Replay();if(contextAlive)DeleteDevice();else target_=upload_=fbo_=vao_=program_=0;
+    Replay();if(contextAlive)DeleteDevice();else target_=upload_=fbo_=vao_=program_=batchProgram_=0;
     mode_=Mode::CpuFallback;++stats_.recoveries;
 }
 void GpuGdiPrototype::ContextLost() {if(mode_==Mode::Gpu)Recover(false);}
@@ -75,7 +75,19 @@ bool GpuGdiPrototype::Copy(Rect r,const uint32_t* pixels,size_t count) {
 }
 bool GpuGdiPrototype::FlushGpu() {
     if(mode_!=Mode::Gpu)return false;
-    for(;flushed_<count_;++flushed_)if(!Draw(commands_[flushed_])){Recover(true);return false;}
+    while(flushed_<count_) {
+        size_t end=flushed_+1;
+        if(batching_ && !commands_[flushed_].copy) {
+            for(;end<count_ && !commands_[end].copy;++end) {
+                bool overlap=false;
+                for(size_t i=flushed_;i<end;++i)if(commands_[i].rect.Intersects(commands_[end].rect)){overlap=true;break;}
+                if(overlap)break; // ordered batches; never commute overlapping writes
+            }
+        }
+        const bool ok=end-flushed_>1?DrawFillBatch(flushed_,end-flushed_):Draw(commands_[flushed_]);
+        if(!ok){Recover(true);return false;}
+        flushed_=end;
+    }
     return true;
 }
 const Surface* GpuGdiPrototype::CpuRead() {
@@ -106,13 +118,32 @@ const char* fs=R"(#version 330 core
 uniform sampler2D image;uniform int operation;uniform vec3 fillColor;uniform ivec2 origin;
 out vec4 color;
 void main(){color=operation==0?vec4(fillColor,1):vec4(texelFetch(image,ivec2(gl_FragCoord.xy)-origin,0).rgb,1);})";
+const char* batchVs=R"(#version 330 core
+uniform ivec4 rectangles[64];uniform vec3 colors[64];uniform ivec2 targetSize;
+flat out vec3 paint;
+void main(){int v=gl_VertexID;vec2 corner=vec2((v==1||v==4||v==5)?1:0,(v==2||v==3||v==5)?1:0);
+ivec4 r=rectangles[gl_InstanceID];vec2 p=vec2(r.xy)+corner*vec2(r.zw);
+gl_Position=vec4(p/vec2(targetSize)*2.0-1.0,0,1);paint=colors[gl_InstanceID];})";
+const char* batchFs=R"(#version 330 core
+flat in vec3 paint;out vec4 color;void main(){color=vec4(paint,1);})";
+GLuint Program(const char* vertex,const char* fragment) {
+    const auto a=Shader(GL_VERTEX_SHADER,vertex),b=Shader(GL_FRAGMENT_SHADER,fragment);
+    if(!a || !b){if(a)glDeleteShader(a);if(b)glDeleteShader(b);return 0;}
+    const auto p=glCreateProgram();glAttachShader(p,a);glAttachShader(p,b);glLinkProgram(p);
+    glDeleteShader(a);glDeleteShader(b);GLint ok=0;glGetProgramiv(p,GL_LINK_STATUS,&ok);
+    if(!ok){glDeleteProgram(p);return 0;}return p;
+}
 }
 bool GpuGdiPrototype::OpenDevice() {
+    static_assert(MaxCommands==64,"batch shader uniform capacity must match command limit");
     if(glGetError()!=GL_NO_ERROR)return false;
-    const auto a=Shader(GL_VERTEX_SHADER,vs),b=Shader(GL_FRAGMENT_SHADER,fs);
-    if(!a || !b){if(a)glDeleteShader(a);if(b)glDeleteShader(b);return false;}
-    program_=glCreateProgram();glAttachShader(program_,a);glAttachShader(program_,b);glLinkProgram(program_);
-    glDeleteShader(a);glDeleteShader(b);GLint ok=0;glGetProgramiv(program_,GL_LINK_STATUS,&ok);if(!ok)return false;
+    program_=Program(vs,fs);batchProgram_=Program(batchVs,batchFs);if(!program_ || !batchProgram_)return false;
+    locations_.operation=glGetUniformLocation(program_,"operation");locations_.image=glGetUniformLocation(program_,"image");
+    locations_.origin=glGetUniformLocation(program_,"origin");locations_.fill=glGetUniformLocation(program_,"fillColor");
+    locations_.rects=glGetUniformLocation(batchProgram_,"rectangles[0]");locations_.colors=glGetUniformLocation(batchProgram_,"colors[0]");
+    locations_.size=glGetUniformLocation(batchProgram_,"targetSize");
+    if(locations_.operation<0 || locations_.image<0 || locations_.origin<0 || locations_.fill<0 ||
+       locations_.rects<0 || locations_.colors<0 || locations_.size<0)return false;
     glGenVertexArrays(1,&vao_);glGenFramebuffers(1,&fbo_);glGenTextures(1,&target_);glGenTextures(1,&upload_);
     if(!vao_ || !fbo_ || !target_ || !upload_)return false;
     glBindTexture(GL_TEXTURE_2D,target_);
@@ -135,7 +166,8 @@ void GpuGdiPrototype::DeleteDevice() {
     if(fbo_)glDeleteFramebuffers(1,&fbo_);
     if(vao_)glDeleteVertexArrays(1,&vao_);
     if(program_)glDeleteProgram(program_);
-    target_=upload_=fbo_=vao_=program_=0;
+    if(batchProgram_)glDeleteProgram(batchProgram_);
+    target_=upload_=fbo_=vao_=program_=batchProgram_=0;
 }
 bool GpuGdiPrototype::Draw(const Command& c) {
     if(glGetError()!=GL_NO_ERROR)return false;
@@ -143,16 +175,31 @@ bool GpuGdiPrototype::Draw(const Command& c) {
     glUseProgram(program_);glBindVertexArray(vao_);glEnable(GL_SCISSOR_TEST);
     glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,upload_);
     const auto r=c.rect.Intersect({0,0,surface_.width,surface_.height});glScissor(r.left,r.top,r.Width(),r.Height());
-    glUniform1i(glGetUniformLocation(program_,"operation"),c.copy?1:0);
+    glUniform1i(locations_.operation,c.copy?1:0);
     if(c.copy) {
         glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,upload_);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
         glPixelStorei(GL_UNPACK_SKIP_ROWS,0);glPixelStorei(GL_UNPACK_SKIP_PIXELS,0);
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,c.rect.Width(),c.rect.Height(),0,GL_BGRA,GL_UNSIGNED_BYTE,c.input.data());
-        glUniform1i(glGetUniformLocation(program_,"image"),0);glUniform2i(glGetUniformLocation(program_,"origin"),c.rect.left,c.rect.top);++stats_.uploads;
-    } else glUniform3f(glGetUniformLocation(program_,"fillColor"),((c.color>>16)&255)/255.f,((c.color>>8)&255)/255.f,(c.color&255)/255.f);
-    glDrawArrays(GL_TRIANGLES,0,3);++stats_.draws;return glGetError()==GL_NO_ERROR;
+        glUniform1i(locations_.image,0);glUniform2i(locations_.origin,c.rect.left,c.rect.top);++stats_.uploads;
+    } else glUniform3f(locations_.fill,((c.color>>16)&255)/255.f,((c.color>>8)&255)/255.f,(c.color&255)/255.f);
+    glDrawArrays(GL_TRIANGLES,0,3);++stats_.draws;++stats_.submittedCommands;return glGetError()==GL_NO_ERROR;
+}
+bool GpuGdiPrototype::DrawFillBatch(size_t first,size_t count) {
+    if(glGetError()!=GL_NO_ERROR)return false;
+    std::array<GLint,MaxCommands*4> rectangles{};std::array<GLfloat,MaxCommands*3> colors{};
+    for(size_t i=0;i<count;++i) {
+        const auto& c=commands_[first+i];const auto& r=c.rect;
+        rectangles[i*4]=r.left;rectangles[i*4+1]=r.top;rectangles[i*4+2]=r.Width();rectangles[i*4+3]=r.Height();
+        colors[i*3]=((c.color>>16)&255)/255.f;colors[i*3+1]=((c.color>>8)&255)/255.f;colors[i*3+2]=(c.color&255)/255.f;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER,fbo_);glViewport(0,0,surface_.width,surface_.height);
+    glUseProgram(batchProgram_);glBindVertexArray(vao_);glDisable(GL_SCISSOR_TEST);
+    glUniform4iv(locations_.rects,GLsizei(count),rectangles.data());glUniform3fv(locations_.colors,GLsizei(count),colors.data());
+    glUniform2i(locations_.size,surface_.width,surface_.height);
+    glDrawArraysInstanced(GL_TRIANGLES,0,6,GLsizei(count));++stats_.draws;++stats_.batches;
+    stats_.submittedCommands+=count;stats_.batchedCommands+=count;return glGetError()==GL_NO_ERROR;
 }
 bool GpuGdiPrototype::ReadDevice() {
     if(glGetError()!=GL_NO_ERROR)return false;
@@ -165,6 +212,7 @@ bool GpuGdiPrototype::ReadDevice() {
 bool GpuGdiPrototype::OpenDevice(){return false;}
 void GpuGdiPrototype::DeleteDevice(){}
 bool GpuGdiPrototype::Draw(const Command&){return false;}
+bool GpuGdiPrototype::DrawFillBatch(size_t,size_t){return false;}
 bool GpuGdiPrototype::ReadDevice(){return false;}
 #endif
 } // namespace ui
