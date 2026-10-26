@@ -1966,3 +1966,14 @@ Focused ASan/UBSan actual-renderer/target/shared harness passes final sources
 No runtime/test changes follow the final suite. Map/link/browser checks and exact
 published-SHA six-job CI, contract/log artifact and live Pages verification
 remain completion gates. Local SDK absent; current physical checks deferred.
+
+G4b.2d.2 publication setup follow-up: a8adc2b / CI40346204083 passed
+host/MinGW, actual EGL, ARM64/QEMU, Switch NRO and JIT NRO; public resident-layer
+log/contract/NRO and live Pages independently verified. Only CPU-oracle compiler
+installation remained running beyond eight minutes before tests. Applied the
+same proven official Ubuntu HTTPS source/retry/timeout policy and ten-minute
+step limit there too. Preserve suites/keyrings, gcc/g++ multilib and the exact
+50000-all CPU oracle command; no runtime/tests or other jobs change. Verify all
+six jobs on the final published config SHA rather than claiming the cancelled
+first run was fully successful. No repeated local runtime suite needed for this
+configuration-only follow-up; final C++ source remains the full-suite tested one.

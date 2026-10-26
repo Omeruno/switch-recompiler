@@ -124,6 +124,6 @@ Local devkitA64/libnx is absent; CI builds NROs. Current hardware/Paint/GPU/
 fallback/input/relaunch remains the deferred [consolidated list](STAGE_E_PERFORMANCE.md).
 SD recovery is closed; no repeated SD diagnosis or invented physical acceptance.
 
-CI setup note (2026-10-26): ARM cross-tool and host MinGW/Mesa dependencies use the official Ubuntu
+CI setup note (2026-10-26): ARM cross-tool, host MinGW/Mesa and CPU-oracle multilib dependencies use the official Ubuntu
 HTTPS archive with bounded setup/network timeouts after measured Azure HTTP
 payload throttling. Test commands and the six core gates are unchanged.
