@@ -298,6 +298,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
            "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
            "$root/source/ui/opengl_presentation.cpp" "$root/source/ui/presentation.cpp" \
            "$root/source/ui/presentation_layers.cpp" "$root/source/ui/window_layers.cpp" \
+           "$root/source/ui/mixed_presentation.cpp" \
            -lEGL -lGL -o "$out/test_gpu_gdi_shared_context" &&
            EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_gpu_gdi_shared_context" > "$out/gpu_gdi_shared_context.log" 2>&1; then
             tail -n 1 "$out/gpu_gdi_shared_context.log"

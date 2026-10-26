@@ -97,8 +97,9 @@ Paint/GPU/fallback/input/relaunch remain deferred; no user hardware test needed.
 
 ## Next
 
-Own a complete mixed CPU/resident scene in the persistent presentation layer,
-connect validated live HWND/window ownership to resident resources, and bypass
+[G4b.2d.3](G4B2D3_MIXED_FRAME.md) now owns a complete mixed CPU/resident scene
+for retained native submission/redraw. Next connect validated live HWND/window
+ownership to resident resources, and bypass
 the unconditional canonical CPU snapshot for that selected path. Audit remaining
 raw host pixel consumers and route coherence/render failures into the existing
 controlled frontend cleanup before selective ordinary GDI admission. Keep Luna,

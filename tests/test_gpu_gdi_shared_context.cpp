@@ -3,9 +3,11 @@
 #include <GL/glcorearb.h>
 #include "source/ui/gpu_gdi_targets.h"
 #include "source/ui/opengl_presentation.h"
+#include "source/ui/mixed_presentation.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -202,6 +204,133 @@ void TestResident() {
     presenter.Shutdown();targets.Shutdown();assert(!targets.ConsumeFrame(resident,sink));
     puts("Resident production layers: PASS (GPU textures, ownership holes/overlap, CPU chrome, cursor, no target readback/upload, retirement and recovery)");
 }
+struct FailAllocator:ui::PresentationAllocator {
+    int remaining=-1;size_t live=0;
+    void* Allocate(size_t n) override {
+        if(remaining==0)return nullptr;
+        if(remaining>0)--remaining;
+        void* p=std::malloc(n);if(p)++live;return p;
+    }
+    void Free(void* p) override {if(p){assert(live);--live;std::free(p);}}
+};
+void TestMixed() {
+    Clean();ui::GpuGdiTargets targets;assert(targets.Initialize());
+    ui::OpenGlPresentation renderer;assert(renderer.Initialize());
+    const auto image=targets.Create(23,17);assert(image);
+    assert(targets.Fill(image,{0,0,23,17},0x1279ad));
+    ui::GpuGdiTargets::Layer resource{image,{0,0,23,17}};
+    ui::GpuGdiTargets::Frame pins;assert(targets.PrepareFrame(&resource,1,W,H,pins));
+    FailAllocator alloc;ui::MixedPresentation retained(&alloc);
+    const uint32_t token=11;std::vector<uint32_t> reference(W*H),expected(W*H),output(W*H);
+    ui::SoftwarePresentation software;ui::PresentationCursor cursor{5,9,true};
+    {
+        ui::OwnedSurface base,overlay;base.Allocate(W,H);overlay.Allocate(12,8);
+        std::vector<uint32_t> owners(W*H);
+        for(int y=0;y<H;++y)for(int x=0;x<W;++x) {
+            uint32_t rgb=(x*17311+y*387)&0xffffff;base.s.Set(x,y,rgb);
+            if(x>=4 && x<27 && y>=7 && y<24){owners[size_t(y)*W+x]=11;rgb=0x1279ad;}
+            if(x>=9 && x<21 && y>=12 && y<20) {
+                owners[size_t(y)*W+x]=33;rgb=(x*831+y*77413)&0xffffff;overlay.s.Set(x-9,y-12,rgb);
+            }
+            reference[size_t(y)*W+x]=rgb;
+        }
+        ui::PresentationLayerFrame layers[]={{nullptr,11,4,7},{&overlay.s,33,9,12}};
+        ui::PresentationSceneFrame scene{owners.data(),W,H,1,1,nullptr,layers,2};
+        // Every module allocation failure preserves the previous accepted frame.
+        assert(retained.Submit(base.s,scene,targets,pins,&token,1));
+        const auto bytes=retained.CpuBytes();assert(bytes>size_t(W)*H*8);
+        for(int failure=0;failure<5;++failure) {
+            alloc.remaining=failure;assert(!retained.Submit(base.s,scene,targets,pins,&token,1));
+            assert(retained.CpuBytes()==bytes);
+        }
+        alloc.remaining=-1;
+        owners[0]=999;assert(!retained.Submit(base.s,scene,targets,pins,&token,1));owners[0]=0;
+        owners[0]=11;assert(!retained.Submit(base.s,scene,targets,pins,&token,1));owners[0]=0;
+        layers[1].token=11;assert(!retained.Submit(base.s,scene,targets,pins,&token,1));layers[1].token=33;
+        // Poison then free all producer buffers; no borrowed pointer may survive.
+        std::fill(owners.begin(),owners.end(),999);
+        std::memset(base.s.bits,0xff,size_t(W)*H*4);std::memset(overlay.s.bits,0xff,12*8*4);
+    }
+    ui::Surface canonical;canonical.width=W;canonical.height=H;canonical.pitch=W*4;
+    canonical.bits=reinterpret_cast<uint8_t*>(reference.data());
+    const auto compare=[&]() {
+        ui::PresentationFrame frame{canonical,ui::FitViewport(W,H,W,H),cursor};
+        assert(software.Render(frame,{expected.data(),W,H,W,expected.size()}));
+        const auto actual=ReadRgb();
+        for(size_t p=0;p<actual.size();++p) {
+            const uint32_t v=expected[p];assert(actual[p]==(((v&255)<<16)|(v&0xff00)|((v>>16)&255)));
+        }
+    };
+    for(int n=0;n<12;++n) {
+        cursor.x=5+n;
+        if(n==6) {
+            assert(targets.Fill(image,{2,3,9,8},0x37bc91));
+            for(int y=10;y<15;++y)for(int x=6;x<13;++x)
+                if(!(x>=9 && y>=12))reference[size_t(y)*W+x]=0x37bc91;
+        }
+        assert(retained.Render(targets,renderer,{nullptr,W,H,0,0},cursor));compare();
+        assert(targets.TargetStats(image)->readbacks==0 && targets.TargetStats(image)->uploads==0);
+    }
+    assert(renderer.Timings().screenUploadBytes==uint64_t(W)*H*4);
+    assert(renderer.Timings().layerUploadBytes==12*8*4);
+    // Reusing this backend for a normal retained CPU frame must not alias the
+    // mixed snapshot's cached resource identity/revisions.
+    ui::OwnedSurface cpu;cpu.Allocate(W,H);std::memset(cpu.s.bits,0x66,size_t(W)*H*4);
+    ui::Presentation ordinary(&renderer);assert(ordinary.Submit(cpu.s));
+    assert(ordinary.Render({nullptr,W,H,0,0}));
+    assert(retained.Render(targets,renderer,{nullptr,W,H,0,0},cursor));compare();
+    assert(targets.Destroy(image));pins={}; // retained owns the last target pin
+    assert(retained.Render(targets,renderer,{nullptr,W,H,0,0},cursor));compare();
+    ui::GpuGdiTargets other;assert(other.Initialize());
+    assert(!retained.RenderCpu(other,software,{output.data(),W,H,W,output.size()},cursor));
+    assert(other.GpuActive());other.Shutdown();
+    glEnable(0xdead);assert(!retained.Render(targets,renderer,{nullptr,W,H,0,0},cursor));
+    assert(retained.RenderCpu(targets,software,{output.data(),W,H,W,output.size()},cursor));
+    assert(output==expected && !targets.GpuActive());
+    assert(!retained.Render(targets,renderer,{nullptr,W,H,0,0},cursor));
+    targets.Shutdown();std::fill(output.begin(),output.end(),0xdeadbeef);
+    assert(!retained.RenderCpu(targets,software,{output.data(),W,H,W,output.size()},cursor));
+    assert(std::all_of(output.begin(),output.end(),[](uint32_t p){return p==0xdeadbeef;}));
+    retained.Clear();assert(alloc.live==0 && retained.CpuBytes()==0);
+    renderer.Shutdown();
+    puts("Owned mixed frame: PASS (producer destruction, atomic rejection/allocation, cached CPU planes, live GPU writes, pins, explicit genuine fallback, revoked/foreign manager)");
+}
+void TestMixedContextLoss(EGLDisplay d,EGLSurface surface,EGLContext original) {
+    EGLint version[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,3,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK,EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,EGL_NONE};
+    EGLint id=0;assert(eglQueryContext(d,original,EGL_CONFIG_ID,&id));
+    EGLint attrs[]={EGL_CONFIG_ID,id,EGL_NONE};EGLConfig config;EGLint count=0;
+    assert(eglChooseConfig(d,attrs,&config,1,&count) && count==1);
+    auto lost=eglCreateContext(d,config,EGL_NO_CONTEXT,version);assert(lost!=EGL_NO_CONTEXT);
+    assert(eglMakeCurrent(d,surface,surface,lost));
+    ui::GpuGdiTargets targets;assert(targets.Initialize());
+    ui::MixedPresentation retained;
+    {
+        const auto image=targets.Create(4,3);assert(image);
+        assert(targets.Fill(image,{0,0,4,3},0x1279ad));
+        ui::GpuGdiTargets::Layer resource{image,{0,0,4,3}};ui::GpuGdiTargets::Frame pins;
+        assert(targets.PrepareFrame(&resource,1,W,H,pins));
+        ui::OwnedSurface base;base.Allocate(W,H);std::memset(base.s.bits,0,size_t(W)*H*4);
+        std::vector<uint32_t> owners(W*H);for(int y=5;y<8;++y)for(int x=2;x<6;++x)owners[size_t(y)*W+x]=11;
+        ui::PresentationLayerFrame layer{nullptr,11,2,5};
+        ui::PresentationSceneFrame scene{owners.data(),W,H,1,1,nullptr,&layer,1};uint32_t token=11;
+        assert(retained.Submit(base.s,scene,targets,pins,&token,1));
+        // Both submitted and pending writes must survive actual context death.
+        assert(targets.Fill(image,{1,1,2,2},0x37bc91));assert(targets.Destroy(image));
+    }
+    assert(eglMakeCurrent(d,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
+    assert(eglDestroyContext(d,lost));targets.ContextLost();
+    ui::SoftwarePresentation software;std::vector<uint32_t> output(W*H);
+    assert(retained.RenderCpu(targets,software,{output.data(),W,H,W,output.size()}));
+    for(int y=0;y<H;++y)for(int x=0;x<W;++x) {
+        uint32_t rgb=0;if(x>=2 && x<6 && y>=5 && y<8)rgb=0x1279ad;
+        if(x==3 && y==6)rgb=0x37bc91;
+        assert(output[size_t(y)*W+x]==(0xff000000u|((rgb&255)<<16)|(rgb&0xff00)|((rgb>>16)&255)));
+    }
+    targets.Shutdown();retained.Clear();
+    assert(eglMakeCurrent(d,surface,surface,original));
+    puts("Owned mixed context loss: PASS (actual destroyed EGL context, retired sole pin, pending write recovery, software pixels without GL)");
+}
 void TestShared() {
     Caller caller;caller.Hostile();const auto hostile=Snapshot();
     std::vector<uint32_t> pixels(W*H);
@@ -264,7 +393,7 @@ int main() {
     EGLint size[]={EGL_WIDTH,W,EGL_HEIGHT,H,EGL_NONE};auto surface=eglCreatePbufferSurface(d,config,size);assert(surface!=EGL_NO_SURFACE);
     EGLint version[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,3,EGL_CONTEXT_OPENGL_PROFILE_MASK,EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,EGL_NONE};
     auto context=eglCreateContext(d,config,EGL_NO_CONTEXT,version);assert(context!=EGL_NO_CONTEXT);
-    assert(eglMakeCurrent(d,surface,surface,context));TestShared();TestResident();
+    assert(eglMakeCurrent(d,surface,surface,context));TestShared();TestResident();TestMixed();TestMixedContextLoss(d,surface,context);
     assert(eglMakeCurrent(d,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
     assert(eglDestroyContext(d,context) && eglDestroySurface(d,surface) && eglTerminate(d));
     std::puts("GPU GDI shared context: PASS (hostile state, nested barriers, production interleave, failure cleanup; no presentation readbacks)");

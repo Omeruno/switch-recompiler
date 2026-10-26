@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`4a91409fc606c1695cbf88412b711bfddd4dbcd7` (2026-10-26).
-[CI 40353639236](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236)
+`5f72b6782787ad1de0b42c3795b5bd1147d62776` (2026-10-27).
+[CI 40390490786](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F6a/F6b window actions implemented; G4b.2d.2 preserved (2026-10-26)
+## Current position: F6a/F6b and G4b.2d.3 owned mixed frames implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -30,7 +30,9 @@ textures in the real production renderer with ownership/CPU overlays/cursor.
 User-prioritized [F6a guest window gestures](F6A_GUEST_WINDOW_GESTURES.md) adds
 real modal caption/edge/corner/button actions. [F6b native windows](F6B_NATIVE_WINDOW_ACTIONS.md)
 adds true state/geometry/reflow and exact input/composition for panels and TXT/BMP.
-Next: owned mixed frames and window/shell integration,
+[G4b.2d.3](G4B2D3_MIXED_FRAME.md) adds owning mixed CPU/resident scenes,
+producer-independent redraw and explicit genuine software recovery.
+Next: live-window/shell integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -2084,3 +2086,47 @@ prior CPU/GDI/GPU/session/file/C/E/F gates. Focused sanitizer rerun follows the
 final fixed layout; unchanged other instrumented UI/bridge modules and ordinary
 common-runtime objects. Verify final exact published-SHA CI six jobs and native
 artifact before closing; no physical acceptance, SD or hardware request added.
+
+
+## G4b.2d.3 — owned mixed presentation (2026-10-27)
+
+Clean5f72b67/FETCH_HEAD, no newer work/AGENTS. Incoming CI40390490786
+independently reverified all six jobs. Implemented MixedPresentation as explicit
+native retained entry: owned base/ownership/CPU overlays and geometry plus GPU
+resource pins, no producer/manager/guest/GL-view pointer retained. Atomic reject
+preserves old state; authoritative owner validation rejects unknown/outside
+owners. Native CPU snapshots have stable revisions; resident contents stay live.
+See G4B2D3_MIXED_FRAME.md for bounds, submission flush side effects and limits.
+No live HWND/ShellSession/default GDI path is activated or claimed accelerated.
+
+Healthy redraw uses production resident renderer without target readback/upload;
+explicit software boundary validates manager then recovers real checkpoint/
+journal pixels outside consumer. Actual context loss requires notification first.
+Foreign/reset/shutdown reject; target retirement retains sole frame pin. Shared
+NewPresentationResourceId prevents ordinary/mixed texture-cache identity aliases.
+A preliminary suite was stopped after this cross-path identity refinement;
+only final-suite.log counts as complete final-source evidence.
+
+Fresh full COMPOSITION_GL_TEST=1 rootless MinGW/Mesa suite passed final runtime/
+headers/harness tree, including retained mixed-source destruction, twelve pixel/
+work-control redraws, all five injected trivial-buffer failures, malformed owners/
+tokens, normal↔mixed backend reuse, retirement, renderer failure/software recovery,
+and separate actual EGL-context destruction with pending writes and no current
+context CPU replay. All prior live-x86 coherence/window/workspace/busy/session/
+file/GPU/measurement tests and Stage C/six E9/22 F groups passed. CPU ordinary
+GDI and old fallback remain unchanged. Strict O2 no-exceptions/no-RTTI standalone
+harness and ASan/UBSan full target/renderer/presentation harness pass; driver leak
+scanning disabled, injected allocation cleanup checked independently. Negative
+forced ID+generation collision fails the intended cross-path pixel assertion.
+An initial negative variant only forced ID and did not collide generation2;
+that passing diagnostic was not treated as a valid negative control.
+
+No runtime/test edits after final successful suite. Markdown121 local links/
+fences, roadmap23 cards/3 views/24 document refs, shell syntax, diff checks and
+local desktop/mobile browser actions pass. Six-job CI retained with standalone
+mixed-frame source added to the existing EGL gate and contract in existing host
+artifact. Exact published-SHA six-job CI/Pages/artifact verification remain final
+publication gates. Local Switch SDK remains absent, host tools already installed;
+no new environment configuration required. Hardware/Paint/GPU/fallback/input/
+relaunch remain deferred, SD closed. Next validated live-window ownership → owned
+mixed frame → shell/persistent frontend, raw-host/fault audit, then ordinary GDI.

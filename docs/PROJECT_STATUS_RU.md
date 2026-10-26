@@ -2,8 +2,8 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-26, после F6a/F6b (гостевые и native-окна); GPU-база G4b.2d.2 сохранена. Проверенный код: `4a91409fc606c1695cbf88412b711bfddd4dbcd7`,
-[CI 40353639236 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
+Актуально на 2026-10-27, после F6a/F6b и G4b.2d.3 (владеющий смешанный кадр). Проверенный код: `5f72b6782787ad1de0b42c3795b5bd1147d62776`,
+[CI 40390490786 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. Следующий
@@ -118,19 +118,20 @@ H DirectDraw/D3D и универсальная совместимость — о
 окна, ошибки GL и реальная потеря EGL-контекста. Исправлено удаление текущей
 шейдерной программы в основном композиторе. Это проверка корректности;
 CPU-вывод всё ещё требует checkpoint, автоматическое ускорение обычных GDI
-вызовов не включено. Основной renderer принимает resident-текстуры; следующий шаг — владение смешанным кадром и shell wiring.
+вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame реализован; следующий шаг — live-window/shell wiring.
 
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Это prerequisite для production-подключения ShellSession; текущий следующий
-шаг после renderer entry G4b.2d.2 — владение смешанным кадром и shell wiring.
+шаг после владеющего mixed frame G4b.2d.3 — живые окна и shell wiring.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
 явный native-вход рисует удерживаемые текстуры с ownership-масками, CPU-оверлеем
 и курсором. Для выбранных GPU-слоёв не нужны CPU-зеркало/readback/upload.
-Следом — владение всем смешанным кадром, привязка живых окон и ShellSession,
+[G4b.2d.3](G4B2D3_MIXED_FRAME.md) уже владеет CPU-слоями и GPU-pins для redraw.
+Следом — привязка живых окон и ShellSession,
 аудит доступа/ошибок. Обычный GDI и CPU-снимок ShellSession пока не переключены.
 
 
@@ -141,4 +142,4 @@ CPU-вывод всё ещё требует checkpoint, автоматическ
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**Следом — GPU mixed frame, живые окна/shell и аудит доступа/ошибок.**
+**Смешанный кадр реализован как native-вход; следом — живые окна/shell и аудит доступа/ошибок.**

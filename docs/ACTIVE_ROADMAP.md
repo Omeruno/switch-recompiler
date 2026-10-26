@@ -1,10 +1,10 @@
-# Active implementation map — 2026-10-26
+# Active implementation map — 2026-10-27
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-Next G4b.2 owned mixed persistent frame, live-window/shell wiring and access/fault audit.** Runtime baseline `4a91409fc606c1695cbf88412b711bfddd4dbcd7`
-passed [CI40353639236, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
+G4b.2d.3 owned mixed persistent frames implemented; next live-window/shell wiring and access/fault audit.** Runtime baseline `5f72b6782787ad1de0b42c3795b5bd1147d62776`
+passed [CI40390490786, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -81,7 +81,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2c | [Opt-in CPU/GPU authority and real x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md), production shader cleanup | Native opt-in subset; ordinary GDI remains CPU reference |
 | G4b.2d.1 | [Owning resident-resource frames](G4B2D_RESIDENT_FRAMES.md), retirement budgets/reset/fallback | Native manager subset; not production shell integration |
 | G4b.2d.2 | [Resident-layer production render entry](G4B2D2_RESIDENT_PRESENTATION.md), masks/CPU overlay/cursor, explicit recovery | Native entry; no default GDI/ShellSession activation |
-| Remaining G4b.2 | Owned mixed persistent frames, live-window/shell wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
+| G4b.2d.3 | [Owning mixed CPU/resident presentation](G4B2D3_MIXED_FRAME.md), independent redraw and actual software recovery | Explicit native entry; live HWND/frontend wiring remains open |
+| Remaining G4b.2 | Live-window/shell wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -92,8 +93,8 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 1. Preserve HWND/DC leases, shared GL-state and the [opt-in coherence contract](G4B2C_CPU_COHERENCE.md).
    Snapshot validation must not force CPU readback; CPU consumers must acquire authority.
-2. **Next:** own mixed CPU/resident snapshots in the persistent presentation layer,
-   then connect live-window ownership and ShellSession to the resident renderer.
+2. [Owned mixed snapshots](G4B2D3_MIXED_FRAME.md) are implemented as an explicit native entry.
+   **Next:** connect live-window ownership and ShellSession to that resident renderer.
    Replace unconditional canonical CPU snapshots for the selected GPU path, preserving
    ownership masks, native Luna/overlay/input and CPU fallback.
 3. Audit remaining direct host surface accesses and route coherence faults into
@@ -137,8 +138,5 @@ CI setup note (2026-10-26): ARM cross-tool, host MinGW/Mesa and CPU-oracle multi
 HTTPS archive with bounded setup/network timeouts after measured Azure HTTP
 payload throttling. Test commands and the six core gates are unchanged.
 
-F6b publication requires the caption lifetime fix: first eb67ac3 CI passed5/6
-but host GCC13 exposed a dangling temporary-list backing array. Caption hit-test
-now owns its three IDs in std::array; old/fixed GCC13 module comparison and fresh
-full host suite reproduce/fix the error. Verify the final new SHA's six jobs;
-the first run is not a completed acceptance.
+F6b final5f72b67 passed CI40390490786 six jobs, including the GCC13 caption-lifetime
+fix. The earlier eb67ac3 host failure is not acceptance for that earlier SHA.

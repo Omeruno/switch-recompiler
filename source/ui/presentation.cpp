@@ -24,6 +24,7 @@ bool ValidSource(const Surface& s) {
 }
 uint32_t Rgba(uint32_t rgb) {return 0xFF000000u|((rgb>>16)&255)|(rgb&0xFF00)|((rgb&255)<<16);}
 }
+uint64_t NewPresentationResourceId() {return nextResourceId.fetch_add(1,std::memory_order_relaxed);}
 bool Viewport::Contains(int px,int py) const {
     return Valid() && px>=x && py>=y && int64_t(px)<int64_t(x)+width && int64_t(py)<int64_t(y)+height;
 }
@@ -155,7 +156,7 @@ bool SoftwarePresentation::Render(const PresentationFrame& frame,const OutputBuf
     }
     return true;
 }
-Presentation::Presentation(PresentationBackend* backend,PresentationAllocator* allocator):allocator_(allocator),pixels_(allocator),resourceId_(nextResourceId.fetch_add(1,std::memory_order_relaxed)),tileVersions_(allocator),layers_(allocator) {
+Presentation::Presentation(PresentationBackend* backend,PresentationAllocator* allocator):allocator_(allocator),pixels_(allocator),resourceId_(NewPresentationResourceId()),tileVersions_(allocator),layers_(allocator) {
     Attach(backend);
 }
 void Presentation::Attach(PresentationBackend* backend) {

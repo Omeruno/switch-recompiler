@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-26, после F6a/F6b (гостевые и native-окна); GPU-база G4b.2d.2 сохранена.
-Проверенный код `4a91409fc606c1695cbf88412b711bfddd4dbcd7`:
-[CI40353639236, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
+Дата обновления: 2026-10-27, после F6a/F6b и G4b.2d.3 (владеющий смешанный кадр).
+Проверенный код `5f72b6782787ad1de0b42c3795b5bd1147d62776`:
+[CI40390490786, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -136,7 +136,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2c | [Opt-in CPU/GPU authority, реальные x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md) | Native correctness path, не ускорение CPU frame snapshot |
 | G4b.2d.1 | [Owning native resource frames / retirement / reset / fallback](G4B2D_RESIDENT_FRAMES.md) | Не production ShellSession bridge |
 | G4b.2d.2 | [Resident-слои в основном renderer / masks / cursor / recovery](G4B2D2_RESIDENT_PRESENTATION.md) | Native entry; не shell/default GDI activation |
-| **Остаток G4b.2** | Owned mixed frames / shell wiring, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
+| G4b.2d.3 | [Владеющий mixed CPU/resident frame](G4B2D3_MIXED_FRAME.md), redraw и реальный software fallback | Native entry, не автоматический GDI |
+| **Остаток G4b.2** | Live-window / shell wiring, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
 
 До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
 измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
@@ -188,13 +189,14 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Это prerequisite для production-подключения ShellSession; текущий следующий
-шаг после renderer entry G4b.2d.2 — владение смешанным кадром и shell wiring.
+шаг после владеющего mixed frame G4b.2d.3 — живые окна и shell wiring.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
 явный native-вход рисует удерживаемые текстуры с ownership-масками, CPU-оверлеем
 и курсором. Для выбранных GPU-слоёв не нужны CPU-зеркало/readback/upload.
-Следом — владение всем смешанным кадром, привязка живых окон и ShellSession,
+[G4b.2d.3](G4B2D3_MIXED_FRAME.md) уже владеет CPU-слоями и GPU-pins для redraw.
+Следом — привязка живых окон и ShellSession,
 аудит доступа/ошибок. Обычный GDI и CPU-снимок ShellSession пока не переключены.
 
 
@@ -205,4 +207,4 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**Следом — GPU mixed frame, живые окна/shell и аудит доступа/ошибок.**
+**Смешанный кадр реализован как native-вход; следом — живые окна/shell и аудит доступа/ошибок.**

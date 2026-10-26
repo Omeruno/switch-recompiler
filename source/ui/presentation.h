@@ -7,6 +7,8 @@
 #include "region.h"
 
 namespace ui {
+// Shared identity space for retained CPU and mixed frames (including address reuse).
+uint64_t NewPresentationResourceId();
 
 // Host output dimensions; also the native panel size of Switch Lite.
 constexpr int kHandheldWidth=1280, kHandheldHeight=720;
