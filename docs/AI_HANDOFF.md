@@ -1914,3 +1914,12 @@ disabled. Negative immediate-retirement control rejected at expected budget
 assertion. Map schema and desktop/mobile browser checks passed. No runtime/test
 changes followed this full suite. Exact new-SHA six-job CI and Pages/artifact
 verification remain final publication checks, not physical Switch acceptance.
+
+G4b.2d.1 publication follow-up:4465087 core CI40341841730 passed actual
+EGL, CPU oracle, ARM64/QEMU, Switch NRO and isolated JIT NRO. Host-job dependency
+setup alone remained running for over seven minutes, before any tests. Applied
+the already verified official HTTPS Ubuntu source/retry/timeout policy to that
+MinGW/Mesa installation too, with a ten-minute step limit. Preserve suites/keys
+and all runtime test commands/six jobs. No runtime/test change or local suite
+rerun is needed for this configuration-only follow-up; verify exact final SHA
+core CI and the resident-frame log artifact before claiming completion.
