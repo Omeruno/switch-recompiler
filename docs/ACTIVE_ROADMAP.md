@@ -136,3 +136,9 @@ SD recovery is closed; no repeated SD diagnosis or invented physical acceptance.
 CI setup note (2026-10-26): ARM cross-tool, host MinGW/Mesa and CPU-oracle multilib dependencies use the official Ubuntu
 HTTPS archive with bounded setup/network timeouts after measured Azure HTTP
 payload throttling. Test commands and the six core gates are unchanged.
+
+F6b publication requires the caption lifetime fix: first eb67ac3 CI passed5/6
+but host GCC13 exposed a dangling temporary-list backing array. Caption hit-test
+now owns its three IDs in std::array; old/fixed GCC13 module comparison and fresh
+full host suite reproduce/fix the error. Verify the final new SHA's six jobs;
+the first run is not a completed acceptance.

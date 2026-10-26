@@ -105,6 +105,23 @@ workspace logs, public workspace EXE and this contract. Verify all six jobs for
 the exact published SHA. Local devkitA64/libnx remains unavailable; CI builds NRO.
 Physical Switch/Paint/GPU/fallback/input/relaunch acceptance remains deferred.
 
+## C++17 compiler-lifetime regression
+
+The first published eb67ac3 CI40388441146 passed five jobs, but host checks with
+GCC13 failed several caption actions. The local GCC14 build had passed: its
+range-for temporary handling masked a dangling backing array in a conditional
+std::initializer_list used for caption hit testing. WindowHit now iterates an
+owned std::array<int,3>. No widget test or CI gate was weakened.
+
+An isolated Ubuntu GCC13.2 layout-module build reproduces the exact maximize
+assertion with the old source and passes the same test with the fixed source,
+linked against the same common runtime. GCC13 also diagnoses the old dangling
+pointer. The diagnostic compiler was extracted outside the checkout from official
+Ubuntu packages: pinned archive-key fingerprint, signed Release, package-index
+SHA256 and package SHA256 were verified; the system compiler was unchanged.
+A fresh full final-source host/MinGW/Mesa suite passes after the fix. Exact final
+published-SHA all-six CI is required; the first five-of-six run is not acceptance.
+
 ## Remaining scope
 
 This is bounded software window behavior, not a full XP shell. One native tool

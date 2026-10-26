@@ -2061,3 +2061,26 @@ Actual native screenshots inspected. No runtime/test edits follow final suite.
 Map/docs/link/browser, exact published-SHA six-job CI, native artifact and live
 Pages checks remain final gates. Local SDK absent; hardware/SD policies unchanged.
 Next G4b.2 owned mixed frame/window/shell/access/fault integration, not full XP.
+
+F6b C++17 lifetime follow-up: eb67ac3 CI40388441146 passed ARM64/CPU/EGL/
+Switch/JIT, but host GCC13 failed browser close/focus, new maximize, busy input
+and workspace minimize. Root cause: conditional temporary initializer_list
+backing array in WindowHit's caption range-for. Local GCC14 temporary handling
+had masked it. Replaced only that loop storage with owned std::array<int,3>.
+
+Installed diagnostic GCC13.2 rootlessly outside git at
+/workspace/setup-tools/f6b/gcc13-check/root/usr/bin/x86_64-linux-gnu-g++-13.
+Verified pinned Ubuntu archive fingerprint F6ECB3762474EDA9D21B7022871920D1991BC93C,
+signed Noble Release, index SHA256 and downloaded package SHA256; no TLS/signature
+bypass or system compiler replacement. GCC13 old layout module emits dangling
+pointer warnings and reproduces CI's exact native maximize assertion; fixed
+module passes same native harness with identical ordinary common runtime objects.
+This is focused module evidence, not a full local GCC13 suite. Old/fixed logs and
+verified toolchain materials are in /workspace/setup-tools/f6b/.
+
+Fresh complete fixed-final-suite.log passed final implementation/tests, including
+new native windows, actual-x86 software/EGL workspace/busy input, F6a and all
+prior CPU/GDI/GPU/session/file/C/E/F gates. Focused sanitizer rerun follows the
+final fixed layout; unchanged other instrumented UI/bridge modules and ordinary
+common-runtime objects. Verify final exact published-SHA CI six jobs and native
+artifact before closing; no physical acceptance, SD or hardware request added.

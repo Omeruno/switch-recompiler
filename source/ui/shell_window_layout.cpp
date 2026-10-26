@@ -76,7 +76,8 @@ int DesktopShell::WindowHit(int x,int y) const {
     const bool dialog=dialog_!=Dialog::None;
     const auto r=dialog?DialogBounds():PanelBounds();
     if(r.Empty() || !r.Contains(x,y))return None;
-    for(int target:dialog?std::initializer_list<int>{DialogClose,DialogMaximize,DialogMinimize}:std::initializer_list<int>{Close,Maximize,Minimize})
+    const std::array<int,3> buttons=dialog?std::array<int,3>{DialogClose,DialogMaximize,DialogMinimize}:std::array<int,3>{Close,Maximize,Minimize};
+    for(int target:buttons)
         if(Enabled(target) && ControlBounds(target).Contains(x,y))return target;
     const bool resizable=!dialog || DocumentWindow();
     if(!CurrentWindow().maximized && resizable) {
