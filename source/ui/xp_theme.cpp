@@ -287,6 +287,11 @@ void DrawCaptionButton(Surface& s, const Rect& r, CaptionButton kind, bool hot, 
     case CaptionButton::Minimize:
         Fill(s, Rect(static_cast<int>(cx - 6 * k), static_cast<int>(cy + 3 * k), static_cast<int>(cx + 2 * k), static_cast<int>(cy + 6 * k)), w);
         break;
+    case CaptionButton::Restore: {
+        Rect back(int(cx-2*k),int(cy-6*k),int(cx+6*k),int(cy+2*k));Frame(s,back,w);
+        Rect front(int(cx-6*k),int(cy-2*k),int(cx+2*k),int(cy+6*k));Frame(s,front,w);
+        Fill(s,{front.left,front.top,front.right,front.top+2},w);break;
+    }
     case CaptionButton::Maximize: {
         Rect box(static_cast<int>(cx - 6 * k), static_cast<int>(cy - 6 * k), static_cast<int>(cx + 6 * k), static_cast<int>(cy + 6 * k));
         Frame(s, box, w);

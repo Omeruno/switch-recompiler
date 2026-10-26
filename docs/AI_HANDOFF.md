@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b3a8ae49d8f1e17822d236221e2a1928e19dffeb` (2026-10-26).
-[CI 40347620739](https://github.com/Omeruno/switch-recompiler/actions/runs/40347620739)
+`4a91409fc606c1695cbf88412b711bfddd4dbcd7` (2026-10-26).
+[CI 40353639236](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F6a guest window actions; G4b.2d.2 preserved (2026-10-26)
+## Current position: F6a/F6b window actions implemented; G4b.2d.2 preserved (2026-10-26)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -28,8 +28,9 @@ retirement budgets, reset revocation and real fallback. Ordinary GDI dispatch is
 still CPU-only. [G4b.2d.2](G4B2D2_RESIDENT_PRESENTATION.md) allows resident
 textures in the real production renderer with ownership/CPU overlays/cursor.
 User-prioritized [F6a guest window gestures](F6A_GUEST_WINDOW_GESTURES.md) adds
-real modal caption/edge/corner/button actions. Next F6b native-shell window
-actions/geometry. GPU queue retained: owned mixed frames and window/shell integration,
+real modal caption/edge/corner/button actions. [F6b native windows](F6B_NATIVE_WINDOW_ACTIONS.md)
+adds true state/geometry/reflow and exact input/composition for panels and TXT/BMP.
+Next: owned mixed frames and window/shell integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -40,7 +41,7 @@ Global/current scope: [PROJECT_STATUS_RU.md](PROJECT_STATUS_RU.md),
 [ROADMAP.md](ROADMAP.md), [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md). These are now
 consolidated current maps, not append-only competing historical next steps.
 D API/page protection/unwind/COM and Pinball x86 remain open. Installer/ZIP/RAR,
-full native window actions/Luna polish, multi-Process and H DirectDraw/D3D are
+broader native window/Z-order/Luna polish, multi-Process and H DirectDraw/D3D are
 separate incomplete work; minimal JIT probe42 is not a dynarec acceptance.
 Keep all no-stub/correctness/lifetime rules below. Detailed package history
 follows; its old future-tense queues do not supersede this current position.
@@ -55,8 +56,8 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current user-prioritized next implementation is F6b native window actions,
-then the retained GPU mixed-frame/live-window/shell queue.
+deferred; F6b native window actions are implemented within one tool group.
+Next is the retained GPU mixed-frame/live-window/shell queue.
 
 ## Working agreement
 
@@ -2021,3 +2022,42 @@ control rejects on the guest's exact-size assertion. No runtime/test edits
 after successful final suite; map/docs/browser and exact published-SHA CI/Pages/
 public gesture artifact checks remain completion gates. Next F6b native windows;
 no physical acceptance or complete XP shell claimed.
+
+
+## F6b — native window geometry, actions and adaptive layout (2026-10-26)
+
+Clean4a91409/FETCH_HEAD before changes, no newer local work. User continues F6b.
+Added owned normal/current/maximized rectangles, native task minimize/restore and
+real close policy. Panels and TXT/BMP move/resize in work area; fonts/icons are
+redrawn at original size, content/row counts and hit rectangles follow geometry.
+One modal native tool group remains; this is not arbitrary native multiwindow
+instances or extra guest Processes. Legacy static bounds remain defaults; all
+production native paths use instance geometry. See F6B_NATIVE_WINDOW_ACTIONS.md.
+
+Switch idle drag now observes visual revisions and B rollback before navigation.
+Active ShellSession does the same, routes native/guest input pairs and copies/
+assigns ownership to dynamic panel + modal rectangles independently. Native
+minimize releases guest keyboard routing; restore owns its input again. Existing
+modal/dirty-save/copy policy preserved. SetGuestActive/EndGuest/Enter/CloseDialog
+cancel gestures before changing native owners. Luna assets/CPU GDI preserved.
+
+Initial full development suite found the busy-settings oracle expecting the old
+oversized fixed overlay. Corrected to exact dialog bounds plus adjacent real
+guest pixel; no weakened comparison. New native geometry/files/TXT/BMP harness
+and extended actual-x86 workspace independent full-frame oracle cover move/
+resize/reflow/min/max/cancel/task/dirty close, document outside moved parent,
+normal/abort/restart and software/actual EGL. Targeted invocation corrections
+removed accidental broad generated-EXE globs/ignored-object discovery; only final
+successful runs count. No user/private binaries touched.
+
+Full fresh final-runtime/harness COMPOSITION_GL_TEST=1 MinGW/Mesa suite passed,
+including native test, busy/workspace software/EGL,44 F6a stages+parked abort,
+G3/G4/resident/coherence/measurement, G1/G2, Stage C/six E9/22 F and prior files/
+dialogs/sessions. Strict O2 changed native modules pass. Focused ASan/UBSan
+DesktopShell/layout/theme/bridge and native/workspace tests pass; remaining
+objects ordinary, leak scanning disabled, known native-fiber warning retained.
+Negative old fixed compose rectangle fails the independent per-pixel oracle.
+Actual native screenshots inspected. No runtime/test edits follow final suite.
+Map/docs/link/browser, exact published-SHA six-job CI, native artifact and live
+Pages checks remain final gates. Local SDK absent; hardware/SD policies unchanged.
+Next G4b.2 owned mixed frame/window/shell/access/fault integration, not full XP.

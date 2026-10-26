@@ -13,14 +13,14 @@
 
 namespace ui {
 // Host-owned idle shell. No Process, HWND, guest pointers or GL context.
-// Fixed logical coordinates; presentation and pointer use the same FitViewport.
+// Native window geometry lives in logical1280x720; output/pointer share FitViewport.
 class DesktopShell {
 public:
     static constexpr int Width=1280,Height=720,Rows=14,RowBase=100,BrowserRowBase=200;
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,ImageOpen=68,ImageFit=69,ImageActual=70,DesktopShortcut=71,StartShortcut=72,TreeOpen=73,TreeExpand=74,TreeCollapse=75,FolderTreeButton=76,TextLineBase=300,TreeRowBase=400,DesktopLinkBase=500};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,ImageOpen=68,ImageFit=69,ImageActual=70,DesktopShortcut=71,StartShortcut=72,TreeOpen=73,TreeExpand=74,TreeCollapse=75,FolderTreeButton=76,Minimize=80,Maximize=81,NativeTask=82,TitleBar=83,DialogClose=84,DialogMinimize=85,DialogMaximize=86,ResizeBase=90,TextLineBase=300,TreeRowBase=400,DesktopLinkBase=500};
     enum class Panel {Desktop,Programs,About,Explorer};
     enum class TextInput {None,Address,Run,OpenWith,NewFolder,Rename,PasteName,AssociationApplication,TextLine,TextSavePath,ShortcutCommand};
     enum class Dialog {None,DeleteConfirm,Properties,CopyProgress,Preferences,TextEditor,TextClose,ImageViewer,FolderTree};
@@ -30,7 +30,7 @@ public:
     static Rect ImageViewport() {return {416,280,1006,492};}
     // Область содержимого окна проводника (справа от панели задач)
     static Rect ContentArea() {return {391,126,1254,646};}
-    // Shared by drawing, active-workspace composition, ownership and input.
+    // Legacy/default rectangle. Current geometry uses PanelBounds/ControlBounds.
     static Rect PanelArea() {return {156,8,1258,676};}
     bool ImageFitted() const {return imageFit_;}
     int ImagePanX() const {return imagePanX_;}
@@ -38,7 +38,7 @@ public:
     const TextDocument& Document() const {return document_;}
     size_t TextSelection() const {return textSelection_;}
     Dialog ActiveDialog() const {return dialog_;}
-    bool ModalActive() const {return dialog_!=Dialog::None || textInput_!=TextInput::None || contextOpen_;}
+    bool ModalActive() const {return !nativeMinimized_ && (dialog_!=Dialog::None || textInput_!=TextInput::None || contextOpen_);}
     const std::string& DialogPath() const {return operationPath_;}
     const rt::FileProperties& PropertiesSnapshot() const {return properties_;}
     bool ConfigureFilesystem(const std::string& system,const std::string& sd,const std::string& rom,std::string& error);
@@ -71,7 +71,18 @@ public:
     void Page(int delta);
     void Accept();
     void Back();
-    void CancelPointer() {pressed_=None;secondaryTarget_=-2;}
+    void CancelPointer();
+    bool DraggingWindow() const {return dragTarget_!=None;}
+    uint64_t VisualRevision() const {return visualRevision_;}
+    Rect PanelBounds() const;
+    Rect DialogBounds() const;
+    Rect ContentBounds() const;
+    Rect DocumentViewport() const;
+    Rect ControlBounds(int target) const;
+    int VisibleRows() const;
+    int VisibleTextRows() const;
+    bool NativeMinimized() const {return nativeMinimized_;}
+    bool NativeMaximized() const;
     void PointerMove(int x,int y);
     void PointerDown(int x,int y);
     void PointerUp(int x,int y);
@@ -81,7 +92,7 @@ public:
     const std::string& LaunchPath() const {return request_.nativePath;}
     const ShellLaunchRequest& LaunchRequest() const {return request_;}
     bool ExitRequested() const {return exit_;}
-    Panel ActivePanel() const {return panel_;}
+    Panel ActivePanel() const {return nativeMinimized_?Panel::Desktop:panel_;}
     bool StartOpen() const {return startOpen_;}
     size_t Selection() const {return selected_;}
     size_t Count() const {return files_.size();}
@@ -131,7 +142,7 @@ private:
     size_t preferenceSelection_=0;
     std::u16string operationNotice_;
     int dialogReturnFocus_=Properties;
-    size_t First() const {return selected_/Rows*Rows;}
+    size_t First() const {return selected_/VisibleRows()*VisibleRows();}
     std::vector<int> FocusOrder() const;
     std::vector<std::string> files_;
     std::string status_,initialText_,pendingDocument_;
@@ -146,5 +157,24 @@ private:
     bool truncated_=false,startOpen_=false,exit_=false;
     Panel panel_=Panel::Desktop;
     int focus_=Programs,menuReturnFocus_=Programs,hover_=None,pressed_=None;
+    struct NativeWindow {Rect bounds{156,8,1258,676},normal{156,8,1258,676};bool maximized=false;};
+    std::array<NativeWindow,4> panelWindows_{};
+    NativeWindow documentWindow_{{396,196,1028,546},{396,196,1028,546},false};
+    NativeWindow modalWindow_{{396,196,1028,546},{396,196,1028,546},false};
+    bool nativeMinimized_=false,dragDialog_=false;
+    int dragTarget_=None,dragX_=0,dragY_=0;
+    Rect dragOriginal_;
+    uint64_t visualRevision_=0;
+    bool HasNativeWindow() const {return panel_!=Panel::Desktop || dialog_!=Dialog::None;}
+    bool DocumentWindow() const {return TextDialog() || dialog_==Dialog::ImageViewer;}
+    NativeWindow& CurrentWindow();
+    const NativeWindow& CurrentWindow() const;
+    Rect DialogLayout(Rect) const;
+    Rect StatusBounds() const;
+    int WindowHit(int x,int y) const;
+    void ToggleNativeMaximize();
+    void ToggleNativeTask();
+    void ReflowFocus();
+
 };
 } // namespace ui

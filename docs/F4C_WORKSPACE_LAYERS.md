@@ -1,3 +1,8 @@
+> Current update: [F6b native window actions](F6B_NATIVE_WINDOW_ACTIONS.md)
+> implements bounded native geometry, min/max/task restore, close, move/resize
+> and dynamic input/composition. Historical fixed/decorative-native notes below
+> describe their original milestone; current queue is in [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md).
+
 # F4c: retained native and guest workspace planes
 
 Follows 1f0572a (exact CI 40136895969, all six jobs successful). Part of the

@@ -31,7 +31,7 @@ void DrawTray(Surface& s, const Rect& r);
 // Окно Luna: синяя рамка, заголовок высоты titleH со скруглёнными верхними
 // углами, серо-бежевая клиентская область. Текст заголовка рисует вызывающий.
 void DrawWindowFrame(Surface& s, const Rect& r, int titleH, bool active = true);
-enum class CaptionButton { Minimize, Maximize, Close };
+enum class CaptionButton { Minimize, Maximize, Close, Restore };
 void DrawCaptionButton(Surface& s, const Rect& r, CaptionButton kind, bool hot, bool pressed);
 // Кнопка XP (OK, Отмена и т.п.); focused — пунктир внутри
 void DrawPushButton(Surface& s, const Rect& r, bool enabled, bool hot, bool pressed, bool focused);

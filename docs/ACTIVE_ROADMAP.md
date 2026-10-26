@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: F6a real guest window gestures; next F6b native window actions.
-G4b.2d.2 resident renderer remains implemented; mixed persistent frame/shell integration stays open.** Runtime baseline `b3a8ae49d8f1e17822d236221e2a1928e19dffeb`
-passed [CI40347620739, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40347620739).
+**Current position: F6a/F6b bounded guest/native window actions implemented.
+Next G4b.2 owned mixed persistent frame, live-window/shell wiring and access/fault audit.** Runtime baseline `4a91409fc606c1695cbf88412b711bfddd4dbcd7`
+passed [CI40353639236, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -53,17 +53,18 @@ This is a bounded software milestone, not full Windows or completed visual shell
 | F5 saving | Checked sync read/write/flush/size/truncate; [save contract](F5_FILE_SAVE.md); public save/find/view/fresh-session reopen and22 report groups |
 | Luna | All five Claude updates preserved; [review and corrected PanelArea integration](LUNA_INTEGRATION_REVIEW.md) |
 
-Native-shell minimize/maximize caption glyphs remain decorative; free native-shell drag/resize,
-multiple simultaneous guest EXEs and a complete XP shell are not accepted baseline
-features. File APIs/native tools retain their documented limits. PNG/JPEG,
+[F6b native actions](F6B_NATIVE_WINDOW_ACTIONS.md) add actual move/resize/min/max/
+close and layout within one native tool group. Multiple native document instances,
+multiple simultaneous guest EXEs and a complete XP shell remain unimplemented. File APIs/native tools retain their documented limits. PNG/JPEG,
 recursive file-manager features and arbitrary Windows shell/COM are not implied.
 
 ## User-prioritized window actions
 
 [F6a guest nonclient gestures](F6A_GUEST_WINDOW_GESTURES.md): real modal move/
 eight-edge resize, min/max/restore/close release, application constraints/veto,
-focus/capture/lifetime handling. Next **F6b native Explorer/Programs/document
-window actions and geometry**, still unimplemented; native min/max remain decorative.
+focus/capture/lifetime handling. [F6b native Explorer/Programs/About/TXT/BMP
+actions](F6B_NATIVE_WINDOW_ACTIONS.md) add true geometry/layout/input/composition,
+min/max/task restore, close policy and resize. One native tool group remains.
 The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 
 ## G implementation state
@@ -91,7 +92,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 1. Preserve HWND/DC leases, shared GL-state and the [opt-in coherence contract](G4B2C_CPU_COHERENCE.md).
    Snapshot validation must not force CPU readback; CPU consumers must acquire authority.
-2. **GPU queue after native-window actions:** own mixed CPU/resident snapshots in the persistent presentation layer,
+2. **Next:** own mixed CPU/resident snapshots in the persistent presentation layer,
    then connect live-window ownership and ShellSession to the resident renderer.
    Replace unconditional canonical CPU snapshots for the selected GPU path, preserving
    ownership masks, native Luna/overlay/input and CPU fallback.

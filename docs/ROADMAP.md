@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-26, после F6a (гостевые окна); GPU-база G4b.2d.2 сохранена.
-Проверенный код `b3a8ae49d8f1e17822d236221e2a1928e19dffeb`:
-[CI40347620739, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40347620739).
+Дата обновления: 2026-10-26, после F6a/F6b (гостевые и native-окна); GPU-база G4b.2d.2 сохранена.
+Проверенный код `4a91409fc606c1695cbf88412b711bfddd4dbcd7`:
+[CI40353639236, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -103,8 +103,9 @@ save/find/fresh-session reopen реализованы. Один активный
 [PanelArea/integration review](LUNA_INTEGRATION_REVIEW.md) закрывает обрезание
 новой панели и click-through при активном EXE. Внешний вид не объявлен полным XP.
 
-Физическая приёмка F остаётся открытой. У окон native-оболочки min/max пока декоративны;
-их free drag/resize, несколько одновременных EXE, широкая поддержка изображений,
+Физическая приёмка F остаётся открытой. [F6b](F6B_NATIVE_WINDOW_ACTIONS.md)
+реализует native min/max/restore/close, move/resize и layout для одной группы
+инструментов. Произвольная native-многооконность, несколько одновременных EXE, широкая поддержка изображений,
 shell COM и полная среда XP не входят в закрытый baseline. [Подробный scope](F_SHELL_PLAN.md).
 
 ## Запланированное расширение F — установщики и архивы [не реализовано]
@@ -201,6 +202,7 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [F6a: гостевые окна Win32](F6A_GUEST_WINDOW_GESTURES.md) получают модальное
 перемещение, все стороны/углы resize, min/max/restore/close по отпусканию,
 ограничения и отказ приложения, корректный захват/отмену/завершение.
-**Следом F6b: native-окна оболочки** — их min/max всё ещё декоративны,
-динамическая геометрия/layout/input/composition пока не реализованы.
-Очередь GPU mixed frame/живых окон сохраняется после этого приоритета.
+[F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
+безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
+Поддерживается одна native-группа с модальным документом.
+**Следом — GPU mixed frame, живые окна/shell и аудит доступа/ошибок.**

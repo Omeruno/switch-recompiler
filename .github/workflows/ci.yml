@@ -53,6 +53,16 @@ jobs:
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-native-window-actions
+          if-no-files-found: error
+          path: |
+            build-host/test_native_windows.log
+            build-host/shell_workspace.log
+            build-host/shell_workspace_gl.log
+            build-host/guest-run.*/shell_workspace.exe
+            docs/F6B_NATIVE_WINDOW_ACTIONS.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-window-gestures
           if-no-files-found: error
           path: |

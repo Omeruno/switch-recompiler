@@ -1,3 +1,8 @@
+> Current update: [F6b native window actions](F6B_NATIVE_WINDOW_ACTIONS.md)
+> implements bounded native geometry, min/max/task restore, close, move/resize
+> and dynamic input/composition. Historical fixed/decorative-native notes below
+> describe their original milestone; current queue is in [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md).
+
 # F6a: real guest Win32 nonclient window gestures
 
 Incoming `b3a8ae49d8f1e17822d236221e2a1928e19dffeb` passed

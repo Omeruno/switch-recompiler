@@ -1,3 +1,8 @@
+> Current update: [F6b native window actions](F6B_NATIVE_WINDOW_ACTIONS.md)
+> implements bounded native geometry, min/max/task restore, close, move/resize
+> and dynamic input/composition. Historical fixed/decorative-native notes below
+> describe their original milestone; current queue is in [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md).
+
 # Luna integration review — 2026-10-25
 
 Reviewed and fast-forwarded all five Claude commits after G2, preserving them:

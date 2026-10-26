@@ -2215,15 +2215,16 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             moved=moved || oldX!=int(x) || oldY!=int(y);
         }
         if(moved || acceptedTouch)keyboard=false;
-        const int oldHover=shell.Hover();shell.PointerMove(int(x),int(y));
-        dirty=dirty || shell.Hover()!=oldHover;
+        const int oldHover=shell.Hover();const auto oldWindowRevision=shell.VisualRevision();shell.PointerMove(int(x),int(y));
+        dirty=dirty || shell.Hover()!=oldHover || shell.VisualRevision()!=oldWindowRevision;
         const u64 down=edges.down;
         if(down&HidNpadButton_Plus)break;
         const u64 navigation=down&(HidNpadButton_R|HidNpadButton_B|HidNpadButton_Up|HidNpadButton_Down|HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_X|HidNpadButton_Y);
+        const bool cancelledWindowGesture=shell.DraggingWindow() && (down&HidNpadButton_B);
         if(navigation){shell.CancelPointer();pointerHeld=false;secondaryHeld=false;gate.Reset(padGetButtons(&g_pad),rawTouch);}
         if(down&HidNpadButton_ZR)keyboard=false;
         if(down&HidNpadButton_R){shell.ToggleStart();keyboard=true;}
-        if(down&HidNpadButton_B){shell.Back();keyboard=true;}
+        if((down&HidNpadButton_B) && !cancelledWindowGesture){shell.Back();keyboard=true;}
         if(down&HidNpadButton_Up){shell.Move(-1);keyboard=true;}
         if(down&HidNpadButton_Down){shell.Move(1);keyboard=true;}
         if(down&HidNpadButton_Left){shell.Page(-1);keyboard=true;}

@@ -86,6 +86,7 @@ ShellSession::HostStatus ShellSession::ServiceHost() {
 }
 void ShellSession::Refresh() {
     ObserveTask();
+    if(shell_.NativeMinimized() && !shell_.StartOpen())keyboard_=false;
     if(shell_.PendingTextInput()!=ui::DesktopShell::TextInput::None) {
         std::u16string output;
         const bool accepted=g_platform.textInput && g_platform.textInput(hle::Utf8PathToWide(shell_.InitialText()),false,false,output);
@@ -107,8 +108,8 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     if(ObserveTask())Refresh();
     Copy(outputSurface_,guest,{0,0,W,H});
     Copy(outputSurface_,chromeSurface_,{0,680,W,H});
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,ui::DesktopShell::PanelArea());
-    if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)Copy(outputSurface_,chromeSurface_,{396,196,1034,552});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,shell_.PanelBounds());
+    if(!shell_.DialogBounds().Empty())Copy(outputSurface_,chromeSurface_,shell_.DialogBounds());
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return outputSurface_;
 }
@@ -136,8 +137,8 @@ ui::WindowSceneView ShellSession::Scene() {
         for(int y=rect.top;y<rect.bottom;++y)for(int x=rect.left;x<rect.right;++x)owners_[size_t(y)*W+x]=nativeToken;
     };
     cover({0,680,W,H});
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover(ui::DesktopShell::PanelArea());
-    if(shell_.ActivePanel()==ui::DesktopShell::Panel::Desktop && shell_.ActiveDialog()!=ui::DesktopShell::Dialog::None)cover({396,196,1034,552});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover(shell_.PanelBounds());
+    if(!shell_.DialogBounds().Empty())cover(shell_.DialogBounds());
     if(shell_.StartOpen())cover({0,284,484,680});
     // Unretained guest owners reconcile to canonical RGB in PresentationLayers.
     // No borrowed window pointer survives the synchronous Presentation::Submit.
@@ -145,7 +146,7 @@ ui::WindowSceneView ShellSession::Scene() {
 }
 bool ShellSession::ShellPoint(int x,int y) const {
     if(y>=680 || shell_.StartOpen() || shell_.ModalActive())return true;
-    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && ui::DesktopShell::PanelArea().Contains(x,y))return true;
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && shell_.PanelBounds().Contains(x,y))return true;
     return !WindowFromPoint(x,y,false); // exposed native desktop, never guest chrome
 }
 bool ShellSession::ObserveTask() {
@@ -241,7 +242,7 @@ bool ShellSession::Filter(const InputEvent& e) {
         shellButtons_[button]=owned;guestButtons_[button]=!owned;
         if(!owned){keyboard_=false;return false;}
         keyboard_=true;if(button==0) {
-            taskPressed_=!shell_.ModalActive() && Shell::Bounds(Shell::GuestTask).Contains(e.x,e.y);
+            taskPressed_=!shell_.ModalActive() && shell_.ControlBounds(Shell::GuestTask).Contains(e.x,e.y);
             shell_.PointerDown(e.x,e.y);
         }
         if(button==1)shell_.SecondaryDown(e.x,e.y);
@@ -252,9 +253,10 @@ bool ShellSession::Filter(const InputEvent& e) {
         if(!owned)return false;
         if(button==0) {
             // Task actions require press and release inside the same task button.
-            const bool task=Shell::Bounds(Shell::GuestTask).Contains(e.x,e.y) && taskPressed_;
+            const bool task=shell_.ControlBounds(Shell::GuestTask).Contains(e.x,e.y) && taskPressed_;
             taskPressed_=false;
             if(task)ToggleTask();else shell_.PointerUp(e.x,e.y);
+            if(!shell_.NativeMinimized() && (shell_.ModalActive() || shell_.ActivePanel()!=Shell::Panel::Desktop))keyboard_=true;
         }
         if(button==1)shell_.SecondaryUp(e.x,e.y);
         Refresh();return true;
@@ -263,8 +265,8 @@ bool ShellSession::Filter(const InputEvent& e) {
         if(guestDrag)return false;
         if(!shellDrag && !ShellPoint(e.x,e.y))return false;
         if(e.type==IE::MouseMove) {
-            const int old=shell_.Hover();shell_.PointerMove(e.x,e.y);
-            if(old!=shell_.Hover())Refresh();
+            const int old=shell_.Hover();const auto revision=shell_.VisualRevision();shell_.PointerMove(e.x,e.y);
+            if(old!=shell_.Hover() || revision!=shell_.VisualRevision())Refresh();
         }
         return true;
     }

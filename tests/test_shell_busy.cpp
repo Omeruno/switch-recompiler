@@ -67,7 +67,10 @@ static void Run(Shell& shell,const char* exe,int mode) {
             Click(bridge,Shell::Settings);CHECK(shell.ActiveDialog()==Shell::Dialog::Preferences);
             ui::OwnedSurface nativeSettings;nativeSettings.Allocate(1280,720);shell.Render(nativeSettings.s,u"");
             const auto& settingsFrame=bridge.Compose(user::S().screen.s);
-            for(int y=196;y<552;++y)for(int x=396;x<1034;++x)CHECK(settingsFrame.Get(x,y)==nativeSettings.s.Get(x,y));
+            const auto settingsBounds=shell.DialogBounds();
+            for(int y=settingsBounds.top;y<settingsBounds.bottom;++y)for(int x=settingsBounds.left;x<settingsBounds.right;++x)
+                CHECK(settingsFrame.Get(x,y)==nativeSettings.s.Get(x,y));
+            CHECK(settingsFrame.Get(settingsBounds.right+1,settingsBounds.top+50)==user::S().screen.s.Get(settingsBounds.right+1,settingsBounds.top+50));
             Click(bridge,Shell::PreferenceSort);CHECK(shell.Browser().PreferenceStatus()==ui::ShellPreferenceStore::Status::Saved);
             Click(bridge,Shell::CancelDialog);CHECK(!shell.ModalActive());Start(bridge);CHECK(shell.StartOpen());
             Click(bridge,Shell::MenuComputer);CHECK(shell.ActivePanel()==Shell::Panel::Explorer);
