@@ -280,6 +280,7 @@ uint32_t QueueStatusBits() {
 void PresentIfNeeded(bool force) {
     State& s = S();
     if (!g_platform.present) return;
+    if(!ui::g_gdi.PrepareCpuAccess())return;
     uint64_t changes = ui::g_gdi.ScreenChangeCounter();
     const uint64_t shellRevision=g_platform.shellRevision?g_platform.shellRevision(g_platform.shellContext):0;
     if (changes == s.presentedChanges && shellRevision==s.presentedShellRevision && !force) return;

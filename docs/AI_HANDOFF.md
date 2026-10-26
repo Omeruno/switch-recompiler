@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`1d3f15588f51745c92292d073c686c2591f81a85` (2026-10-25).
-[CI 40204271361](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361)
+`e780649e18c1b25bd38ea05db157074155a22bce` (2026-10-26).
+[CI 40221359571](https://github.com/Omeruno/switch-recompiler/actions/runs/40221359571)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.2b (2026-10-25)
+## Current position after G4b.2c (2026-10-26)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -21,8 +21,10 @@ G4b.2a implements bounded GL-state preservation and interleaving with the real
 production renderer; see [contract/evidence](G4B2_SHARED_CONTEXT.md).
 G4b.2b adds [real HWND/DC native identity/resource leases](G4B2B_WINDOW_BINDINGS.md)
 and rejects CPU DC aliasing onto reused HWNDs. It is not automatic GDI dispatch.
-Next is CPU/GPU/DIB/ROP/read/save/resize/fallback coherence and owning production
-frames/texture-aware presentation.
+[G4b.2c](G4B2C_CPU_COHERENCE.md) implements explicit native opt-in CPU/GPU authority,
+actual Win32 read/ROP/DIB/layout/fallback barriers and weak session-owned gates.
+Ordinary GDI dispatch is still CPU-only. Next: owning resident-texture frames,
+remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -47,7 +49,7 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current next implementation is CPU/GPU coherence after bounded HWND/DC binding.
+deferred; current next implementation is owning GPU frames and production admission after opt-in coherence.
 
 ## Working agreement
 
@@ -1803,3 +1805,64 @@ disabled; sanitizer reports its known makecontext/swapcontext limitation).
 The negative CPU-guard control failed at the intended reused-HWND stale Target
 assertion. No implementation changes followed the successful final suite; only
 docs/map/checks remain before normal publication and exact-SHA CI/Pages proof.
+
+## G4b.2c — CPU/GPU authority and real Win32 barriers (2026-10-26)
+
+Clean e780649/FETCH_HEAD, no newer remote changes/AGENTS. Incoming exact core
+CI40221359571 verified six success; prior native-binding artifact and Pages live.
+No local SDK or physical tests requested. User wants autonomous real system work
+for future PC-game targets, not a Paint-specific accelerator.
+
+Added ImportCpu full known-CPU checkpoint with empty-journal requirement and no
+readback for import. WindowGpuBindings.EnableCoherence is opt-in before acquire;
+bounded seeds/dirty regions track authority, import after CPU access and commit
+GPU pixels via actual write-capture/ownership/tile revisions before CPU access.
+Gdi::Target/DeleteDc and covered USER layout/repaint/output boundaries acquire CPU
+authority. Geometry-only ResolveTarget keeps lease validation from forcing sync.
+Weak gates move with Gdi/session swaps, expire safely and reject a dead owner;
+namespace/native thread/context/lifetime contracts remain explicit. Default GDI
+and native diagnostic bridge behavior preserved. See G4B2C_CPU_COHERENCE.md for
+remaining direct-pointer/error/frame/budget gates before product activation.
+
+Public CRT-free PE32 fixture runs20 real x86 stages across GL-error/actual-context-
+loss modes, two dirty windows, GetPixel, ROP, raw CPU DIB source, window-to-DIB
+copy/GetDIBits, move/resize/release/destroy and CPU continuation. Initial first-
+window packet requires64 GPU fills, one CPU import, one fill batch and one CPU
+readback; a second dirty window drains at the same boundary. Actual production
+EGL output matches all1280x720 expected pixels after capture; this is not FPS.
+Allocator failures, complete buffer release, nested/expired gates, owned import
+and pending-journal rejection checked. Explicit diagnostic/FBO reads are counted
+separately from the initial work-control phase.
+
+The integrated test exposed bound-program deletion in OpenGlPresentation::Shutdown:
+pending-deletion current program became invalid on scope restoration and forced
+CPU fallback. Unbind the backend's own current program before deleting; preserve
+another current program. Regression requires a clean program0 handoff and GPU
+continuation; negative old-shutdown control fails there. A separate negative CPU-
+Target-gate control fails the guest's first GetPixel assertion. No EXE/API stub.
+
+Initial full suite failed the new count/GPU-active oracle on that shader-lifetime
+bug. After the fix, complete fresh rootless MinGW/Mesa suite passed final runtime/
+fixture/inspector tree: new coherence, previous G3/G4a/G4b.1/2a/2b, G1/G2, x86
+workspace/composition/input, Stage C/six E9/22 F and prior lifecycle/file/dialog
+regressions. Strict and focused sanitizer checks complete before publication;
+only final successful sources count. Host log/public fixture/contract artifact
+added to existing host job, still six core CI jobs. Map/handoff updated. Next
+owning texture frames/access audit/ordinary dispatch, not full G4b.2/H/dynarec.
+Exact published-SHA CI and live Pages/artifact proof remain completion gates.
+
+Final local G4b.2c checks: fresh COMPOSITION_GL_TEST=1 host/MinGW/Mesa suite
+passed on the final implementation/fixture/inspector tree. Strict O2 native
+coherence harness and strict CRT-free MinGW fixture passed. Focused ASan/UBSan
+instrumented changed GPU/GDI/bridge/USER/layout/output modules and passed both
+modes (20 stages total); remaining runtime objects were ordinary builds, driver leak
+scanning disabled and the known makecontext/swapcontext warning retained. The
+first sanitizer build stopped at the preexisting unused ScrollCommon CPU
+parameter in user32_api.cpp; only unused-parameter warnings were allowed for
+that focused build, with no runtime warning-suppression patch. Both negative
+controls failed at the intended guest exit / deleted-program assertions.
+
+No implementation changed after the successful final suite. Map schema/docs,
+local links/fences, shell syntax, six-job workflow, desktop/mobile search/filter/
+deep-link/drawer browser tests and diff checks passed. Source baseline remains
+explicitly incoming e780649 until the new published SHA's CI is verified.

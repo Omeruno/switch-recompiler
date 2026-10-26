@@ -65,6 +65,11 @@ bool GpuGdiTargets::Copy(Handle h,Rect r,const uint32_t* data,size_t count) {
     if(gpuActive_ && p->Backend()==GpuGdiPrototype::Mode::CpuFallback)Fallback();
     return accepted;
 }
+bool GpuGdiTargets::ImportCpu(Handle h,const uint32_t* rgb,size_t count) {
+    auto* p=Find(h);if(!p)return false;const bool accepted=p->ImportCpu(rgb,count);
+    if(gpuActive_ && p->Backend()==GpuGdiPrototype::Mode::CpuFallback)Fallback();
+    return accepted;
+}
 const Surface* GpuGdiTargets::CpuRead(Handle h) {
     auto* p=Find(h);if(!p)return nullptr;const auto* view=p->CpuRead();
     if(gpuActive_ && p->Backend()==GpuGdiPrototype::Mode::CpuFallback)Fallback();

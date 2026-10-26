@@ -128,6 +128,11 @@ struct WindowRasterTarget {
 };
 
 
+struct CpuRasterGate {
+    virtual ~CpuRasterGate()=default;
+    virtual bool Prepare()=0;
+};
+
 class Gdi {
 public:
     Gdi();
@@ -216,6 +221,16 @@ public:
 
     // --- текст ---
     Font* CurrentFont(uint32_t hdc);
+    // Optional native experiment. Weak ownership survives Gdi/session swaps;
+    // an expired installed gate fails closed, never dereferences a dead owner.
+    bool InstallCpuGate(const std::shared_ptr<CpuRasterGate>&);
+    bool RemoveCpuGate(const std::shared_ptr<CpuRasterGate>&);
+    bool PrepareCpuAccess();
+    // Internal exchange helpers: caller already owns the relevant authority.
+    // They bypass the CPU gate to avoid recursion inside its implementation.
+    bool SnapshotWindow(const WindowRasterTarget&,uint32_t* rgb,size_t count);
+    bool CommitWindow(const WindowRasterTarget&,const Surface&,const Region& dirty,size_t& pixels);
+
     // ExtTextOut: options ETO_OPAQUE 2, ETO_CLIPPED 4
     bool TextOut(uint32_t hdc, int x, int y, const std::u16string& text, int options = 0, const Rect* rect = nullptr,
                  const std::vector<int>* dx = nullptr);
@@ -225,6 +240,11 @@ public:
 
 private:
     friend struct GdiShapeAccess;
+    bool ResolveTarget(uint32_t,Surface*&,int&,int&,Region&,const SurfaceWriteCapture**);
+    bool WindowImageInfo(const WindowRasterTarget&,WindowDcInfo&);
+    std::weak_ptr<CpuRasterGate> cpuGate_;
+    bool cpuGateInstalled_=false;
+
     struct Slot {
         ObjType type = ObjType::None;
         uint16_t seq = 0;

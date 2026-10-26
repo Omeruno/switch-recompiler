@@ -74,6 +74,17 @@ bool GpuGdiPrototype::Copy(Rect r,const uint32_t* pixels,size_t count) {
     else {inputBytes_+=count*4;commands_[count_++]=std::move(c);}
     return true;
 }
+bool GpuGdiPrototype::ImportCpu(const uint32_t* rgb,size_t pixels) {
+    if(mode_==Mode::Empty || count_ || !rgb || pixels!=checkpoint_.size())return false;
+    if(!Copy({0,0,surface_.width,surface_.height},rgb,pixels))return false;
+    if(mode_==Mode::Gpu && FlushGpu()) {
+        // The accepted owned CPU input is already the authoritative image.
+        // A successful upload/draw needs no glReadPixels to establish it.
+        for(size_t i=0;i<pixels;++i)checkpoint_[i]=commands_[0].input[i]&0xffffff;
+        ClearJournal();
+    }
+    ++stats_.cpuImports;return true; // logical CPU fallback after GL error is real
+}
 bool GpuGdiPrototype::FlushGpu() {
     if(mode_!=Mode::Gpu)return false;
     detail::GdiGlScope glScope;

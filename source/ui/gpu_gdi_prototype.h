@@ -15,7 +15,7 @@ public:
     static constexpr size_t MaxCommands=64,MaxInputBytes=4*1024*1024;
     struct Stats {
         uint64_t draws=0,uploads=0,readbacks=0,recoveries=0,checkpoints=0;
-        uint64_t submittedCommands=0,batches=0,batchedCommands=0;
+        uint64_t submittedCommands=0,batches=0,batchedCommands=0,cpuImports=0;
     };
     explicit GpuGdiPrototype(PresentationAllocator* allocator=nullptr);
     ~GpuGdiPrototype();
@@ -27,6 +27,7 @@ public:
     // dimensions/counts fail before changing pixels. Copy owns the input bytes.
     bool Fill(Rect,uint32_t rgb);
     bool Copy(Rect,const uint32_t* rgb,size_t pixels);
+    bool ImportCpu(const uint32_t* rgb,size_t pixels); // full image, empty journal only; no readback
     bool FlushGpu(); // False after device failure; logical pixels still recover.
     const Surface* CpuRead(); // Explicit readback/checkpoint, or bounded replay.
     // Call AFTER actual context destruction/loss: performs no GL calls.

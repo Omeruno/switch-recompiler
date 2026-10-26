@@ -21,7 +21,7 @@ rm -f "$out/stage-f-acceptance.json"
 rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
-rm -f "$out/gpu_window_bindings.log"
+rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
 failed=0
@@ -330,6 +330,20 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             tail -n 25 "$out/gpu_window_bindings.log" 2>/dev/null || true
             failed=1
         fi
+        coherencesrc=""
+        for obj in $src; do
+            case "$obj" in */gpu_gdi_prototype.o|*/gpu_gdi_targets.o|*/opengl_presentation.o) ;; *) coherencesrc="$coherencesrc $obj" ;; esac
+        done
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_window_gpu_coherence.cpp" \
+           "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_window_gpu_coherence" &&
+           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_window_gpu_coherence" "$guestRoot/gpu_window_coherence.exe" > "$out/gpu_window_coherence.log" 2>&1; then
+            tail -n 2 "$out/gpu_window_coherence.log"
+        else
+            echo "   LIVE X86 GPU/CPU COHERENCE FAILED"
+            tail -n 25 "$out/gpu_window_coherence.log" 2>/dev/null || true
+            failed=1
+        fi
         glsrc=""
         for obj in $src; do
             case "$obj" in */opengl_presentation.o) ;; *) glsrc="$glsrc $obj" ;; esac
@@ -383,6 +397,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "graphics_workload.exe" ] && continue
         # Actual EGL/window lifetime inspection uses the dedicated harness.
         [ "$(basename "$exe")" = "gpu_window_bindings.exe" ] && continue
+        [ "$(basename "$exe")" = "gpu_window_coherence.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
         # The legacy/MFC fixture is executed repeatedly by its dedicated harness.

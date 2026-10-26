@@ -102,6 +102,7 @@ void ShellSession::SetClock(const std::u16string& clock) {
     clock_=clock;if(ready_)Refresh();
 }
 const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
+    if(ready_ && !ui::g_gdi.PrepareCpuAccess())return outputSurface_;
     if(!ready_ || guest.width!=W || guest.height!=H || !guest.Valid())return guest;
     if(ObserveTask())Refresh();
     Copy(outputSurface_,guest,{0,0,W,H});

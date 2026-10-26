@@ -59,6 +59,14 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-gpu-window-coherence
+          if-no-files-found: error
+          path: |
+            build-host/gpu_window_coherence.log
+            build-host/guest-run.*/gpu_window_coherence.exe
+            docs/G4B2C_CPU_COHERENCE.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-gpu-window-bindings
           if-no-files-found: error
           path: |

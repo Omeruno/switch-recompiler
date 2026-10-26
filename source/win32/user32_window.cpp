@@ -405,6 +405,7 @@ void InvalidateClient(Window* w, const Region& rgn, bool erase, bool forceChildr
 }
 
 bool EnableWindowLayers(bool enabled) {
+    if(!ui::g_gdi.PrepareCpuAccess())return false;
     auto& state=S();state.screen.s.writeCapture=nullptr;
     if(!enabled){state.windowLayers.Clear();return true;}
     const bool ok=state.windowLayers.Enable(state.screenW,state.screenH);
@@ -414,6 +415,7 @@ bool EnableWindowLayers(bool enabled) {
 Rect WorkArea() {return Rect(0,0,S().screenW,S().workBottom>0?std::min(S().workBottom,S().screenH):S().screenH);}
 
 void RepaintDesktop(const Region& screenRgn) {
+    if(!ui::g_gdi.PrepareCpuAccess())return;
     Window* desk = Desktop();
     if (!desk) return;
     Region r = screenRgn;
@@ -557,6 +559,7 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
                               const std::u16string& title, uint32_t style, int x, int y, int cx, int cy,
                               uint32_t parent, uint32_t menu, uint32_t hInstance, uint32_t param, bool unicode,
                               uint32_t titlePtr, uint32_t classPtr) {
+    if(!ui::g_gdi.PrepareCpuAccess())return 0;
     cpu::IGuestMemory& m = *G().m;
     WndClass* cls = FindClass(className, classAtom, hInstance);
     if (!cls) { SetLastError(m, 1407); return 0; } // ERROR_CANNOT_FIND_WND_CLASS
@@ -676,6 +679,7 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
 }
 
 bool DestroyWindowInternal(uint32_t hwnd) {
+    if(!ui::g_gdi.PrepareCpuAccess())return false;
     Window* w = Win(hwnd);
     if (!w || hwnd == S().desktop) return false;
     if (w->destroying) return true;
@@ -740,6 +744,7 @@ bool DestroyWindowInternal(uint32_t hwnd) {
 }
 
 bool SetWindowPosInternal(uint32_t hwnd, uint32_t after, int x, int y, int cx, int cy, uint32_t flags) {
+    if(!ui::g_gdi.PrepareCpuAccess())return false;
     constexpr uint32_t NOSIZE = 1, NOMOVE = 2, NOZORDER = 4, NOREDRAW = 8, NOACTIVATE = 0x10, FRAMECHANGED = 0x20,
                        SHOW = 0x40, HIDE = 0x80, NOSENDCHANGING = 0x400;
     Window* w = Win(hwnd);
@@ -825,6 +830,7 @@ bool SetWindowPosInternal(uint32_t hwnd, uint32_t after, int x, int y, int cx, i
 }
 
 bool ShowWindowInternal(uint32_t hwnd, int cmd) {
+    if(!ui::g_gdi.PrepareCpuAccess())return false;
     Window* w = Win(hwnd);
     if (!w) return false;
     bool wasVisible = (w->style & WS_VISIBLE) != 0;
@@ -887,6 +893,7 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
 // Queue-local activation is distinct from the desktop foreground window.
 // Publish state before callbacks; a nested activation/destruction wins.
 void SetActive(uint32_t hwnd,bool foreground) {
+    if(!ui::g_gdi.PrepareCpuAccess())return;
     WindowCallScope scope;
     hwnd=RootOf(hwnd);
     Window* target=Win(hwnd);

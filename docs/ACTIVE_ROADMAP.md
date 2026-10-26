@@ -1,10 +1,10 @@
-# Active implementation map — 2026-10-25
+# Active implementation map — 2026-10-26
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: G4b.2b bounded real HWND/DC resource binding implemented; next G4b.2 CPU/GPU coherence/
-production-presenter integration.** Runtime baseline `1d3f15588f51745c92292d073c686c2591f81a85`
-passed [CI40204271361, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361).
+**Current position: G4b.2c opt-in CPU/GPU window coherence implemented; next owning
+texture frames, direct-host-access audit and selective production integration.** Runtime baseline `e780649e18c1b25bd38ea05db157074155a22bce`
+passed [CI40221359571, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40221359571).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -69,7 +69,8 @@ recursive file-manager features and arbitrary Windows shell/COM are not implied.
 | G4b.1 | [Ordered instanced fill batches](G4B_GPU_BATCHES.md), cached uniforms,42-sample same-build pixel/count/timing report | Copies/intersections preserve order; bounded journal/checkpoints retained |
 | G4b.2a | [Bounded shared GL-state handoff](G4B2_SHARED_CONTEXT.md), actual EGL interleaving with production renderer | Implemented prerequisite; no live GDI activation |
 | G4b.2b | [Actual HWND/DC identities, validated leases and bounded native target resources](G4B2B_WINDOW_BINDINGS.md); stale CPU DC→reused HWND rejection | Explicit native bridge; ordinary GDI remains CPU-authoritative |
-| Remaining G4b.2 | CPU/DIB/ROP/read/save/resize coherence and owning production texture bridge | **Next, not implemented/activated** |
+| G4b.2c | [Opt-in CPU/GPU authority and real x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md), production shader cleanup | Native opt-in subset; ordinary GDI remains CPU reference |
+| Remaining G4b.2 | Owning resident-texture frames, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -78,20 +79,18 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 ## Next package and activation gates
 
-1. Preserve the [bounded HWND/DC bridge](G4B2B_WINDOW_BINDINGS.md) and shared GL-state
-   contract. Native target leases are not owning production frames.
-2. **Next:** define genuine CPU barriers for GetPixel/GetDIBits, CPU ROP/source access and
-   raw guest DIB writes; define resize/repaint/fallback authority. Keep unsupported cases CPU-authoritative and report
-   unsupported operations honestly; no successful stubs or EXE-name exceptions.
-3. Preserve the [implemented shared-context handoff](G4B2_SHARED_CONTEXT.md) and build a texture-aware bridge to the
-   existing presenter. ShellSession currently reads canonical CPU pixels: adding
-   GPU drawing plus unconditional readback/duplicate CPU raster is insufficient.
-   Preserve ownership masks, CPU fallback, independent input and all Luna changes.
-4. Run public actual-x86 GDI/window/pixel/readback/session fixtures and actual-EGL
-   comparisons before selective production activation. Measure transfer/checkpoint/
-   submission overhead. Do not require physical user testing to develop these.
-5. Later gather real Switch workload evidence and the consolidated physical E/F
-   checklist. Hardware checks stay deferred at the user's request.
+1. Preserve HWND/DC leases, shared GL-state and the [opt-in coherence contract](G4B2C_CPU_COHERENCE.md).
+   Snapshot validation must not force CPU readback; CPU consumers must acquire authority.
+2. **Next:** own resident GPU frame resources through presentation/retirement/fallback.
+   Replace unconditional canonical CPU snapshots for the selected GPU path, preserving
+   ownership masks, native Luna/overlay/input and CPU fallback.
+3. Audit remaining direct host surface accesses and route coherence faults into
+   controlled frontend failure. The native opt-in protocol is not arbitrary raw-pointer tracking.
+4. Admit a bounded ordinary GDI subset only after public actual-x86 dispatch/pixel/
+   readback/lifecycle regressions and actual-EGL comparisons. Measure checkpoint,
+   transfer and submission costs; prototype image budgets remain explicit.
+5. Physical Switch workload evidence and the consolidated E/F checklist remain
+   deferred. Host/Mesa and work-count gates do not certify physical performance.
 
 D compatibility is a separate queue: page protection/unwind/COM/API contracts
 and concrete public reproducers. Pinball x86 is not certified by graphics work.

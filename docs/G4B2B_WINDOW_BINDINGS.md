@@ -1,5 +1,9 @@
 # G4b.2b: native GPU resources bound to real HWND/DC lifetimes
 
+Follow-on: [G4b.2c](G4B2C_CPU_COHERENCE.md) adds optional CPU/GPU authority and
+real CPU/lifecycle barriers. Default diagnostic behavior below is preserved;
+ordinary GDI dispatch remains CPU-only.
+
 Incoming `1d3f15588f51745c92292d073c686c2591f81a85` passed all six jobs in
 [CI40204271361](https://github.com/Omeruno/switch-recompiler/actions/runs/40204271361).
 This implements the bounded identity/clip/resource-lifetime slice after

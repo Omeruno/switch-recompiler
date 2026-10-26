@@ -284,6 +284,7 @@ FN(MapWindowPoints) {
 }
 
 uint32_t WindowLong(Window* w, int idx, bool set, uint32_t value, bool unicode) {
+    if(set && !ui::g_gdi.PrepareCpuAccess())return 0;
     auto field = [&](uint32_t& f) { uint32_t old = f; if (set) f = value; return old; };
     switch (idx) {
     case -4: { // GWL_WNDPROC
@@ -371,6 +372,7 @@ FN(GetParent) {
 }
 FN(SetParent) {
     ENTER;
+    if(!ui::g_gdi.PrepareCpuAccess())return Ret(0);
     Window* w = Win(A(c, m, 0));
     if (!w) return Ret(0);
     uint32_t old = (w->style & WS_CHILD) ? w->parent : S().desktop;

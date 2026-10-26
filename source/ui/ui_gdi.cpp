@@ -306,7 +306,7 @@ bool Gdi::DescribeWindowTarget(uint32_t hdc,WindowRasterTarget& out) {
     WindowDcInfo info;info.identityOnly=true;info.expectedWindowIdentity=dc->windowIdentity;
     if(!provider_(dc->hwnd,dc->wholeWindow,info) || info.windowIdentity!=dc->windowIdentity)return false;
     Surface* surface=nullptr;int x=0,y=0;Region clip;
-    if(!Target(hdc,surface,x,y,clip))return false; // read-only: never captures pixels
+    if(!ResolveTarget(hdc,surface,x,y,clip,nullptr))return false; // geometry only, no CPU pixel access
     out.windowIdentity=info.windowIdentity;out.dcIdentity=dc->identity;
     out.layoutGeneration=layoutGeneration_;out.hwnd=dc->hwnd;out.hdc=hdc;
     out.frame=info.frame;out.originX=x;out.originY=y;out.clip=std::move(clip);
@@ -316,6 +316,7 @@ bool Gdi::DescribeWindowTarget(uint32_t hdc,WindowRasterTarget& out) {
 
 
 bool Gdi::DeleteDc(uint32_t hdc) {
+    if(!PrepareCpuAccess())return false;
     Slot* s = Find(hdc);
     if (!s || (s->type != ObjType::DC && s->type != ObjType::MemDC)) return false;
     if (BitmapObj* b = Bitmap(s->dc->st.bitmap)) if (b->selectedIn > 0) b->selectedIn--;
@@ -406,7 +407,11 @@ int Gdi::ScaleY(const DcObj& dc, int len) const {
     return static_cast<int>(std::lround(std::fabs(static_cast<double>(len) * dc.st.viewportExt.y / dc.st.windowExt.y)));
 }
 
-bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip,const SurfaceWriteCapture** capture) {
+bool Gdi::Target(uint32_t hdc,Surface*& s,int& ox,int& oy,Region& clip,const SurfaceWriteCapture** capture) {
+    if(!PrepareCpuAccess())return false;
+    return ResolveTarget(hdc,s,ox,oy,clip,capture);
+}
+bool Gdi::ResolveTarget(uint32_t hdc,Surface*& s,int& ox,int& oy,Region& clip,const SurfaceWriteCapture** capture) {
     if(capture)*capture=nullptr;
     DcObj* dc = Dc(hdc);
     if (!dc) return false;
@@ -441,6 +446,59 @@ bool Gdi::Target(uint32_t hdc, Surface*& s, int& ox, int& oy, Region& clip,const
         c.Offset(ox, oy);
         clip.Intersect(c);
     }
+    return true;
+}
+
+bool Gdi::InstallCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
+    if(cpuGateInstalled_ || !gate)return false;
+    cpuGate_=gate;cpuGateInstalled_=true;return true;
+}
+bool Gdi::RemoveCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
+    if(!cpuGateInstalled_ || !gate || cpuGate_.lock()!=gate)return false;
+    cpuGate_.reset();cpuGateInstalled_=false;return true;
+}
+bool Gdi::PrepareCpuAccess() {
+    if(!cpuGateInstalled_)return true;
+    const auto gate=cpuGate_.lock();return gate && gate->Prepare();
+}
+bool Gdi::WindowImageInfo(const WindowRasterTarget& r,WindowDcInfo& info) {
+    if(!r.windowIdentity || r.layoutGeneration!=layoutGeneration_ || !provider_ ||
+       !screen_ || !screen_->Valid() || screen_->bpp!=32)return false;
+    info.expectedWindowIdentity=r.windowIdentity;
+    if(!provider_(r.hwnd,true,info) || info.windowIdentity!=r.windowIdentity || info.frame!=r.frame ||
+       info.visible.Rects().size()>128)return false;
+    for(const auto& q:info.visible.Rects())if(q.Empty() || q.Intersect(r.frame)!=q ||
+        q.Intersect({0,0,screen_->width,screen_->height})!=q)return false;
+    const int64_t w=int64_t(r.frame.right)-r.frame.left,h=int64_t(r.frame.bottom)-r.frame.top;
+    return w>0 && h>0 && w<=8192 && h<=8192;
+}
+bool Gdi::SnapshotWindow(const WindowRasterTarget& r,uint32_t* rgb,size_t count) {
+    WindowDcInfo info;
+    if(!rgb || !WindowImageInfo(r,info) || uint64_t(r.frame.Width())*r.frame.Height()!=count)return false;
+    std::fill(rgb,rgb+count,0);
+    for(const auto& q:info.visible.Rects())for(int y=q.top;y<q.bottom;++y)for(int x=q.left;x<q.right;++x)
+        rgb[size_t(y-r.frame.top)*r.frame.Width()+x-r.frame.left]=screen_->Get(x,y);
+    return true;
+}
+bool Gdi::CommitWindow(const WindowRasterTarget& r,const Surface& image,const Region& dirty,size_t& pixels) {
+    pixels=0;WindowDcInfo info;
+    if(!WindowImageInfo(r,info) || !image.Valid() || image.bpp!=32 || image.width!=r.frame.Width() ||
+       image.height!=r.frame.Height() || image.pitch<int64_t(image.width)*4 || dirty.Rects().size()>128)return false;
+    for(const auto& q:dirty.Rects()) {
+        if(q.Empty() || q.Intersect({0,0,image.width,image.height})!=q)return false;
+        Region missing(q.Offset(r.frame.left,r.frame.top));
+        for(const auto& visible:info.visible.Rects())missing.SubtractRect(visible);
+        if(!missing.Empty())return false;
+    }
+    // Validate the entire commit before requesting optional retained capture or
+    // writing pixels. Only accepted dirty areas change screen/layer ownership.
+    info={};info.expectedWindowIdentity=r.windowIdentity;info.captureWrites=true;
+    if(!provider_(r.hwnd,true,info) || info.windowIdentity!=r.windowIdentity)return false;
+    Surface dst=*screen_;dst.writeCapture=info.capture;
+    for(const auto& q:dirty.Rects())for(int y=q.top;y<q.bottom;++y)for(int x=q.left;x<q.right;++x) {
+        dst.Set(x+r.frame.left,y+r.frame.top,image.Get(x,y));++pixels;
+    }
+    if(pixels)MarkScreenChanged();
     return true;
 }
 

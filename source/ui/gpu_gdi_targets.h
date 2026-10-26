@@ -23,6 +23,7 @@ public:
     bool Destroy(Handle);
     bool Fill(Handle,Rect,uint32_t rgb);
     bool Copy(Handle,Rect,const uint32_t* rgb,size_t count);
+    bool ImportCpu(Handle,const uint32_t* rgb,size_t count);
     const Surface* CpuRead(Handle);
     // Explicit CPU barrier, not a claimed GPU-to-GPU accelerated transfer.
     bool CopyTargetViaCpu(Handle dst,Rect at,Handle src,Rect from);

@@ -147,7 +147,14 @@ void OpenGlPresentation::Shutdown() {
     destroy(screen_);destroy(ownership_);for(auto& layer:layers_)destroy(layer);
     if(cursorTexture_)glDeleteTextures(1,&cursorTexture_);
     if(vao_)glDeleteVertexArrays(1,&vao_);
-    if(program_)glDeleteProgram(program_);
+    if(program_) {
+        // A bound program marked for deletion survives until the next use.
+        // Do not hand that zombie binding to the shared-context GDI scope:
+        // switching away would delete it before the scope could restore it.
+        GLint current=0;glGetIntegerv(GL_CURRENT_PROGRAM,&current);
+        if(GLuint(current)==program_)glUseProgram(0);
+        glDeleteProgram(program_);
+    }
     cursorTexture_=program_=vao_=0;Reset();
 }
 bool OpenGlPresentation::Upload(Texture& texture,const Surface& s,uint64_t id,uint64_t generation,
