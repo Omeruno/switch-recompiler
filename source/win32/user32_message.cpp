@@ -83,6 +83,14 @@ void MouseEvent(const InputEvent& e) {
 
     Window* target=WindowFromPoint(x,y);
     const auto* capture=Win(s.capture);
+    // A platform batch can already contain movement/release before USER has
+    // dispatched the nonclient down and established real capture. Preserve its
+    // window identity so an outside release is not dropped on desktop thread0.
+    if(!capture && (e.type==InputEvent::MouseMove || (e.type==InputEvent::MouseUp && e.button==0))) {
+        auto* origin=Win(s.nonClientPointer);
+        if(origin && origin->rasterIdentity==s.nonClientPointerIdentity)target=origin;
+    }
+    if(e.type==InputEvent::MouseUp && e.button==0){s.nonClientPointer=0;s.nonClientPointerIdentity=0;}
     const auto* foreground=Win(s.foreground);
     const bool captureForeground=capture && foreground && capture->threadId==foreground->threadId;
     const bool ownDrag=capture && std::any_of(std::begin(s.mouseDownOwners),std::end(s.mouseDownOwners),
@@ -97,6 +105,11 @@ void MouseEvent(const InputEvent& e) {
     uint32_t hwnd = target->hwnd;
     uint32_t hit = captured ? HTCLIENT : SendMsg(hwnd, WM_NCHITTEST, 0, MakeLong(x, y));
     if (!rt::GuestExecution::Checkpoint() || !(target = Win(hwnd))) return;
+    if(e.type==InputEvent::MouseDown && e.button==0) {
+        const bool system=hit==HTCAPTION || hit==HTCLOSE || hit==HTMINBUTTON || hit==HTMAXBUTTON ||
+            (hit>=HTLEFT && hit<=HTBOTTOMRIGHT);
+        s.nonClientPointer=system?hwnd:0;s.nonClientPointerIdentity=system?target->rasterIdentity:0;
+    }
     if (hit == HTTRANSPARENT && (target->style & WS_CHILD)) { hwnd = target->parent; hit = HTCLIENT; target = Win(hwnd); if (!target) return; }
 
     if (e.type == InputEvent::Wheel) {
@@ -125,15 +138,16 @@ void MouseEvent(const InputEvent& e) {
             if (ma == 2 || ma == 4) return; // щелчок «съеден»
         }
         // двойной щелчок
-        if (client && (target = Win(hwnd)) && target->cls && (target->cls->style & 0x8 /* CS_DBLCLKS */)) {
+        if ((target = Win(hwnd)) && ((client && target->cls && (target->cls->style & 0x8 /* CS_DBLCLKS */)) || hit==HTCAPTION)) {
             uint32_t now = NowMs();
-            if (s.lastClickHwnd == hwnd && s.lastClickMsg == msg && now - s.lastClickTime <= 500 &&
+            const uint32_t kind=client?msg:msg-WM_MOUSEMOVE+WM_NCMOUSEMOVE;
+            if (s.lastClickHwnd == hwnd && s.lastClickMsg == kind && now - s.lastClickTime <= 500 &&
                 std::abs(x - s.lastClickX) <= 4 && std::abs(y - s.lastClickY) <= 4) {
                 msg = base + 2;
                 s.lastClickHwnd = 0;
             } else {
                 s.lastClickHwnd = hwnd;
-                s.lastClickMsg = msg;
+                s.lastClickMsg = kind;
                 s.lastClickTime = now;
                 s.lastClickX = x;
                 s.lastClickY = y;

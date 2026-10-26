@@ -864,6 +864,7 @@ bool ShowWindowInternal(uint32_t hwnd, int cmd) {
         }
         w->style = (w->style | WS_MINIMIZE) & ~WS_MAXIMIZE;
         SetWindowPosInternal(hwnd, 0, -32000, -32000, 160, 24, 0x4 | 0x10 | 0x40 | 0x20);
+        if(Win(hwnd)){ClearWindowFocus(hwnd);ClearWindowCapture(hwnd);}
         if (topLevel && S().foreground == hwnd && cmd != 2) ActivateNextTopLevel(hwnd);
         return wasVisible;
     case 9: case 1: // SW_RESTORE / SW_SHOWNORMAL
@@ -1003,6 +1004,7 @@ void ClearWindowCapture(uint32_t hwnd) {
         }
 }
 void ForgetWindowInput(uint32_t hwnd) {
+    if(S().nonClientPointer==hwnd){S().nonClientPointer=0;S().nonClientPointerIdentity=0;}
     for(auto& item:S().queues) {
         auto& queue=item.second;
         if(queue.focus==hwnd) {queue.focus=0;++queue.focusSerial;}
@@ -1131,6 +1133,91 @@ uint32_t HitTest(Window* w, int sx, int sy) {
     return HTBORDER;
 }
 
+// Real owner-thread modal nonclient gestures. Guest callbacks can destroy the
+// window, steal capture, cancel the mode or stop execution at every boundary.
+void TrackNonClient(uint32_t hwnd,uint32_t hit,uint32_t point) {
+    auto* w=Win(hwnd);
+    const bool button=hit==HTCLOSE || hit==HTMINBUTTON || hit==HTMAXBUTTON;
+    const bool moving=hit==HTCAPTION;
+    if(!w || w->threadId!=CurrentGuiThread() || (w->style&(WS_DISABLED|WS_MINIMIZE)) ||
+       (!button && (w->style&WS_MAXIMIZE)) ||
+       (!button && !moving && (!(w->style&WS_THICKFRAME) || hit<HTLEFT || hit>HTBOTTOMRIGHT)) ||
+       (hit==HTMINBUTTON && !(w->style&WS_MINIMIZEBOX)) ||
+       (hit==HTMAXBUTTON && !(w->style&WS_MAXIMIZEBOX)))return;
+    const uint64_t identity=w->rasterIdentity;
+    const Rect original=w->rect,screen=ScreenRect(w);
+    if(original.left < -32768 || original.top < -32768 || original.right>32767 || original.bottom>32767)return;
+    const int originX=screen.left-original.left,originY=screen.top-original.top;
+    const int anchorX=int16_t(point&0xffff),anchorY=int16_t(point>>16);
+    auto live=[&]() {if(!rt::GuestExecution::Checkpoint())return false;
+        auto* current=Win(hwnd);return current && current->rasterIdentity==identity && !current->destroying;};
+    auto captured=[&]() {return live() && S().capture==hwnd;};
+    if(!button && (screen.left < -32768 || screen.top < -32768 || screen.right>32767 || screen.bottom>32767))return;
+    StackBuffer limits(40),rectangle(16);
+    auto& memory=*G().m;
+    for(uint32_t i=0;i<40;i+=4)memory.Write32(limits.addr()+i,0);
+    memory.Write32(limits.addr()+24,112);memory.Write32(limits.addr()+28,32);
+    memory.Write32(limits.addr()+32,32767);memory.Write32(limits.addr()+36,32767);
+    if(!button)SendMsg(hwnd,WM_GETMINMAXINFO,0,limits.addr());
+    if(!live())return;
+    const auto limit=[&](uint32_t at,int fallback){const auto n=int32_t(memory.Read32(limits.addr()+at));return n>0?std::min(n,32767):fallback;};
+    const int minW=limit(24,112),minH=limit(28,32);
+    const int maxW=std::max(minW,limit(32,32767)),maxH=std::max(minH,limit(36,32767));
+    SetCaptureInternal(hwnd);
+    if(!captured())return;
+    if(!button)SendMsg(hwnd,WM_ENTERSIZEMOVE,0,0);
+    bool cancel=false,activate=false;
+    while(captured()) {
+        Msg message;
+        if(!FetchMessage(message,0,0,0,true,true) || !captured())break;
+        if(message.message==WM_QUIT){PostQuit(message.wParam);break;}
+        if(message.message==WM_KEYDOWN && message.wParam==0x1b){cancel=true;break;}
+        const bool motion=message.message==WM_MOUSEMOVE || message.message==WM_NCMOUSEMOVE;
+        const bool up=message.message==WM_LBUTTONUP || message.message==WM_NCLBUTTONUP;
+        if(motion || up) {
+            const int x=message.x,y=message.y;
+            if(button) {
+                if(up){activate=HitTest(Win(hwnd),x,y)==hit;break;}
+                continue;
+            }
+            Rect next=screen;const int dx=x-anchorX,dy=y-anchorY;
+            const bool left=hit==HTLEFT || hit==HTTOPLEFT || hit==HTBOTTOMLEFT;
+            const bool right=hit==HTRIGHT || hit==HTTOPRIGHT || hit==HTBOTTOMRIGHT;
+            const bool top=hit==HTTOP || hit==HTTOPLEFT || hit==HTTOPRIGHT;
+            const bool bottom=hit==HTBOTTOM || hit==HTBOTTOMLEFT || hit==HTBOTTOMRIGHT;
+            if(moving)next=next.Offset(dx,dy);
+            else {
+                if(left)next.left=std::max(next.right-maxW,std::min(next.left+dx,next.right-minW));
+                if(right)next.right=std::min(next.left+maxW,std::max(next.right+dx,next.left+minW));
+                if(top)next.top=std::max(next.bottom-maxH,std::min(next.top+dy,next.bottom-minH));
+                if(bottom)next.bottom=std::min(next.top+maxH,std::max(next.bottom+dy,next.top+minH));
+            }
+            WriteRect(rectangle.addr(),next);
+            SendMsg(hwnd,moving?WM_MOVING:WM_SIZING,moving?0:hit-HTLEFT+1,rectangle.addr());
+            if(!captured())break;
+            next=ReadRect(rectangle.addr());
+            const int64_t width=int64_t(next.right)-next.left,height=int64_t(next.bottom)-next.top;
+            if(next.left>=-32768 && next.top>=-32768 && next.right<=32767 && next.bottom<=32767 &&
+               (moving?(width>0 && height>0 && width<=32767 && height<=32767):
+                   (width>=minW && width<=maxW && height>=minH && height<=maxH)))
+                SetWindowPosInternal(hwnd,0,next.left-originX,next.top-originY,int(width),int(height),0x4|0x10);
+            if(up)break;
+        } else {
+            TranslateKey(message);
+            if(message.message==WM_TIMER && message.lParam)
+                CallStdcall(*G().c,*G().m,message.lParam,{message.hwnd,WM_TIMER,message.wParam,NowMs()});
+            else if(message.hwnd)SendMsg(message.hwnd,message.message,message.wParam,message.lParam);
+        }
+    }
+    if(live()) {
+        if(cancel && !button)SetWindowPosInternal(hwnd,0,original.left,original.top,original.Width(),original.Height(),0x4|0x10);
+        if(S().capture==hwnd)ReleaseCaptureInternal();
+        if(live() && !button)SendMsg(hwnd,WM_EXITSIZEMOVE,0,0);
+        if(live() && button && activate)SendMsg(hwnd,WM_SYSCOMMAND,
+            hit==HTCLOSE?0xf060:hit==HTMINBUTTON?0xf020:(Win(hwnd)->style&WS_MAXIMIZE)?0xf120:0xf030,point);
+    } else if(S().capture==hwnd && Win(hwnd) && Win(hwnd)->rasterIdentity==identity)S().capture=0;
+}
+
 } // namespace
 
 uint32_t SysColorBrush(int index) { return SysBrush(index); }
@@ -1234,13 +1321,12 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
             StartMenuBar(hwnd, static_cast<int16_t>(lp & 0xFFFF), static_cast<int16_t>(lp >> 16), false);
             return 0;
         }
-        switch (wp) {
-        case HTCLOSE: SendMsg(hwnd, WM_SYSCOMMAND, 0xF060, lp, unicode); break;
-        case HTMINBUTTON: SendMsg(hwnd, WM_SYSCOMMAND, 0xF020, lp, unicode); break;
-        case HTMAXBUTTON: SendMsg(hwnd, WM_SYSCOMMAND, (w->style & WS_MAXIMIZE) ? 0xF120 : 0xF030, lp, unicode); break;
-        case HTCAPTION: case HTCLIENT: break;
-        }
         if (!(w->style & WS_CHILD)) SetActive(hwnd);
+        if(Win(hwnd)) {
+            if(wp==HTCAPTION)SendMsg(hwnd,WM_SYSCOMMAND,0xf012,lp,unicode);
+            else if(wp>=HTLEFT && wp<=HTBOTTOMRIGHT)SendMsg(hwnd,WM_SYSCOMMAND,0xf000+wp-HTLEFT+1,lp,unicode);
+            else TrackNonClient(hwnd,wp,lp);
+        }
         return 0;
     case WM_NCLBUTTONDBLCLK:
         if (wp == HTCAPTION && (w->style & WS_MAXIMIZEBOX))
@@ -1248,6 +1334,12 @@ uint32_t DefWindowProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bo
         return 0;
     case WM_SYSCOMMAND:
         switch (wp & 0xFFF0) {
+        case 0xF010:
+            if((wp&15)==HTCAPTION)TrackNonClient(hwnd,HTCAPTION,lp);
+            break;
+        case 0xF000:
+            if((wp&15)>=1 && (wp&15)<=8)TrackNonClient(hwnd,HTLEFT+(wp&15)-1,lp);
+            break;
         case 0xF060: SendMsg(hwnd, WM_CLOSE, 0, 0, unicode); break;
         case 0xF020: ShowWindowInternal(hwnd, 6); break;
         case 0xF030: ShowWindowInternal(hwnd, 3); break;

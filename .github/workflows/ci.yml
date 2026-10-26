@@ -53,6 +53,14 @@ jobs:
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-window-gestures
+          if-no-files-found: error
+          path: |
+            build-host/window_gestures.log
+            build-host/guest-run.*/window_gestures.exe
+            docs/F6A_GUEST_WINDOW_GESTURES.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-e-composition-exe
           path: build-host/guest-run.*/gui_composition.exe
       - uses: actions/upload-artifact@v4

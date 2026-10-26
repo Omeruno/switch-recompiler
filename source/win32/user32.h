@@ -61,7 +61,7 @@ enum : uint32_t {
     WM_MOUSEMOVE = 0x0200, WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_LBUTTONDBLCLK = 0x0203,
     WM_RBUTTONDOWN = 0x0204, WM_RBUTTONUP = 0x0205, WM_RBUTTONDBLCLK = 0x0206, WM_MBUTTONDOWN = 0x0207,
     WM_MBUTTONUP = 0x0208, WM_MBUTTONDBLCLK = 0x0209, WM_MOUSEWHEEL = 0x020A, WM_PARENTNOTIFY = 0x0210,
-    WM_ENTERMENULOOP = 0x0211, WM_EXITMENULOOP = 0x0212, WM_CAPTURECHANGED = 0x0215,
+    WM_ENTERMENULOOP = 0x0211, WM_EXITMENULOOP = 0x0212, WM_SIZING = 0x0214, WM_MOVING = 0x0216, WM_CAPTURECHANGED = 0x0215,
     WM_MDIACTIVATE = 0x0222, WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232,
     WM_IME_SETCONTEXT = 0x0281, WM_IME_NOTIFY = 0x0282, WM_MOUSELEAVE = 0x02A3,
     WM_CUT = 0x0300, WM_COPY = 0x0301, WM_PASTE = 0x0302, WM_CLEAR = 0x0303, WM_UNDO = 0x0304,
@@ -181,6 +181,7 @@ struct State {
     uint32_t foreground = 0, capture = 0;
     uint64_t foregroundSerial=0;
     int cursorX = 0, cursorY = 0;
+    uint32_t nonClientPointer=0;uint64_t nonClientPointerIdentity=0; // queued system gesture origin
     uint32_t mouseDownOwners[3]={}; // left/right/middle gesture origin
     uint8_t asyncKeys[256] = {};  // текущее состояние (GetAsyncKeyState)
     uint32_t lastClickTime = 0, lastClickHwnd = 0, lastClickMsg = 0;

@@ -21,6 +21,7 @@ rm -f "$out/stage-f-acceptance.json"
 rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
+rm -f "$out/window_gestures.log"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
@@ -130,6 +131,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   INDEPENDENT SHELL INPUT FAILED"
         tail -n 35 "$out/shell_busy.log" 2>/dev/null || true
+        failed=1
+    fi
+
+    if $cxx $flags "$root/tests/test_window_gestures.cpp" $src -o "$out/test_window_gestures" &&
+       "$out/test_window_gestures" "$guestRoot/window_gestures.exe" > "$out/window_gestures.log" 2>&1; then
+        tail -n 1 "$out/window_gestures.log"
+    else
+        echo "   REAL X86 WINDOW GESTURES FAILED"
+        tail -n 35 "$out/window_gestures.log" 2>/dev/null || true
         failed=1
     fi
 
@@ -398,6 +408,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         # Actual EGL/window lifetime inspection uses the dedicated harness.
         [ "$(basename "$exe")" = "gpu_window_bindings.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_window_coherence.exe" ] && continue
+        [ "$(basename "$exe")" = "window_gestures.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
         # The legacy/MFC fixture is executed repeatedly by its dedicated harness.

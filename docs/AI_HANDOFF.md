@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`72545db7d2785e50a95294d387b0609b379c832c` (2026-10-26).
-[CI 40343116185](https://github.com/Omeruno/switch-recompiler/actions/runs/40343116185)
+`b3a8ae49d8f1e17822d236221e2a1928e19dffeb` (2026-10-26).
+[CI 40347620739](https://github.com/Omeruno/switch-recompiler/actions/runs/40347620739)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.2d.2 (2026-10-26)
+## Current position: F6a guest window actions; G4b.2d.2 preserved (2026-10-26)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -27,7 +27,9 @@ actual Win32 read/ROP/DIB/layout/fallback barriers and weak session-owned gates.
 retirement budgets, reset revocation and real fallback. Ordinary GDI dispatch is
 still CPU-only. [G4b.2d.2](G4B2D2_RESIDENT_PRESENTATION.md) allows resident
 textures in the real production renderer with ownership/CPU overlays/cursor.
-Next: owned mixed persistent frames and live-window/shell integration,
+User-prioritized [F6a guest window gestures](F6A_GUEST_WINDOW_GESTURES.md) adds
+real modal caption/edge/corner/button actions. Next F6b native-shell window
+actions/geometry. GPU queue retained: owned mixed frames and window/shell integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -53,7 +55,8 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current next implementation is owned mixed persistent frames and live-window/shell integration.
+deferred; current user-prioritized next implementation is F6b native window actions,
+then the retained GPU mixed-frame/live-window/shell queue.
 
 ## Working agreement
 
@@ -1977,3 +1980,44 @@ step limit there too. Preserve suites/keyrings, gcc/g++ multilib and the exact
 six jobs on the final published config SHA rather than claiming the cancelled
 first run was fully successful. No repeated local runtime suite needed for this
 configuration-only follow-up; final C++ source remains the full-suite tested one.
+
+
+## F6a — real guest nonclient window gestures (2026-10-26)
+
+Cleanb3a8ae4/FETCH_HEAD, no newer work/AGENTS. User prioritizes real window
+minimize/maximize/close/corner resize alongside continued system work. Guest
+min/max/restore/close commands existed, but caption/edge dragging was absent;
+native shell min/max were decorative. Implemented guest package first and
+explicitly retained native F6b as incomplete, without changing Luna artwork.
+
+Added owner-thread modal NC move/size via application SC_MOVE/SC_SIZE, real
+GetMinMaxInfo/enter/sizing/moving/SetWindowPos/exit messages and capture. Geometry
+changes trigger existing layout/client/paint/ownership logic. Release commits,
+Escape rolls back; cancellation/capture theft/destruction/quit/host stop unwind
+safely with identity revalidation after callbacks/yields. Caption buttons commit
+on matching release, retain WM_CLOSE veto; nonclient double-click detection and
+minimize focus/capture cleanup added. No screenshot scaling or EXE switch.
+
+Initial batched test lost an outside release before queued down had installed
+capture. Added a bounded native origin identity for NC gesture input, explicit
+capture taking precedence; fresh sessions cover sequenced and batched delivery.
+After the initial28 stages passed, extended to all eight directions, SC_SIZE veto
+and parked-modal host abort. Earlier development suite stopped before final
+SC dispatch/lifetime additions; final fresh full-suite validation follows.
+See F6A_GUEST_WINDOW_GESTURES.md for limits and remaining native-window work.
+G4b.2 mixed persistent frames/live-window/shell/access/fault queue retained.
+Hardware/SD policy unchanged; local SDK absent, CI NRO distinct from acceptance.
+
+Final F6a verification: full fresh COMPOSITION_GL_TEST=1 host/MinGW/Mesa suite
+passed final runtime/fixture/harness tree, including44 completed x86 gesture
+stages (sequenced + batched input) and one separate parked-modal host abort,
+all prior GPU resident/coherence/bindings/CPU measurement tests, actual-x86
+workspace/composition/input, Stage C/six E9/22 F and lifecycle/file/dialog tests.
+Strict O2 changed USER-window/message modules, strict O2 harness and strict
+CRT-free MinGW fixture pass. Focused ASan/UBSan changed window/message modules
+and harness pass with ordinary other runtime objects (leak scanning disabled,
+known makecontext/swapcontext warning retained). Negative ignored-minimum
+control rejects on the guest's exact-size assertion. No runtime/test edits
+after successful final suite; map/docs/browser and exact published-SHA CI/Pages/
+public gesture artifact checks remain completion gates. Next F6b native windows;
+no physical acceptance or complete XP shell claimed.
