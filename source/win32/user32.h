@@ -186,7 +186,8 @@ struct State {
     uint8_t asyncKeys[256] = {};  // текущее состояние (GetAsyncKeyState)
     uint32_t lastClickTime = 0, lastClickHwnd = 0, lastClickMsg = 0;
     int lastClickX = 0, lastClickY = 0;
-    uint64_t presentedChanges = 0,presentedShellRevision=0;
+    uint64_t presentedChanges = 0,presentedShellRevision=0,presentedProducer=0,presentedProducerRevision=0;
+    bool presentationFault=false;
     uint32_t lastPresentMs = 0;
     int cascade=0;
     uint32_t systemBrushes[31]={},lastPollMs=0;
@@ -352,6 +353,7 @@ struct InputEvent {
     bool physicalObserved=false,wasDown=false,altDown=false;
     uint32_t mouseFlags=0;
 };
+enum class NativePresentResult {Unavailable,Submitted,Failed};
 struct Platform {
     void* shellContext=nullptr;
     void (*paintDesktop)(void*,ui::Surface&,const Region&)=nullptr;
@@ -362,6 +364,12 @@ struct Platform {
     bool (*wait)(int timeoutMs, std::vector<InputEvent>& out) = nullptr;
     // Экран изменился: показать
     void (*present)(const ui::Surface& screen) = nullptr;
+    // Native selected producer: no guest callback/yield. Submitted means the
+    // output adapter accepted the frame; Failed latches controlled output fault.
+    void* presentationContext=nullptr;
+    uint64_t presentationIdentity=0;
+    uint64_t (*presentationRevision)(void*)=nullptr;
+    NativePresentResult (*tryPresent)(void*)=nullptr;
     // Ввод текста в поле (экранная клавиатура Switch). false — отменено.
     bool (*textInput)(const std::u16string& initial, bool multiline, bool password, std::u16string& out) = nullptr;
 };

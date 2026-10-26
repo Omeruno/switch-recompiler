@@ -101,9 +101,8 @@ relaunch checks remain deferred. Host Mesa is not a physical Switch FPS result.
 
 ## Next
 
-Add independent native ShellSession overlays/ownership to the live builder and
-connect it to persistent presentation without unconditional canonical composition.
-Replace PresentIfNeeded's unconditional CPU authority request only for a validated
-mixed producer; keep genuine CPU consumers gated. Complete raw-host/fault routing
+[G4b.2e](G4B2E_MIXED_WORKSPACE.md) adds independent native ShellSession overlays
+and actual USER mixed-producer selection before a CPU checkpoint. Next wire the
+persistent Switch device/swap/cursor adapter; keep genuine CPU consumers gated. Complete raw-host/fault routing
 and public x86/EGL/transfer gates before bounded ordinary GDI dispatch. Default
 Paint/Win32 GDI remains CPU; dynarec and Direct3D remain separate future work.

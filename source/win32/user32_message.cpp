@@ -293,16 +293,29 @@ uint32_t QueueStatusBits() {
 
 void PresentIfNeeded(bool force) {
     State& s = S();
-    if (!g_platform.present) return;
-    if(!ui::g_gdi.PrepareCpuAccess())return;
-    uint64_t changes = ui::g_gdi.ScreenChangeCounter();
-    const uint64_t shellRevision=g_platform.shellRevision?g_platform.shellRevision(g_platform.shellContext):0;
-    if (changes == s.presentedChanges && shellRevision==s.presentedShellRevision && !force) return;
-    uint32_t now = NowMs();
-    if (!force && now - s.lastPresentMs < 16) return;
-    s.presentedChanges = changes;s.presentedShellRevision=shellRevision;
-    s.lastPresentMs = now;
-    g_platform.present(s.screen.s);
+    if(s.presentationFault || (!g_platform.present && !g_platform.tryPresent))return;
+    const auto shellRevision=g_platform.shellRevision?g_platform.shellRevision(g_platform.shellContext):0;
+    const auto producer=g_platform.presentationIdentity;
+    const auto producerRevision=g_platform.presentationRevision?g_platform.presentationRevision(g_platform.presentationContext):0;
+    auto changes=ui::g_gdi.ScreenChangeCounter();
+    // Legacy/default output keeps its original coherence-before-selection rule.
+    if(!g_platform.tryPresent && !ui::g_gdi.PrepareCpuAccess()){s.presentationFault=true;return;}
+    if(!g_platform.tryPresent)changes=ui::g_gdi.ScreenChangeCounter();
+    if(changes==s.presentedChanges && shellRevision==s.presentedShellRevision &&
+       producer==s.presentedProducer && producerRevision==s.presentedProducerRevision && !force)return;
+    const uint32_t now=NowMs();
+    if(!force && now-s.lastPresentMs<16)return;
+    auto result=NativePresentResult::Unavailable;
+    if(g_platform.tryPresent)result=g_platform.tryPresent(g_platform.presentationContext);
+    if(result==NativePresentResult::Failed){s.presentationFault=true;return;}
+    if(result==NativePresentResult::Unavailable) {
+        if(!g_platform.present || (g_platform.tryPresent && !ui::g_gdi.PrepareCpuAccess())) {
+            s.presentationFault=true;return;
+        }
+        changes=ui::g_gdi.ScreenChangeCounter();g_platform.present(s.screen.s);
+    }
+    s.presentedChanges=changes;s.presentedShellRevision=shellRevision;
+    s.presentedProducer=producer;s.presentedProducerRevision=producerRevision;s.lastPresentMs=now;
 }
 
 // Выборка сообщения. wait — ждать (GetMessage), иначе только проверить.

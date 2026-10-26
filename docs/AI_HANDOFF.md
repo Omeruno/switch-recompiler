@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`8dc667cf246c766cf2a3754c4b68ca80e5577e41` (2026-10-27).
-[CI 40403499293](https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293)
+`49b85d0faa35f5580adc52669544568d14c2c3e4` (2026-10-27).
+[CI 40406723178](https://github.com/Omeruno/switch-recompiler/actions/runs/40406723178)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F6a/F6b and G4b.2d.4 live-window mixed submission implemented (2026-10-27)
+## Current position: G4b.2e native shell overlay and USER mixed selection implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -34,7 +34,10 @@ adds true state/geometry/reflow and exact input/composition for panels and TXT/B
 producer-independent redraw and explicit genuine software recovery.
 [G4b.2d.4](G4B2D4_LIVE_WINDOW_FRAMES.md) builds actual live-window ownership
 into retained mixed frames without a CPU readback barrier.
-Next: native shell/persistent frontend integration,
+[G4b.2e](G4B2E_MIXED_WORKSPACE.md) adds native shell overlays, an owning
+MixedWorkspace producer and real USER selection before CPU checkpoint, plus
+output-fault acknowledgement/drain routing.
+Next: persistent Switch device/swap/cursor adapter integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -2181,3 +2184,54 @@ verification remain final publication gates. Local devkitA64/libnx still absent;
 current physical Paint/GPU/fallback/input/relaunch deferred, SD closed. Next
 native ShellSession overlays into owned mixed frame, persistent frontend and
 PresentIfNeeded CPU-barrier selection, raw-host/fault audit, then bounded GDI.
+
+
+## G4b.2e — native overlays, real USER selection and output fault routing (2026-10-27)
+
+Clean49b85d0/FETCH_HEAD, no newer work/AGENTS. User requests taking a larger
+connected block. Implemented ShellSession native-only overlay without Compose/
+guest CPU checkpoint; mixed window submission merges actual dynamic panel/dialog/
+Start/taskbar ownership above resident windows. MixedWorkspace owns the frame,
+borrows bindings/shell/output and installs/restores scoped native producer fields.
+Real PresentIfNeeded selects that producer before a CPU checkpoint, observes GPU-
+only write epochs, shell/CPU revisions and unique producer identity, and retains
+legacy/default CPU authority ordering. Unavailable uses genuine CPU fallback;
+Failed latches USER output fault without acknowledgement/retry. Switch guest
+OutputHealthy observes the fault and uses existing stop/drain/return. See
+G4B2E_MIXED_WORKSPACE.md for output callback/lifetime/fallback/budget contracts.
+
+No ordinary GDI dispatch or mixed device/swap adapter is activated in Switch.
+Native public-x86 integration and real USER output selection are implemented;
+persistent Switch renderer/swap/cursor/lifecycle adapter remains the next step.
+No Paint FPS, broad GDI/game compatibility or physical acceptance is inferred.
+Raw-host pixel/coherence fault audit still remains before bounded admission.
+
+Extended existing20-stage x86/EGL coherence inspector with actual selected USER
+mixed output, native taskbar/Programs/Start/Preferences, panel move/max/min/restore,
+dialog outside owning panel, close/input isolation and real CPU-popup occlusion.
+Every1280x720 output pixel compared independently; duplicate-color GPU write must
+select output with unchanged CPU screen/shell state. No target readback or CPU
+barrier/commit added by native overlay/selection, original first64-fill transfer
+counts preserved. Unchanged call stays no-op. Output rejection preserves CPU/
+producer acknowledgement and timestamp, latches both faults, prevents retry and
+is absent in the next fresh session. Existing present-progress test adds actual
+software selected/unavailable output and CPU gate counts, plus failure no-ack.
+
+Development suite passed; after strengthening GPU-only epoch, moved-dialog and
+failure checks, fresh final-suite.log passed final runtime/headers/tests, including
+all prior workspace/busy/window/GDI/GPU/readback/measurement/lifetime/files, Stage C,
+six E9 and22 F groups. Strict O2/no-exceptions/no-RTTI native selector/controller
+and final inspector pass. Focused ASan/UBSan changed shell/binding/controller/USER
+selector/inspector plus GPU/renderer modules pass; other runtime objects ordinary,
+driver leak scanning disabled, known native-fiber warning retained. Negative
+pre-selector CPU barrier fails unchanged-submission accounting; omitted native
+dialog ownership fails pixel24,20. No runtime/test edits after final full suite.
+
+Six-job workflow unchanged except new contract in existing coherence artifact.
+Map23cards/3views/26docs, Markdown local links/fences, browser desktop/mobile,
+shell syntax and diff checks are final local gates. Exact published-SHA six-job
+CI/Pages/coherence log/contract/public PE32/NRO must be verified after publication.
+Local devkitA64/libnx absent; CI compiles Switch-only OutputHealthy change. No
+hardware/Paint/GPU/fallback/input/relaunch test requested; deferred list retained,
+SD closed. Next persistent Switch device/swap/cursor adapter, raw-host/fault audit,
+then bounded common GDI GPU admission and measured transfer/checkpoint costs.

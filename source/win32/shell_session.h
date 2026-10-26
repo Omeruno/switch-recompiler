@@ -21,6 +21,7 @@ public:
     HostStatus Status() const {return status_;}
     size_t PendingGuestInput() const {return inputCount_;}
     const ui::Surface& Compose(const ui::Surface& guest);
+    ui::WindowSceneView NativeOverlay(); // native-only mask/pixels, no guest CPU barrier
     ui::WindowSceneView Scene(); // optional owned ownership map; empty selects flat fallback
     void SetClock(const std::u16string& clock);
     bool Filter(const InputEvent& event);

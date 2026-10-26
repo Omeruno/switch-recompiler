@@ -63,6 +63,20 @@ int main() {
     };
     for(bool wait:{false,true})for(bool posted:{false,true})for(bool remove:{false,true})
         BusyQueue(wait,posted,remove);
+    struct Gate:ui::CpuRasterGate {unsigned calls=0;bool Prepare() override {++calls;return true;}};
+    auto gate=std::make_shared<Gate>();assert(ui::g_gdi.InstallCpuGate(gate));
+    user::g_platform.tryPresent=[](void*) {return user::NativePresentResult::Unavailable;};
+    auto before=frames;user::PresentIfNeeded(true);assert(frames==before+1 && gate->calls==1);
+    user::g_platform.tryPresent=[](void*) {
+        user::g_platform.present(user::S().screen.s);return user::NativePresentResult::Submitted;
+    };
+    before=frames;user::PresentIfNeeded(true);assert(frames==before+1 && gate->calls==1);
+    const auto acknowledged=user::S().presentedChanges;const auto time=user::S().lastPresentMs;
+    user::g_platform.tryPresent=[](void*) {return user::NativePresentResult::Failed;};
+    before=frames;user::PresentIfNeeded(true);assert(frames==before && gate->calls==1 && user::S().presentationFault);
+    assert(user::S().presentedChanges==acknowledged && user::S().lastPresentMs==time);
+    user::PresentIfNeeded(true);assert(frames==before && gate->calls==1);
+    assert(ui::g_gdi.RemoveCpuGate(gate));
     presentation.Detach();user::g_platform={};
     puts("PASSED: continuous drag/post traffic presents updated GDI pixels without idle; Get/Peek, remove/no-remove, throttle and no-op");
 }

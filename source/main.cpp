@@ -1731,7 +1731,8 @@ bool InitializeOutput(bool gpuRequested) {
     g_graphicsInitialized=g_outputLifetime.Ensure(gpuRequested?ui::OutputPreference::GpuPreferred:ui::OutputPreference::Software);
     return g_graphicsInitialized;
 }
-bool OutputHealthy() {return g_outputLifetime.Ready() && !g_outputFailed;}
+bool OutputHealthy() {return g_outputLifetime.Ready() && !g_outputFailed &&
+    !(g_guestPresentation && win32::user::S().presentationFault);}
 bool DesktopOutput() {
     if(OutputHealthy())return true;
     return InitializeOutput(true);

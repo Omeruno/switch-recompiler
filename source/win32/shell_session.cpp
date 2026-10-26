@@ -113,6 +113,22 @@ const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return outputSurface_;
 }
+ui::WindowSceneView ShellSession::NativeOverlay() {
+    if(!ready_ || !owners_.Resize(size_t(W)*H))return {};
+    if(ObserveTask())Refresh();
+    std::fill(owners_.data(),owners_.data()+owners_.size(),0);
+    constexpr uint32_t token=0xffffffffu;
+    auto cover=[&](Rect r) {
+        r=r.Intersect({0,0,W,H});
+        for(int y=r.top;y<r.bottom;++y)for(int x=r.left;x<r.right;++x)owners_[size_t(y)*W+x]=token;
+    };
+    cover({0,680,W,H});
+    if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)cover(shell_.PanelBounds());
+    if(!shell_.DialogBounds().Empty())cover(shell_.DialogBounds());
+    if(shell_.StartOpen())cover({0,284,484,680});
+    sceneLayers_[0]={&chromeSurface_,token,0,0,sceneGeneration_,nullptr};
+    return {owners_.data(),W,H,sceneLayers_.data(),1,false,nullptr,sceneGeneration_};
+}
 ui::WindowSceneView ShellSession::Scene() {
     if(!ready_ || !owners_.Resize(size_t(W)*H))return {};
     const auto guest=S().windowLayers.Scene();

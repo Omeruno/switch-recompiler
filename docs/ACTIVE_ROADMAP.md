@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2d.4 live-window mixed submission implemented; next native shell/frontend wiring and access/fault audit.** Runtime baseline `8dc667cf246c766cf2a3754c4b68ca80e5577e41`
-passed [CI40403499293, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293).
+G4b.2e native shell mixed overlays and real USER producer selection implemented; next persistent Switch device/swap/cursor adapter and access/fault audit.** Runtime baseline `49b85d0faa35f5580adc52669544568d14c2c3e4`
+passed [CI40406723178, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40406723178).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -83,7 +83,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2d.2 | [Resident-layer production render entry](G4B2D2_RESIDENT_PRESENTATION.md), masks/CPU overlay/cursor, explicit recovery | Native entry; no default GDI/ShellSession activation |
 | G4b.2d.3 | [Owning mixed CPU/resident presentation](G4B2D3_MIXED_FRAME.md), independent redraw and actual software recovery | Explicit native entry; live HWND/frontend wiring remains open |
 | G4b.2d.4 | [Live-window ownership into mixed frames](G4B2D4_LIVE_WINDOW_FRAMES.md), real x86/EGL output before CPU readback | Explicit coherent native entry; shell/frontend and ordinary dispatch remain open |
-| Remaining G4b.2 | Native shell/frontend wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
+| G4b.2e | [Native shell mixed overlay + real USER producer selection](G4B2E_MIXED_WORKSPACE.md), GPU epochs and output-fault acknowledgement | Native selected adapter; persistent Switch device/swap and default GDI activation still open |
+| Remaining G4b.2 | Persistent Switch device/swap/cursor adapter, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -94,10 +95,10 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 1. **Implemented native entry:** [live HWND ownership → mixed frame](G4B2D4_LIVE_WINDOW_FRAMES.md).
    Real x86/EGL pixels, CPU-window occlusion, original read/ROP/DIB counts and actual-loss fallback stay gates.
-2. **Next:** add ShellSession native chrome/panels/dialogs/Start as independent owned overlays;
-   preserve actual dynamic bounds, input ownership and one persistent frontend.
-3. Connect the selected producer to frontend output and PresentIfNeeded without an
-   unconditional CPU checkpoint/canonical composite. Real CPU consumers stay gated.
+2. **Implemented native entry:** [ShellSession overlay + USER selection](G4B2E_MIXED_WORKSPACE.md).
+   Dynamic native chrome/Start/dialogs, GPU-only epochs, no selection checkpoint and failure acknowledgement are checked.
+3. **Next:** wire the selected owning producer to the persistent Switch device/swap/cursor
+   adapter with real output failure/software recovery and lifecycle ordering. Real CPU consumers stay gated.
 4. Audit remaining raw host pixel reads/writes and route coherence/render faults
    through controlled drain/cleanup/return, preserving genuine software fallback.
 5. Admit a bounded ordinary GDI subset through common dispatch with public real-x86

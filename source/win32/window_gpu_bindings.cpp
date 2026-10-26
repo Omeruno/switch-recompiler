@@ -92,7 +92,7 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
         const ui::Rect local{int(int64_t(part.left)-r.frame.left),int(int64_t(part.top)-r.frame.top),
             int(int64_t(part.right)-r.frame.left),int(int64_t(part.bottom)-r.frame.top)};
         if(!targets_.Fill(lease.target,local,rgb))return false;
-        if(coherent_)slot->dirty.UnionRect(local);
+        if(coherent_){slot->dirty.UnionRect(local);++gpuRevision_;}
     }
     return true;
 }
@@ -110,7 +110,7 @@ bool WindowGpuBindings::EnableCoherence() {
     auto gate=std::make_shared<Gate>(this);
     if(!ui::g_gdi.InstallCpuGate(gate))return false;
     gate_=std::move(gate);desktopIdentity_=Desktop()->rasterIdentity;
-    coherent_=true;fault_=false;coherenceStats_={};return true;
+    coherent_=true;fault_=false;coherenceStats_={};gpuRevision_=0;return true;
 }
 bool WindowGpuBindings::DisableCoherence() {
     if(!coherent_)return true;
@@ -155,7 +155,7 @@ const ui::Surface* WindowGpuBindings::CpuRead(const Lease& lease) {
 const ui::GpuGdiPrototype::Stats* WindowGpuBindings::Counters(const Lease& lease) {
     return Valid(lease)?targets_.TargetStats(lease.target):nullptr;
 }
-bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output) {
+bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output,const ui::WindowSceneView* overlay) {
     if(!coherent_ || fault_ || !SameSession())return false;
     const auto& screen=S().screen.s;
     if(!screen.Valid() || screen.bpp!=32 || screen.width>ui::GpuGdiTargets::MaxOutputWidth ||
@@ -163,7 +163,7 @@ bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output) {
     if(!frameOwners_.Resize(size_t(screen.width)*screen.height))return false;
     std::fill(frameOwners_.data(),frameOwners_.data()+frameOwners_.size(),0);
     std::array<ui::GpuGdiTargets::Layer,ui::GpuGdiTargets::MaxLayers> resources{};
-    std::array<ui::PresentationLayerFrame,ui::GpuGdiTargets::MaxLayers> layers{};
+    std::array<ui::PresentationLayerFrame,ui::WindowLayers::MaxLayers> layers{};
     std::array<uint32_t,ui::GpuGdiTargets::MaxLayers> tokens{};
     size_t count=0;
     for(const auto& slot:slots_)if(slot.target && !slot.dirty.Empty()) {
@@ -183,9 +183,20 @@ bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output) {
             }
         ++count;
     }
+    size_t layerCount=count;
+    if(overlay) {
+        if(!overlay->owners || overlay->width!=screen.width || overlay->height!=screen.height ||
+           overlay->count>layers.size()-count || (overlay->count && !overlay->layers))return false;
+        for(size_t n=0;n<overlay->count;++n) {
+            const auto& src=overlay->layers[n];
+            if(src.token<=ui::GpuGdiTargets::MaxLayers)return false;
+            layers[layerCount++]={src.surface,src.token,src.left,src.top,src.generation,0,src.versions};
+        }
+        for(size_t n=0;n<frameOwners_.size();++n)if(overlay->owners[n])frameOwners_[n]=overlay->owners[n];
+    }
     ui::GpuGdiTargets::Frame frame;
     if(!targets_.PrepareFrame(resources.data(),count,screen.width,screen.height,frame))return false;
-    ui::PresentationSceneFrame scene{frameOwners_.data(),screen.width,screen.height,0,0,nullptr,layers.data(),count};
+    ui::PresentationSceneFrame scene{frameOwners_.data(),screen.width,screen.height,0,0,nullptr,layers.data(),layerCount};
     return output.Submit(screen,scene,targets_,frame,tokens.data(),count);
 }
 bool WindowGpuBindings::RenderMixed(ui::MixedPresentation& frame,ui::OpenGlPresentation& renderer,

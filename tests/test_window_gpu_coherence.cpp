@@ -7,6 +7,9 @@
 #include "source/cpu/interpreter.h"
 #include "source/win32/window_gpu_bindings.h"
 #include "source/win32/user32.h"
+#include "source/win32/mixed_workspace.h"
+#include <filesystem>
+#include <unistd.h>
 #include "source/ui/opengl_presentation.h"
 #include <cassert>
 #include <cstdio>
@@ -86,9 +89,67 @@ static void CheckMixedPixels(Bindings& bindings,ui::MixedPresentation& frame,
         std::fprintf(stderr,"mixed cpu=%d pixel=%zu,%zu actual=%08x expected=%06x\n",int(cpu),i%1280,i/1280,rgba[i],expected[i]);assert(false);
     }
 }
+using Shell=ui::DesktopShell;
+static void ShellClick(user::ShellSession& bridge,Shell& shell,int target) {
+    const auto r=shell.ControlBounds(target);assert(!r.Empty());
+    for(auto type:{user::InputEvent::MouseDown,user::InputEvent::MouseUp}) {
+        user::InputEvent e;e.type=type;e.x=r.left+r.Width()/2;e.y=r.top+r.Height()/2;assert(bridge.Filter(e));
+    }
+}
+static std::vector<uint32_t> NativeExpected(Shell& shell,const std::vector<uint32_t>& guest) {
+    ui::OwnedSurface chrome;chrome.Allocate(1280,720);shell.Render(chrome.s,u"14:32");auto result=guest;
+    for(int y=0;y<720;++y)for(int x=0;x<1280;++x)
+        if(y>=680 || shell.PanelBounds().Contains(x,y) || shell.DialogBounds().Contains(x,y) ||
+           (shell.StartOpen() && x<484 && y>=284 && y<680))result[size_t(y)*1280+x]=chrome.s.Get(x,y);
+    return result;
+}
+static void ExerciseWorkspace(Bindings& bindings,user::ShellSession& bridge,Shell& shell,
+    const std::vector<uint32_t>& guest,const Bindings::Lease& lease) {
+    struct Sink {std::vector<uint32_t> expected;unsigned calls=0;};Sink sink{NativeExpected(shell,guest),0};
+    const auto previous=user::g_platform;const auto cpu=Screen();const auto counts=bindings.CoherenceCounters();
+    user::MixedWorkspace workspace(bindings,bridge,[](void* p,Bindings& b,ui::MixedPresentation& frame) {
+        auto& sink=*static_cast<Sink*>(p);CheckMixedPixels(b,frame,sink.expected);++sink.calls;return true;
+    },&sink);
+    assert(workspace.Attach());user::PresentIfNeeded(true);assert(workspace.Frames()==1 && sink.calls==1);
+    user::S().lastPresentMs-=16;user::PresentIfNeeded();assert(sink.calls==1); // no changed epoch
+    auto present=[&]() {
+        sink.expected=NativeExpected(shell,guest);const auto before=sink.calls;
+        user::S().lastPresentMs-=16;user::PresentIfNeeded();assert(sink.calls==before+1);
+        assert(!workspace.Faulted() && !user::S().presentationFault && Screen()==cpu);
+        const auto now=bindings.CoherenceCounters();assert(now.commits==counts.commits && now.cpuBarriers==counts.cpuBarriers);
+    };
+    const auto epoch=bindings.PresentationRevision();
+    assert(bindings.Fill(lease,{30,30,40,40},0xaabbcc) && bindings.PresentationRevision()>epoch);present();
+    ShellClick(bridge,shell,Shell::Start);ShellClick(bridge,shell,Shell::MenuPrograms);assert(shell.ActivePanel()==Shell::Panel::Programs);present();
+    auto title=shell.ControlBounds(Shell::TitleBar);
+    for(auto type:{user::InputEvent::MouseDown,user::InputEvent::MouseMove,user::InputEvent::MouseUp}) {
+        user::InputEvent e;e.type=type;e.x=title.left+40+(type==user::InputEvent::MouseDown?0:-80);
+        e.y=title.top+12+(type==user::InputEvent::MouseDown?0:30);assert(bridge.Filter(e));
+    }
+    present();ShellClick(bridge,shell,Shell::Maximize);present();
+    ShellClick(bridge,shell,Shell::Minimize);present();ShellClick(bridge,shell,Shell::NativeTask);present();ShellClick(bridge,shell,Shell::Maximize);present();
+    ShellClick(bridge,shell,Shell::Start);assert(shell.StartOpen());present();
+    ShellClick(bridge,shell,Shell::Settings);assert(shell.ActiveDialog()==Shell::Dialog::Preferences);present();
+    const auto dialog=shell.DialogBounds();
+    for(auto type:{user::InputEvent::MouseDown,user::InputEvent::MouseMove,user::InputEvent::MouseUp}) {
+        user::InputEvent e;e.type=type;e.x=type==user::InputEvent::MouseDown?dialog.left+80:100;
+        e.y=type==user::InputEvent::MouseDown?dialog.top+12:32;assert(bridge.Filter(e));
+    }
+    assert(shell.DialogBounds().left==20 && shell.DialogBounds().top==20);present();
+    ShellClick(bridge,shell,Shell::DialogClose);present();
+    ShellClick(bridge,shell,Shell::Close);present();
+    assert(user::Q().input.empty());workspace.Detach();
+    assert(user::g_platform.tryPresent==previous.tryPresent && user::g_platform.presentationContext==previous.presentationContext);
+    puts("Mixed native workspace: PASS (real USER selection, shell/taskbar/Start/panel/dialog ownership, move/max/min/restore, no CPU checkpoint)");
+}
 static void Run(const char* path,bool loss) {
     Egl egl;PrimitiveImport();ExpiredGate();
     rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
+    char temp[]="/tmp/sr-mixed-XXXXXX";assert(mkdtemp(temp));
+    struct Cleanup {std::string path;~Cleanup(){std::filesystem::remove_all(path);}} cleanup{temp};
+    Shell shell;std::string shellError;assert(shell.ConfigureFilesystem(temp,"","",shellError));
+    user::ShellSession bridge(shell);assert(bridge.Attach("Public coherent windows"));bridge.SetClock(u"14:32");
+    assert(!user::S().presentationFault);
     Allocator allocator;Bindings bindings(&allocator);assert(bindings.Initialize() && bindings.EnableCoherence());
     auto& p=session.ProcessObject();auto& memory=session.Memory();std::string error;
     assert(p.LoadMainExe(path,error) && p.PrepareMainThread(p.MainThread().cpu,error));
@@ -136,6 +197,7 @@ static void Run(const char* path,bool loss) {
                     const auto kept=held.CpuBytes();allocator.failAt=allocator.calls+1;
                     assert(!bindings.SubmitMixed(held) && held.CpuBytes()==kept && bindings.CoherenceHealthy());
                     allocator.failAt=0;CheckMixedPixels(bindings,held,expected);
+
                     assert(bindings.Counters(lease)->readbacks==0 && bindings.Counters(other)->readbacks==0);
                     assert(bindings.Counters(lease)->uploads==prior.uploads);
                     assert(bindings.CoherenceCounters().commits==stats.commits && bindings.CoherenceCounters().cpuBarriers==stats.cpuBarriers);
@@ -155,6 +217,7 @@ static void Run(const char* path,bool loss) {
                     for(int y=80;y<90;++y)for(int x=70;x<80;++x)mixedExpected[size_t(y)*1280+x]=0xaabbcc;
                     const auto prior=*bindings.Counters(lease);assert(bindings.SubmitMixed(held));
                     CheckMixedPixels(bindings,held,mixedExpected);
+                    ExerciseWorkspace(bindings,bridge,shell,mixedExpected,lease);
                     assert(bindings.Counters(lease)->readbacks==prior.readbacks && Screen()==cpuBefore);
                 } else if(stage==4) {
                     assert(bindings.CoherenceCounters().commits==4 && bindings.Counters(lease)->readbacks==3);
@@ -194,7 +257,16 @@ static void Run(const char* path,bool loss) {
         }
     }
     assert(stopped && checked==10);bindings.Prune();assert(bindings.Pixels()==128*128); // held frame pins the destroyed window
+    unsigned attempts=0;
+    {
+        user::MixedWorkspace failed(bindings,bridge,[](void* p,Bindings&,ui::MixedPresentation&) {
+            ++*static_cast<unsigned*>(p);return false;
+        },&attempts);
+        assert(failed.Attach());const auto acknowledged=user::S().presentedChanges;const auto acknowledgedProducer=user::S().presentedProducer;const auto acknowledgedTime=user::S().lastPresentMs;
+        user::PresentIfNeeded(true);assert(attempts==1 && failed.Faulted() && user::S().presentationFault);
+        assert(user::S().presentedChanges==acknowledged && user::S().presentedProducer==acknowledgedProducer && user::S().lastPresentMs==acknowledgedTime);user::PresentIfNeeded(true);assert(attempts==1);
+    }
     assert(bindings.DisableCoherence() && ui::g_gdi.PrepareCpuAccess());bindings.Shutdown();held.Clear();assert(!allocator.live);
     std::printf("GPU coherence mode=%s: PASS (10 x86 stages, 2 dirty windows, 64 fills/1 import/1 readback for first window, ROP/raw-DIB/GetDIBits, layout, owned live mixed output/occlusion, fallback)\n",loss?"actual-loss":"GL-error");
 }
-int main(int argc,char** argv){assert(argc==2);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);}
+int main(int argc,char** argv){assert(argc==2);ui::FontCache::SetDirectory("romfs/fonts");ui::FontDesc font;font.face="Liberation Sans";font.height=-16;assert(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);}
