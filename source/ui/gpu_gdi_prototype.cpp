@@ -163,6 +163,9 @@ bool GpuGdiPrototype::OpenDevice() {
     glGenVertexArrays(1,&vao_);glGenFramebuffers(1,&fbo_);glGenTextures(1,&target_);glGenTextures(1,&upload_);
     if(!vao_ || !fbo_ || !target_ || !upload_)return false;
     glBindTexture(GL_TEXTURE_2D,target_);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,surface_.width,surface_.height,0,GL_BGRA,GL_UNSIGNED_BYTE,nullptr);
     glBindFramebuffer(GL_FRAMEBUFFER,fbo_);glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target_,0);
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)return false;

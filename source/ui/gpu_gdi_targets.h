@@ -1,5 +1,6 @@
 #pragma once
 #include "gpu_gdi_prototype.h"
+#include "resident_frame.h"
 #include <memory>
 
 namespace ui {
@@ -25,6 +26,9 @@ public:
     };
     bool PrepareFrame(const Layer*,size_t count,int width,int height,Frame&);
     bool Present(const Frame&);
+    // Flush/recover owned resources, then lend views only for this callback.
+    // Consumer rejection is not a device error and does not disable GPU.
+    bool ConsumeFrame(const Frame&,ResidentFrameConsumer&);
     const Surface* ComposeCpu(const Frame&);
     struct Stats {uint64_t frames=0,drawAttempts=0,failures=0;};
     explicit GpuGdiTargets(PresentationAllocator* allocator=nullptr);
@@ -46,6 +50,7 @@ public:
     bool Present(const Layer*,size_t count,int width,int height);
     // Owned fallback frame, borrowed read-only until next compose/reset.
     const Surface* ComposeCpu(const Layer*,size_t count,int width,int height);
+    void RecoverCpu(); // explicit owner-thread renderer-failure fallback
     void ContextLost(); // AFTER actual context destruction, no driver calls.
     bool GpuActive() const {return gpuActive_;}
     size_t Pixels() const {return pixels_;}

@@ -106,6 +106,102 @@ void CheckImage(const ui::Surface& s,const std::vector<uint32_t>& expected) {
     assert(s.width==W && s.height==H);
     for(int y=0;y<H;++y)for(int x=0;x<W;++x)assert(s.Get(x,y)==expected[size_t(y)*W+x]);
 }
+struct ResidentSink:ui::ResidentFrameConsumer {
+    ui::OpenGlPresentation& presenter;const ui::PresentationFrame& frame;
+    uint32_t tokens[2]={11,22};bool gpu=true;
+    ResidentSink(ui::OpenGlPresentation& p,const ui::PresentationFrame& f):presenter(p),frame(f) {}
+    bool Consume(const ui::ResidentFrameView& view) override {
+        assert(view.count==2);gpu=view.images[0].texture!=0;
+        if(gpu)return presenter.RenderResident(frame,{nullptr,W,H,0,0},view,tokens,2);
+        // Fallback supplies real recovered pixels, never a stale canonical copy.
+        std::array<ui::PresentationLayerFrame,3> layers;
+        std::copy(frame.scene->layers,frame.scene->layers+3,layers.begin());
+        for(size_t i=0;i<2;++i){assert(view.images[i].cpu);layers[i].surface=view.images[i].cpu;}
+        auto scene=*frame.scene;scene.layers=layers.data();auto recovered=frame;recovered.scene=&scene;
+        return presenter.Render(recovered,{nullptr,W,H,0,0});
+    }
+};
+void TestResident() {
+    Clean();ui::GpuGdiTargets targets;assert(targets.Initialize());
+    ui::OpenGlPresentation presenter;assert(presenter.Initialize());
+    const auto a=targets.Create(23,17),b=targets.Create(19,13);assert(a && b);
+    assert(targets.Fill(a,{0,0,23,17},0x1279ad) && targets.Fill(b,{0,0,19,13},0xa94317));
+    ui::GpuGdiTargets::Layer input[]={{a,{0,0,23,17}},{b,{0,0,19,13}}};
+    ui::GpuGdiTargets::Frame resident;assert(targets.PrepareFrame(input,2,W,H,resident));
+    ui::OwnedSurface base,overlay,refA,refB,canonical;base.Allocate(W,H);overlay.Allocate(W,H);canonical.Allocate(W,H);
+    refA.Allocate(23,17);refB.Allocate(19,13);
+    for(int y=0;y<H;++y)for(int x=0;x<W;++x) {
+        base.s.Set(x,y,(x*17311+y*387)&0xffffff);overlay.s.Set(x,y,(x*831+y*77413)&0xffffff);
+    }
+    for(int y=0;y<17;++y)for(int x=0;x<23;++x)refA.s.Set(x,y,0x1279ad);
+    for(int y=0;y<13;++y)for(int x=0;x<19;++x)refB.s.Set(x,y,0xa94317);
+    std::vector<uint32_t> owners(W*H),expected(W*H);
+    ui::PresentationBuffer<uint64_t> versions;assert(versions.Resize(6));std::fill(versions.data(),versions.data()+6,1);
+    ui::PresentationLayerFrame layers[]={{nullptr,11,-3,7,1,1,nullptr},{nullptr,22,9,12,1,1,nullptr},{&overlay.s,33,0,0,1,1,&versions}};
+    ui::PresentationSceneFrame scene{owners.data(),W,H,1,1,&versions,layers,3};
+    ui::PresentationFrame frame{base.s,{3,2,W-6,H-4},{5,9,true},1,&base,&versions,777,1,&scene};
+    ResidentSink sink(presenter,frame);
+    ui::SoftwarePresentation software;
+    for(int iteration=0;iteration<12;++iteration) {
+        if(iteration==6) {
+            assert(targets.Fill(a,{2,3,9,8},0x37bc91));
+            for(int y=3;y<8;++y)for(int x=2;x<9;++x)refA.s.Set(x,y,0x37bc91);
+        }
+        std::fill(owners.begin(),owners.end(),0);
+        layers[0].left=-3+iteration;layers[1].top=12+iteration;
+        for(int y=0;y<H;++y)for(int x=0;x<W;++x) {
+            auto& token=owners[size_t(y)*W+x];
+            if(x>=layers[0].left && x<layers[0].left+23 && y>=7 && y<24)token=11;
+            if(x>=9 && x<28 && y>=layers[1].top && y<layers[1].top+13)token=22;
+            if(y>=H-9 || (x>=17 && x<34 && y>=11 && y<29))token=33; // native chrome / overlapping panel
+            if((x+y)%19==0)token=0; // shaped holes must select base
+        }
+        ++scene.generation;frame.cursor.x=5+iteration;
+        // Independent CPU ownership oracle; SoftwarePresentation then handles
+        // viewport scaling/letterbox/cursor on this complete reference image.
+        for(int y=0;y<H;++y)for(int x=0;x<W;++x) {
+            const auto token=owners[size_t(y)*W+x];uint32_t rgb=base.s.Get(x,y);
+            if(token==11)rgb=refA.s.Get(x-layers[0].left,y-7);
+            if(token==22)rgb=refB.s.Get(x-9,y-layers[1].top);
+            if(token==33)rgb=overlay.s.Get(x,y);
+            canonical.s.Set(x,y,rgb);
+        }
+        ui::PresentationFrame referenceFrame{canonical.s,frame.viewport,frame.cursor};
+        assert(software.Render(referenceFrame,{expected.data(),W,H,W,expected.size()}));
+        assert(targets.ConsumeFrame(resident,sink) && sink.gpu);
+        const auto actual=ReadRgb();
+        for(size_t i=0;i<actual.size();++i) {
+            const auto p=expected[i];const auto rgb=((p&255)<<16)|(p&0xff00)|((p>>16)&255);
+            if(actual[i]!=rgb){std::fprintf(stderr,"resident frame=%d xy=%zu,%zu actual=%06x expected=%06x\n",iteration,i%W,i/W,actual[i],rgb);assert(false);}
+        }
+        assert(targets.TargetStats(a)->readbacks==0 && targets.TargetStats(b)->readbacks==0);
+        assert(targets.TargetStats(a)->uploads==0 && targets.TargetStats(b)->uploads==0);
+        assert(presenter.Timings().layerUploadBytes==uint64_t(W)*H*4); // CPU overlay only, once
+    }
+    // Invalid native token mapping leaves the previous output untouched and GPU active.
+    assert(presenter.Timings().screenUploadBytes==uint64_t(W)*H*4);
+    const auto before=ReadRgb();sink.tokens[1]=999;
+    assert(!targets.ConsumeFrame(resident,sink) && ReadRgb()==before);
+    sink.tokens[1]=11;assert(!targets.ConsumeFrame(resident,sink));
+    assert(targets.GpuActive() && ReadRgb()==before);sink.tokens[1]=22;
+    // Same resource frame survives retirement; the renderer never owns/deletes the borrowed names.
+    assert(targets.Destroy(a) && targets.Destroy(b));assert(targets.ConsumeFrame(resident,sink));
+    presenter.Shutdown();assert(targets.Present(resident)); // borrowed textures survive presenter teardown
+    assert(presenter.Initialize());
+    // A renderer-only GL error rejects the partial output. The native caller
+    // explicitly switches all resources to CPU recovery after Consume returns.
+    glEnable(0xdead);assert(!targets.ConsumeFrame(resident,sink));
+    targets.RecoverCpu();assert(!targets.GpuActive());
+    assert(targets.ConsumeFrame(resident,sink) && !sink.gpu);
+    const auto fallback=ReadRgb();
+    for(size_t i=0;i<fallback.size();++i) {
+        const auto p=expected[i];assert(fallback[i]==(((p&255)<<16)|(p&0xff00)|((p>>16)&255)));
+    }
+    // Recovered surfaces have no revision maps: they must be uploaded honestly.
+    assert(presenter.Timings().layerUploadBytes>=uint64_t(23*17+19*13)*4);
+    presenter.Shutdown();targets.Shutdown();assert(!targets.ConsumeFrame(resident,sink));
+    puts("Resident production layers: PASS (GPU textures, ownership holes/overlap, CPU chrome, cursor, no target readback/upload, retirement and recovery)");
+}
 void TestShared() {
     Caller caller;caller.Hostile();const auto hostile=Snapshot();
     std::vector<uint32_t> pixels(W*H);
@@ -168,7 +264,7 @@ int main() {
     EGLint size[]={EGL_WIDTH,W,EGL_HEIGHT,H,EGL_NONE};auto surface=eglCreatePbufferSurface(d,config,size);assert(surface!=EGL_NO_SURFACE);
     EGLint version[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,3,EGL_CONTEXT_OPENGL_PROFILE_MASK,EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,EGL_NONE};
     auto context=eglCreateContext(d,config,EGL_NO_CONTEXT,version);assert(context!=EGL_NO_CONTEXT);
-    assert(eglMakeCurrent(d,surface,surface,context));TestShared();
+    assert(eglMakeCurrent(d,surface,surface,context));TestShared();TestResident();
     assert(eglMakeCurrent(d,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
     assert(eglDestroyContext(d,context) && eglDestroySurface(d,surface) && eglTerminate(d));
     std::puts("GPU GDI shared context: PASS (hostile state, nested barriers, production interleave, failure cleanup; no presentation readbacks)");

@@ -1,5 +1,6 @@
 #pragma once
 #include "presentation.h"
+#include "resident_frame.h"
 
 namespace ui {
 // CPU submission and asynchronous GL command intervals, never scanout/input latency.
@@ -18,6 +19,10 @@ public:
     bool Initialize();
     void Shutdown();
     bool Render(const PresentationFrame&,const OutputBuffer&) override;
+    // Tokens map resident images to scene layers; CPU surface may be null for
+    // mapped layers. The caller owns the base/ownership/CPU overlay snapshots.
+    bool RenderResident(const PresentationFrame&,const OutputBuffer&,
+        const ResidentFrameView&,const uint32_t* tokens,size_t count);
     void Reset() override;
     bool RequiresCpuOutput() const override {return false;}
     uint64_t LastWrittenBytes() const override {return uploadedBytes_;}
@@ -32,6 +37,8 @@ public:
     size_t TextureBytes() const;
     const char* Error() const {return error_;}
 private:
+    bool RenderImpl(const PresentationFrame&,const OutputBuffer&,
+        const ResidentFrameView*,const uint32_t*,size_t);
     struct Texture {
         unsigned handle=0;
         int width=0,height=0;

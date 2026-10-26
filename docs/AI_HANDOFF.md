@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`7edadd4d4ec9d4ab776a1def5fdf59297bd1a3fc` (2026-10-26).
-[CI 40335457694](https://github.com/Omeruno/switch-recompiler/actions/runs/40335457694)
+`72545db7d2785e50a95294d387b0609b379c832c` (2026-10-26).
+[CI 40343116185](https://github.com/Omeruno/switch-recompiler/actions/runs/40343116185)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.2d.1 (2026-10-26)
+## Current position after G4b.2d.2 (2026-10-26)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -25,7 +25,9 @@ and rejects CPU DC aliasing onto reused HWNDs. It is not automatic GDI dispatch.
 actual Win32 read/ROP/DIB/layout/fallback barriers and weak session-owned gates.
 [G4b.2d.1](G4B2D_RESIDENT_FRAMES.md) adds owning resident-resource frames with
 retirement budgets, reset revocation and real fallback. Ordinary GDI dispatch is
-still CPU-only. Next: texture-aware production frames,
+still CPU-only. [G4b.2d.2](G4B2D2_RESIDENT_PRESENTATION.md) allows resident
+textures in the real production renderer with ownership/CPU overlays/cursor.
+Next: owned mixed persistent frames and live-window/shell integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -51,7 +53,7 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current next implementation is texture-aware production frames and admission after opt-in coherence.
+deferred; current next implementation is owned mixed persistent frames and live-window/shell integration.
 
 ## Working agreement
 
@@ -1923,3 +1925,44 @@ MinGW/Mesa installation too, with a ten-minute step limit. Preserve suites/keys
 and all runtime test commands/six jobs. No runtime/test change or local suite
 rerun is needed for this configuration-only follow-up; verify exact final SHA
 core CI and the resident-frame log artifact before claiming completion.
+
+
+## G4b.2d.2 — production renderer resident-layer entry (2026-10-26)
+
+Clean72545db/FETCH_HEAD; no newer remote changes/AGENTS. Added synchronous
+ConsumeFrame internal native views from owning frames, actual GPU flush without
+readback and genuine recovered CPU views on fallback/notified context loss. No
+manager/context mutation/yield or retained borrowed view allowed in consumer.
+RenderResident maps unique ownership tokens to borrowed textures in the actual
+production renderer; CPU layer surfaces may be null, avoiding their CPU mirror/
+upload. Base/ownership/CPU chrome remain caller-owned synchronous inputs. Native
+RecoverCpu explicitly handles renderer-only failure after rejected submission.
+Default GDI and ShellSession/Presentation CPU snapshot path remain unchanged.
+See G4B2D2_RESIDENT_PRESENTATION.md; persistent mixed ownership/real HWND/shell
+wiring and raw-host/fault audit remain next, not full G4b.2 activation.
+
+Creation now sets target nearest/level0 sampling: formerly only the separate
+prototype presenter did so. Initial new test exposed incomplete sampling; also
+corrected its test reference to independently compose ownership before the
+software renderer, which intentionally renders canonical pixels. Final strict
+new oracle passes twelve mixed GPU/CPU frames with scaled viewport, negative
+origin, overlap/holes, chrome, cursor, asymmetric content change and exact
+zero target reads/uploads, one CPU base/overlay upload. Invalid token inputs
+preserve FBO/GPU; retirement/renderer teardown preserves borrowed resources.
+Renderer GL error + explicit recovery compares final genuine CPU replay pixels.
+Actual EGL loss test additionally consumes retired-image CPU views without GL.
+Negative old-sampling control fails at first resident pixel; focused ASan/UBSan
+passes (driver leak scan disabled). Earlier pre-final suite was stopped after
+adding explicit renderer-failure recovery; full final-source rebuild follows.
+No physical performance/acceptance or automatic ordinary GDI dispatch claimed.
+
+Final G4b.2d.2 local validation: full fresh final-source MinGW/Mesa
+COMPOSITION_GL_TEST=1 suite passed, including new resident production layers,
+CPU coherence/live-x86 bindings, G3/G4a/G4b measurement/GL gates, G1/G2, workspace/
+composition/input/session/file/dialog regressions, Stage C/six E9 and22 F groups.
+Strict O2 shared-context/production-resident and target/context-loss tests pass.
+Focused ASan/UBSan actual-renderer/target/shared harness passes final sources
+(driver leak scanning disabled); negative old-sampling source fails new oracle.
+No runtime/test changes follow the final suite. Map/link/browser checks and exact
+published-SHA six-job CI, contract/log artifact and live Pages verification
+remain completion gates. Local SDK absent; current physical checks deferred.

@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: G4b.2d.1 resident-resource frames implemented; next texture-aware
-production frames, direct-host-access audit and selective integration.** Runtime baseline `7edadd4d4ec9d4ab776a1def5fdf59297bd1a3fc`
-passed [CI40335457694, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40335457694).
+**Current position: G4b.2d.2 resident-layer entry in production renderer implemented;
+next owned mixed persistent frames, live-window/shell wiring and host-access audit.** Runtime baseline `72545db7d2785e50a95294d387b0609b379c832c`
+passed [CI40343116185, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40343116185).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -71,7 +71,8 @@ recursive file-manager features and arbitrary Windows shell/COM are not implied.
 | G4b.2b | [Actual HWND/DC identities, validated leases and bounded native target resources](G4B2B_WINDOW_BINDINGS.md); stale CPU DC→reused HWND rejection | Explicit native bridge; ordinary GDI remains CPU-authoritative |
 | G4b.2c | [Opt-in CPU/GPU authority and real x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md), production shader cleanup | Native opt-in subset; ordinary GDI remains CPU reference |
 | G4b.2d.1 | [Owning resident-resource frames](G4B2D_RESIDENT_FRAMES.md), retirement budgets/reset/fallback | Native manager subset; not production shell integration |
-| Remaining G4b.2 | Texture-aware production frames, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
+| G4b.2d.2 | [Resident-layer production render entry](G4B2D2_RESIDENT_PRESENTATION.md), masks/CPU overlay/cursor, explicit recovery | Native entry; no default GDI/ShellSession activation |
+| Remaining G4b.2 | Owned mixed persistent frames, live-window/shell wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -82,7 +83,8 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 1. Preserve HWND/DC leases, shared GL-state and the [opt-in coherence contract](G4B2C_CPU_COHERENCE.md).
    Snapshot validation must not force CPU readback; CPU consumers must acquire authority.
-2. **Next:** connect the owning resident resources to texture-aware production frames.
+2. **Next:** own mixed CPU/resident snapshots in the persistent presentation layer,
+   then connect live-window ownership and ShellSession to the resident renderer.
    Replace unconditional canonical CPU snapshots for the selected GPU path, preserving
    ownership masks, native Luna/overlay/input and CPU fallback.
 3. Audit remaining direct host surface accesses and route coherence faults into

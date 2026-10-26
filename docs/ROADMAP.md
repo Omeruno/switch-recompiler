@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-26, после G4b.2d.1.
-Проверенный код `7edadd4d4ec9d4ab776a1def5fdf59297bd1a3fc`:
-[CI40335457694, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40335457694).
+Дата обновления: 2026-10-26, после G4b.2d.2.
+Проверенный код `72545db7d2785e50a95294d387b0609b379c832c`:
+[CI40343116185, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40343116185).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -134,7 +134,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2a/b | [GL-state handoff](G4B2_SHARED_CONTEXT.md), [native HWND/DC resource leases](G4B2B_WINDOW_BINDINGS.md) | Bounded bridge, без автоматического GDI dispatch |
 | G4b.2c | [Opt-in CPU/GPU authority, реальные x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md) | Native correctness path, не ускорение CPU frame snapshot |
 | G4b.2d.1 | [Owning native resource frames / retirement / reset / fallback](G4B2D_RESIDENT_FRAMES.md) | Не production ShellSession bridge |
-| **Остаток G4b.2** | Texture-aware production frames, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
+| G4b.2d.2 | [Resident-слои в основном renderer / masks / cursor / recovery](G4B2D2_RESIDENT_PRESENTATION.md) | Native entry; не shell/default GDI activation |
+| **Остаток G4b.2** | Owned mixed frames / shell wiring, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
 
 До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
 измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
@@ -185,6 +186,12 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
-Это часть следующего рубежа, а не готовое подключение ShellSession. Ближайшая
-задача — основной texture-aware вывод с ownership/Luna/оверлеями без полного
-CPU-снимка; затем аудит доступа и выборочное обычное GDI-подключение.
+Это prerequisite для production-подключения ShellSession; текущий следующий
+шаг после renderer entry G4b.2d.2 — владение смешанным кадром и shell wiring.
+
+
+[G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
+явный native-вход рисует удерживаемые текстуры с ownership-масками, CPU-оверлеем
+и курсором. Для выбранных GPU-слоёв не нужны CPU-зеркало/readback/upload.
+Следом — владение всем смешанным кадром, привязка живых окон и ShellSession,
+аудит доступа/ошибок. Обычный GDI и CPU-снимок ShellSession пока не переключены.

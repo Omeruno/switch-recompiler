@@ -99,6 +99,7 @@ jobs:
           path: |
             build-host/gpu_gdi_shared_context.log
             docs/G4B2_SHARED_CONTEXT.md
+            docs/G4B2D2_RESIDENT_PRESENTATION.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-gpu-gdi-targets

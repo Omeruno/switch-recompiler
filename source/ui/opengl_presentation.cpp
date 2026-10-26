@@ -201,6 +201,14 @@ bool OpenGlPresentation::Upload(Texture& texture,const Surface& s,uint64_t id,ui
     return true;
 }
 bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffer& out) {
+    return RenderImpl(frame,out,nullptr,nullptr,0);
+}
+bool OpenGlPresentation::RenderResident(const PresentationFrame& frame,const OutputBuffer& out,
+    const ResidentFrameView& resident,const uint32_t* tokens,size_t count) {
+    return RenderImpl(frame,out,&resident,tokens,count);
+}
+bool OpenGlPresentation::RenderImpl(const PresentationFrame& frame,const OutputBuffer& out,
+    const ResidentFrameView* resident,const uint32_t* tokens,size_t count) {
     uploadedBytes_=0;const auto& s=frame.surface;const auto& v=frame.viewport;
     if(!program_ || !s.Valid() || s.width>8192 || s.height>8192 || s.bpp!=32 || s.pitch<int64_t(s.width)*4 || s.pitch%4 ||
        uint64_t(s.width)*s.height*4>Presentation::MaxFrameBytes || !v.Valid() ||
@@ -209,21 +217,39 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
         error_="invalid GPU frame";return false;
     }
     const auto* scene=frame.scene;
+    std::array<const ResidentImageView*,WindowLayers::MaxLayers> direct{};
+    if(resident) {
+        if(!scene || count!=resident->count || count>4 ||
+           (count && (!tokens || !resident->images))) {error_="invalid resident frame";return false;}
+        size_t residentPixels=0;
+        for(size_t i=0;i<count;++i) {
+            const auto& image=resident->images[i];
+            if(!tokens[i] || !image.texture || image.cpu || image.width<=0 || image.height<=0 ||
+               image.width>512 || image.height>512) {error_="invalid resident image";return false;}
+            const auto pixels=size_t(image.width)*image.height;
+            if(pixels>512u*512u-residentPixels){error_="resident pixel budget exceeded";return false;}
+            residentPixels+=pixels;
+            for(size_t j=0;j<i;++j)if(tokens[i]==tokens[j]){error_="duplicate resident token";return false;}
+        }
+    }
     if(scene) {
         if(!scene->owners || scene->width!=s.width || scene->height!=s.height || scene->count>layers_.size() ||
            (scene->count && !scene->layers)){error_="invalid GPU scene";return false;}
-        size_t bytes=0;
+        size_t bytes=0,matched=0;
         for(size_t n=0;n<scene->count;++n) {
             const auto& layer=scene->layers[n];const auto* image=layer.surface;
-            if(!image || !image->Valid() || image->bpp!=32 || image->width>8192 || image->height>8192 ||
-               image->pitch<int64_t(image->width)*4 || image->pitch%4 || !layer.token ||
-               layer.left < -16384 || layer.top < -16384 || layer.left>16384 || layer.top>16384 ||
-               uint64_t(image->width)*image->height*4>WindowLayers::MaxPixelBytes-bytes) {
+            if(resident)for(size_t i=0;i<count;++i)if(tokens[i]==layer.token){direct[n]=&resident->images[i];++matched;}
+            if((!direct[n] && (!image || !image->Valid() || image->bpp!=32 || image->width>8192 || image->height>8192 ||
+               image->pitch<int64_t(image->width)*4 || image->pitch%4)) || !layer.token ||
+               layer.left < -16384 || layer.top < -16384 || layer.left>16384 || layer.top>16384) {
                 error_="invalid GPU window layer";return false;
             }
-            bytes+=size_t(image->width)*image->height*4;
+            const uint64_t size=direct[n]?uint64_t(direct[n]->width)*direct[n]->height*4:uint64_t(image->width)*image->height*4;
+            if(size>WindowLayers::MaxPixelBytes-bytes){error_="GPU layer budget exceeded";return false;}
+            bytes+=size_t(size);
             for(size_t i=0;i<n;++i)if(scene->layers[i].token==layer.token){error_="duplicate GPU layer token";return false;}
         }
+        if(matched!=count){error_="resident token missing from scene";return false;}
     }
     if(frameId_!=frame.resourceId || frameGeneration_!=frame.resourceGeneration) {
         ResetTexture(ownership_);for(auto& layer:layers_)ResetTexture(layer);
@@ -249,7 +275,11 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
         const auto beforeLayers=uploadedBytes_;
         for(size_t n=0;n<scene->count && ok;++n) {
             const auto& layer=scene->layers[n];
-            ok=Upload(layers_[n],*layer.surface,layer.token,layer.generation,layer.versions);
+            if(direct[n]) {
+                // Retire a previous CPU cache; never delete the borrowed texture.
+                if(layers_[n].handle)glDeleteTextures(1,&layers_[n].handle);
+                layers_[n].handle=0;layers_[n].allocatedBytes=0;ResetTexture(layers_[n]);
+            } else ok=Upload(layers_[n],*layer.surface,layer.token,layer.generation,layer.versions);
         }
         timings_.layerUploadBytes+=uploadedBytes_-beforeLayers;
     }
@@ -284,13 +314,15 @@ bool OpenGlPresentation::Render(const PresentationFrame& frame,const OutputBuffe
         auto edge=[](int64_t value,int source,int output){value=std::max<int64_t>(0,std::min<int64_t>(value,source));return int((value*output+source-1)/source);};
         for(size_t n=0;n<scene->count;++n) {
             const auto& layer=scene->layers[n];
+            const int width=direct[n]?direct[n]->width:layer.surface->width;
+            const int height=direct[n]?direct[n]->height:layer.surface->height;
             const int left=v.x+edge(layer.left,s.width,v.width),top=v.y+edge(layer.top,s.height,v.height);
-            const int right=v.x+edge(int64_t(layer.left)+layer.surface->width,s.width,v.width);
-            const int bottom=v.y+edge(int64_t(layer.top)+layer.surface->height,s.height,v.height);
+            const int right=v.x+edge(int64_t(layer.left)+width,s.width,v.width);
+            const int bottom=v.y+edge(int64_t(layer.top)+height,s.height,v.height);
             if(left>=right || top>=bottom)continue;
             glScissor(left,out.height-bottom,right-left,bottom-top);
-            glBindTexture(GL_TEXTURE_2D,layers_[n].handle);
-            glUniform4i(layerRectUniform_,layer.left,layer.top,layer.surface->width,layer.surface->height);
+            glBindTexture(GL_TEXTURE_2D,direct[n]?direct[n]->texture:layers_[n].handle);
+            glUniform4i(layerRectUniform_,layer.left,layer.top,width,height);
             glUniform1ui(layerTokenUniform_,layer.token);glDrawArrays(GL_TRIANGLES,0,3);++layerDraws_;
         }
         glDisable(GL_SCISSOR_TEST);
@@ -309,5 +341,7 @@ void OpenGlPresentation::PollTimings() {}
 bool OpenGlPresentation::Initialize() {error_="OpenGL unavailable in this build";return false;}
 void OpenGlPresentation::Shutdown() {Reset();}
 bool OpenGlPresentation::Render(const PresentationFrame&,const OutputBuffer&) {return false;}
+bool OpenGlPresentation::RenderResident(const PresentationFrame&,const OutputBuffer&,const ResidentFrameView&,const uint32_t*,size_t) {return false;}
+bool OpenGlPresentation::RenderImpl(const PresentationFrame&,const OutputBuffer&,const ResidentFrameView*,const uint32_t*,size_t) {return false;}
 #endif
 } // namespace ui

@@ -77,6 +77,21 @@ const Surface* GpuGdiTargets::ComposeCpu(const Frame& frame) {
     if(!ValidateFrame(frame))return nullptr;
     return ComposeCpuImpl(frame.layers_.data(),frame.count_,frame.width_,frame.height_);
 }
+bool GpuGdiTargets::ConsumeFrame(const Frame& frame,ResidentFrameConsumer& consumer) {
+    if(!ValidateFrame(frame))return false;
+    if(gpuActive_)for(size_t i=0;i<frame.count_;++i)
+        if(!Retained(frame.layers_[i].target)->FlushGpu()){Fallback();break;}
+    std::array<ResidentImageView,MaxLayers> images{};
+    for(size_t i=0;i<frame.count_;++i) {
+        auto* image=Retained(frame.layers_[i].target);
+        images[i].width=image->surface_.width;images[i].height=image->surface_.height;
+        if(gpuActive_)images[i].texture=image->target_;
+        else {images[i].cpu=image->CpuRead();if(!images[i].cpu)return false;}
+    }
+    // No callback/yield/mutation of this manager or context is allowed inside
+    // Consume; resource pins and GL names remain owned by this manager.
+    return consumer.Consume({images.data(),frame.count_});
+}
 GpuGdiTargets::Handle GpuGdiTargets::Create(int width,int height) {
     CollectRetired();
     if(!gpuActive_ || width<=0 || height<=0 || width>GpuGdiPrototype::MaxSide || height>GpuGdiPrototype::MaxSide)return 0;
@@ -139,6 +154,7 @@ void GpuGdiTargets::Fallback() {
     for(auto& s:slots_)if(s.image && s.image->Backend()==GpuGdiPrototype::Mode::Gpu)s.image->Recover(true);
     DeletePresenter();gpuActive_=false;++stats_.failures;
 }
+void GpuGdiTargets::RecoverCpu() {if(initialized_ && gpuActive_)Fallback();}
 void GpuGdiTargets::ContextLost() {
     if(!initialized_)return;
     for(auto& s:slots_)if(s.image)s.image->ContextLost();

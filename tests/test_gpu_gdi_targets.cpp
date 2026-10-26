@@ -188,6 +188,16 @@ int main() {
         assert(t.Fill(h,{2,2,6,6},0xabcdef) && t.Destroy(h));
         assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
         assert(eglDestroyContext(display,context));t.ContextLost();
+        struct LostConsumer:ui::ResidentFrameConsumer {
+            bool Consume(const ui::ResidentFrameView& frame) override {
+                assert(frame.count==1 && !frame.images[0].texture && frame.images[0].cpu);
+                const auto& image=frame.images[0];assert(image.width==8 && image.height==8);
+                for(int y=0;y<8;++y)for(int x=0;x<8;++x)
+                    assert(image.cpu->Get(x,y)==(x>=2 && x<6 && y>=2 && y<6?0xabcdefu:0x123456u));
+                return true;
+            }
+        } lostConsumer;
+        assert(t.ConsumeFrame(resident,lostConsumer)); // no driver calls on lost context
         const auto* recovered=t.ComposeCpu(resident);assert(recovered && !t.Present(resident));
         for(int y=0;y<32;++y)for(int x=0;x<64;++x) {
             const uint32_t expected=x<8 && y<8?(x>=2 && x<6 && y>=2 && y<6?0xabcdef:0x123456):0;

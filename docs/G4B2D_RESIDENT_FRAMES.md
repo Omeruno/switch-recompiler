@@ -66,6 +66,12 @@ remain package gates. The existing GPU-target log artifact includes these tests.
 
 ## Next
 
+[G4b.2d.2](G4B2D2_RESIDENT_PRESENTATION.md) now implements the explicit
+resident-layer entry in the production renderer. The remaining complete mixed
+frame and shell/window integration is described there.
+
+Original next-gate scope:
+
 Integrate these resources with a texture-aware production frame that preserves
 window ownership, native Luna/overlays, cursor and fallback without the current
 unconditional canonical CPU snapshot. Audit raw host surface accesses and route
