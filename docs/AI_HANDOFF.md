@@ -1866,3 +1866,17 @@ No implementation changed after the successful final suite. Map schema/docs,
 local links/fences, shell syntax, six-job workflow, desktop/mobile search/filter/
 deep-link/drawer browser tests and diff checks passed. Source baseline remains
 explicitly incoming e780649 until the new published SHA's CI is verified.
+
+G4b.2c CI infrastructure follow-up: f390996 core CI40331312251 passed host,
+actual GL, CPU oracle, Switch and JIT builds, while ARM dependency downloads
+remained around40KiB/s on azure.archive.ubuntu.com HTTP (observed10.8MB cpp
+download took260s; tests had not started). Retrying only that job did not
+promptly resolve setup. Changed only ARM dependency setup to the official Ubuntu
+HTTPS archive, preserving suites/signature keyrings, bounded network retries/
+timeouts and ten-minute step cap. Explicit qemu-aarch64 tests remain unchanged;
+no successful gate is skipped. --no-install-recommends omits unused binfmt setup.
+
+The final C++ source also passed1600 reference/fast ARM64 GDI cases locally via
+rootless AArch64/QEMU. The relocated compiler needed its staged native library
+path and --sysroot; this is not a local Switch SDK or substitute for exact-SHA
+CI. New CI/config publication must verify all six jobs and public artifacts.
