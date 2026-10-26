@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2d.3 owned mixed persistent frames implemented; next live-window/shell wiring and access/fault audit.** Runtime baseline `5f72b6782787ad1de0b42c3795b5bd1147d62776`
-passed [CI40390490786, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786).
+G4b.2d.4 live-window mixed submission implemented; next native shell/frontend wiring and access/fault audit.** Runtime baseline `8dc667cf246c766cf2a3754c4b68ca80e5577e41`
+passed [CI40403499293, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -82,7 +82,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2d.1 | [Owning resident-resource frames](G4B2D_RESIDENT_FRAMES.md), retirement budgets/reset/fallback | Native manager subset; not production shell integration |
 | G4b.2d.2 | [Resident-layer production render entry](G4B2D2_RESIDENT_PRESENTATION.md), masks/CPU overlay/cursor, explicit recovery | Native entry; no default GDI/ShellSession activation |
 | G4b.2d.3 | [Owning mixed CPU/resident presentation](G4B2D3_MIXED_FRAME.md), independent redraw and actual software recovery | Explicit native entry; live HWND/frontend wiring remains open |
-| Remaining G4b.2 | Live-window/shell wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
+| G4b.2d.4 | [Live-window ownership into mixed frames](G4B2D4_LIVE_WINDOW_FRAMES.md), real x86/EGL output before CPU readback | Explicit coherent native entry; shell/frontend and ordinary dispatch remain open |
+| Remaining G4b.2 | Native shell/frontend wiring, remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -91,19 +92,29 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 ## Next package and activation gates
 
-1. Preserve HWND/DC leases, shared GL-state and the [opt-in coherence contract](G4B2C_CPU_COHERENCE.md).
-   Snapshot validation must not force CPU readback; CPU consumers must acquire authority.
-2. [Owned mixed snapshots](G4B2D3_MIXED_FRAME.md) are implemented as an explicit native entry.
-   **Next:** connect live-window ownership and ShellSession to that resident renderer.
-   Replace unconditional canonical CPU snapshots for the selected GPU path, preserving
-   ownership masks, native Luna/overlay/input and CPU fallback.
-3. Audit remaining direct host surface accesses and route coherence faults into
-   controlled frontend failure. The native opt-in protocol is not arbitrary raw-pointer tracking.
-4. Admit a bounded ordinary GDI subset only after public actual-x86 dispatch/pixel/
-   readback/lifecycle regressions and actual-EGL comparisons. Measure checkpoint,
-   transfer and submission costs; prototype image budgets remain explicit.
-5. Physical Switch workload evidence and the consolidated E/F checklist remain
-   deferred. Host/Mesa and work-count gates do not certify physical performance.
+1. **Implemented native entry:** [live HWND ownership → mixed frame](G4B2D4_LIVE_WINDOW_FRAMES.md).
+   Real x86/EGL pixels, CPU-window occlusion, original read/ROP/DIB counts and actual-loss fallback stay gates.
+2. **Next:** add ShellSession native chrome/panels/dialogs/Start as independent owned overlays;
+   preserve actual dynamic bounds, input ownership and one persistent frontend.
+3. Connect the selected producer to frontend output and PresentIfNeeded without an
+   unconditional CPU checkpoint/canonical composite. Real CPU consumers stay gated.
+4. Audit remaining raw host pixel reads/writes and route coherence/render faults
+   through controlled drain/cleanup/return, preserving genuine software fallback.
+5. Admit a bounded ordinary GDI subset through common dispatch with public real-x86
+   CPU/EGL differential, readback/ROP/DIB/layout/lifecycle and explicit budget gates.
+6. Measure full producer/transfer/checkpoint/submission costs on public workloads;
+   select subsequent CPU/GPU optimization from those results, not EXE names.
+7. Continue D compatibility with public reproducers of actual API/memory/unwind
+   blockers; Pinball x86 remains a separate unsupported application target.
+8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache
+   invalidation/lifetime, instruction/cache correctness and interpreter fallback.
+9. Audit H/D3D9 for target games, then actual supported resources/shaders/commands
+   and public graphics fixtures. No Direct3D/game acceptance exists today.
+
+Steps2–6 are the immediate GPU integration sequence. Steps7–9 are larger follow-on
+queues; measurements and dependencies may change their order. Every implementation
+package carries its own tests, handoff/map update and exact-SHA six-job CI; testing
+is not postponed until the end. Physical workload evidence remains deferred.
 
 D compatibility is a separate queue: page protection/unwind/COM/API contracts
 and concrete public reproducers. Pinball x86 is not certified by graphics work.

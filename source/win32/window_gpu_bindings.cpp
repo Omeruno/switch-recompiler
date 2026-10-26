@@ -24,7 +24,7 @@ bool Size(const ui::Rect& r,int& w,int& h) {
 }
 }
 bool WindowGpuBindings::Initialize(){Shutdown();return targets_.Initialize();}
-void WindowGpuBindings::Shutdown(){DisableCoherence();slots_={};targets_.Shutdown();}
+void WindowGpuBindings::Shutdown(){DisableCoherence();slots_={};frameOwners_.Clear();targets_.Shutdown();}
 void WindowGpuBindings::Prune() {
     if(coherent_ && (!SameSession() || fault_)){fault_=true;return;}
     for(auto& s:slots_)if(s.target) {
@@ -154,5 +154,46 @@ const ui::Surface* WindowGpuBindings::CpuRead(const Lease& lease) {
 }
 const ui::GpuGdiPrototype::Stats* WindowGpuBindings::Counters(const Lease& lease) {
     return Valid(lease)?targets_.TargetStats(lease.target):nullptr;
+}
+bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output) {
+    if(!coherent_ || fault_ || !SameSession())return false;
+    const auto& screen=S().screen.s;
+    if(!screen.Valid() || screen.bpp!=32 || screen.width>ui::GpuGdiTargets::MaxOutputWidth ||
+       screen.height>ui::GpuGdiTargets::MaxOutputHeight)return false;
+    if(!frameOwners_.Resize(size_t(screen.width)*screen.height))return false;
+    std::fill(frameOwners_.data(),frameOwners_.data()+frameOwners_.size(),0);
+    std::array<ui::GpuGdiTargets::Layer,ui::GpuGdiTargets::MaxLayers> resources{};
+    std::array<ui::PresentationLayerFrame,ui::GpuGdiTargets::MaxLayers> layers{};
+    std::array<uint32_t,ui::GpuGdiTargets::MaxLayers> tokens{};
+    size_t count=0;
+    for(const auto& slot:slots_)if(slot.target && !slot.dirty.Empty()) {
+        ui::WindowDcInfo image;
+        if(slot.import || !ui::g_gdi.DescribeWindowImage(slot.stamp,image)) {fault_=true;return false;}
+        const auto& r=slot.stamp.frame;
+        const uint32_t token=uint32_t(count+1);tokens[count]=token;
+        resources[count]={slot.target,{0,0,slot.width,slot.height}};
+        layers[count]={nullptr,token,r.left,r.top,0,0,nullptr};
+        // Seed owns every currently visible pixel, not only the dirty DC clip.
+        // Occluded pixels were never seeded and must remain CPU/other owners.
+        for(const auto& rect:image.visible.Rects())for(int y=rect.top;y<rect.bottom;++y)
+            for(int x=rect.left;x<rect.right;++x) {
+                auto& owner=frameOwners_[size_t(y)*screen.width+x];
+                if(owner)return false; // overlapping DC visibility is unsupported here
+                owner=token;
+            }
+        ++count;
+    }
+    ui::GpuGdiTargets::Frame frame;
+    if(!targets_.PrepareFrame(resources.data(),count,screen.width,screen.height,frame))return false;
+    ui::PresentationSceneFrame scene{frameOwners_.data(),screen.width,screen.height,0,0,nullptr,layers.data(),count};
+    return output.Submit(screen,scene,targets_,frame,tokens.data(),count);
+}
+bool WindowGpuBindings::RenderMixed(ui::MixedPresentation& frame,ui::OpenGlPresentation& renderer,
+    const ui::OutputBuffer& out,ui::PresentationCursor cursor) {
+    return coherent_ && !fault_ && SameSession() && targets_.GpuActive() && frame.Render(targets_,renderer,out,cursor);
+}
+bool WindowGpuBindings::RenderMixedCpu(ui::MixedPresentation& frame,ui::SoftwarePresentation& renderer,
+    const ui::OutputBuffer& out,ui::PresentationCursor cursor) {
+    return coherent_ && !fault_ && SameSession() && frame.RenderCpu(targets_,renderer,out,cursor);
 }
 } // namespace win32::user

@@ -64,6 +64,28 @@ static void RenderExpected(const std::vector<uint32_t>& expected) {
     presentation.Detach();backend.Shutdown();
     GLint program=-1;glGetIntegerv(GL_CURRENT_PROGRAM,&program);assert(program==0 && glGetError()==GL_NO_ERROR);
 }
+static void CheckMixedPixels(Bindings& bindings,ui::MixedPresentation& frame,
+    const std::vector<uint32_t>& expected,bool cpu=false) {
+    std::vector<uint32_t> rgba(1280*720);
+    if(cpu) {
+        ui::SoftwarePresentation renderer;
+        assert(bindings.RenderMixedCpu(frame,renderer,{rgba.data(),1280,720,1280,rgba.size()}));
+    } else {
+        ui::OpenGlPresentation renderer;assert(renderer.Initialize());
+        const auto before=bindings.CoherenceCounters();
+        for(int n=0;n<3;++n)assert(bindings.RenderMixed(frame,renderer,{nullptr,1280,720,0,0}));
+        const auto after=bindings.CoherenceCounters();assert(before.commits==after.commits && before.cpuBarriers==after.cpuBarriers);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER,0);glBindBuffer(GL_PIXEL_PACK_BUFFER,0);
+        glPixelStorei(GL_PACK_ALIGNMENT,4);glPixelStorei(GL_PACK_ROW_LENGTH,0);
+        glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
+        glReadPixels(0,0,1280,720,GL_RGBA,GL_UNSIGNED_BYTE,rgba.data());assert(glGetError()==GL_NO_ERROR);
+        for(int y=0;y<360;++y)for(int x=0;x<1280;++x)std::swap(rgba[size_t(y)*1280+x],rgba[size_t(719-y)*1280+x]);
+        renderer.Shutdown();
+    }
+    for(size_t i=0;i<rgba.size();++i)if(rgba[i]!=(0xff000000u|ui::RgbToColorref(expected[i]))) {
+        std::fprintf(stderr,"mixed cpu=%d pixel=%zu,%zu actual=%08x expected=%06x\n",int(cpu),i%1280,i/1280,rgba[i],expected[i]);assert(false);
+    }
+}
 static void Run(const char* path,bool loss) {
     Egl egl;PrimitiveImport();ExpiredGate();
     rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
@@ -71,6 +93,7 @@ static void Run(const char* path,bool loss) {
     auto& p=session.ProcessObject();auto& memory=session.Memory();std::string error;
     assert(p.LoadMainExe(path,error) && p.PrepareMainThread(p.MainThread().cpu,error));
     const auto probe=p.GetProcAddress(p.MainModule(),"CoherenceProbe");assert(probe);
+    ui::MixedPresentation held(&allocator);
     Bindings::Lease lease,other,old;unsigned checked=0;bool stopped=false;std::vector<uint32_t> expected;
     {
         rt::GuestExecution execution(p,[&](rt::GuestThread& t) {
@@ -103,10 +126,19 @@ static void Run(const char* path,bool loss) {
                     // The suspended outer gate moves with its Gdi store; an
                     // unrelated nested guest must not consume outer GPU work.
                     {rt::GuestSession inner;user::EnableUi(1280,720);const auto sdc=ui::g_gdi.CreateDc(ui::DcKind::Screen);
+                     assert(!bindings.SubmitMixed(held));
                      assert(ui::g_gdi.GetPixel(sdc,0,0)!=0xffffffffu);assert(ui::g_gdi.DeleteDc(sdc));}
                     assert(bindings.Valid(lease) && !bindings.Counters(lease)->readbacks && Screen()==expected);
                     for(int y=0;y<128;++y)for(int x=0;x<128;++x)expected[size_t(y+50)*1280+x+40]=Tile(unsigned(y/16*8+x/16));
                     for(int y=0;y<16;++y)for(int x=0;x<16;++x)expected[size_t(y+50)*1280+x+300]=0x4162a3;
+                    const auto stats=bindings.CoherenceCounters();const auto prior=*bindings.Counters(lease);
+                    assert(bindings.SubmitMixed(held));
+                    const auto kept=held.CpuBytes();allocator.failAt=allocator.calls+1;
+                    assert(!bindings.SubmitMixed(held) && held.CpuBytes()==kept && bindings.CoherenceHealthy());
+                    allocator.failAt=0;CheckMixedPixels(bindings,held,expected);
+                    assert(bindings.Counters(lease)->readbacks==0 && bindings.Counters(other)->readbacks==0);
+                    assert(bindings.Counters(lease)->uploads==prior.uploads);
+                    assert(bindings.CoherenceCounters().commits==stats.commits && bindings.CoherenceCounters().cpuBarriers==stats.cpuBarriers);
                 } else if(stage==2) {
                     const auto c=*bindings.Counters(lease);
                     assert(c.draws==2 && c.uploads==1 && c.readbacks==1 && c.batches==1 && c.batchedCommands==64 && c.cpuImports==1);
@@ -114,9 +146,16 @@ static void Run(const char* path,bool loss) {
                     RenderExpected(expected);assert(bindings.Counters(lease)->readbacks==1);
                     assert(bindings.Fill(lease,{5,5,21,21},0x887766));
                 } else if(stage==3) {
+                    assert(!bindings.Valid(lease) && bindings.Acquire(dc,lease));
                     assert(bindings.CoherenceCounters().commits==3 && bindings.Counters(lease)->readbacks==2);
                     assert(user::S().screen.s.Get(46,56)==0x778899);
+                    const auto cpuBefore=Screen();assert(cpuBefore[size_t(160)*1280+150]==0x6912cd);
                     assert(bindings.Fill(lease,{30,30,40,40},0xaabbcc));
+                    auto mixedExpected=cpuBefore;
+                    for(int y=80;y<90;++y)for(int x=70;x<80;++x)mixedExpected[size_t(y)*1280+x]=0xaabbcc;
+                    const auto prior=*bindings.Counters(lease);assert(bindings.SubmitMixed(held));
+                    CheckMixedPixels(bindings,held,mixedExpected);
+                    assert(bindings.Counters(lease)->readbacks==prior.readbacks && Screen()==cpuBefore);
                 } else if(stage==4) {
                     assert(bindings.CoherenceCounters().commits==4 && bindings.Counters(lease)->readbacks==3);
                     assert(bindings.Fill(lease,{64,64,65,65},0xdead00));
@@ -138,10 +177,12 @@ static void Run(const char* path,bool loss) {
                 } else if(stage==8) {
                     assert(bindings.CoherenceCounters().commits==8 && !bindings.Valid(old));
                     assert(bindings.Acquire(dc,lease));assert(bindings.Fill(lease,{0,0,4,4},0xee6622));assert(bindings.GpuActive());
+                    assert(bindings.SubmitMixed(held));
                     if(loss){egl.Lose();bindings.ContextLost();}else glEnable(0xdead);
                 } else if(stage==9) {
                     assert(bindings.CoherenceCounters().commits==9 && !bindings.GpuActive() && bindings.CoherenceHealthy());
                     assert(bindings.Counters(lease)->recoveries>0);
+                    CheckMixedPixels(bindings,held,Screen(),true);
                     assert(bindings.Fill(lease,{2,2,3,3},0x5566aa));
                 } else if(stage==10) {
                     assert(bindings.CoherenceCounters().commits==10 && bindings.CoherenceHealthy());
@@ -152,8 +193,8 @@ static void Run(const char* path,bool loss) {
             if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
         }
     }
-    assert(stopped && checked==10);bindings.Prune();assert(!bindings.Pixels());
-    assert(bindings.DisableCoherence() && ui::g_gdi.PrepareCpuAccess());bindings.Shutdown();assert(!allocator.live);
-    std::printf("GPU coherence mode=%s: PASS (10 x86 stages, 2 dirty windows, 64 fills/1 import/1 readback for first window, ROP/raw-DIB/GetDIBits, layout, fallback)\n",loss?"actual-loss":"GL-error");
+    assert(stopped && checked==10);bindings.Prune();assert(bindings.Pixels()==128*128); // held frame pins the destroyed window
+    assert(bindings.DisableCoherence() && ui::g_gdi.PrepareCpuAccess());bindings.Shutdown();held.Clear();assert(!allocator.live);
+    std::printf("GPU coherence mode=%s: PASS (10 x86 stages, 2 dirty windows, 64 fills/1 import/1 readback for first window, ROP/raw-DIB/GetDIBits, layout, owned live mixed output/occlusion, fallback)\n",loss?"actual-loss":"GL-error");
 }
 int main(int argc,char** argv){assert(argc==2);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);}

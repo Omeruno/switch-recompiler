@@ -102,7 +102,8 @@ fallback/input/relaunch checks stay deferred. Host Mesa is not physical acceptan
 
 ## Next
 
-Connect validated live window ownership/resources to this owning frame and wire
+[G4b.2d.4](G4B2D4_LIVE_WINDOW_FRAMES.md) now connects validated live-window
+ownership/resources through an explicit native coherent entry. Next wire
 ShellSession/persistent frontend to it without unconditional canonical CPU
 composition for the selected path. Audit remaining raw host reads/writes and
 route coherence/render faults through controlled frontend teardown. Only then

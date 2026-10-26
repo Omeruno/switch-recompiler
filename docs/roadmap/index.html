@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>GPU mixed frame → живые окна</span></div><h2>Подключение живых окон к GPU</h2><p>Управление окнами и владеющий CPU/GPU-кадр реализованы. Следом — подключение живых окон и shell к этому пути; обычный GDI пока на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Живые GPU-окна → ShellSession</span></div><h2>Подключение shell и frontend</h2><p>Реальные окна уже входят в mixed frame через native-вход. Следом — native-слои ShellSession и frontend без обязательного CPU checkpoint; обычный GDI пока на CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-27",
-  "runtimeSha": "5f72b6782787ad1de0b42c3795b5bd1147d62776",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786",
+  "runtimeSha": "8dc667cf246c766cf2a3754c4b68ca80e5577e41",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -185,7 +185,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "current",
-      "summary": "G4b.2d.3: смешанный кадр владеет слоями. Следом — живые окна и shell.",
+      "summary": "G4b.2d.4: живые окна → mixed frame. Следом — shell и frontend.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -490,20 +490,22 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "03",
       "title": "Основной вывод",
       "status": "prototype",
-      "summary": "G4b.2d.3: владеющий mixed frame готов; live-window/shell wiring впереди.",
+      "summary": "G4b.2d.4: живые окна связаны с mixed frame; shell/frontend впереди.",
       "done": [
         "G4b.2a: GPU-GDI восстанавливает настройки GL; проверено чередование с действующим композитором.",
         "G4b.2d.1: native-кадры удерживают текстуры после retirement; лимиты, сброс, GL-error/context-loss fallback проверены.",
         "G4b.2d.2: GPU-текстуры в основном GL renderer с ownership/CPU overlay/cursor; без CPU-зеркала GPU-слоя.",
-        "G4b.2d.3: владеющий mixed frame, независимый redraw, GPU pins и реальный software recovery после потери контекста."
+        "G4b.2d.3: владеющий mixed frame, независимый redraw, GPU pins и реальный software recovery после потери контекста.",
+        "G4b.2d.4: реальная видимость живых окон → mixed frame; x86/EGL, CPU-окно поверх GPU, без readback ради вывода."
       ],
       "todo": [
-        "Связать ресурсы владеющего mixed CPU/GPU кадра с живыми окнами.",
+        "Добавить native-слои ShellSession в смешанный кадр живых окон.",
         "Подключить ShellSession к mixed frame, сохраняя Luna/fallback и обходя безусловный CPU memcpy.",
         "После аудита барьеров и проверок подключить ограниченный обычный GDI subset."
       ],
       "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
       "docs": [
+        "docs/G4B2D4_LIVE_WINDOW_FRAMES.md",
         "docs/G4B2D3_MIXED_FRAME.md",
         "docs/G4B2D2_RESIDENT_PRESENTATION.md",
         "docs/G4B2D_RESIDENT_FRAMES.md",

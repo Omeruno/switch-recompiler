@@ -1,6 +1,7 @@
 #pragma once
 #include "../ui/gdi.h"
 #include "../ui/gpu_gdi_targets.h"
+#include "../ui/mixed_presentation.h"
 
 namespace win32::user {
 // Optional native diagnostic bridge; no automatic Win32 GDI dispatch/activation.
@@ -9,7 +10,7 @@ class WindowGpuBindings {
 public:
     struct Lease {ui::WindowRasterTarget raster;ui::GpuGdiTargets::Handle target=0;};
     static constexpr size_t MaxClipRects=128;
-    explicit WindowGpuBindings(ui::PresentationAllocator* allocator=nullptr):targets_(allocator),allocator_(allocator) {}
+    explicit WindowGpuBindings(ui::PresentationAllocator* allocator=nullptr):targets_(allocator),frameOwners_(allocator),allocator_(allocator) {}
     ~WindowGpuBindings(){Shutdown();}
     bool Initialize();
     struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0;};
@@ -19,6 +20,11 @@ public:
     bool CoherenceHealthy() const {return !fault_;}
     const CoherenceStats& CoherenceCounters() const {return coherenceStats_;}
 
+    // Explicit coherent native presentation. Uses actual whole-window visible
+    // regions; canonical CPU base may be stale only beneath resident owners.
+    bool SubmitMixed(ui::MixedPresentation&);
+    bool RenderMixed(ui::MixedPresentation&,ui::OpenGlPresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
+    bool RenderMixedCpu(ui::MixedPresentation&,ui::SoftwarePresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
     void Shutdown();
     void ContextLost(){targets_.ContextLost();}
     // No borrowed window/DC pointers retained. Old leases are checked again
@@ -54,6 +60,7 @@ private:
 
     std::array<Slot,ui::GpuGdiTargets::MaxTargets> slots_{};
     ui::GpuGdiTargets targets_;
+    ui::PresentationBuffer<uint32_t> frameOwners_;
     ui::PresentationAllocator* allocator_;
 };
 } // namespace win32::user

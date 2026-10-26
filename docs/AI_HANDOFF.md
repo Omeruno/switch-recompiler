@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`5f72b6782787ad1de0b42c3795b5bd1147d62776` (2026-10-27).
-[CI 40390490786](https://github.com/Omeruno/switch-recompiler/actions/runs/40390490786)
+`8dc667cf246c766cf2a3754c4b68ca80e5577e41` (2026-10-27).
+[CI 40403499293](https://github.com/Omeruno/switch-recompiler/actions/runs/40403499293)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F6a/F6b and G4b.2d.3 owned mixed frames implemented (2026-10-27)
+## Current position: F6a/F6b and G4b.2d.4 live-window mixed submission implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -32,7 +32,9 @@ real modal caption/edge/corner/button actions. [F6b native windows](F6B_NATIVE_W
 adds true state/geometry/reflow and exact input/composition for panels and TXT/BMP.
 [G4b.2d.3](G4B2D3_MIXED_FRAME.md) adds owning mixed CPU/resident scenes,
 producer-independent redraw and explicit genuine software recovery.
-Next: live-window/shell integration,
+[G4b.2d.4](G4B2D4_LIVE_WINDOW_FRAMES.md) builds actual live-window ownership
+into retained mixed frames without a CPU readback barrier.
+Next: native shell/persistent frontend integration,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -2130,3 +2132,52 @@ publication gates. Local Switch SDK remains absent, host tools already installed
 no new environment configuration required. Hardware/Paint/GPU/fallback/input/
 relaunch remain deferred, SD closed. Next validated live-window ownership → owned
 mixed frame → shell/persistent frontend, raw-host/fault audit, then ordinary GDI.
+
+
+## G4b.2d.4 — live-window owning mixed submission (2026-10-27)
+
+Clean8dc667c/FETCH_HEAD, no newer work/AGENTS. Incoming CI40403499293
+reverified six success. User asks to continue and show current position plus5–10
+next steps; ACTIVE_ROADMAP now contains one nine-step dependency sequence, with
+immediate GPU integration distinguished from larger D/dynarec/D3D9 follow-ons.
+No dates/overall percentage or game compatibility is promised.
+
+SubmitMixed now builds a private bounded ownership plane from actual USER window
+identity/layout/bounds/visible-region metadata for each dirty coherent GPU slot.
+DescribeWindowImage bypasses CPU access without reading pixels or capture setup.
+Full visible seed+GPU writes own those visible pixels; occluded/CPU-only windows
+stay on CPU base. Fixed four resources/tokens plus one reusable screen-sized owner
+scratch; overlapping dirty-slot DC-visible regions are unsupported/rejected.
+MixedPresentation owns snapshots/pins; native wrappers enforce same USER session,
+health and active GPU before GL. Explicit CPU route uses real recovery after
+context-loss notification. No ordinary GDI or ShellSession/frontend activation.
+See G4B2D4_LIVE_WINDOW_FRAMES.md for exact scope and failure/lifetime semantics.
+
+Public coherence PE32 fixture retains initial64-fill/one-import/one-readback and
+two-dirty-window gates. Adds an actual CPU popup occluding the GPU window; real
+x86 stages, full1280x720 EGL and software expected pixels, unchanged canonical
+CPU pixels before barrier, no extra target reads/uploads/barriers/commits for
+submission/redraw, injected failed snapshot preserving the old frame, nested
+session rejection, retirement pins and real GL-error/actual-context-loss fallback.
+Ten stages per mode still pass with original work counts. Initial harness had
+assumed its lease survived creating the popup and resources freed despite retained
+pins; corrected to reacquire the genuinely stale lease and assert128x128 retained
+budget after Prune, then revoke/free through shutdown+Clear. No runtime workaround.
+An initial diagnostic object-count assertion incorrectly assumed >100 objects;
+corrected to the actual directory inventory before targeted linking.
+
+Fresh full COMPOSITION_GL_TEST=1 rootless MinGW/Mesa suite passed final runtime/
+headers/public fixture/inspector sources, including new live mixed/CPU occlusion
+checks and all prior native/window/workspace/GDI/GPU/measurements/sessions/files,
+Stage C, six E9 and22 F groups. Strict O2/no-exceptions/no-RTTI binding and
+inspector pass. Focused ASan/UBSan bridge/inspector and GPU/renderer pass with
+ordinary other runtime objects, driver leak scanning disabled and known native-
+fiber warning retained. Negative full-rectangle visibility source fails exact
+CPU-popup pixel144,154 (black instead of6912cd), proving the ownership gate.
+No runtime/test edits after full-suite success. Existing host artifact gains the
+new contract; six core jobs/test commands unchanged. Roadmap browser/link/source/
+diff checks and exact published-SHA six-job CI/Pages/public fixture/contract/NRO
+verification remain final publication gates. Local devkitA64/libnx still absent;
+current physical Paint/GPU/fallback/input/relaunch deferred, SD closed. Next
+native ShellSession overlays into owned mixed frame, persistent frontend and
+PresentIfNeeded CPU-barrier selection, raw-host/fault audit, then bounded GDI.

@@ -102,6 +102,7 @@ jobs:
             build-host/gpu_window_coherence.log
             build-host/guest-run.*/gpu_window_coherence.exe
             docs/G4B2C_CPU_COHERENCE.md
+            docs/G4B2D4_LIVE_WINDOW_FRAMES.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-gpu-window-bindings

@@ -228,6 +228,10 @@ public:
     bool PrepareCpuAccess();
     // Internal exchange helpers: caller already owns the relevant authority.
     // They bypass the CPU gate to avoid recursion inside its implementation.
+    // Geometry/visibility only; never invokes CPU coherence or reads pixels.
+    bool DescribeWindowImage(const WindowRasterTarget& r,WindowDcInfo& out) {
+        out={};return WindowImageInfo(r,out);
+    }
     bool SnapshotWindow(const WindowRasterTarget&,uint32_t* rgb,size_t count);
     bool CommitWindow(const WindowRasterTarget&,const Surface&,const Region& dirty,size_t& pixels);
 

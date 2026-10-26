@@ -6,7 +6,7 @@ static COLORREF color(DWORD c){return RGB((c>>16)&255,(c>>8)&255,c&255);}
 static void stage(DWORD n,HWND w,HDC dc){CoherenceProbe[1]=(DWORD)(ULONG_PTR)w;CoherenceProbe[2]=(DWORD)(ULONG_PTR)dc;CoherenceProbe[0]=n;Sleep(32);}
 static LRESULT CALLBACK proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcA(w,m,a,b);}
 void WINAPI start(void) {
-    WNDCLASSA cls={0};HWND w,second;HDC dc,other,mem;BITMAPINFO info={0};HBITMAP dib,old;DWORD* bits;int i;
+    WNDCLASSA cls={0};HWND w,second,cover;HDC dc,other,mem;BITMAPINFO info={0};HBITMAP dib,old;DWORD* bits;int i;
     cls.lpfnWndProc=proc;cls.hInstance=GetModuleHandleA(NULL);cls.lpszClassName="GpuCoherence";
     CHECK(RegisterClassA(&cls));
     w=CreateWindowExA(WS_EX_NOACTIVATE,cls.lpszClassName,"coherent",WS_POPUP|WS_VISIBLE,
@@ -24,6 +24,12 @@ void WINAPI start(void) {
     stage(2,w,dc);
     CHECK(PatBlt(dc,5,5,16,16,DSTINVERT));CHECK(GetPixel(dc,6,6)==color(0x778899));
     CHECK(BitBlt(mem,0,0,16,16,dc,5,5,SRCCOPY));CHECK((bits[0]&0xffffff)==0x778899);
+    /* A CPU-only top-level window occludes a part of the GPU window. Its
+       pixels must remain visible even though the GPU seed has zeros there. */
+    cover=CreateWindowExA(WS_EX_NOACTIVATE,cls.lpszClassName,"cpu cover",WS_POPUP|WS_VISIBLE,
+        144,154,40,40,NULL,NULL,cls.hInstance,NULL);CHECK(cover);
+    {HDC c=GetDC(cover);RECT r={0,0,40,40};HBRUSH b=CreateSolidBrush(color(0x6912cd));
+     CHECK(c && b);CHECK(FillRect(c,&r,b));CHECK(DeleteObject(b));CHECK(ReleaseDC(cover,c));}
     stage(3,w,dc);
     /* This memory remains CPU-authoritative. Real guest stores must be visible
        to the next source blit, with no stale GPU copy of the DIB. */
@@ -34,6 +40,7 @@ void WINAPI start(void) {
     CHECK(BitBlt(mem,0,0,1,1,dc,64,64,SRCCOPY));CHECK((bits[0]&0xffffff)==0xdead00);
     {DWORD output[16*16];CHECK(SelectObject(mem,old));CHECK(GetDIBits(dc,dib,0,16,output,&info,DIB_RGB_COLORS)==16);CHECK((output[0]&0xffffff)==0xdead00);}
     stage(5,w,dc);
+    CHECK(DestroyWindow(cover));
     CHECK(MoveWindow(w,80,90,128,128,TRUE));stage(6,w,dc);
     CHECK(MoveWindow(w,80,90,144,128,TRUE));stage(7,w,dc);
     CHECK(ReleaseDC(w,dc));CHECK(DestroyWindow(w));
