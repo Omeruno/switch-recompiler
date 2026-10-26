@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`e780649e18c1b25bd38ea05db157074155a22bce` (2026-10-26).
-[CI 40221359571](https://github.com/Omeruno/switch-recompiler/actions/runs/40221359571)
+`7edadd4d4ec9d4ab776a1def5fdf59297bd1a3fc` (2026-10-26).
+[CI 40335457694](https://github.com/Omeruno/switch-recompiler/actions/runs/40335457694)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position after G4b.2c (2026-10-26)
+## Current position after G4b.2d.1 (2026-10-26)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -23,7 +23,9 @@ G4b.2b adds [real HWND/DC native identity/resource leases](G4B2B_WINDOW_BINDINGS
 and rejects CPU DC aliasing onto reused HWNDs. It is not automatic GDI dispatch.
 [G4b.2c](G4B2C_CPU_COHERENCE.md) implements explicit native opt-in CPU/GPU authority,
 actual Win32 read/ROP/DIB/layout/fallback barriers and weak session-owned gates.
-Ordinary GDI dispatch is still CPU-only. Next: owning resident-texture frames,
+[G4b.2d.1](G4B2D_RESIDENT_FRAMES.md) adds owning resident-resource frames with
+retirement budgets, reset revocation and real fallback. Ordinary GDI dispatch is
+still CPU-only. Next: texture-aware production frames,
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -49,7 +51,7 @@ memory/streaming and thread correctness are separate required milestones.
 Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
-deferred; current next implementation is owning GPU frames and production admission after opt-in coherence.
+deferred; current next implementation is texture-aware production frames and admission after opt-in coherence.
 
 ## Working agreement
 
@@ -1880,3 +1882,35 @@ The final C++ source also passed1600 reference/fast ARM64 GDI cases locally via
 rootless AArch64/QEMU. The relocated compiler needed its staged native library
 path and --sysroot; this is not a local Switch SDK or substitute for exact-SHA
 CI. New CI/config publication must verify all six jobs and public artifacts.
+
+
+## G4b.2d.1 — resident-resource frame lifetime (2026-10-26)
+
+Clean7edadd4/FETCH_HEAD, no newer work. Added bounded copyable native frames
+with owned geometry and resource pins, no GL/pixel allocation at preparation.
+Destroy retires a target immediately for ordinary handle APIs but retains it for
+prepared frames, charging the existing slot/pixel budget. Last-pin collection is
+on manager owner thread; frame release makes no GL calls. Shutdown/reset revoke
+old frames and release all resources even if frame metadata survives. Frames
+reference live contents, not immutable pixel versions. See G4B2D_RESIDENT_FRAMES.md.
+
+Existing EGL target oracle extended without removing live-target context-loss
+continuation. New tests compare twelve resident frames, retirement/copies/budget,
+invalid/foreign/reset frames, rejected preparation preserving output, GL-error
+fallback and separately actual context destruction with a retired image holding
+submitted and pending commands. Negative immediate-deletion control fails at the
+retained-budget assertion. Strict O2 and focused ASan/UBSan pass; driver leak
+scan disabled, owned allocations checked independently. Full suite/publication
+results must be verified before completion. No automatic GDI dispatch, production
+ShellSession integration, physical FPS or game compatibility is claimed. Next
+texture-aware production ownership/overlays/fallback and raw-host/fault audit.
+
+Final local G4b.2d.1 validation: complete fresh COMPOSITION_GL_TEST=1
+host/MinGW/Mesa suite passed final runtime/test sources, including the extended
+resident-frame oracle, coherence x86 modes, prior G3/G4a/G4b, G1/G2, workspace/
+input/session/file/dialog tests, Stage C/six E9/22 F groups. Strict O2 and full
+ASan/UBSan target-module/harness checks passed final source; driver leak scan
+disabled. Negative immediate-retirement control rejected at expected budget
+assertion. Map schema and desktop/mobile browser checks passed. No runtime/test
+changes followed this full suite. Exact new-SHA six-job CI and Pages/artifact
+verification remain final publication checks, not physical Switch acceptance.

@@ -25,35 +25,73 @@ uint64_t Generation() {
 GpuGdiTargets::GpuGdiTargets(PresentationAllocator* allocator):allocator_(allocator),output_(allocator) {}
 GpuGdiTargets::~GpuGdiTargets(){Shutdown();}
 void GpuGdiTargets::Shutdown() {
-    for(auto& s:slots_){s.image.reset();s.handle=0;s.pixels=0;}
-    DeletePresenter();pixels_=0;output_.Clear();outputSurface_={};initialized_=gpuActive_=false;
+    for(auto& s:slots_){s.image.reset();s.handle=0;s.pixels=0;s.pin.reset();s.retired=false;}
+    DeletePresenter();frameOwner_=0;pixels_=0;output_.Clear();outputSurface_={};initialized_=gpuActive_=false;
 }
 bool GpuGdiTargets::Initialize() {
     Shutdown();stats_={};if(!OpenPresenter()){DeletePresenter();return false;}
+    frameOwner_=Generation();if(!frameOwner_){Shutdown();return false;}
     initialized_=gpuActive_=true;return true;
 }
-GpuGdiPrototype* GpuGdiTargets::Find(Handle h) {
+GpuGdiPrototype* GpuGdiTargets::Retained(Handle h) {
     const auto i=h&255;if(!i || i>MaxTargets)return nullptr;
     auto& s=slots_[size_t(i-1)];return s.handle==h?s.image.get():nullptr;
 }
-const GpuGdiPrototype* GpuGdiTargets::Find(Handle h) const {
+const GpuGdiPrototype* GpuGdiTargets::Retained(Handle h) const {
     const auto i=h&255;if(!i || i>MaxTargets)return nullptr;
     const auto& s=slots_[size_t(i-1)];return s.handle==h?s.image.get():nullptr;
 }
+GpuGdiPrototype* GpuGdiTargets::Find(Handle h) {
+    auto* p=Retained(h);return p && !slots_[size_t((h&255)-1)].retired?p:nullptr;
+}
+const GpuGdiPrototype* GpuGdiTargets::Find(Handle h) const {
+    auto* p=Retained(h);return p && !slots_[size_t((h&255)-1)].retired?p:nullptr;
+}
+void GpuGdiTargets::CollectRetired() {
+    for(auto& s:slots_)if(s.retired && s.pin.use_count()==1) {
+        pixels_-=s.pixels;s.image.reset();s.pin.reset();s.handle=0;s.pixels=0;s.retired=false;
+    }
+}
+bool GpuGdiTargets::PrepareFrame(const Layer* layers,size_t count,int width,int height,Frame& out) {
+    if(!Validate(layers,count,width,height))return false;
+    // Allocate nothing and issue no GL commands. Preserve out on rejection.
+    Frame next;next.owner_=frameOwner_;next.count_=count;next.width_=width;next.height_=height;
+    for(size_t i=0;i<count;++i) {
+        next.layers_[i]=layers[i];next.pins_[i]=slots_[size_t((layers[i].target&255)-1)].pin;
+    }
+    out=std::move(next);return true;
+}
+bool GpuGdiTargets::ValidateFrame(const Frame& frame) const {
+    if(!initialized_ || frame.owner_!=frameOwner_ || frame.width_<=0 || frame.height_<=0)return false;
+    for(size_t i=0;i<frame.count_;++i) {
+        const auto h=frame.layers_[i].target;
+        if(!Retained(h) || frame.pins_[i]!=slots_[size_t((h&255)-1)].pin)return false;
+    }
+    return true;
+}
+bool GpuGdiTargets::Present(const Frame& frame) {
+    if(!gpuActive_ || !ValidateFrame(frame))return false;
+    return PresentImpl(frame.layers_.data(),frame.count_,frame.width_,frame.height_);
+}
+const Surface* GpuGdiTargets::ComposeCpu(const Frame& frame) {
+    if(!ValidateFrame(frame))return nullptr;
+    return ComposeCpuImpl(frame.layers_.data(),frame.count_,frame.width_,frame.height_);
+}
 GpuGdiTargets::Handle GpuGdiTargets::Create(int width,int height) {
+    CollectRetired();
     if(!gpuActive_ || width<=0 || height<=0 || width>GpuGdiPrototype::MaxSide || height>GpuGdiPrototype::MaxSide)return 0;
     const auto size=size_t(width)*height;if(size>MaxPixels-pixels_)return 0;
     for(size_t i=0;i<slots_.size();++i)if(!slots_[i].image) {
         const auto generation=Generation();if(!generation)return 0;
         auto image=std::unique_ptr<GpuGdiPrototype>(new(std::nothrow) GpuGdiPrototype(allocator_));
         if(!image || !image->Initialize(width,height))return 0;
-        auto& s=slots_[i];s.handle=(generation<<8)|(i+1);s.pixels=size;s.image=std::move(image);pixels_+=size;return s.handle;
+        auto& s=slots_[i];s.handle=(generation<<8)|(i+1);s.pixels=size;s.image=std::move(image);s.pin=std::make_shared<uint8_t>(0);s.retired=false;pixels_+=size;return s.handle;
     }
     return 0;
 }
 bool GpuGdiTargets::Destroy(Handle h) {
     if(!Find(h))return false;
-    auto& s=slots_[size_t((h&255)-1)];pixels_-=s.pixels;s.image.reset();s.handle=0;s.pixels=0;return true;
+    auto& s=slots_[size_t((h&255)-1)];s.retired=true;CollectRetired();return true;
 }
 bool GpuGdiTargets::Fill(Handle h,Rect r,uint32_t color) {
     auto* p=Find(h);if(!p)return false;const bool accepted=p->Fill(r,color);
@@ -108,15 +146,26 @@ void GpuGdiTargets::ContextLost() {
 }
 bool GpuGdiTargets::Present(const Layer* layers,size_t count,int width,int height) {
     if(!gpuActive_ || !Validate(layers,count,width,height))return false;
+    return PresentImpl(layers,count,width,height);
+}
+bool GpuGdiTargets::PresentImpl(const Layer* layers,size_t count,int width,int height) {
     detail::GdiGlScope glScope;
-    for(size_t i=0;i<count;++i)if(!Find(layers[i].target)->FlushGpu()){Fallback();return false;}
+    for(size_t i=0;i<count;++i)if(!Retained(layers[i].target)->FlushGpu()){Fallback();return false;}
     if(!DrawFrame(layers,count,width,height)){Fallback();return false;}
     ++stats_.frames;return true;
 }
 const Surface* GpuGdiTargets::ComposeCpu(const Layer* layers,size_t count,int width,int height) {
-    if(!Validate(layers,count,width,height) || !output_.Resize(size_t(width)*height))return nullptr;
+    if(!Validate(layers,count,width,height))return nullptr;
+    return ComposeCpuImpl(layers,count,width,height);
+}
+const Surface* GpuGdiTargets::ComposeCpuImpl(const Layer* layers,size_t count,int width,int height) {
+    if(!output_.Resize(size_t(width)*height))return nullptr;
     std::array<const Surface*,MaxLayers> inputs{};
-    for(size_t i=0;i<count;++i){inputs[i]=CpuRead(layers[i].target);if(!inputs[i])return nullptr;}
+    for(size_t i=0;i<count;++i){
+        auto* image=Retained(layers[i].target);inputs[i]=image->CpuRead();
+        if(gpuActive_ && image->Backend()==GpuGdiPrototype::Mode::CpuFallback)Fallback();
+        if(!inputs[i])return nullptr;
+    }
     std::fill(output_.data(),output_.data()+output_.size(),0);
     outputSurface_.width=width;outputSurface_.height=height;outputSurface_.pitch=width*4;outputSurface_.bits=reinterpret_cast<uint8_t*>(output_.data());
     for(size_t i=0;i<count;++i) {
@@ -166,7 +215,7 @@ bool GpuGdiTargets::DrawFrame(const Layer* layers,size_t count,int width,int hei
     glUseProgram(program_);glBindVertexArray(vao_);glActiveTexture(GL_TEXTURE0);glEnable(GL_SCISSOR_TEST);
     glUniform1i(glGetUniformLocation(program_,"image"),0);glUniform1i(glGetUniformLocation(program_,"outputHeight"),height);
     for(size_t i=0;i<count;++i) {
-        const auto* p=Find(layers[i].target);const auto& r=layers[i].bounds;const auto clip=r.Intersect({0,0,width,height});if(clip.Empty())continue;
+        const auto* p=Retained(layers[i].target);const auto& r=layers[i].bounds;const auto clip=r.Intersect({0,0,width,height});if(clip.Empty())continue;
         glBindTexture(GL_TEXTURE_2D,p->target_);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         glUniform2i(glGetUniformLocation(program_,"sourceSize"),p->surface_.width,p->surface_.height);
         glUniform4i(glGetUniformLocation(program_,"bounds"),r.left,r.top,r.Width(),r.Height());

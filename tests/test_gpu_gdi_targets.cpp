@@ -44,6 +44,46 @@ static EGLContext Context(EGLDisplay d,EGLConfig c) {
     EGLint a[]={EGL_CONTEXT_MAJOR_VERSION,3,EGL_CONTEXT_MINOR_VERSION,3,EGL_CONTEXT_OPENGL_PROFILE_MASK,EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,EGL_NONE};
     auto x=eglCreateContext(d,c,EGL_NO_CONTEXT,a);assert(x!=EGL_NO_CONTEXT);return x;
 }
+static void OwningFrames(Allocator& allocator) {
+    Targets::Frame surviving;
+    {
+        Targets t(&allocator);assert(t.Initialize());
+        Targets::Frame empty;assert(!t.Present(empty) && !t.ComposeCpu(empty));
+        assert(t.PrepareFrame(nullptr,0,64,32,empty));
+        {Targets other;assert(other.Initialize());assert(!other.Present(empty));}
+        const auto h=t.Create(512,512);assert(h);
+        assert(t.Fill(h,{0,0,512,512},0x123456));
+        Targets::Layer layer{h,{-8,4,56,28}};
+        Targets::Frame frame;assert(t.PrepareFrame(&layer,1,64,32,frame));
+        assert(t.TargetStats(h)->draws==0 && t.TargetStats(h)->readbacks==0);
+        layer.bounds={0,0,1,1}; // frame owns geometry and resource pins
+        for(int i=0;i<12;++i) {
+            assert(t.Present(frame));const auto rgb=Read(64,32);
+            for(int y=0;y<32;++y)for(int x=0;x<64;++x)
+                assert(rgb[size_t(y)*64+x]==(x<56 && y>=4 && y<28?0x123456u:0u));
+        }
+        assert(t.TargetStats(h)->readbacks==0 && t.TargetStats(h)->uploads==0);
+        assert(t.Fill(h,{0,0,512,512},0xabcdef)); // reference is live, not a frozen pixel snapshot
+        auto copy=frame;
+        assert(t.Destroy(h) && !t.Fill(h,{0,0,1,1},0) && !t.CpuRead(h));
+        assert(t.Pixels()==Targets::MaxPixels && !t.Create(1,1));
+        Targets::Frame rejected=frame;
+        assert(!t.PrepareFrame(&layer,1,64,32,rejected));assert(t.Present(rejected));
+        assert(Read(64,32)[8*64+8]==0xabcdef);
+        frame={};copy={}; // rejected still owns the retired resource
+        assert(!t.Create(1,1));
+        glEnable(0xffffffffu);assert(!t.Present(rejected) && !t.GpuActive());
+        const auto* cpu=t.ComposeCpu(rejected);assert(cpu && cpu->Get(8,8)==0xabcdef && cpu->Get(60,30)==0);
+        surviving=rejected;t.Shutdown();assert(!t.Present(surviving) && !t.ComposeCpu(surviving));
+        assert(!allocator.live);assert(t.Initialize());assert(!t.ComposeCpu(surviving));
+        // Releasing the last frame permits owner-thread collection and slot reuse.
+        const auto a=t.Create(512,512);assert(a);layer={a,{0,0,64,32}};
+        assert(t.PrepareFrame(&layer,1,64,32,frame));assert(t.Destroy(a));
+        assert(!t.Create(1,1));frame={};assert(t.Create(1,1) && t.Pixels()==1);
+    }
+    surviving={};assert(!allocator.live); // can release after manager destruction, no GL ownership
+    puts("GPU resident frames: PASS (pins, retirement budgets, zero-readback output, revocation, fallback)");
+}
 int main() {
     auto display=eglGetDisplay(EGL_DEFAULT_DISPLAY);assert(display!=EGL_NO_DISPLAY && eglInitialize(display,nullptr,nullptr) && eglBindAPI(EGL_OPENGL_API));
     const EGLint attrs[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE_TYPE,EGL_OPENGL_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,EGL_BLUE_SIZE,8,EGL_ALPHA_SIZE,8,EGL_NONE};
@@ -51,6 +91,7 @@ int main() {
     const EGLint size[]={EGL_WIDTH,1280,EGL_HEIGHT,720,EGL_NONE};auto pbuffer=eglCreatePbufferSurface(display,config,size);assert(pbuffer!=EGL_NO_SURFACE);
     auto context=Context(display,config);assert(eglMakeCurrent(display,pbuffer,pbuffer,context));
     Allocator allocator;
+    OwningFrames(allocator);
     {
         Targets t(&allocator);assert(t.Initialize());
         assert(t.Present(nullptr,0,131,97));assert(Read(131,97)==std::vector<uint32_t>(131*97));
@@ -136,6 +177,22 @@ int main() {
         t.ContextLost();assert(!t.GpuActive());Verify(t,layers,images,64,32,true); // no driver calls after destruction
         assert(!t.Create(1,1) && !t.Present(layers.data(),4,64,32));
         assert(t.Fill(layers[3].target,{0,0,8,8},0xabcdef));images[3].Fill(0xabcdef);Verify(t,layers,images,64,32,true);
+    }
+    // A second actual context-loss case holds only retired resources in a frame.
+    context=Context(display,config);assert(eglMakeCurrent(display,pbuffer,pbuffer,context));
+    {
+        Targets t(&allocator);assert(t.Initialize());const auto h=t.Create(8,8);assert(h);
+        assert(t.Fill(h,{0,0,8,8},0x123456));
+        const Targets::Layer layer{h,{0,0,8,8}};Targets::Frame resident;
+        assert(t.PrepareFrame(&layer,1,64,32,resident) && t.Present(resident));
+        assert(t.Fill(h,{2,2,6,6},0xabcdef) && t.Destroy(h));
+        assert(eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT));
+        assert(eglDestroyContext(display,context));t.ContextLost();
+        const auto* recovered=t.ComposeCpu(resident);assert(recovered && !t.Present(resident));
+        for(int y=0;y<32;++y)for(int x=0;x<64;++x) {
+            const uint32_t expected=x<8 && y<8?(x>=2 && x<6 && y>=2 && y<6?0xabcdef:0x123456):0;
+            assert(recovered->Get(x,y)==expected);
+        }
     }
     assert(!allocator.live && eglDestroySurface(display,pbuffer) && eglTerminate(display));
     puts("GPU GDI targets: PASS (generation/budgets, GPU composition without readback, CPU barriers, stale/foreign IDs, fallback and context loss)");

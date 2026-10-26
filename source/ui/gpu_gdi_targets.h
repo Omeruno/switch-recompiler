@@ -12,6 +12,20 @@ public:
     static constexpr size_t MaxTargets=4,MaxPixels=512*512,MaxLayers=4;
     static constexpr int MaxOutputWidth=1280,MaxOutputHeight=720;
     struct Layer {Handle target=0;Rect bounds;}; // opaque, nearest-scaled target
+    // Owning resource references, not an immutable pixel snapshot. Destruction
+    // only drops native pins; GL retirement remains on the manager owner thread.
+    class Frame {
+    public:
+        Frame()=default;
+    private:
+        friend class GpuGdiTargets;
+        std::array<Layer,MaxLayers> layers_{};
+        std::array<std::shared_ptr<uint8_t>,MaxLayers> pins_{};
+        uint64_t owner_=0;size_t count_=0;int width_=0,height_=0;
+    };
+    bool PrepareFrame(const Layer*,size_t count,int width,int height,Frame&);
+    bool Present(const Frame&);
+    const Surface* ComposeCpu(const Frame&);
     struct Stats {uint64_t frames=0,drawAttempts=0,failures=0;};
     explicit GpuGdiTargets(PresentationAllocator* allocator=nullptr);
     ~GpuGdiTargets();
@@ -38,7 +52,14 @@ public:
     const GpuGdiPrototype::Stats* TargetStats(Handle) const;
     const Stats& Counters() const {return stats_;}
 private:
-    struct Slot {Handle handle=0;size_t pixels=0;std::unique_ptr<GpuGdiPrototype> image;};
+    struct Slot {Handle handle=0;size_t pixels=0;std::unique_ptr<GpuGdiPrototype> image;
+        std::shared_ptr<uint8_t> pin;bool retired=false;};
+    void CollectRetired();
+    bool ValidateFrame(const Frame&) const;
+    GpuGdiPrototype* Retained(Handle);
+    const GpuGdiPrototype* Retained(Handle) const;
+    bool PresentImpl(const Layer*,size_t,int,int);
+    const Surface* ComposeCpuImpl(const Layer*,size_t,int,int);
     GpuGdiPrototype* Find(Handle);
     const GpuGdiPrototype* Find(Handle) const;
     bool Validate(const Layer*,size_t,int,int) const;
@@ -48,6 +69,7 @@ private:
     void Fallback();
     PresentationAllocator* allocator_;
     std::array<Slot,MaxTargets> slots_;
+    uint64_t frameOwner_=0;
     size_t pixels_=0;
     bool initialized_=false,gpuActive_=false;
     uint32_t program_=0,vao_=0;

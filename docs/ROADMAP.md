@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-26, после G4b.2c.
-Проверенный код `e780649e18c1b25bd38ea05db157074155a22bce`:
-[CI40221359571, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40221359571).
+Дата обновления: 2026-10-26, после G4b.2d.1.
+Проверенный код `7edadd4d4ec9d4ab776a1def5fdf59297bd1a3fc`:
+[CI40335457694, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40335457694).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -25,7 +25,7 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 
 **Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1/G4b.2a/b/c реализованы
 в изолированном GPU/native-пути с shared-context handoff и HWND/DC leases.
-CPU/GPU-барьеры проверены в native opt-in режиме. Остаток G4b.2 — owning GPU
+CPU/GPU-барьеры проверены в native opt-in режиме. Остаток G4b.2 — production GPU
 frames, аудит host-доступов и выборочное подключение обычного GDI. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
@@ -133,7 +133,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.1 | [Ordered instanced fills](G4B_GPU_BATCHES.md), cached uniforms, pixel/count/timing comparison | 64 disjoint fills →1 draw; копии/пересечения в порядке; prototype |
 | G4b.2a/b | [GL-state handoff](G4B2_SHARED_CONTEXT.md), [native HWND/DC resource leases](G4B2B_WINDOW_BINDINGS.md) | Bounded bridge, без автоматического GDI dispatch |
 | G4b.2c | [Opt-in CPU/GPU authority, реальные x86 read/ROP/DIB/layout barriers](G4B2C_CPU_COHERENCE.md) | Native correctness path, не ускорение CPU frame snapshot |
-| **Остаток G4b.2** | Owning texture frames, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
+| G4b.2d.1 | [Owning native resource frames / retirement / reset / fallback](G4B2D_RESIDENT_FRAMES.md) | Не production ShellSession bridge |
+| **Остаток G4b.2** | Texture-aware production frames, host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
 
 До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
 измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
@@ -163,7 +164,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. Остаток G4b.2 — owning texture frames, host-access/fault audit и выборочный GDI dispatch с публичными проверками.
+1. Остаток G4b.2 — production texture frames, host-access/fault audit и выборочный GDI dispatch с публичными проверками.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -180,3 +181,10 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 Контракты текущих подшагов: [G4b.2a GL-state](G4B2_SHARED_CONTEXT.md),
 [G4b.2b HWND/DC](G4B2B_WINDOW_BINDINGS.md). [G4b.2c](G4B2C_CPU_COHERENCE.md) добавляет opt-in CPU/GPU-барьеры.
 Остаются production frame ownership/dispatch, игровой renderer и dynarec.
+
+
+[G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
+в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
+Это часть следующего рубежа, а не готовое подключение ShellSession. Ближайшая
+задача — основной texture-aware вывод с ownership/Luna/оверлеями без полного
+CPU-снимка; затем аудит доступа и выборочное обычное GDI-подключение.
