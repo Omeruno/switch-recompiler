@@ -26,7 +26,7 @@ GpuGdiTargets::GpuGdiTargets(PresentationAllocator* allocator):allocator_(alloca
 GpuGdiTargets::~GpuGdiTargets(){Shutdown();}
 void GpuGdiTargets::Shutdown() {
     for(auto& s:slots_){s.image.reset();s.handle=0;s.pixels=0;s.pin.reset();s.retired=false;}
-    DeletePresenter();frameOwner_=0;pixels_=0;output_.Clear();outputSurface_={};initialized_=gpuActive_=false;coveredRetirement_=capacityReplay_=false;
+    DeletePresenter();frameOwner_=0;pixels_=0;output_.Clear();outputSurface_={};initialized_=gpuActive_=false;coveredRetirement_=capacityReplay_=differentialImport_=false;
 }
 bool GpuGdiTargets::Initialize() {
     Shutdown();stats_={};if(!OpenPresenter()){DeletePresenter();return false;}
@@ -92,6 +92,10 @@ bool GpuGdiTargets::ConsumeFrame(const Frame& frame,ResidentFrameConsumer& consu
     // Consume; resource pins and GL names remain owned by this manager.
     return consumer.Consume({images.data(),frame.count_});
 }
+void GpuGdiTargets::EnableDifferentialImport(bool enabled) {
+    differentialImport_=enabled;
+    for(auto& slot:slots_)if(slot.image)slot.image->EnableDifferentialImport(enabled);
+}
 void GpuGdiTargets::EnableCapacityReplay(bool enabled) {
     capacityReplay_=enabled;
     for(auto& slot:slots_)if(slot.image)slot.image->EnableCapacityReplay(enabled);
@@ -108,7 +112,7 @@ GpuGdiTargets::Handle GpuGdiTargets::Create(int width,int height) {
         const auto generation=Generation();if(!generation)return 0;
         auto image=std::unique_ptr<GpuGdiPrototype>(new(std::nothrow) GpuGdiPrototype(allocator_));
         if(!image || !image->Initialize(width,height))return 0;
-        image->EnableCoveredRetirement(coveredRetirement_);image->EnableCapacityReplay(capacityReplay_);
+        image->EnableCoveredRetirement(coveredRetirement_);image->EnableCapacityReplay(capacityReplay_);image->EnableDifferentialImport(differentialImport_);
         auto& s=slots_[i];s.handle=(generation<<8)|(i+1);s.pixels=size;s.image=std::move(image);s.pin=std::make_shared<uint8_t>(0);s.retired=false;pixels_+=size;return s.handle;
     }
     return 0;

@@ -37,6 +37,7 @@ public:
     GpuGdiTargets(const GpuGdiTargets&)=delete;
     GpuGdiTargets& operator=(const GpuGdiTargets&)=delete;
     bool Initialize();
+    void EnableDifferentialImport(bool enabled);
     void EnableCapacityReplay(bool enabled);
     void EnableCoveredRetirement(bool enabled); // native same-build reference control
     void Shutdown();
@@ -60,7 +61,7 @@ public:
     const GpuGdiPrototype::Stats* TargetStats(Handle) const;
     const Stats& Counters() const {return stats_;}
 private:
-    bool coveredRetirement_=false,capacityReplay_=false;
+    bool coveredRetirement_=false,capacityReplay_=false,differentialImport_=false;
     struct Slot {Handle handle=0;size_t pixels=0;std::unique_ptr<GpuGdiPrototype> image;
         std::shared_ptr<uint8_t> pin;bool retired=false;};
     void CollectRetired();

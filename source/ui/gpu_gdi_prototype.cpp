@@ -115,14 +115,40 @@ bool GpuGdiPrototype::Copy(Rect r,const uint32_t* pixels,size_t count) {
 }
 bool GpuGdiPrototype::ImportCpu(const uint32_t* rgb,size_t pixels) {
     if(mode_==Mode::Empty || count_ || !rgb || pixels!=checkpoint_.size())return false;
-    if(!Copy({0,0,surface_.width,surface_.height},rgb,pixels))return false;
+    Rect update{0,0,surface_.width,surface_.height};
+    const uint32_t* input=rgb;size_t count=pixels;
+    // A full initial import preserves the original initialization/work contract.
+    // Only an empty journal's verified checkpoint may serve as the comparison.
+    if(differentialImport_ && stats_.cpuImports && mode_==Mode::Gpu) {
+        update={surface_.width,surface_.height,0,0};
+        for(int y=0;y<surface_.height;++y)for(int x=0;x<surface_.width;++x) {
+            const size_t i=size_t(y)*surface_.width+x;
+            if((rgb[i]&0xffffff)!=checkpoint_[i]) {
+                update.left=std::min(update.left,x);update.top=std::min(update.top,y);
+                update.right=std::max(update.right,x+1);update.bottom=std::max(update.bottom,y+1);
+            }
+        }
+        stats_.importScanPixels+=pixels;
+        if(update.Empty()) {
+            ++stats_.importUnchanged;stats_.importInputPixels+=pixels;++stats_.cpuImports;return true;
+        }
+        count=size_t(update.Width())*update.Height();
+        // Scratch is private and never returned by CpuRead. Pack before Copy,
+        // which owns the rectangle before any checkpoint/error can change input.
+        for(int y=update.top;y<update.bottom;++y)
+            std::copy_n(rgb+size_t(y)*surface_.width+update.left,update.Width(),
+                scratch_.data()+size_t(y-update.top)*update.Width());
+        input=scratch_.data();stats_.importPackedPixels+=count;
+    }
+    if(!Copy(update,input,count))return false;
     if(mode_==Mode::Gpu && FlushGpu()) {
-        // The accepted owned CPU input is already the authoritative image.
-        // A successful upload/draw needs no glReadPixels to establish it.
-        for(size_t i=0;i<pixels;++i)checkpoint_[i]=commands_[0].input[i]&0xffffff;
+        // The owned accepted input establishes only this rectangle; checkpoint
+        // pixels outside it were compared equal. No fabricated device read.
+        if(count==pixels)for(size_t i=0;i<pixels;++i)checkpoint_[i]=commands_[0].input[i]&0xffffff;
+        else Apply(commands_[0]);
         ClearJournal();
     }
-    ++stats_.cpuImports;return true; // logical CPU fallback after GL error is real
+    stats_.importInputPixels+=pixels;++stats_.cpuImports;return true;
 }
 bool GpuGdiPrototype::FlushGpu() {
     if(mode_!=Mode::Gpu)return false;
@@ -242,7 +268,7 @@ bool GpuGdiPrototype::Draw(const Command& c) {
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER,0);glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
         glPixelStorei(GL_UNPACK_SKIP_ROWS,0);glPixelStorei(GL_UNPACK_SKIP_PIXELS,0);
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,c.rect.Width(),c.rect.Height(),0,GL_BGRA,GL_UNSIGNED_BYTE,c.input.data());
-        glUniform1i(locations_.image,0);glUniform2i(locations_.origin,c.rect.left,c.rect.top);++stats_.uploads;
+        glUniform1i(locations_.image,0);glUniform2i(locations_.origin,c.rect.left,c.rect.top);++stats_.uploads;stats_.uploadBytes+=c.input.size()*sizeof(uint32_t);
     } else glUniform3f(locations_.fill,((c.color>>16)&255)/255.f,((c.color>>8)&255)/255.f,(c.color&255)/255.f);
     glDrawArrays(GL_TRIANGLES,0,3);++stats_.draws;++stats_.submittedCommands;return glGetError()==GL_NO_ERROR;
 }
@@ -267,7 +293,7 @@ bool GpuGdiPrototype::ReadDevice() {
     if(glGetError()!=GL_NO_ERROR)return false;
     glBindFramebuffer(GL_READ_FRAMEBUFFER,fbo_);glPixelStorei(GL_PACK_ALIGNMENT,4);glPixelStorei(GL_PACK_ROW_LENGTH,0);
     glBindBuffer(GL_PIXEL_PACK_BUFFER,0);glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
-    glReadPixels(0,0,surface_.width,surface_.height,GL_BGRA,GL_UNSIGNED_BYTE,scratch_.data());++stats_.readbacks;
+    glReadPixels(0,0,surface_.width,surface_.height,GL_BGRA,GL_UNSIGNED_BYTE,scratch_.data());++stats_.readbacks;stats_.readbackBytes+=scratch_.size()*sizeof(uint32_t);
     return glGetError()==GL_NO_ERROR;
 }
 #else

@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`146647c6bcb8bdfc2e43d17f775021f9d4e8f911` (2026-10-27).
-[CI 40559453114](https://github.com/Omeruno/switch-recompiler/actions/runs/40559453114)
+`88be5ef350d8e8034a113c903288729f7a0e6f63` (2026-10-27).
+[CI 40564792157](https://github.com/Omeruno/switch-recompiler/actions/runs/40564792157)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2l bounded capacity checkpoint replay implemented (2026-10-27)
+## Current position: G4b.2m measured differential CPU import implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. Next measure CPU-import/reseed transfer cost before another bounded optimization.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. Next consolidate software acceptance and compare complete CPU/native cycles.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is measured CPU-import/reseed transfer work, after bounded capacity replay and actual read/ROP/DIB/capture gates.
+Next is consolidated G4b.2 software acceptance and full CPU/native cycle comparison, preserving actual read/ROP/DIB/capture gates.
 
 ## Working agreement
 
@@ -2677,3 +2677,74 @@ input/relaunch deferred; SD closed. Existing host artifact gains native capacity
 log/contract; six core jobs unchanged. Maps show G4b.2l implemented/import costs
 next. Roadmap23cards/3views/33docs, links/fences/shell/diff/browser and exact new
 published-SHA6-job CI/Pages/NRO/report/publicPE/contract are final publication gates.
+
+## G4b.2m — measured CPU reseeding, differential transfer and five-policy acceptance (2026-10-27)
+
+Clean88be5ef/FETCH_HEAD, no newer work/AGENTS. Incoming exact CI40564792157
+reverified all six jobs. User requests next large linked block. Host tools ready;
+no new dependencies/environment configuration. Local devkitA64/libnx absent,
+actual v14/Switch compilation remains CI-only. Hardware Paint/GPU/fallback/input/
+relaunch deferred, SD closed; no physical test requested or result invented.
+
+First instrumented and ran the original four-policy public inspector unchanged:
+48 normal exits/432 EGL frames. Nine-frame DIB scenario imports10 full128² CPU
+images/upload655360 bytes. Implemented bounded differential import against the
+verified private checkpoint, retaining full CPU snapshots/input contract and
+all real read/ROP/DIB/layout/lifetime barriers. First import remains full; later
+healthy-GPU/empty-journal imports scan normalized RGB, accept unchanged without
+upload, or pack one changed bounding rectangle into preallocated scratch then
+use existing owned Copy/Flush. Outside rectangle compares equal; its unchanged
+interior copies faithfully. No canonical/capture/ownership coarsening, raw-pointer
+interception, new pixel buffer or GL resource. Dense input may still upload full
+image with extra scan/pack cost. See G4B2M_DIFFERENTIAL_IMPORT.md.
+
+Owned input precedes GL/recovery; refusal accepts nothing, GL error recovers
+checkpoint+rectangle once, successful partial import updates private checkpoint
+before journal release, actual loss replays later suffix. Manager policy applies
+existing/new images and resets on Shutdown; healthy current-USER control retains
+full-import reference. Only existing explicit native solid experiment selects it;
+default CPU GDI/L/ZL/Luna remain. v14 reports seed attempts, snapshot/import wall
+ns, attempted upload bytes, comparisons/unchanged imports through teardown.
+Prototype additionally records actual attempted read payload, full input/packed
+pixels. Timings include CPU scan/pack/copy/driver submit, not GPU duration/DMA.
+
+Five rotated same-build/PE policies now60 normal-exit0 sessions/540 independent
+full1280x720 production-EGL/native-shell frames; parked transitions remain separate.
+DIB uploads655360→66112 bytes (initial full +9 sixteen-pixel rectangles),147456
+comparison pixels/144 packed.10 full seeds/canonical commits,9 owning snapshots,
+9 required pre-final reads +1 actual final read,8 capacity replays/129032 work
+remain unchanged. Tiles/partial retain their previous counts. Schema4 records
+all540 raw frames, bytes/input/scan/pack counts and cumulative seed phase times,
+with per-frame deltas and phase medians; source/PE/host/cache identity retained.
+No timing threshold or universal speedup: local focused seed import median about
+52→29us, complete DIB cycle about5102→5849us with broad overlapping variation.
+Host software GL/FBO oracle synchronization and concurrent validation load are
+not physical Switch performance. End-to-end admission economics remains next.
+
+New actual-EGL oracle reference/differential at1²/31x23/512²: pending rejection,
+unused high byte/unchanged import, checkpoint alias, separated changes/rectangle
+interior, single-pixel offset, source mutation after acceptance, allocation refusal
+with old GPU pixels intact, full+partial GL error recovery, actual destroyed
+context after partial import+pending fill, hostile PBO/pixel-store/viewport/scissor
+restoration and allocator zero. Negative missing source x-offset fails real GPU
+pixels; negative skipped partial checkpoint update fails actual-loss pixels.
+Suspended-session policy change rejects without poisoning owner.
+
+Fresh final-suite.log passed final runtime/headers/report/540-frame inspector and
+all prior GDI/GPU/window/workspace/read/ROP/DIB/state/lifecycle/file/measurement,
+Stage C/six E9/22 F groups. Final native/parked-owner assertions additionally pass
+focused strict O2/no-exceptions/no-RTTI and ASan/UBSan native core + full workspace
+inspector. Other common runtime objects ordinary in focused sanitizer build,
+driver leak scan disabled, known fiber warning retained. Both negative controls
+fail intended pixel gates. No runtime changes after full-suite success; final
+report-only phase-delta extension reruns successfully against final strict runner.
+
+Existing coherence artifact gains native log/contract; six core jobs unchanged.
+Maps now mark G4b.2m implemented; next consolidated G4b.2 software acceptance and
+complete CPU/native workload comparison, including admission refusal/CPU-DIB
+costs, before prioritizing next interpreter/dynarec or graphics block. Default
+activation/physical performance remain open. D/Pinball/full dynarec/D3D9,
+installer/archive and game targets including Lineage2/Asterios remain separate.
+Map23cards/3views/34docs, desktop/mobile browser/link/fence/shell/diff checks pass;
+normal push and exact published-SHA6-job CI/Pages/NRO/report/publicPE/contract
+verification are final publication gates. No alarm/autonomous wakeup is installed.

@@ -1,6 +1,7 @@
 #include "window_gpu_bindings.h"
 #include "user32.h"
 #include <limits>
+#include <chrono>
 
 namespace win32::user {
 static_assert(ui::GpuGdiPrototype::MaxSide==ui::Gdi::MaxWindowMaskSide,"masked commit and GPU image bounds must agree");
@@ -146,7 +147,7 @@ bool WindowGpuBindings::EnableSolidDispatch() {
     if(!PresentationReady() || !GpuActive())return false;
     if(dispatchEnabled_)return true;
     if(!ui::g_gdi.InstallSolidBackend(gate_))return false;
-    targets_.EnableCoveredRetirement(true);targets_.EnableCapacityReplay(true);exactDamage_=true;dispatchEnabled_=true;dispatchStats_={};return true;
+    targets_.EnableCoveredRetirement(true);targets_.EnableCapacityReplay(true);targets_.EnableDifferentialImport(true);exactDamage_=true;dispatchEnabled_=true;dispatchStats_={};return true;
 }
 ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32_t rgb) {
     ++dispatchStats_.candidates;
@@ -199,6 +200,10 @@ WindowGpuBindings::Slot* WindowGpuBindings::FindSlot(const Lease& lease) {
     for(auto& s:slots_)if(s.target==lease.target && s.identity==lease.raster.windowIdentity)return &s;
     return nullptr;
 }
+bool WindowGpuBindings::EnableDifferentialImport(bool enabled) {
+    if(!PresentationReady())return false;
+    targets_.EnableDifferentialImport(enabled);return true;
+}
 bool WindowGpuBindings::EnableCapacityReplay(bool enabled) {
     if(!PresentationReady())return false;
     targets_.EnableCapacityReplay(enabled);return true;
@@ -235,8 +240,20 @@ bool WindowGpuBindings::Seed(Slot& s,const Lease& lease) {
     if(!s.import)return true;
     if(Dirty(s))return Fail(Fault::DirtyImport);
     const size_t pixels=size_t(s.width)*s.height;
-    if(!s.seed.Resize(pixels) || !ui::g_gdi.SnapshotWindow(lease.raster,s.seed.data(),pixels) ||
-       !targets_.ImportCpu(s.target,s.seed.data(),pixels))return false;
+    using Clock=std::chrono::steady_clock;
+    const auto start=Clock::now();++coherenceStats_.seedAttempts;
+    const bool snapshot=s.seed.Resize(pixels) && ui::g_gdi.SnapshotWindow(lease.raster,s.seed.data(),pixels);
+    const auto captured=Clock::now();
+    coherenceStats_.seedSnapshotNs+=std::chrono::duration_cast<std::chrono::nanoseconds>(captured-start).count();
+    if(!snapshot)return false;
+    const auto before=*targets_.TargetStats(s.target);
+    const bool imported=targets_.ImportCpu(s.target,s.seed.data(),pixels);
+    coherenceStats_.seedImportNs+=std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now()-captured).count();
+    const auto& after=*targets_.TargetStats(s.target);
+    coherenceStats_.seedUploadBytes+=after.uploadBytes-before.uploadBytes;
+    coherenceStats_.seedScanPixels+=after.importScanPixels-before.importScanPixels;
+    coherenceStats_.seedUnchanged+=after.importUnchanged-before.importUnchanged;
+    if(!imported)return false;
     s.import=false;++coherenceStats_.imports;coherenceStats_.importPixels+=pixels;return true;
 }
 bool WindowGpuBindings::CheckpointCpu() {

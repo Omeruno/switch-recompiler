@@ -22,7 +22,7 @@ rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
 rm -f "$out/window_gestures.log"
-rm -f "$out/gpu_capacity_replay.log"
+rm -f "$out/gpu_capacity_replay.log" "$out/gpu_differential_import.log"
 rm -f "$out/gpu_damage_mask.log"
 rm -f "$out/gpu_workspace_reuse.log" "$out/gpu_workspace_reuse.json"
 rm -f "$out/gpu_gdi_warm.log" "$out/gpu_gdi_warm.json" "$out/gpu_gdi_retirement.log"
@@ -421,6 +421,15 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         else
             echo "   GPU CAPACITY CHECKPOINT REPLAY FAILED"
             tail -n 25 "$out/gpu_capacity_replay.log" 2>/dev/null || true
+            failed=1
+        fi
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_differential_import.cpp" \
+           "$root/source/ui/gpu_gdi_prototype.cpp" -lEGL -lGL -o "$out/test_gpu_differential_import" &&
+           EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 "$out/test_gpu_differential_import" > "$out/gpu_differential_import.log" 2>&1; then
+            tail -n 1 "$out/gpu_differential_import.log"
+        else
+            echo "   DIFFERENTIAL CPU IMPORT FAILED"
+            tail -n 25 "$out/gpu_differential_import.log" 2>/dev/null || true
             failed=1
         fi
         glsrc=""

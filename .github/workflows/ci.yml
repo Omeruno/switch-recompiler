@@ -100,7 +100,9 @@ jobs:
           if-no-files-found: error
           path: |
             build-host/gpu_capacity_replay.log
+            build-host/gpu_differential_import.log
             docs/G4B2L_CAPACITY_REPLAY.md
+            docs/G4B2M_DIFFERENTIAL_IMPORT.md
             build-host/gpu_damage_mask.log
             build-host/test_window_damage_mask.log
             build-host/guest-run.*/gpu_damage_mask.exe

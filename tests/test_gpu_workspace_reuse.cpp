@@ -99,7 +99,7 @@ static void Run(const char* path,int mode,unsigned sample,int workload) {
             const auto stage=memory.Read32(probe);
             if(stage!=checked && stage>=1 && stage<=12){
                 assert(stage==checked+1);checked=stage;
-                if(stage==1){guest=Screen();assert(bindings.EnableSolidDispatch());assert(bindings.EnableExactDamage(mode>=2));assert(bindings.EnableCapacityReplay(mode==3));phase=Clock::now();}
+                if(stage==1){guest=Screen();assert(bindings.EnableSolidDispatch());assert(bindings.EnableExactDamage(mode>=2));assert(bindings.EnableCapacityReplay(mode>=3));assert(bindings.EnableDifferentialImport(mode==4));phase=Clock::now();}
                 else if(stage<=10){
                     const auto raster=Us(phase);const unsigned index=stage-2;
                     for(int y=0;y<128;++y)for(int x=0;x<128;++x) {
@@ -113,21 +113,23 @@ static void Run(const char* path,int mode,unsigned sample,int workload) {
                     CompareGl(NativeExpected(shell,guest));
                     const auto* c=bindings.Counters(lease);
                     constexpr unsigned partialReads[]={0,2,3,4,6,7,8,10,11},partialCommits[]={0,1,1,2,3,3,4,5,5};
-                    assert(c && c->readbacks==uint64_t(workload==2?(mode==3?index+1:1+index*2):workload==1?(mode>=2?(mode==3?0:index):partialReads[index]):0));
-                    assert(c->replayCheckpoints==uint64_t(mode==3 && workload!=0?index:0));
-                    assert(c->replayPixels==uint64_t(mode==3?(workload==1?index*4096u:workload==2?index*16129u:0):0));
+                    assert(c && c->readbacks==uint64_t(workload==2?(mode>=3?index+1:1+index*2):workload==1?(mode>=2?(mode>=3?0:index):partialReads[index]):0));
+                    assert(c->replayCheckpoints==uint64_t(mode>=3 && workload!=0?index:0));
+                    assert(c->replayPixels==uint64_t(mode>=3?(workload==1?index*4096u:workload==2?index*16129u:0):0));
                     assert(bindings.CoherenceCounters().capacityReplays==c->replayCheckpoints && bindings.CoherenceCounters().capacityReplayPixels==c->replayPixels);
                     assert(!c->replayBudgetFallbacks && !c->replayFailures);
+                    assert(c->uploadBytes==uint64_t((workload==2?(mode==4?16384+16*(index+1):16384*(index+2)):16384)*4));
+                    assert(bindings.CoherenceCounters().seedUploadBytes==c->uploadBytes);
                     assert(c->cpuImports==uint64_t(workload==2?index+2:1));
                     assert(bindings.CoherenceCounters().commits==uint64_t(workload==2?index+1:workload==1?(mode>=2?0:partialCommits[index]):0));
                     if(workload==0)assert(c->batches==index+1);
                     constexpr unsigned partialSnapshots[]={1,2,2,3,4,4,5,6,6};
                     const auto snapshots=mode?(workload==2?index+1:workload==1?(mode>=2?1:partialSnapshots[index]):1):index+1;
                     assert(workspace.Submissions()==snapshots && workspace.ReusedFrames()==index+1-snapshots);
-                    printf("FRAME %u %d %d %u %.3f %.3f %.3f %llu %llu %llu %llu %zu %llu %llu\n",sample,mode,workload,index,raster,total,sink.output,
-                        static_cast<unsigned long long>(workspace.Submissions()),static_cast<unsigned long long>(sink.copied),static_cast<unsigned long long>(c->readbacks),static_cast<unsigned long long>(bindings.CoherenceCounters().commits),bindings.DamageMaskBytes(),static_cast<unsigned long long>(c->replayCheckpoints),static_cast<unsigned long long>(c->replayPixels));
+                    printf("FRAME %u %d %d %u %.3f %.3f %.3f %llu %llu %llu %llu %zu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",sample,mode,workload,index,raster,total,sink.output,
+                        static_cast<unsigned long long>(workspace.Submissions()),static_cast<unsigned long long>(sink.copied),static_cast<unsigned long long>(c->readbacks),static_cast<unsigned long long>(bindings.CoherenceCounters().commits),bindings.DamageMaskBytes(),static_cast<unsigned long long>(c->replayCheckpoints),static_cast<unsigned long long>(c->replayPixels),static_cast<unsigned long long>(c->uploadBytes),static_cast<unsigned long long>(c->importInputPixels),static_cast<unsigned long long>(c->importScanPixels),static_cast<unsigned long long>(c->importPackedPixels),static_cast<unsigned long long>(c->importUnchanged),static_cast<unsigned long long>(bindings.CoherenceCounters().seedSnapshotNs),static_cast<unsigned long long>(bindings.CoherenceCounters().seedImportNs));
                     phase=Clock::now();
-                }else if(stage==11){assert(Screen()==guest);assert(bindings.Counters(lease)->readbacks==uint64_t(workload==2?(mode==3?10:18):workload==1?(mode>=2?(mode==3?1:9):12):1));}
+                }else if(stage==11){assert(Screen()==guest);assert(bindings.Counters(lease)->readbacks==uint64_t(workload==2?(mode>=3?10:18):workload==1?(mode>=2?(mode>=3?1:9):12):1));}
             }
             if(result==rt::GuestExecution::Result::Stopped){stopped=true;break;}
             if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
@@ -181,7 +183,7 @@ static void Transitions(const char* path) {
                 assert(bindings.OwnershipRevision()==stableOwners);present();assert(workspace.Submissions()==4);
                 assert(bindings.Acquire(a.raster.hdc,a));draw(a,{4,4,6,6},0x123456);present();assert(workspace.Submissions()==5); // same resource becomes resident again
                 const auto calls=sink.calls;
-                {rt::GuestSession inner;user::EnableUi(1280,720);assert(!workspace.FrameCurrent());assert(workspace.Refresh()==user::NativePresentResult::Unavailable && !workspace.Faulted() && !user::S().presentationFault);}
+                {rt::GuestSession inner;user::EnableUi(1280,720);assert(!bindings.EnableDifferentialImport(false));assert(!workspace.FrameCurrent());assert(workspace.Refresh()==user::NativePresentResult::Unavailable && !workspace.Faulted() && !user::S().presentationFault);}
                 assert(workspace.FrameCurrent() && sink.calls==calls);
                 assert(ui::g_gdi.PrepareCpuAccess());present();assert(workspace.Submissions()==6);
                 ShellClick(bridge,shell,Shell::Start);present();assert(workspace.Submissions()==7);
@@ -205,7 +207,7 @@ static void Transitions(const char* path) {
 }
 int main(int argc,char** argv){
     assert(argc==5);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
-    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<3;++workload)for(int i=0;i<4;++i)Run(argv[workload+1],int((sample+i)%4),sample,workload);
+    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<3;++workload)for(int i=0;i<5;++i)Run(argv[workload+1],int((sample+i)%5),sample,workload);
     Transitions(argv[4]);
     puts("Retained workspace: PASS (real x86, owning native shell frames and pixel/read gates)");
 }

@@ -1852,7 +1852,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v13\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v14\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1937,6 +1937,10 @@ void EndPresentation() {
             (unsigned long long)coherence.capacityCheckpoints,(unsigned long long)coherence.capacityReadbacks,
             (unsigned long long)coherence.capacityReplays,(unsigned long long)coherence.capacityReplayPixels,
             (unsigned long long)coherence.capacityReplayBudgetFallbacks,(unsigned long long)coherence.capacityReplayFailures);
+        fprintf(log,"CPU seed attempts: %llu\nCPU seed snapshot wall ns: %llu\nCPU seed import wall ns: %llu\nCPU seed attempted upload bytes: %llu\nCPU seed compared pixels: %llu\nCPU seed unchanged imports: %llu\n",
+            (unsigned long long)coherence.seedAttempts,(unsigned long long)coherence.seedSnapshotNs,
+            (unsigned long long)coherence.seedImportNs,(unsigned long long)coherence.seedUploadBytes,
+            (unsigned long long)coherence.seedScanPixels,(unsigned long long)coherence.seedUnchanged);
         fprintf(log,"CPU access fault: %u\nNative coherence fault: %s\n",unsigned(ui::g_gdi.CpuAccessFault()),g_mixedCoherenceFault.c_str());
         fprintf(log,"Native mixed scope: opt-in device adapter and bounded solid FillRect/PATCOPY admission; default GDI remains CPU. Accepted logical counts are not GPU completion counts. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);
