@@ -17,6 +17,9 @@ public:
     NativePresentResult Refresh();
     NativePresentResult Redraw();
     bool FrameCurrent() const;
+    void EnableSnapshotReuse(bool enabled){reuseEnabled_=enabled;} // same-build native reference
+    uint64_t ReusedFrames() const {return reused_;}
+    uint64_t SnapshotBytes() const {return frame_.CopiedBytes()-copyStart_;}
     bool Faulted() const {return fault_;}
     uint64_t Frames() const {return frames_;}
     uint64_t Submissions() const {return submissions_;}
@@ -25,12 +28,14 @@ public:
     MixedWorkspace& operator=(const MixedWorkspace&)=delete;
 private:
     NativePresentResult Present();
+    bool SnapshotCurrent() const;
     WindowGpuBindings& bindings_;
     ShellSession& shell_;
     Output output_;void* context_;
     ui::MixedPresentation frame_;
     Platform previous_;
-    bool attached_=false,fault_=false,hasFrame_=false,busy_=false;
+    bool attached_=false,fault_=false,hasFrame_=false,busy_=false,reuseEnabled_=true;
+    uint64_t ownershipRevision_=0,reused_=0,copyStart_=0;
     uint64_t frames_=0,submissions_=0,redraws_=0,cpuRevision_=0,gpuRevision_=0,shellRevision_=0,layoutGeneration_=0;
 };
 } // namespace win32::user

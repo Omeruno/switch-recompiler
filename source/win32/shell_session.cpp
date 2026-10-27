@@ -116,6 +116,10 @@ const ui::Surface* ShellSession::TryCompose(const ui::Surface& guest) {
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
     return &outputSurface_;
 }
+uint64_t ShellSession::NativeRevision() {
+    if(ready_ && ObserveTask())Refresh();
+    return revision_;
+}
 ui::WindowSceneView ShellSession::NativeOverlay() {
     if(!ready_ || !owners_.Resize(size_t(W)*H))return {};
     if(ObserveTask())Refresh();

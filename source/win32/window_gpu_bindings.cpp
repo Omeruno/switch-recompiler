@@ -24,7 +24,7 @@ bool Size(const ui::Rect& r,int& w,int& h) {
 }
 }
 bool WindowGpuBindings::Initialize(){Shutdown();return targets_.Initialize();}
-void WindowGpuBindings::Shutdown(){if(!DisableCoherence())RevokeGate();slots_={};frameOwners_.Clear();targets_.Shutdown();}
+void WindowGpuBindings::Shutdown(){ownershipRevision_=ui::NewPresentationResourceId();if(!DisableCoherence())RevokeGate();slots_={};frameOwners_.Clear();targets_.Shutdown();}
 void WindowGpuBindings::Prune() {
     if(coherent_ && (!SameSession() || fault_))return;
     for(auto& s:slots_)if(s.target) {
@@ -32,7 +32,7 @@ void WindowGpuBindings::Prune() {
         if(!w || w->rasterIdentity!=s.identity || !Size(ScreenRect(w),width,height) ||
            width!=s.width || height!=s.height) {
             if(coherent_ && !s.dirty.Empty() && !CheckpointCpu())return;
-            targets_.Destroy(s.target);s={};
+            targets_.Destroy(s.target);s={};ownershipRevision_=ui::NewPresentationResourceId();
         }
     }
 }
@@ -92,7 +92,7 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
         const ui::Rect local{int(int64_t(part.left)-r.frame.left),int(int64_t(part.top)-r.frame.top),
             int(int64_t(part.right)-r.frame.left),int(int64_t(part.bottom)-r.frame.top)};
         if(!targets_.Fill(lease.target,local,rgb))return false;
-        if(coherent_){slot->dirty.UnionRect(local);++gpuRevision_;}
+        if(coherent_){if(slot->dirty.Empty())ownershipRevision_=ui::NewPresentationResourceId();slot->dirty.UnionRect(local);++gpuRevision_;}
     }
     return true;
 }
@@ -113,7 +113,7 @@ bool WindowGpuBindings::EnableCoherence() {
     auto gate=std::make_shared<Gate>(this);
     if(!ui::g_gdi.InstallCpuGate(gate))return false;
     gate_=std::move(gate);desktopIdentity_=Desktop()->rasterIdentity;
-    coherent_=true;fault_=false;faultReason_=Fault::None;coherenceStats_={};gpuRevision_=0;return true;
+    coherent_=true;fault_=false;faultReason_=Fault::None;coherenceStats_={};gpuRevision_=0;ownershipRevision_=ui::NewPresentationResourceId();return true;
 }
 bool WindowGpuBindings::EnableSolidDispatch() {
     if(!PresentationReady() || !GpuActive())return false;
@@ -187,7 +187,7 @@ bool WindowGpuBindings::CheckpointCpu() {
     for(auto& s:slots_)if(s.target && !s.dirty.Empty()) {
         const auto* image=targets_.CpuRead(s.target);size_t pixels=0;
         if(!image || fault_ || ui::g_gdi.CpuAccessFault() || !ui::g_gdi.CommitWindow(s.stamp,*image,s.dirty,pixels))return Fail(Fault::WindowCommit);
-        s.dirty.Clear();++coherenceStats_.commits;coherenceStats_.commitPixels+=pixels;
+        s.dirty.Clear();ownershipRevision_=ui::NewPresentationResourceId();++coherenceStats_.commits;coherenceStats_.commitPixels+=pixels;
     }
     return true;
 }

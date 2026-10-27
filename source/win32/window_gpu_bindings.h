@@ -31,6 +31,7 @@ public:
     // regions; canonical CPU base may be stale only beneath resident owners.
     bool SubmitMixed(ui::MixedPresentation&,const ui::WindowSceneView* overlay=nullptr);
     bool PresentationReady() const;
+    uint64_t OwnershipRevision() const {return ownershipRevision_;}
     uint64_t PresentationRevision() const {return gpuRevision_;}
     bool RenderMixed(ui::MixedPresentation&,ui::OpenGlPresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
     bool RenderMixedCpu(ui::MixedPresentation&,ui::SoftwarePresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
@@ -68,7 +69,7 @@ private:
     Slot* FindSlot(const Lease&);
     bool Seed(Slot&,const Lease&);
     std::shared_ptr<Gate> gate_;
-    uint64_t desktopIdentity_=0,gpuRevision_=0;
+    uint64_t desktopIdentity_=0,gpuRevision_=0,ownershipRevision_=0;
     bool coherent_=false,fault_=false,barrier_=false;
     Fault faultReason_=Fault::None;
     CoherenceStats coherenceStats_;

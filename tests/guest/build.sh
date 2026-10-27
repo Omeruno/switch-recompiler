@@ -7,6 +7,10 @@ cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
 $cc -O1 -nostdlib -e _start@0 "$here/window_gestures.c" \
     -o "$out/window_gestures.exe" -lkernel32 -luser32
+for variant in PARTIAL COPY; do
+    $cc -O2 -Wall -Wextra -Werror -DWORKSPACE_$variant -nostdlib -e _start@0 "$here/gpu_gdi_warm.c" \
+        -o "$out/gpu_workspace_$variant.exe" -lkernel32 -luser32 -lgdi32
+done
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/gpu_gdi_warm.c" \
     -o "$out/gpu_gdi_warm.exe" -lkernel32 -luser32 -lgdi32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/gpu_gdi_dispatch.c" \

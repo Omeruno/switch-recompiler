@@ -22,6 +22,7 @@ rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
 rm -f "$out/window_gestures.log"
+rm -f "$out/gpu_workspace_reuse.log" "$out/gpu_workspace_reuse.json"
 rm -f "$out/gpu_gdi_warm.log" "$out/gpu_gdi_warm.json" "$out/gpu_gdi_retirement.log"
 rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
@@ -388,6 +389,18 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             tail -n 25 "$out/gpu_gdi_warm.log" 2>/dev/null || true
             failed=1
         fi
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_workspace_reuse.cpp" \
+           "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_gpu_workspace_reuse" &&
+           python3 "$root/tools/benchmark_workspace_reuse.py" "$out/test_gpu_workspace_reuse" "$guestRoot/gpu_gdi_warm.exe" \
+               "$guestRoot/gpu_workspace_PARTIAL.exe" "$guestRoot/gpu_workspace_COPY.exe" "$guestRoot/gpu_window_coherence.exe" \
+               "$out/gpu_workspace_reuse.json" > "$out/gpu_workspace_reuse.log" 2>&1; then
+            tail -n 3 "$out/gpu_workspace_reuse.log"
+        else
+            echo "   RETAINED WORKSPACE X86 GPU OUTPUT FAILED"
+            tail -n 25 "$out/gpu_workspace_reuse.log" 2>/dev/null || true
+            failed=1
+        fi
         glsrc=""
         for obj in $src; do
             case "$obj" in */opengl_presentation.o) ;; *) glsrc="$glsrc $obj" ;; esac
@@ -444,6 +457,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_window_coherence.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_gdi_dispatch.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
+        case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe) continue ;; esac
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue

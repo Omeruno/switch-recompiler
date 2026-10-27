@@ -99,6 +99,10 @@ jobs:
           name: stage-gpu-window-coherence
           if-no-files-found: error
           path: |
+            build-host/gpu_workspace_reuse.log
+            build-host/gpu_workspace_reuse.json
+            build-host/guest-run.*/gpu_workspace_*.exe
+            docs/G4B2J_RETAINED_WORKSPACE.md
             build-host/gpu_gdi_warm.log
             build-host/gpu_gdi_warm.json
             build-host/gpu_gdi_retirement.log

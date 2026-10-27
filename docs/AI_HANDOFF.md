@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`d07a19f6400eae316c806957e6ab84289812a8b2` (2026-10-27).
-[CI 40449504198](https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198)
+`afe681577f79bf2a97fd8c3a63cfbd516b3a6ccc` (2026-10-27).
+[CI 40451764982](https://github.com/Omeruno/switch-recompiler/actions/runs/40451764982)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2i warm resource measurements and covered-journal retirement implemented (2026-10-27)
+## Current position: G4b.2j retained native workspace snapshots implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. Next: owning snapshot/ownership/flush breakdown and partial/copy workload costs.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. Next bounded dirty-region accumulation/coalescing with actual visibility/CPU/capture-write gates.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is the retained GPU mixed-frame/live-window/shell queue.
+Next is bounded dirty-region accumulation/coalescing, after the measured retained-workspace/partial/DIB gates.
 
 ## Working agreement
 
@@ -2472,3 +2472,66 @@ core jobs unchanged. Roadmap23cards/3views/30docs, local links/fences, shell/dif
 browser and exact published-SHA six-job CI/Pages/NRO/measurement artifact checks
 are final publication gates. All maps identify G4b.2i implemented and owning
 snapshot/flush/partial/copy costs next; D/Pinball/dynarec/D3D9 remain separate.
+
+## G4b.2j — retained native workspace snapshots (2026-10-27)
+
+Cleanafe6815/FETCH_HEAD, no newer work/AGENTS. User requests continued engineering
+work, then asks to resume during finalization; this is the same package, not a
+new implementation queue. Baseline actual-x86/native-shell nine-frame workload
+made9 snapshots/99,665,280 materialized bytes with unchanged CPU/layout/shell.
+Implemented unique native ownership epoch separate from GPU pixel revision:
+resident-entry, checkpoint/ownership clear, retirement, shutdown and fresh manager
+coherence invalidate; writes within existing resident targets keep ownership.
+MixedWorkspace reuses only owning immutable CPU/mask/native snapshots with exact
+CPU/layout/shell/ownership match and current healthy owner. Actual output still
+flushes/renders/swaps live resources. FrameCurrent also checks GPU pixel epoch.
+Shell NativeRevision observes task completion without rebuilding its mask; foreign
+USER rejection occurs before suspended shell metadata observation. No guest/raw
+surface pointer substitutes for owned state. Snapshot/reference policy has a
+native same-build control; optional pipeline activation/default CPU/L/ZL unchanged.
+v11 captures successful reused snapshots and materialized snapshot bytes; original
+submissions/cursor/output/fallback/fault counters retain their scopes.
+
+New inspector uses original CRT-free warm source and explicit PARTIAL/COPY build
+variants.24 actual normal-exit0 sessions/216 full1280x720 production-EGL+native
+shell pixel frames, rotated reference/reuse and cold/warm intervals. Tiles9→1
+snapshot builds (99,665,280→11,073,920 bytes), real final GetPixel1 unchanged.
+Diagonal8x8 partials exposed128-rectangle dirty-region pressure; five mid-series
+CPU commits remain, builds9→6, pre-guest reads11/final12. Test initially assumed
+only journal-capacity reads; diagnostic proved real dirty-region checkpoints,
+so preserved them and gated exact counts rather than weakening pixels/budgets.
+Actual raw guest DIB+SRCCOPY/sentinel requires all9 builds, pre-guest reads17/
+final18/imports10/final commits10; no CPU-copy acceleration is claimed. Existing
+G4b.2h/i ordinary/warm/journal/GL/context/state/CPU/device/fault/lifecycle gates
+remain unchanged. Snapshot bytes include initialized revision arrays, not DMA.
+
+Additional parked actual-x86 two-window native oracle: new resident owner with
+unchanged CPU/layout, CPU checkpoint, guarded CPU-only mutation with stable
+ownership, reimport, native Start/clock, layout-only update, suspended-session
+rejection/restoration, manager reset with identical CPU/shell/layout, rejected
+reuse output/no retry. Host-inspected/drained, not a normal-exit acceptance.
+Negative ownership guard omission fails pixel300,50; CPU guard omission fails
+pixel1000,110. Both prove actual stale-pixel detection. Strict O2/no-exceptions/
+no-RTTI changed bridge/shell/controller plus actual GPU/renderer/live inspector
+passes. Focused ASan/UBSan same modules/inspector pass with other common runtime
+objects ordinary; driver leak scanning disabled, known native-fiber warning.
+
+Development suite passed old gates. Fresh final-suite.log passed final runtime,
+headers/public variants/inspector/report sources, all new/previous native/GDI/GPU/
+window/workspace/lifecycle/file/measurement groups, Stage C/six E9/22 F groups.
+No runtime/test changes after full-suite success. Report captures exact source/PE
+identity, raw216 frames, work counts and host/cache policy. Refresh includes
+output, and pending GPU flush moves into output on reuse; compare total cycle,
+not prepare alone. No noisy timing threshold, physical FPS or universal speedup.
+Next measured candidate: bounded dirty-region accumulation/coalescing with actual
+CPU/visibility/capture-write gates; do not hide necessary CPU DIB checkpoints.
+D/Pinball, full dynarec/D3D9, installer/archive and broader shell remain separate.
+Lineage2 Classic/Asterios remains in the game plan without compatibility claim.
+
+Host MinGW/Mesa ready, no new dependencies/configuration required. Local
+Switch SDK absent; actual v11/libnx changes are CI compiled, not host-executed.
+Hardware Paint/GPU/fallback/input/relaunch deferred, SD closed. New variant PEs/
+report/log/contract in existing coherence artifact; six core jobs unchanged.
+Current maps identify G4b.2j implemented and dirty-region costs next. Source/link/
+fence/shell/diff, map23cards/3views/31docs and desktop/mobile browser checks plus
+exact published-SHA CI six jobs/Pages/NRO/report+PE+contract are publication gates.

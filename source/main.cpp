@@ -1678,7 +1678,7 @@ win32::user::ShellSession* g_shellSession=nullptr;
 std::unique_ptr<win32::user::WindowGpuBindings> g_mixedBindings;
 std::unique_ptr<win32::user::MixedWorkspace> g_mixedWorkspace;
 bool g_mixedRequested=false,g_mixedEnabled=false;
-uint64_t g_mixedSubmissions=0,g_mixedRedraws=0;
+uint64_t g_mixedSubmissions=0,g_mixedRedraws=0,g_mixedReused=0,g_mixedSnapshotBytes=0;
 std::string g_mixedCoherenceFault="none";
 win32::user::WindowGpuBindings::DispatchStats g_mixedDispatch;
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
@@ -1756,7 +1756,7 @@ struct NativeMixedDevice final:win32::user::MixedOutputDevice {
 } g_nativeMixedDevice;
 win32::user::MixedOutput g_nativeMixedOutput(g_nativeMixedDevice,g_gpu,g_software);
 void EndMixedPresentation() {
-    if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();}
+    if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();g_mixedReused=g_mixedWorkspace->ReusedFrames();g_mixedSnapshotBytes=g_mixedWorkspace->SnapshotBytes();}
     g_mixedWorkspace.reset();
     if(g_mixedBindings){g_mixedDispatch=g_mixedBindings->DispatchCounters();g_mixedBindings->Shutdown();g_mixedCoherenceFault=g_mixedBindings->FaultName();g_mixedBindings.reset();}
     g_havePresented=false;
@@ -1826,7 +1826,7 @@ bool FallBackToSoftware(const char* error) {
 void BeginPresentation(const char* guestPath) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
-    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=0;
+    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
@@ -1851,7 +1851,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v10\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v11\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1922,6 +1922,8 @@ void EndPresentation() {
             (unsigned long long)g_mixedRedraws,(unsigned long long)mixed.gpuFrames,(unsigned long long)mixed.swapAttempts,
             (unsigned long long)mixed.fallbacks,(unsigned long long)mixed.cpuFrames,(unsigned long long)mixed.failures,
             g_nativeMixedOutput.StagingBytes());
+        fprintf(log,"Native mixed reused snapshots: %llu\nNative mixed snapshot bytes: %llu\n",
+            (unsigned long long)g_mixedReused,(unsigned long long)g_mixedSnapshotBytes);
         const auto& dispatch=g_mixedBindings?g_mixedBindings->DispatchCounters():g_mixedDispatch;
         fprintf(log,"Solid raster candidates: %llu\nSolid raster accepted logical: %llu\nSolid raster refused before draw: %llu\nSolid raster failed: %llu\n",
             (unsigned long long)dispatch.candidates,(unsigned long long)dispatch.accepted,
