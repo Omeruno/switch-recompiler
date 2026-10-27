@@ -8,6 +8,7 @@
 #include "source/win32/window_gpu_bindings.h"
 #include "source/win32/user32.h"
 #include "source/win32/mixed_workspace.h"
+#include "source/win32/mixed_output.h"
 #include <filesystem>
 #include <unistd.h>
 #include "source/ui/opengl_presentation.h"
@@ -269,4 +270,112 @@ static void Run(const char* path,bool loss) {
     assert(bindings.DisableCoherence() && ui::g_gdi.PrepareCpuAccess());bindings.Shutdown();held.Clear();assert(!allocator.live);
     std::printf("GPU coherence mode=%s: PASS (10 x86 stages, 2 dirty windows, 64 fills/1 import/1 readback for first window, ROP/raw-DIB/GetDIBits, layout, owned live mixed output/occlusion, fallback)\n",loss?"actual-loss":"GL-error");
 }
-int main(int argc,char** argv){assert(argc==2);ui::FontCache::SetDirectory("romfs/fonts");ui::FontDesc font;font.face="Liberation Sans";font.height=-16;assert(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);}
+struct OutputDeviceProbe:user::MixedOutputDevice {
+    Egl& egl;ui::OpenGlPresentation& renderer;
+    std::vector<uint32_t> expected;
+    ui::PresentationCursor cursor;
+    std::string events;bool gpu=true,swapOk=true,openOk=true,queueOk=true;
+    OutputDeviceProbe(Egl& e,ui::OpenGlPresentation& r):egl(e),renderer(r) {}
+    bool GpuActive() const override {return gpu;}
+    bool SwapGpu() override {
+        events+='S';std::vector<uint32_t> actual(1280*720);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER,0);glBindBuffer(GL_PIXEL_PACK_BUFFER,0);
+        glPixelStorei(GL_PACK_ALIGNMENT,4);glPixelStorei(GL_PACK_ROW_LENGTH,0);
+        glPixelStorei(GL_PACK_SKIP_ROWS,0);glPixelStorei(GL_PACK_SKIP_PIXELS,0);
+        glReadPixels(0,0,1280,720,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());assert(glGetError()==GL_NO_ERROR);
+        for(int y=0;y<720;++y)for(int x=0;x<1280;++x)assert(actual[size_t(719-y)*1280+x]==expected[size_t(y)*1280+x]);
+        return swapOk;
+    }
+    void LeaveGpu() override {
+        events+='L';assert(user::EnableWindowLayers(false));renderer.Shutdown();egl.Lose();gpu=false;
+    }
+    bool EnsureSoftware() override {events+='E';assert(!gpu && eglGetCurrentContext()==EGL_NO_CONTEXT);return openOk;}
+    bool QueueSoftware(const ui::OutputBuffer& out) override {
+        events+='Q';assert(out.Valid());
+        for(int y=0;y<720;++y)for(int x=0;x<1280;++x)assert(out.pixels[size_t(y)*out.stridePixels+x]==expected[size_t(y)*1280+x]);
+        return queueOk;
+    }
+};
+static void DeviceRun(const char* path,int mode) {
+    Egl egl;rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
+    Shell shell;user::ShellSession bridge(shell);assert(bridge.Attach("Public device adapter"));bridge.SetClock(u"14:32");
+    Allocator allocator;Bindings bindings;assert(bindings.Initialize() && bindings.EnableCoherence());
+    ui::OpenGlPresentation renderer;assert(renderer.Initialize());ui::SoftwarePresentation software;
+    OutputDeviceProbe device(egl,renderer);user::MixedOutput adapter(device,renderer,software,&allocator);
+    struct Context {user::MixedOutput& adapter;OutputDeviceProbe& device;uint64_t snapshot=0;} output{adapter,device,0};
+    user::MixedWorkspace workspace(bindings,bridge,[](void* p,Bindings& b,ui::MixedPresentation& frame) {
+        auto& context=*static_cast<Context*>(p);context.snapshot=frame.CopiedBytes();
+        return context.adapter.Present(b,frame,1280,720,context.device.cursor);
+    },&output);assert(workspace.Attach());
+    auto& process=session.ProcessObject();auto& memory=session.Memory();std::string error;
+    assert(process.LoadMainExe(path,error) && process.PrepareMainThread(process.MainThread().cpu,error));
+    const auto probe=process.GetProcAddress(process.MainModule(),"CoherenceProbe");assert(probe);bool checked=false;
+    {
+        rt::GuestExecution execution(process,[&](rt::GuestThread& t) {
+            win32::HostCallOutcome call;if(win32::TryHandleHostCall(t.cpu,memory,call))return !call.requestExit;
+            cpu::Interpreter cpu(memory,t.teb,t.teb);const auto result=cpu.Step(t.cpu);
+            assert(result==cpu::StepResult::Continue || result==cpu::StepResult::Halted);return true;
+        },rt::GuestExecution::Startup::InitializeModules);
+        for(unsigned i=0;i<300000 && !checked;++i) {
+            const auto result=execution.RunOne();assert(result!=rt::GuestExecution::Result::AllocationFailed);
+            if(memory.Read32(probe)==1) {
+                checked=true;Bindings::Lease a,b;
+                assert(bindings.Acquire(memory.Read32(probe+8),a) && bindings.Acquire(memory.Read32(probe+16),b));
+                auto canonical=Screen();assert(bindings.Fill(a,{0,0,128,128},0x1279ad));assert(bindings.Fill(b,{0,0,16,16},0xa94317));
+                auto rgb=canonical;
+                for(int y=50;y<178;++y)for(int x=40;x<168;++x)rgb[size_t(y)*1280+x]=0x1279ad;
+                for(int y=50;y<66;++y)for(int x=300;x<316;++x)rgb[size_t(y)*1280+x]=0xa94317;
+                rgb=NativeExpected(shell,rgb);ui::Surface reference;reference.width=1280;reference.height=720;reference.pitch=1280*4;
+                reference.bits=reinterpret_cast<uint8_t*>(rgb.data());ui::SoftwarePresentation oracle;
+                auto expected=[&](int n) {
+                    device.cursor={15+n,24+n,true};device.expected.resize(1280*720);
+                    ui::PresentationFrame frame{reference,{0,0,1280,720},device.cursor};
+                    assert(oracle.Render(frame,{device.expected.data(),1280,720,1280,device.expected.size()}));
+                };
+                expected(0);user::PresentIfNeeded(true);assert(workspace.Submissions()==1 && workspace.Frames()==1);
+                const auto snapshot=output.snapshot,uploads=renderer.Timings().screenUploadBytes;
+                for(int n=1;n<12;++n) {
+                    expected(n);assert(workspace.Redraw()==user::NativePresentResult::Submitted);
+                    assert(workspace.Submissions()==1 && output.snapshot==snapshot && workspace.Redraws()==uint64_t(n));
+                    assert(renderer.Timings().screenUploadBytes==uploads && Screen()==canonical);
+                    assert(bindings.Counters(a)->readbacks==0 && bindings.Counters(b)->readbacks==0);
+                }
+                assert(adapter.Counters().gpuFrames==12 && device.events==std::string(12,'S'));
+                device.events.clear();expected(12);
+                if(mode==5) {renderer.Shutdown();egl.Lose();bindings.ContextLost();device.gpu=false;}
+                else if(mode==1)device.swapOk=false;
+                else if(mode==6) {
+                    assert(ui::g_gdi.PrepareCpuAccess());assert(workspace.Refresh()==user::NativePresentResult::Submitted);
+                    const auto before=workspace.Submissions();const auto pixels=ui::g_gdi.ScreenChangeCounter();
+                    ui::g_gdi.InvalidateLayout();assert(!workspace.FrameCurrent() && ui::g_gdi.ScreenChangeCounter()==pixels);
+                    assert(workspace.Redraw()==user::NativePresentResult::Submitted && workspace.Submissions()==before+1);
+                } else glEnable(0xdead);
+                if(mode==2)allocator.failAt=allocator.calls+1;
+                if(mode==3)device.openOk=false;
+                if(mode==4)device.queueOk=false;
+                if(mode!=6) {
+                    const bool success=mode==0 || mode==1 || mode==5;
+                    const auto result=workspace.Redraw();
+                    assert((result==user::NativePresentResult::Submitted)==success);
+                    if(success) {
+                        assert(adapter.Counters().cpuFrames==1 && !adapter.Faulted());
+                        assert(adapter.Counters().gpuFrames==12 && adapter.Counters().swapAttempts==uint64_t(mode==1?13:12));
+                        assert(adapter.Counters().fallbacks==uint64_t(mode==5?0:1));
+                        assert(device.events==(mode==1?"SLEQ":mode==5?"EQ":"LEQ"));
+                        expected(13);assert(workspace.Redraw()==user::NativePresentResult::Submitted);
+                        assert(adapter.Counters().cpuFrames==2);
+                    } else {
+                        assert(adapter.Faulted() && workspace.Faulted() && user::S().presentationFault);
+                        assert(device.events==(mode==2?"":mode==3?"LE":"LEQ"));
+                        const auto events=device.events;assert(workspace.Redraw()==user::NativePresentResult::Failed && device.events==events);
+                    }
+                }
+                // Scope destruction drains the parked native continuation.
+            }
+            if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
+        }
+    }
+    assert(checked);workspace.Detach();bindings.Shutdown();renderer.Shutdown();adapter.Release();assert(!allocator.live);
+    std::printf("Mixed output device mode=%d: PASS (actual x86/EGL, 12 retained cursor frames, no readback/upload/snapshot, recovery/queue/fault/layout ordering)\n",mode);
+}
+int main(int argc,char** argv){assert(argc==2);ui::FontCache::SetDirectory("romfs/fonts");ui::FontDesc font;font.face="Liberation Sans";font.height=-16;assert(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);for(int mode=0;mode<7;++mode)DeviceRun(argv[1],mode);}

@@ -161,3 +161,14 @@ interpreter/HLE/callback/synchronous wait and presentation work; raster and GPU
 stages can be nested, never additive disjoint CPU phases. No per-instruction
 clock or per-frame SD output. This prepares future console attribution without
 asking for physical tests now or awarding hardware performance acceptance.
+
+
+## v9: opt-in native mixed device output (G4b.2f)
+
+[Contract and public host/device evidence](G4B2F_SWITCH_MIXED_OUTPUT.md). Existing
+fields remain; the summary adds native requested/enabled, submissions/redraws,
+successful GPU/CPU frames, swap attempts/fallbacks/failures and retained CPU staging.
+Native device work appears in actual framebuffer/GL counters; legacy Presentation
+snapshot counters do not include it. Native input-to-output correlation is not
+measured with a substituted canonical serial. The flag defaults off, ordinary GDI
+is CPU and physical acceptance remains the same deferred checklist above.

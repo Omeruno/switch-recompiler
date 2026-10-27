@@ -44,6 +44,8 @@
 #include "ui/switch_gpu_output.h"
 #include "win32/user32.h"
 #include "win32/shell_session.h"
+#include "win32/mixed_workspace.h"
+#include "win32/mixed_output.h"
 #include <new>
 #include "win32/presentation_session.h"
 #include "win32/host_functions.h"
@@ -96,6 +98,8 @@ void Present(const ui::Surface& s);
 void BeginPresentation(const char* guestPath);
 extern bool g_gpuActive;
 void EndPresentation();
+bool BeginMixedPresentation(win32::user::ShellSession&);
+void EndMixedPresentation();
 void InvalidateOutput();
 bool InitializeOutput(bool gpuRequested);
 bool DesktopOutput();
@@ -362,6 +366,12 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         newui::g_shellSession=shellSession.get();
         // Retain guest windows and a separate native plane. Canonical composed
         // RGB remains available for readback/software/allocation fallback.
+    }
+
+    struct MixedBinding {~MixedBinding(){if(g_useNewUi)newui::EndMixedPresentation();}} mixedBinding;
+    if(shellSession && !newui::BeginMixedPresentation(*shellSession)) {
+        g_launchStatus="Could not initialize native mixed output.";
+        executionLog.Complete("Native mixed output initialization failed",8,0);return;
     }
 
     // прежнему слою нужны заглушки MFC; новый грузит настоящую mfc42u.dll
@@ -1665,6 +1675,10 @@ static void ResetLegacyFrontend() {
 namespace newui {
 
 win32::user::ShellSession* g_shellSession=nullptr;
+std::unique_ptr<win32::user::WindowGpuBindings> g_mixedBindings;
+std::unique_ptr<win32::user::MixedWorkspace> g_mixedWorkspace;
+bool g_mixedRequested=false,g_mixedEnabled=false;
+uint64_t g_mixedSubmissions=0,g_mixedRedraws=0;
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
 ui::SoftwarePresentation g_software;
 ui::OpenGlPresentation g_gpu;
@@ -1704,6 +1718,66 @@ bool CreateSoftwareOutput() {
 }
 bool g_outputFailed=false,g_guestPresentation=false;
 uint64_t g_scopeFallbackStart=0;
+struct NativeMixedDevice final:win32::user::MixedOutputDevice {
+    bool GpuActive() const override {return g_gpuActive;}
+    bool SwapGpu() override {
+        const auto start=PresentationClock::now();const bool ok=g_gpuOutput.Swap();
+        const auto ns=PresentationElapsed(start);
+        if(ok){++g_framebufferStats.gpuFrames;g_framebufferStats.gpuSwapNs+=ns;
+            g_framebufferStats.maxGpuSwapNs=std::max(g_framebufferStats.maxGpuSwapNs,ns);}
+        else g_gpuError=g_gpuOutput.Error();
+        return ok;
+    }
+    void LeaveGpu() override {
+        if(g_gpuError=="none")g_gpuError=std::string(g_gpu.Error())=="none"?"native mixed target/render failure":g_gpu.Error();
+        ++g_gpuFallbacks;
+        // MixedOutput already staged genuine recovery pixels. Commit GDI CPU
+        // authority before disabling its retained layers and destroying context.
+        if(!win32::user::EnableWindowLayers(false))g_outputFailed=true;
+        g_presentation.Attach(&g_software);g_presentation.ClearLayers();
+        g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;g_havePresented=false;
+    }
+    bool EnsureSoftware() override {return !g_outputFailed && CreateSoftwareOutput();}
+    bool QueueSoftware(const ui::OutputBuffer& source) override {
+        if(!g_framebufferReady || !source.Valid() || source.width!=kOutW || source.height!=kOutH)return false;
+        u32 stride=0;auto start=PresentationClock::now();
+        auto* target=static_cast<u32*>(framebufferBegin(&g_fb,&stride));const auto beginNs=PresentationElapsed(start);
+        // libnx's successfully created linear framebuffer guarantees this layout.
+        if(!target || stride<size_t(kOutW)*4){g_outputFailed=true;return false;}
+        for(int y=0;y<kOutH;++y)std::memcpy(reinterpret_cast<uint8_t*>(target)+size_t(y)*stride,
+            source.pixels+size_t(y)*source.stridePixels,size_t(kOutW)*4);
+        start=PresentationClock::now();framebufferEnd(&g_fb);const auto endNs=PresentationElapsed(start);
+        ++g_framebufferStats.frames;g_framebufferStats.beginNs+=beginNs;g_framebufferStats.endNs+=endNs;
+        g_framebufferStats.maxBeginNs=std::max(g_framebufferStats.maxBeginNs,beginNs);
+        g_framebufferStats.maxEndNs=std::max(g_framebufferStats.maxEndNs,endNs);return true;
+    }
+} g_nativeMixedDevice;
+win32::user::MixedOutput g_nativeMixedOutput(g_nativeMixedDevice,g_gpu,g_software);
+void EndMixedPresentation() {
+    if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();}
+    g_mixedWorkspace.reset();
+    if(g_mixedBindings){g_mixedBindings->Shutdown();g_mixedBindings.reset();}
+    g_havePresented=false;
+}
+bool BeginMixedPresentation(win32::user::ShellSession& shell) {
+    EndMixedPresentation();g_mixedEnabled=false;
+    FILE* flag=fopen("sdmc:/switch-recompiler/gpu-gdi-native.flag","rb");
+    g_mixedRequested=flag && fgetc(flag)=='1';if(flag)fclose(flag);
+    if(!g_mixedRequested || !g_gpuActive)return true;
+    g_mixedBindings.reset(new(std::nothrow) win32::user::WindowGpuBindings);
+    if(!g_mixedBindings || !g_mixedBindings->Initialize() || !g_mixedBindings->EnableCoherence()) {
+        EndMixedPresentation();return false;
+    }
+    g_mixedWorkspace.reset(new(std::nothrow) win32::user::MixedWorkspace(*g_mixedBindings,shell,
+        [](void*,win32::user::WindowGpuBindings& bindings,ui::MixedPresentation& frame) {
+            const ui::PresentationCursor cursor{int(g_cx),int(g_cy),g_cursorVisible};
+            const bool ok=g_nativeMixedOutput.Present(bindings,frame,kOutW,kOutH,cursor);
+            if(ok){g_havePresented=true;g_presentedCursor=cursor;}else g_outputFailed=true;
+            return ok;
+        },nullptr));
+    if(!g_mixedWorkspace || !g_mixedWorkspace->Attach()){EndMixedPresentation();return false;}
+    g_mixedEnabled=true;return true;
+}
 struct OutputDevice {
     bool Open(ui::OutputPreference mode) {
         g_havePresented=false;g_outputFailed=false;g_gpuError="none";
@@ -1719,6 +1793,7 @@ struct OutputDevice {
         g_presentation.Attach(&g_software);return true;
     }
     void Close() {
+        EndMixedPresentation();g_nativeMixedOutput.Release();
         g_presentation.Detach();g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;
         if(g_framebufferReady){framebufferClose(&g_fb);g_framebufferReady=false;}
         g_havePresented=false;g_outputFailed=false;g_graphicsInitialized=false;
@@ -1743,11 +1818,13 @@ bool FallBackToSoftware(const char* error) {
     g_presentation.Attach(&g_software); // retain the owned CPU snapshot
     g_presentation.ClearLayers();win32::user::EnableWindowLayers(false);
     g_gpu.Shutdown();g_gpuOutput.Shutdown();g_gpuActive=false;g_havePresented=false;
+    if(g_mixedBindings)g_mixedBindings->ContextLost();
     return CreateSoftwareOutput();
 }
 void BeginPresentation(const char* guestPath) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
+    g_nativeMixedOutput.Reset();g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
@@ -1772,7 +1849,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v8\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v9\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1837,6 +1914,13 @@ void EndPresentation() {
             (unsigned long long)latency.outputFrames,(unsigned long long)latency.coalesced,(unsigned long long)latency.dropped,
             (unsigned long long)latency.invalid,input.Pending());
         fprintf(log,"Input timing scope: platform observation / queue removal to later changed CPU frame queued by output; correlation only, not causal dispatch or input-to-photon latency. Raster stages include synchronous host GDI preparation, exclude raw guest writes and interpreter time.\n");
+        const auto& mixed=g_nativeMixedOutput.Counters();
+        fprintf(log,"Native mixed requested: %u\nNative mixed enabled: %u\nNative mixed submissions: %llu\nNative mixed redraws: %llu\nNative mixed GPU frames: %llu\nNative mixed swap attempts: %llu\nNative mixed fallbacks: %llu\nNative mixed CPU frames: %llu\nNative mixed failures: %llu\nNative mixed staging bytes: %zu\n",
+            unsigned(g_mixedRequested),unsigned(g_mixedEnabled),(unsigned long long)g_mixedSubmissions,
+            (unsigned long long)g_mixedRedraws,(unsigned long long)mixed.gpuFrames,(unsigned long long)mixed.swapAttempts,
+            (unsigned long long)mixed.fallbacks,(unsigned long long)mixed.cpuFrames,(unsigned long long)mixed.failures,
+            g_nativeMixedOutput.StagingBytes());
+        fprintf(log,"Native mixed scope: opt-in device adapter; ordinary GDI dispatch remains CPU. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);
     }
     ui::g_rasterMetrics.Reset(false);win32::user::S().inputFrames.Reset(false);
@@ -1845,8 +1929,19 @@ void EndPresentation() {
     win32::user::EnableWindowLayers(false);g_guestPresentation=false;
 }
 void Blit() {
-    if(g_outputFailed || !g_presentation.SourceWidth())return;
+    if(g_outputFailed)return;
     const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
+    if(g_mixedWorkspace && g_mixedBindings && g_mixedBindings->PresentationReady()) {
+        if(g_havePresented && g_mixedWorkspace->FrameCurrent() && g_presentedCursor.x==cursor.x &&
+           g_presentedCursor.y==cursor.y && g_presentedCursor.visible==cursor.visible) {
+            ++g_framebufferStats.skippedUnchanged;return;
+        }
+        if(!g_mixedWorkspace->FrameCurrent())win32::user::PresentIfNeeded(true);
+        else if(g_mixedWorkspace->Redraw()!=win32::user::NativePresentResult::Submitted)g_outputFailed=true;
+        if(win32::user::S().presentationFault)g_outputFailed=true;
+        return;
+    }
+    if(!g_presentation.SourceWidth())return;
     // libnx linear mode preserves one CPU staging buffer; framebufferEnd
     // copies that staging image into the dequeued display slot. Skip unchanged
     // staging images before acquisition, swizzle and queueing a duplicate.
@@ -1905,6 +2000,12 @@ bool DrawDesktop(const ui::Surface& s,int x,int y,bool cursor) {
     Blit();return OutputHealthy();
 }
 void Present(const ui::Surface& s) {
+    if(g_mixedWorkspace && g_mixedBindings && g_mixedBindings->PresentationReady()) {
+        if(g_shellSession)g_shellSession->SetClock(DeviceClock());
+        win32::user::PresentIfNeeded(true);
+        if(win32::user::S().presentationFault)g_outputFailed=true;
+        return;
+    }
     if(g_shellSession) {
         g_shellSession->SetClock(DeviceClock());
         const auto& canonical=g_shellSession->Compose(s);

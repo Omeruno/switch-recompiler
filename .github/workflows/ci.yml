@@ -104,6 +104,7 @@ jobs:
             docs/G4B2C_CPU_COHERENCE.md
             docs/G4B2D4_LIVE_WINDOW_FRAMES.md
             docs/G4B2E_MIXED_WORKSPACE.md
+            docs/G4B2F_SWITCH_MIXED_OUTPUT.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-gpu-window-bindings

@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`49b85d0faa35f5580adc52669544568d14c2c3e4` (2026-10-27).
-[CI 40406723178](https://github.com/Omeruno/switch-recompiler/actions/runs/40406723178)
+`b6450f1cdc2bdff79e10a902e747ef73b3517f21` (2026-10-27).
+[CI 40409687618](https://github.com/Omeruno/switch-recompiler/actions/runs/40409687618)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2e native shell overlay and USER mixed selection implemented (2026-10-27)
+## Current position: G4b.2f opt-in Switch mixed device/cursor adapter implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -37,7 +37,9 @@ into retained mixed frames without a CPU readback barrier.
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) adds native shell overlays, an owning
 MixedWorkspace producer and real USER selection before CPU checkpoint, plus
 output-fault acknowledgement/drain routing.
-Next: persistent Switch device/swap/cursor adapter integration,
+[G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) adds the opt-in persistent Switch
+device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
+Next:
 remaining direct-host-access/fault audit and bounded ordinary GDI admission.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
@@ -2235,3 +2237,63 @@ Local devkitA64/libnx absent; CI compiles Switch-only OutputHealthy change. No
 hardware/Paint/GPU/fallback/input/relaunch test requested; deferred list retained,
 SD closed. Next persistent Switch device/swap/cursor adapter, raw-host/fault audit,
 then bounded common GDI GPU admission and measured transfer/checkpoint costs.
+
+
+## G4b.2f — opt-in persistent Switch mixed output/cursor adapter (2026-10-27)
+
+Cleanb6450f1/FETCH_HEAD, no newer work/AGENTS. User requests the next large block.
+Implemented MixedOutput native device protocol: actual production GPU render then
+swap; failed render never swaps; failed swap is not successful output. Fallback
+first stages full genuine recovered CPU RGBA, then device destroys context,
+manager receives ContextLost, software output is prepared and complete pixels
+queued. Staging/replay/setup/queue failure latches fault, no repeated work or false
+acknowledgement. Output staging bounded1280x720x4 persists across same-policy
+guests, freed at device close. See G4B2F_SWITCH_MIXED_OUTPUT.md.
+
+MixedWorkspace now Refresh/Redraw/FrameCurrent caches the owning frame for cursor
+movement. CPU/GPU/shell/layout epochs and current USER identity invalidate it;
+metadata-only layout change cannot reuse an obsolete mask. Direct failure also
+latches USER output fault. Switch Blit routes cursor/visibility through this
+owning source, not an old CPU canonical frame. Source refresh uses USER ack.
+
+Actual Switch adapter owns swap/linear-framebuffer queue/fallback and metrics.
+RunInterpreter's scoped mixed producer/bindings detach/shutdown after continuation
+drain, before shell/USER and context/device close; device persists across guests.
+Explicit first byte1 of sdmc:/switch-recompiler/gpu-gdi-native.flag enables this
+native experiment only on new UI with live GPU/shell. Defaults off; L/ZL and sticky
+software policy preserved. Ordinary GDI remains CPU and creates no GPU targets
+through application calls. Native inspectors exercise real resident work. Do not
+claim this flag accelerates Paint or ask for physical tests as a prerequisite.
+Renderer report v9 adds separately scoped native output/cursor/fallback/storage
+counts; legacy canonical input correlation is not given fabricated mixed serials.
+
+Existing20-stage x86 coherence/USER/native-shell fixtures retained. Seven extra
+fresh public-x86/EGL sessions park real guest windows, inject genuine GPU fills
+and compare all1280x720 output pixels with independent native/guest/cursor oracle.
+Each starts12 retained cursor frames, stable snapshot/base upload and zero extra
+target reads. Modes cover GL error, swap rejection, staging allocation, software
+setup, queue rejection, actual EGL destruction/no-current-context CPU recovery,
+and metadata-only layout change forcing resubmit. Exact device event order and
+successful-vs-rejected counts checked; failure prevents retry, buffers release.
+These seven guests are host-aborted parked sessions, not fabricated completed exits.
+
+Initial development suite failed only because the new inspector named a nonexistent
+GuestExecution::Stop method. Removed that harness call; real destructor drains
+parked continuations. Targeted seven-mode/20-stage test then passed. Fresh final
+COMPOSITION_GL_TEST=1 rootless MinGW/Mesa suite passed final runtime/headers/tests,
+including all prior measurement/GDI/GPU/window/native/workspace/busy/lifecycle/file,
+Stage C/six E9/22 F gates. Strict O2/no-exceptions/no-RTTI native output/controller
+and final inspector pass. Focused ASan/UBSan native bridge/controller/output/USER
+plus actual mixed/target/renderer/inspector pass with other runtime objects ordinary;
+driver leak scan disabled, known native-fiber warning retained. Negative forced
+resnapshot fails retained work counts; swapped rejected render fails required
+CPU recovery/output counts. No runtime/test edits after successful final suite.
+
+Map23cards/3views/27docs, Markdown links/fences, shell syntax, browser desktop/mobile
+and diff checks are final local gates. Existing coherence artifact gains the new
+contract; six core jobs unchanged. Verify exact published-SHA six-job CI, Switch
+NRO, coherence log/public PE32/contract and Pages before completion. Local SDK
+absent; libnx/flag/framebuffer integration is CI-compiled, not host-executed or
+physically accepted. Hardware/Paint/GPU/fallback/input/relaunch deferred, SD closed.
+Next raw-host pixel/coherence-fault audit then bounded ordinary common GDI admission,
+with real x86/CPU/EGL/count gates before performance claims. Dynarec/D3D separate.

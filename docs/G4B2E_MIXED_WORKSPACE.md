@@ -120,9 +120,9 @@ its log, public PE32 fixture and this contract.
 
 ## Remaining activation work
 
-Wire a device adapter into persistent Switch output with explicit renderer/swap
-failure, software recovery, context ownership and session/device teardown ordering.
-Carry cursor-only retained redraw and output counters through that integration.
+[G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) now implements the explicit opt-in Switch
+device adapter, genuine staged software recovery, retained cursor redraw and
+context/session/device ordering. Default ordinary GDI remains CPU.
 Ordinary GDI still has no automatically admitted GPU dispatch. Audit remaining raw
 host pixel consumers and propagate coherence faults before admitting a bounded
 common GDI subset with public x86/CPU/EGL/work-count gates. The new USER selector

@@ -144,6 +144,7 @@ public:
     // Вызывается при любом изменении положения/видимости окон
     void InvalidateLayout() { ++layoutGeneration_; }
     // Заметка «экран изменился» для вывода на дисплей
+    uint64_t LayoutGeneration() const {return layoutGeneration_;}
     uint64_t ScreenChangeCounter() const { return screenChanges_; }
     void MarkScreenChanged() {++screenChanges_;}
     // Diagnostic reference control; session-owned with the rest of GDI state.
