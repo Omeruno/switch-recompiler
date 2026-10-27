@@ -103,15 +103,18 @@ void ShellSession::SetClock(const std::u16string& clock) {
     clock_=clock;if(ready_)Refresh();
 }
 const ui::Surface& ShellSession::Compose(const ui::Surface& guest) {
-    if(ready_ && !ui::g_gdi.PrepareCpuAccess())return outputSurface_;
-    if(!ready_ || guest.width!=W || guest.height!=H || !guest.Valid())return guest;
+    const auto* result=TryCompose(guest);return result?*result:failedSurface_;
+}
+const ui::Surface* ShellSession::TryCompose(const ui::Surface& guest) {
+    if(!ui::g_gdi.PrepareCpuAccess()){S().presentationFault=true;return nullptr;}
+    if(!ready_ || guest.width!=W || guest.height!=H || !guest.Valid())return guest.Valid()?&guest:nullptr;
     if(ObserveTask())Refresh();
     Copy(outputSurface_,guest,{0,0,W,H});
     Copy(outputSurface_,chromeSurface_,{0,680,W,H});
     if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,shell_.PanelBounds());
     if(!shell_.DialogBounds().Empty())Copy(outputSurface_,chromeSurface_,shell_.DialogBounds());
     if(shell_.StartOpen())Copy(outputSurface_,chromeSurface_,{0,284,484,680});
-    return outputSurface_;
+    return &outputSurface_;
 }
 ui::WindowSceneView ShellSession::NativeOverlay() {
     if(!ready_ || !owners_.Resize(size_t(W)*H))return {};

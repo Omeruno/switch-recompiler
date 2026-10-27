@@ -39,7 +39,7 @@ NativePresentResult MixedWorkspace::Redraw() {
     ++frames_;++redraws_;return NativePresentResult::Submitted;
 }
 NativePresentResult MixedWorkspace::Present() {
-    if(!attached_ || fault_ || busy_ || S().presentationFault)return NativePresentResult::Failed;
+    if(!attached_ || fault_ || busy_ || S().presentationFault || ui::g_gdi.CpuAccessFault())return NativePresentResult::Failed;
     if(!bindings_.PresentationReady())return NativePresentResult::Unavailable;
     struct Scope {bool& busy;Scope(bool& b):busy(b){busy=true;}~Scope(){busy=false;}} scope(busy_);
     const auto overlay=shell_.NativeOverlay();

@@ -17,13 +17,16 @@ public:
     bool EnableCoherence(); // explicit native test mode, current fresh USER session
     bool DisableCoherence();
     bool CheckpointCpu();
+    enum class Fault {None,DirtyImport,WindowCommit,WindowDescription,Detach,ReentrantCpu};
+    Fault FaultReason() const {return faultReason_;}
+    const char* FaultName() const;
     bool CoherenceHealthy() const {return !fault_;}
     const CoherenceStats& CoherenceCounters() const {return coherenceStats_;}
 
     // Explicit coherent native presentation. Uses actual whole-window visible
     // regions; canonical CPU base may be stale only beneath resident owners.
     bool SubmitMixed(ui::MixedPresentation&,const ui::WindowSceneView* overlay=nullptr);
-    bool PresentationReady() const {return coherent_ && !fault_ && SameSession();}
+    bool PresentationReady() const;
     uint64_t PresentationRevision() const {return gpuRevision_;}
     bool RenderMixed(ui::MixedPresentation&,ui::OpenGlPresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
     bool RenderMixedCpu(ui::MixedPresentation&,ui::SoftwarePresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});
@@ -44,6 +47,8 @@ public:
 private:
     struct Gate;
     bool BeforeCpu();
+    bool Fail(Fault);
+    void RevokeGate();
     bool SameSession() const;
     struct Slot {
         uint32_t hwnd=0;uint64_t identity=0;int width=0,height=0;
@@ -58,6 +63,7 @@ private:
     std::shared_ptr<Gate> gate_;
     uint64_t desktopIdentity_=0,gpuRevision_=0;
     bool coherent_=false,fault_=false,barrier_=false;
+    Fault faultReason_=Fault::None;
     CoherenceStats coherenceStats_;
 
     std::array<Slot,ui::GpuGdiTargets::MaxTargets> slots_{};

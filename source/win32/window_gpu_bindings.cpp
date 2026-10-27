@@ -24,20 +24,20 @@ bool Size(const ui::Rect& r,int& w,int& h) {
 }
 }
 bool WindowGpuBindings::Initialize(){Shutdown();return targets_.Initialize();}
-void WindowGpuBindings::Shutdown(){DisableCoherence();slots_={};frameOwners_.Clear();targets_.Shutdown();}
+void WindowGpuBindings::Shutdown(){if(!DisableCoherence())RevokeGate();slots_={};frameOwners_.Clear();targets_.Shutdown();}
 void WindowGpuBindings::Prune() {
-    if(coherent_ && (!SameSession() || fault_)){fault_=true;return;}
+    if(coherent_ && (!SameSession() || fault_))return;
     for(auto& s:slots_)if(s.target) {
         auto* w=Win(s.hwnd);int width=0,height=0;
         if(!w || w->rasterIdentity!=s.identity || !Size(ScreenRect(w),width,height) ||
            width!=s.width || height!=s.height) {
-            if(coherent_ && !s.dirty.Empty() && !CheckpointCpu()){fault_=true;return;}
+            if(coherent_ && !s.dirty.Empty() && !CheckpointCpu())return;
             targets_.Destroy(s.target);s={};
         }
     }
 }
 bool WindowGpuBindings::Acquire(uint32_t hdc,Lease& out) {
-    out={};Prune();
+    out={};if(coherent_ && !SameSession())return false;Prune();
     if(coherent_ && (!SameSession() || fault_))return false;
     ui::WindowRasterTarget r;int width=0,height=0;
     if(!targets_.GpuActive() || !ui::g_gdi.DescribeWindowTarget(hdc,r) || r.hwnd==S().desktop ||
@@ -110,15 +110,34 @@ bool WindowGpuBindings::EnableCoherence() {
     auto gate=std::make_shared<Gate>(this);
     if(!ui::g_gdi.InstallCpuGate(gate))return false;
     gate_=std::move(gate);desktopIdentity_=Desktop()->rasterIdentity;
-    coherent_=true;fault_=false;coherenceStats_={};gpuRevision_=0;return true;
+    coherent_=true;fault_=false;faultReason_=Fault::None;coherenceStats_={};gpuRevision_=0;return true;
+}
+void WindowGpuBindings::RevokeGate() {
+    if(gate_)gate_->owner=nullptr;
+    gate_.reset();coherent_=false;
+}
+bool WindowGpuBindings::Fail(Fault reason) {
+    fault_=true;if(faultReason_==Fault::None)faultReason_=reason;
+    if(SameSession())S().presentationFault=true;
+    return false;
+}
+const char* WindowGpuBindings::FaultName() const {
+    switch(faultReason_) {
+    case Fault::None:return "none";
+    case Fault::DirtyImport:return "dirty import";
+    case Fault::WindowCommit:return "window CPU commit";
+    case Fault::WindowDescription:return "window frame metadata";
+    case Fault::Detach:return "coherence detach";
+    case Fault::ReentrantCpu:return "reentrant CPU access";
+    }
+    return "unknown";
 }
 bool WindowGpuBindings::DisableCoherence() {
     if(!coherent_)return true;
-    const bool ok=SameSession() && CheckpointCpu() && ui::g_gdi.RemoveCpuGate(gate_);
-    if(gate_)gate_->owner=nullptr;
-    gate_.reset();coherent_=false;
-    if(!ok)fault_=true; // expired installed weak gate blocks unsafe CPU access
-    return ok;
+    if(!SameSession())return false; // a suspended owner must not be revoked by an inner session
+    const bool ok=CheckpointCpu() && ui::g_gdi.RemoveCpuGate(gate_);
+    RevokeGate();
+    return ok?true:Fail(Fault::Detach);
 }
 WindowGpuBindings::Slot* WindowGpuBindings::FindSlot(const Lease& lease) {
     for(auto& s:slots_)if(s.target==lease.target && s.identity==lease.raster.windowIdentity)return &s;
@@ -126,7 +145,7 @@ WindowGpuBindings::Slot* WindowGpuBindings::FindSlot(const Lease& lease) {
 }
 bool WindowGpuBindings::Seed(Slot& s,const Lease& lease) {
     if(!s.import)return true;
-    if(!s.dirty.Empty()){fault_=true;return false;}
+    if(!s.dirty.Empty())return Fail(Fault::DirtyImport);
     const size_t pixels=size_t(s.width)*s.height;
     if(!s.seed.Resize(pixels) || !ui::g_gdi.SnapshotWindow(lease.raster,s.seed.data(),pixels) ||
        !targets_.ImportCpu(s.target,s.seed.data(),pixels))return false;
@@ -134,16 +153,17 @@ bool WindowGpuBindings::Seed(Slot& s,const Lease& lease) {
 }
 bool WindowGpuBindings::CheckpointCpu() {
     if(!coherent_)return false;
-    if(fault_ || !SameSession()){fault_=true;return false;}
+    if(!SameSession())return false;
+    if(fault_)return false;
     for(auto& s:slots_)if(s.target && !s.dirty.Empty()) {
         const auto* image=targets_.CpuRead(s.target);size_t pixels=0;
-        if(!image || !ui::g_gdi.CommitWindow(s.stamp,*image,s.dirty,pixels)){fault_=true;return false;}
+        if(!image || fault_ || ui::g_gdi.CpuAccessFault() || !ui::g_gdi.CommitWindow(s.stamp,*image,s.dirty,pixels))return Fail(Fault::WindowCommit);
         s.dirty.Clear();++coherenceStats_.commits;coherenceStats_.commitPixels+=pixels;
     }
     return true;
 }
 bool WindowGpuBindings::BeforeCpu() {
-    if(barrier_)return !fault_;
+    if(barrier_)return Fail(Fault::ReentrantCpu);
     barrier_=true;++coherenceStats_.cpuBarriers;
     const bool ok=CheckpointCpu();
     if(ok)for(auto& s:slots_)s.import=true; // conservative CPU reads/writes handoff
@@ -155,8 +175,11 @@ const ui::Surface* WindowGpuBindings::CpuRead(const Lease& lease) {
 const ui::GpuGdiPrototype::Stats* WindowGpuBindings::Counters(const Lease& lease) {
     return Valid(lease)?targets_.TargetStats(lease.target):nullptr;
 }
+bool WindowGpuBindings::PresentationReady() const {
+    return coherent_ && !fault_ && SameSession() && !ui::g_gdi.CpuAccessFault() && !S().presentationFault;
+}
 bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output,const ui::WindowSceneView* overlay) {
-    if(!coherent_ || fault_ || !SameSession())return false;
+    if(!PresentationReady())return false;
     const auto& screen=S().screen.s;
     if(!screen.Valid() || screen.bpp!=32 || screen.width>ui::GpuGdiTargets::MaxOutputWidth ||
        screen.height>ui::GpuGdiTargets::MaxOutputHeight)return false;
@@ -168,7 +191,7 @@ bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output,const ui::Wind
     size_t count=0;
     for(const auto& slot:slots_)if(slot.target && !slot.dirty.Empty()) {
         ui::WindowDcInfo image;
-        if(slot.import || !ui::g_gdi.DescribeWindowImage(slot.stamp,image)) {fault_=true;return false;}
+        if(slot.import || !ui::g_gdi.DescribeWindowImage(slot.stamp,image))return Fail(Fault::WindowDescription);
         const auto& r=slot.stamp.frame;
         const uint32_t token=uint32_t(count+1);tokens[count]=token;
         resources[count]={slot.target,{0,0,slot.width,slot.height}};
@@ -201,10 +224,10 @@ bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output,const ui::Wind
 }
 bool WindowGpuBindings::RenderMixed(ui::MixedPresentation& frame,ui::OpenGlPresentation& renderer,
     const ui::OutputBuffer& out,ui::PresentationCursor cursor) {
-    return coherent_ && !fault_ && SameSession() && targets_.GpuActive() && frame.Render(targets_,renderer,out,cursor);
+    return PresentationReady() && targets_.GpuActive() && frame.Render(targets_,renderer,out,cursor);
 }
 bool WindowGpuBindings::RenderMixedCpu(ui::MixedPresentation& frame,ui::SoftwarePresentation& renderer,
     const ui::OutputBuffer& out,ui::PresentationCursor cursor) {
-    return coherent_ && !fault_ && SameSession() && frame.RenderCpu(targets_,renderer,out,cursor);
+    return PresentationReady() && frame.RenderCpu(targets_,renderer,out,cursor);
 }
 } // namespace win32::user

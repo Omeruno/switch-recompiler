@@ -130,8 +130,9 @@ remain consolidated/deferred, SD diagnosis stays closed.
 
 ## Next
 
-Audit unmediated host pixel access and coherence-fault routing with the selected
-device path, then admit a bounded ordinary GDI subset through common dispatch.
+[G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) audits registered host pixel consumers, adds
+guarded CPU views/sticky owner faults, checked fallback and lifecycle barriers.
+Next admit a bounded ordinary GDI subset through common dispatch.
 Preserve software/ROP/DIB/layout/session behavior with public x86/CPU/EGL/count
 regressions and measure the complete producer/transfer/checkpoint path before
 claiming performance. No EXE-name shortcut, dynarec, Direct3D or PC-game acceptance.

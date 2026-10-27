@@ -138,9 +138,20 @@ public:
     Gdi();
 
     // Экран: все окна рисуют сюда. Создаётся оконной подсистемой.
-    void SetScreen(Surface* screen) { screen_ = screen; }
-    Surface* Screen() { return screen_; }
-    void SetWindowDcProvider(WindowDcProvider p) { provider_ = p; }
+    bool SetScreen(Surface* screen) {
+        if(cpuAccessFault_ || (screen_ && screen_!=screen && !PrepareCpuAccess()))return false;
+        screen_=screen;return true;
+    }
+    // Synchronous CPU views only: do not retain across GPU/native exchanges.
+    const Surface* Screen() {return PrepareCpuAccess()?screen_:nullptr;}
+    Surface* ScreenForWrite() {
+        if(!PrepareCpuAccess() || !screen_)return nullptr;
+        MarkScreenChanged();return screen_; // raw host writes conservatively dirty CPU output
+    }
+    bool SetWindowDcProvider(WindowDcProvider p) {
+        if(cpuAccessFault_ || (provider_ && provider_!=p && !PrepareCpuAccess()))return false;
+        if(provider_!=p){provider_=p;InvalidateLayout();}return true;
+    }
     // Вызывается при любом изменении положения/видимости окон
     void InvalidateLayout() { ++layoutGeneration_; }
     // Заметка «экран изменился» для вывода на дисплей
@@ -227,6 +238,7 @@ public:
     bool InstallCpuGate(const std::shared_ptr<CpuRasterGate>&);
     bool RemoveCpuGate(const std::shared_ptr<CpuRasterGate>&);
     bool PrepareCpuAccess();
+    bool CpuAccessFault() const {return cpuAccessFault_ || (cpuGateInstalled_ && cpuGate_.expired());}
     // Internal exchange helpers: caller already owns the relevant authority.
     // They bypass the CPU gate to avoid recursion inside its implementation.
     // Geometry/visibility only; never invokes CPU coherence or reads pixels.
@@ -248,7 +260,7 @@ private:
     bool ResolveTarget(uint32_t,Surface*&,int&,int&,Region&,const SurfaceWriteCapture**);
     bool WindowImageInfo(const WindowRasterTarget&,WindowDcInfo&);
     std::weak_ptr<CpuRasterGate> cpuGate_;
-    bool cpuGateInstalled_=false;
+    bool cpuGateInstalled_=false,cpuAccessFault_=false,preparingCpu_=false;
 
     struct Slot {
         ObjType type = ObjType::None;

@@ -14,6 +14,7 @@
 #include "source/ui/opengl_presentation.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 namespace user=win32::user;
 using Bindings=user::WindowGpuBindings;
@@ -378,4 +379,70 @@ static void DeviceRun(const char* path,int mode) {
     assert(checked);workspace.Detach();bindings.Shutdown();renderer.Shutdown();adapter.Release();assert(!allocator.live);
     std::printf("Mixed output device mode=%d: PASS (actual x86/EGL, 12 retained cursor frames, no readback/upload/snapshot, recovery/queue/fault/layout ordering)\n",mode);
 }
-int main(int argc,char** argv){assert(argc==2);ui::FontCache::SetDirectory("romfs/fonts");ui::FontDesc font;font.face="Liberation Sans";font.height=-16;assert(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);for(int mode=0;mode<7;++mode)DeviceRun(argv[1],mode);}
+static void HostAuditRun(const char* path,int mode) {
+    Egl egl;rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
+    Shell shell;user::ShellSession bridge(shell);assert(bridge.Attach("Host access audit"));
+    Bindings bindings;assert(bindings.Initialize() && bindings.EnableCoherence());
+    auto& process=session.ProcessObject();auto& memory=session.Memory();std::string error;
+    assert(process.LoadMainExe(path,error) && process.PrepareMainThread(process.MainThread().cpu,error));
+    const auto probe=process.GetProcAddress(process.MainModule(),"CoherenceProbe");assert(probe);
+    bool checked=false,consumed=false;Bindings::Lease lease,other;
+    {
+        rt::GuestExecution execution(process,[&](rt::GuestThread& t) {
+            win32::HostCallOutcome call;if(win32::TryHandleHostCall(t.cpu,memory,call))return !call.requestExit;
+            cpu::Interpreter cpu(memory,t.teb,t.teb);const auto result=cpu.Step(t.cpu);
+            assert(result==cpu::StepResult::Continue || result==cpu::StepResult::Halted);return true;
+        },rt::GuestExecution::Startup::InitializeModules);
+        for(unsigned i=0;i<400000 && !consumed;++i) {
+            const auto result=execution.RunOne();assert(result!=rt::GuestExecution::Result::AllocationFailed);
+            if(memory.Read32(probe)==1 && !checked) {
+                checked=true;assert(bindings.Acquire(memory.Read32(probe+8),lease) && bindings.Acquire(memory.Read32(probe+16),other));
+                auto before=Screen();
+                for(unsigned n=0;n<64;++n)assert(bindings.Fill(lease,{int(n%8)*16,int(n/8)*16,int(n%8+1)*16,int(n/8+1)*16},n?Tile(n):0x223344));
+                assert(bindings.Fill(other,{0,0,16,16},0x4162a3));
+                {rt::GuestSession inner;user::EnableUi(1280,720);Bindings::Lease invalid;
+                 assert(!bindings.Acquire(memory.Read32(probe+8),invalid));bindings.Prune();
+                 assert(!bindings.CheckpointCpu() && !bindings.DisableCoherence());
+                 assert(!ui::g_gdi.CpuAccessFault() && !user::S().presentationFault && ui::g_gdi.Screen());}
+                assert(bindings.CoherenceHealthy() && bindings.Valid(lease) && bindings.Counters(lease)->readbacks==0 && Screen()==before);
+                if(mode==1 || mode==3) {
+                    unsigned queued=0;
+                    user::MixedWorkspace workspace(bindings,bridge,[](void* p,Bindings&,ui::MixedPresentation&) {
+                        ++*static_cast<unsigned*>(p);return true;
+                    },&queued);assert(workspace.Attach());
+                    // Deliberately violate the native layout contract while dirty.
+                    ui::g_gdi.InvalidateLayout();
+                    if(mode==3)user::OnGuiThreadExit(user::Win(lease.raster.hwnd)->threadId);
+                    assert(!ui::g_gdi.Screen() && ui::g_gdi.CpuAccessFault() && user::S().presentationFault);
+                    if(mode==3)assert(!user::Win(lease.raster.hwnd) && !user::Win(other.raster.hwnd));
+                    assert(bindings.FaultReason()==Bindings::Fault::WindowCommit && Screen()==before);
+                    assert(!bridge.TryCompose(user::S().screen.s) && !bridge.Compose(user::S().screen.s).Valid());
+                    user::PresentIfNeeded(true);assert(queued==0 && !ui::g_gdi.ScreenForWrite());
+                    {rt::GuestSession inner;user::EnableUi(1280,720);assert(!ui::g_gdi.CpuAccessFault() && !user::S().presentationFault && ui::g_gdi.Screen());}
+                    assert(ui::g_gdi.CpuAccessFault() && user::S().presentationFault);consumed=true;
+                } else if(mode==2) {
+                    user::OnGuiThreadExit(user::Win(lease.raster.hwnd)->threadId);
+                    assert(!user::Win(lease.raster.hwnd) && !user::Win(other.raster.hwnd));
+                    assert(!ui::g_gdi.CpuAccessFault() && bindings.CoherenceHealthy());
+                    assert(Screen()[size_t(58)*1280+48]==0x223344 && Screen()[size_t(52)*1280+302]==0x4162a3);
+                    bindings.Prune();assert(!bindings.Pixels());consumed=true;
+                } else {
+                    const auto* read=ui::g_gdi.Screen();assert(read && read->Get(48,58)==0x223344 && read->Get(302,52)==0x4162a3);
+                    const auto reads=bindings.Counters(lease)->readbacks;assert(reads==1 && bindings.Counters(other)->readbacks==1);
+                    assert(ui::g_gdi.Screen() && bindings.Counters(lease)->readbacks==reads);
+                    const auto serial=ui::g_gdi.ScreenChangeCounter();auto* write=ui::g_gdi.ScreenForWrite();assert(write);
+                    const uint32_t pixel=Tile(0);std::memcpy(write->Row(58)+48*4,&pixel,4);
+                    assert(ui::g_gdi.ScreenChangeCounter()>serial);
+                    assert(bindings.Fill(lease,{1,1,2,2},0x987654));
+                    const auto* image=bindings.CpuRead(lease);assert(image && image->Get(8,8)==Tile(0) && image->Get(1,1)==0x987654);
+                    assert(ui::g_gdi.Screen());RenderExpected(Screen());
+                }
+            }
+            if(mode==0 && checked && memory.Read32(probe)==2){consumed=true;assert(!ui::g_gdi.CpuAccessFault());}
+            if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
+        }
+    }
+    assert(checked && consumed);bindings.Shutdown();
+    std::printf("Host pixel audit mode=%s: PASS (suspended owner isolation, guarded raw access/reimport/real x86 reads or sticky lost-authority/no stale compose/no output)\n",mode==0?"read-write":mode==1?"fault":mode==2?"thread-exit":"thread-exit-fault");
+}
+int main(int argc,char** argv){assert(argc==2);ui::FontCache::SetDirectory("romfs/fonts");ui::FontDesc font;font.face="Liberation Sans";font.height=-16;assert(!ui::FontCache::Get(font)->Metrics().fixedPitch);rt::Clock::SetFastForward(true);Run(argv[1],false);Run(argv[1],true);for(int mode=0;mode<7;++mode)DeviceRun(argv[1],mode);for(int mode=0;mode<4;++mode)HostAuditRun(argv[1],mode);}

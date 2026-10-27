@@ -162,6 +162,9 @@ void OnGuiThreadExit(uint32_t id) {
     }
     std::vector<uint32_t> windows;
     for (const auto& item:S().windows) if (item.second->threadId==id) windows.push_back(item.first);
+    // Thread-exit cleanup must still retire handles on failure, but never
+    // continue presenting after losing a dirty window's CPU authority.
+    if(!windows.empty() && !ui::g_gdi.PrepareCpuAccess())S().presentationFault=true;
     for (uint32_t hwnd:windows) {
         auto* window=Win(hwnd);
         if (auto* parent=ParentWin(window)) {

@@ -842,6 +842,7 @@ FN(KillTimer) {
 
 FN(BeginPaint) {
     ENTER;
+    if(!ui::g_gdi.PrepareCpuAccess())return Ret(0);
     uint32_t hwnd = A(c, m, 0), ps = A(c, m, 1);
     Window* w = Win(hwnd);
     if (!w || !ps) return Ret(0);
@@ -993,6 +994,7 @@ FN(GetUpdateRgn) {
 // Прокрутка: сдвиг содержимого клиентской области и перерисовка открывшейся полосы
 HostCallOutcome ScrollCommon(cpu::CpuState& c, cpu::IGuestMemory& m, uint32_t hwnd, int dx, int dy, uint32_t rectP, uint32_t clipP,
                              uint32_t updRgn, uint32_t updRectP, bool children) {
+    if(!ui::g_gdi.PrepareCpuAccess())return Ret(0);
     Window* w = Win(hwnd);
     if (!w) return Ret(0);
     Rect area = rectP ? ReadRect(m, rectP) : Rect(0, 0, w->client.Width(), w->client.Height());

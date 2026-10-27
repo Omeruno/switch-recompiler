@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-27, после F6a/F6b и G4b.2f (opt-in Switch mixed output adapter).
-Проверенный код `b6450f1cdc2bdff79e10a902e747ef73b3517f21`:
-[CI40409687618, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40409687618).
+Дата обновления: 2026-10-27, после F6a/F6b и G4b.2g (host pixel/fault audit).
+Проверенный код `dc254b204a8ba9f77a7a51872a655bacd1cc86aa`:
+[CI40442170369, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -25,8 +25,9 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 
 **Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1/G4b.2a/b/c реализованы
 в изолированном GPU/native-пути с shared-context handoff и HWND/DC leases.
-CPU/GPU-барьеры проверены в native opt-in режиме. Остаток G4b.2 — production GPU
-frames, аудит host-доступов и выборочное подключение обычного GDI. D, физическая E/F, H/I и расширения среды открыты.**
+CPU/GPU-барьеры, владеющие mixed frames, shell/USER selector, opt-in Switch adapter
+и зарегистрированные host pixel/fault границы реализованы. Остаток G4b.2 —
+выборочное подключение обычного GDI. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
 или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
@@ -140,7 +141,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2d.4 | [Живые окна → mixed frame](G4B2D4_LIVE_WINDOW_FRAMES.md), видимость/CPU occlusion, реальный x86/EGL | Native entry; shell/frontend впереди |
 | G4b.2e | [Native shell overlay + USER mixed selection](G4B2E_MIXED_WORKSPACE.md), GPU-only epochs / отказ вывода | Native adapter; Switch device/swap/default GDI впереди |
 | G4b.2f | [Opt-in Switch mixed output adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), cursor/fallback/lifecycle/v9 | Default off; ordinary GDI CPU, hardware отложен |
-| **Остаток G4b.2** | host-access/fault audit, ordinary GDI admission | **Следующий незавершённый рубеж** |
+| G4b.2g | [Host pixel/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky faults, checked compose/lifecycle, owner isolation | Зарегистрированные пути; обычный GDI ещё CPU |
+| **Остаток G4b.2** | ordinary GDI admission | **Следующий незавершённый рубеж** |
 
 До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
 измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
@@ -170,7 +172,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. Остаток G4b.2 — production texture frames, host-access/fault audit и выборочный GDI dispatch с публичными проверками.
+1. Остаток G4b.2 — выборочный обычный GDI dispatch поверх готовых opt-in frames/shell/device и проверенных host/fault границ, с публичными x86/CPU/EGL/count проверками.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -192,7 +194,7 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Это prerequisite для production-подключения ShellSession; текущий следующий
-шаг после opt-in Switch adapter G4b.2f — аудит пикселей/ошибок и допуск ограниченного GDI subset.
+шаг после зарегистрированного host pixel/fault audit G4b.2g — допуск ограниченного обычного GDI subset.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -202,8 +204,8 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [G4b.2d.4](G4B2D4_LIVE_WINDOW_FRAMES.md) собирает реальную видимость окон в этот кадр.
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
-Следом — аудит пиксельного доступа/ошибок,
-аудит доступа/ошибок. Обычный GDI и CPU-снимок ShellSession пока не переключены.
+[G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
+Следом — ограниченный обычный GDI subset. Обычный GDI и CPU-снимок ShellSession пока не переключены.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -213,4 +215,4 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**Opt-in Switch mixed output adapter реализован; следом — аудит доступа/ошибок и ограниченный обычный GPU-GDI.**
+**Host pixel/fault audit реализован; следом — ограниченный обычный GPU-GDI.**

@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2f opt-in persistent Switch mixed device/cursor adapter implemented; next access/fault audit and bounded common GDI admission.** Runtime baseline `b6450f1cdc2bdff79e10a902e747ef73b3517f21`
-passed [CI40409687618, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40409687618).
+G4b.2g registered host-access/fault audit implemented; next bounded ordinary common GDI admission.** Runtime baseline `dc254b204a8ba9f77a7a51872a655bacd1cc86aa`
+passed [CI40442170369, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369).
 G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -85,7 +85,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2d.4 | [Live-window ownership into mixed frames](G4B2D4_LIVE_WINDOW_FRAMES.md), real x86/EGL output before CPU readback | Explicit coherent native entry; shell/frontend and ordinary dispatch remain open |
 | G4b.2e | [Native shell mixed overlay + real USER producer selection](G4B2E_MIXED_WORKSPACE.md), GPU epochs and output-fault acknowledgement | Native selected adapter; persistent Switch device/swap and default GDI activation still open |
 | G4b.2f | [Opt-in Switch mixed output device/cursor adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), staged genuine recovery, teardown and v9 counters | Default off; ordinary GDI CPU, libnx physical acceptance deferred |
-| Remaining G4b.2 | remaining host-access/fault audit, ordinary GDI admission | **Next, not implemented/activated** |
+| G4b.2g | [Host pixel access/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky owner faults, checked compose/lifecycle and suspended session isolation | Registered paths audited; arbitrary future raw pointers remain caller responsibility |
+| Remaining G4b.2 | Bounded ordinary GDI admission and differential/work-count gates | **Next, not implemented/activated** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -100,9 +101,9 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
    Dynamic native chrome/Start/dialogs, GPU-only epochs, no selection checkpoint and failure acknowledgement are checked.
 3. **Implemented opt-in adapter:** [persistent Switch device/swap/cursor](G4B2F_SWITCH_MIXED_OUTPUT.md).
    Real host x86/EGL/recovery/order checks and Switch CI compilation; default off, not physical acceptance or ordinary GPU GDI.
-4. **Next:** audit remaining raw host pixel reads/writes and route coherence/render faults
-   through controlled drain/cleanup/return, preserving genuine software fallback.
-5. Admit a bounded ordinary GDI subset through common dispatch with public real-x86
+4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
+   Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
+5. **Next:** admit a bounded ordinary GDI subset through common dispatch with public real-x86
    CPU/EGL differential, readback/ROP/DIB/layout/lifecycle and explicit budget gates.
 6. Measure full producer/transfer/checkpoint/submission costs on public workloads;
    select subsequent CPU/GPU optimization from those results, not EXE names.

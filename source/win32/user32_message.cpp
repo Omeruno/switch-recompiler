@@ -293,6 +293,7 @@ uint32_t QueueStatusBits() {
 
 void PresentIfNeeded(bool force) {
     State& s = S();
+    if(ui::g_gdi.CpuAccessFault()){s.presentationFault=true;return;}
     if(s.presentationFault || (!g_platform.present && !g_platform.tryPresent))return;
     const auto shellRevision=g_platform.shellRevision?g_platform.shellRevision(g_platform.shellContext):0;
     const auto producer=g_platform.presentationIdentity;

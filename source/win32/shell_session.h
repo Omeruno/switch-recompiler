@@ -20,7 +20,8 @@ public:
     HostStatus ServiceHost();
     HostStatus Status() const {return status_;}
     size_t PendingGuestInput() const {return inputCount_;}
-    const ui::Surface& Compose(const ui::Surface& guest);
+    const ui::Surface* TryCompose(const ui::Surface& guest);
+    const ui::Surface& Compose(const ui::Surface& guest); // compatibility wrapper; failure is an invalid surface
     ui::WindowSceneView NativeOverlay(); // native-only mask/pixels, no guest CPU barrier
     ui::WindowSceneView Scene(); // optional owned ownership map; empty selects flat fallback
     void SetClock(const std::u16string& clock);
@@ -42,7 +43,7 @@ private:
     ui::PresentationBuffer<uint32_t> background_,chrome_,output_,owners_;
     std::array<ui::WindowLayerView,ui::WindowLayers::MaxLayers> sceneLayers_{};
     uint64_t sceneGeneration_=0;
-    ui::Surface backgroundSurface_,chromeSurface_,outputSurface_;
+    ui::Surface backgroundSurface_,chromeSurface_,outputSurface_,failedSurface_;
     std::u16string clock_;
     std::vector<uint32_t> minimized_,pendingTask_;
     std::array<InputEvent,MaxGuestInput> guestInput_{};

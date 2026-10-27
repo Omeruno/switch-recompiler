@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b6450f1cdc2bdff79e10a902e747ef73b3517f21` (2026-10-27).
-[CI 40409687618](https://github.com/Omeruno/switch-recompiler/actions/runs/40409687618)
+`dc254b204a8ba9f77a7a51872a655bacd1cc86aa` (2026-10-27).
+[CI 40442170369](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2f opt-in Switch mixed device/cursor adapter implemented (2026-10-27)
+## Current position: G4b.2g registered host-pixel/fault audit implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -39,8 +39,9 @@ MixedWorkspace producer and real USER selection before CPU checkpoint, plus
 output-fault acknowledgement/drain routing.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) adds the opt-in persistent Switch
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
-Next:
-remaining direct-host-access/fault audit and bounded ordinary GDI admission.
+[G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
+faults, suspended-session isolation, checked fallback and lifecycle barriers.
+Next: bounded ordinary common GDI admission with actual x86/CPU/EGL/count gates.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -2297,3 +2298,64 @@ absent; libnx/flag/framebuffer integration is CI-compiled, not host-executed or
 physically accepted. Hardware/Paint/GPU/fallback/input/relaunch deferred, SD closed.
 Next raw-host pixel/coherence-fault audit then bounded ordinary common GDI admission,
 with real x86/CPU/EGL/count gates before performance claims. Dynarec/D3D separate.
+
+
+## G4b.2g — registered host pixel/fault audit (2026-10-27)
+
+Cleandc254b2/FETCH_HEAD, no newer work/AGENTS. User requests next large block.
+Audited current production screen/Surface consumers, metadata queries, USER
+layout/lifecycle, private GPU images and CPU-only DIB/native chrome paths. Full
+inventory and bounded exceptions in G4B2G_HOST_PIXEL_AUDIT.md. No universal raw-
+pointer protection, arbitrary host mutation or default GPU admission is claimed.
+
+Gdi::Screen now acquires CPU authority and returns a const synchronous view;
+ScreenForWrite acquires authority and dirties output for raw host writes. Existing
+screen/provider replacement is guarded. CPU preparation failures latch in the Gdi
+store; expired owner is observable before pixel access, and reentrant failure
+cannot be masked. Fault cannot be cleared by later successful callback/detach/
+rebind/reinstall. Gdi/session exchange preserves isolation. Native bindings record
+first coherence cause and mark their own USER fault immediately. Foreign-session
+Acquire/Prune/Checkpoint/Disable reject without poisoning a suspended owner;
+Shutdown still revokes weak owner safely if teardown cannot detach normally.
+
+TryCompose rejects lost authority explicitly; compatibility Compose is invalid,
+never the old successful output surface. Direct Switch fallback/clock and CPU
+output check the gate/result; Blit/OutputHealthy observe CPU faults, including
+expired owners. No old flat frame is queued after an authority fault. v9 summary
+adds CPU access fault and native coherence reason. BeginPaint/ScrollCommon gate
+before consuming paint/child state; fallback OnGuiThreadExit gates before retiring
+windows but still cleans native handles/queues on error, with output latched shut.
+This preserves native draining; exposure/forced-thread compatibility is unchanged.
+
+New test_cpu_access covers guarded views/write epoch, expiry, sticky/reentrant
+failure, failed rebinding/reinstall and moved-store isolation. Four public-x86/EGL
+sessions extend existing20 stages/seven device modes: suspended owner rejection
+without readback/poison; host read+raw write+GPU reimport/private pixel check/full
+CPU/EGL compare and actual guest GetPixel success at stage2; stale layout refusing
+CPU/compose/output with untouched canonical pixels and healthy nested store;
+thread-exit entry checkpointing before retirement; same retirement completing
+on fault without publishing stale pixels. Cases are host-inspected/aborted, not
+new full arbitrary forced-thread termination or complete guest-exit acceptance.
+
+Earlier development rebuilds were stopped after tightening header/owner/fault
+boundaries and adding lifecycle cases, avoiding stale ABI evidence. Fresh final
+COMPOSITION_GL_TEST=1 rootless MinGW/Mesa suite passed final runtime/headers/tests,
+including new CPU-access test/four audit cases, original GPU/window/workspace/busy/
+coherence/readback/lifecycle/file/measurement gates, Stage C/six E9/22 F. Strict O2
+no-exceptions/no-RTTI changed GDI/binding/shell/thread/message and final inspector
+pass. Focused ASan/UBSan changed GDI/bridge/USER/shell/mixed/GPU/renderer/inspector
+pass with ordinary other runtime objects; driver leak scan disabled, known native-
+fiber warning retained and preexisting unused ScrollCommon CPU parameter warning
+allowed for that focused build only. Negative nonsticky preparation fails CPU
+fault invariant; poisoned suspended Prune fails owner-health assertion. No runtime/
+test edits after successful final suite. Existing coherence artifact adds native
+CPU-access log and this contract; six core jobs unchanged.
+
+Current maps consolidated to ordinary GDI admission as next, removing old resident-
+frame/presenter/audit future-tense queue remnants. Roadmap23cards/3views/28docs,
+Markdown/link/fence/shell/diff/browser checks and exact published-SHA six-job CI/
+Pages/coherence+CPU logs/public PE32/contract/NRO remain final publication gates.
+Local devkitA64/libnx absent; direct Switch fallback/fault diagnostics CI compiled,
+not physical acceptance. Paint/GPU/fallback/input/relaunch deferred; SD closed.
+Next bounded common solid-window GDI dispatch, eligibility before CPU Target and
+explicit unsupported/accepted/fault handling with public x86/CPU/EGL/count gates.

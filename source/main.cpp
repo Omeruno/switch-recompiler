@@ -1679,6 +1679,7 @@ std::unique_ptr<win32::user::WindowGpuBindings> g_mixedBindings;
 std::unique_ptr<win32::user::MixedWorkspace> g_mixedWorkspace;
 bool g_mixedRequested=false,g_mixedEnabled=false;
 uint64_t g_mixedSubmissions=0,g_mixedRedraws=0;
+std::string g_mixedCoherenceFault="none";
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
 ui::SoftwarePresentation g_software;
 ui::OpenGlPresentation g_gpu;
@@ -1756,7 +1757,7 @@ win32::user::MixedOutput g_nativeMixedOutput(g_nativeMixedDevice,g_gpu,g_softwar
 void EndMixedPresentation() {
     if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();}
     g_mixedWorkspace.reset();
-    if(g_mixedBindings){g_mixedBindings->Shutdown();g_mixedBindings.reset();}
+    if(g_mixedBindings){g_mixedBindings->Shutdown();g_mixedCoherenceFault=g_mixedBindings->FaultName();g_mixedBindings.reset();}
     g_havePresented=false;
 }
 bool BeginMixedPresentation(win32::user::ShellSession& shell) {
@@ -1807,7 +1808,7 @@ bool InitializeOutput(bool gpuRequested) {
     return g_graphicsInitialized;
 }
 bool OutputHealthy() {return g_outputLifetime.Ready() && !g_outputFailed &&
-    !(g_guestPresentation && win32::user::S().presentationFault);}
+    !(g_guestPresentation && (win32::user::S().presentationFault || ui::g_gdi.CpuAccessFault()));}
 bool DesktopOutput() {
     if(OutputHealthy())return true;
     return InitializeOutput(true);
@@ -1824,7 +1825,7 @@ bool FallBackToSoftware(const char* error) {
 void BeginPresentation(const char* guestPath) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
-    g_nativeMixedOutput.Reset();g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=0;
+    g_nativeMixedOutput.Reset();g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
@@ -1920,6 +1921,7 @@ void EndPresentation() {
             (unsigned long long)g_mixedRedraws,(unsigned long long)mixed.gpuFrames,(unsigned long long)mixed.swapAttempts,
             (unsigned long long)mixed.fallbacks,(unsigned long long)mixed.cpuFrames,(unsigned long long)mixed.failures,
             g_nativeMixedOutput.StagingBytes());
+        fprintf(log,"CPU access fault: %u\nNative coherence fault: %s\n",unsigned(ui::g_gdi.CpuAccessFault()),g_mixedCoherenceFault.c_str());
         fprintf(log,"Native mixed scope: opt-in device adapter; ordinary GDI dispatch remains CPU. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);
     }
@@ -1929,7 +1931,7 @@ void EndPresentation() {
     win32::user::EnableWindowLayers(false);g_guestPresentation=false;
 }
 void Blit() {
-    if(g_outputFailed)return;
+    if(!OutputHealthy())return;
     const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
     if(g_mixedWorkspace && g_mixedBindings && g_mixedBindings->PresentationReady()) {
         if(g_havePresented && g_mixedWorkspace->FrameCurrent() && g_presentedCursor.x==cursor.x &&
@@ -2000,6 +2002,7 @@ bool DrawDesktop(const ui::Surface& s,int x,int y,bool cursor) {
     Blit();return OutputHealthy();
 }
 void Present(const ui::Surface& s) {
+    if(g_guestPresentation && (win32::user::S().presentationFault || ui::g_gdi.CpuAccessFault())){g_outputFailed=true;return;}
     if(g_mixedWorkspace && g_mixedBindings && g_mixedBindings->PresentationReady()) {
         if(g_shellSession)g_shellSession->SetClock(DeviceClock());
         win32::user::PresentIfNeeded(true);
@@ -2008,12 +2011,14 @@ void Present(const ui::Surface& s) {
     }
     if(g_shellSession) {
         g_shellSession->SetClock(DeviceClock());
-        const auto& canonical=g_shellSession->Compose(s);
+        const auto* canonical=g_shellSession->TryCompose(s);
+        if(!canonical){g_outputFailed=true;return;}
         const auto scene=g_gpuActive?g_shellSession->Scene():ui::WindowSceneView{};
-        const bool submitted=scene.owners?g_presentation.Submit(canonical,scene):g_presentation.Submit(canonical);
+        const bool submitted=scene.owners?g_presentation.Submit(*canonical,scene):g_presentation.Submit(*canonical);
         if(submitted)Blit();else g_outputFailed=true;
         return;
     }
+    if(!ui::g_gdi.PrepareCpuAccess()){win32::user::S().presentationFault=true;g_outputFailed=true;return;}
     const bool submitted=g_gpuActive && win32::user::S().windowLayers.Enabled()
         ?g_presentation.Submit(s,win32::user::S().windowLayers.Scene()):g_presentation.Submit(s);
     if(submitted)Blit();else g_outputFailed=true;

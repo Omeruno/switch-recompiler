@@ -450,7 +450,7 @@ bool Gdi::ResolveTarget(uint32_t hdc,Surface*& s,int& ox,int& oy,Region& clip,co
 }
 
 bool Gdi::InstallCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
-    if(cpuGateInstalled_ || !gate)return false;
+    if(cpuGateInstalled_ || cpuAccessFault_ || !gate)return false;
     cpuGate_=gate;cpuGateInstalled_=true;return true;
 }
 bool Gdi::RemoveCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
@@ -458,9 +458,15 @@ bool Gdi::RemoveCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
     cpuGate_.reset();cpuGateInstalled_=false;return true;
 }
 bool Gdi::PrepareCpuAccess() {
+    if(cpuAccessFault_)return false;
     if(!cpuGateInstalled_)return true;
-    const auto gate=cpuGate_.lock();return gate && gate->Prepare();
+    if(preparingCpu_){cpuAccessFault_=true;return false;}
+    const auto gate=cpuGate_.lock();
+    preparingCpu_=true;const bool ok=gate && gate->Prepare();preparingCpu_=false;
+    if(!ok)cpuAccessFault_=true;
+    return !cpuAccessFault_; // a reentrant failure cannot be masked by outer success
 }
+
 bool Gdi::WindowImageInfo(const WindowRasterTarget& r,WindowDcInfo& info) {
     if(!r.windowIdentity || r.layoutGeneration!=layoutGeneration_ || !provider_ ||
        !screen_ || !screen_->Valid() || screen_->bpp!=32)return false;
