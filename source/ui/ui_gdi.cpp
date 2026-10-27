@@ -454,11 +454,37 @@ bool Gdi::InstallCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
     cpuGate_=gate;cpuGateInstalled_=true;return true;
 }
 bool Gdi::RemoveCpuGate(const std::shared_ptr<CpuRasterGate>& gate) {
-    if(!cpuGateInstalled_ || !gate || cpuGate_.lock()!=gate)return false;
+    if(solidInstalled_ || !cpuGateInstalled_ || !gate || cpuGate_.lock()!=gate)return false;
     cpuGate_.reset();cpuGateInstalled_=false;return true;
 }
+bool Gdi::InstallSolidBackend(const std::shared_ptr<SolidRasterBackend>& backend) {
+    if(solidInstalled_ || CpuAccessFault() || !cpuGateInstalled_ || !backend)return false;
+    solidBackend_=backend;solidInstalled_=true;return true;
+}
+bool Gdi::RemoveSolidBackend(const std::shared_ptr<SolidRasterBackend>& backend) {
+    if(!solidInstalled_ || !backend || solidBackend_.lock()!=backend)return false;
+    solidBackend_.reset();solidInstalled_=false;return true;
+}
+RasterDispatch Gdi::DispatchSolid(uint32_t hdc,const Rect& r,uint32_t brush) {
+    if(CpuAccessFault()){cpuAccessFault_=true;return RasterDispatch::Failed;}
+    if(!solidInstalled_)return RasterDispatch::NotHandled;
+    const auto* dc=Dc(hdc);const auto* b=Brush(brush);
+    if(!dc || dc->kind!=DcKind::Window || dc->st.mapMode!=1 || dc->st.layout || !b || b->style!=0)
+        return RasterDispatch::NotHandled;
+    // Bound native transform arithmetic; other coordinates retain CPU reference.
+    for(int value:{r.left,r.top,r.right,r.bottom,dc->st.windowOrg.x,dc->st.windowOrg.y,
+                   dc->st.viewportOrg.x,dc->st.viewportOrg.y})
+        if(value < -16384 || value > 16384)return RasterDispatch::NotHandled;
+    const Rect normalized{std::min(r.left,r.right),std::min(r.top,r.bottom),
+                          std::max(r.left,r.right),std::max(r.top,r.bottom)};
+    if(normalized.Empty())return RasterDispatch::NotHandled;
+    const auto backend=solidBackend_.lock();
+    const auto result=backend?backend->Fill(hdc,normalized,ColorrefToRgb(b->sysColorIndex>=0?SysColor(b->sysColorIndex):b->color)):RasterDispatch::Failed;
+    if(result==RasterDispatch::Failed)cpuAccessFault_=true;
+    return result;
+}
 bool Gdi::PrepareCpuAccess() {
-    if(cpuAccessFault_)return false;
+    if(CpuAccessFault()){cpuAccessFault_=true;return false;}
     if(!cpuGateInstalled_)return true;
     if(preparingCpu_){cpuAccessFault_=true;return false;}
     const auto gate=cpuGate_.lock();
@@ -874,8 +900,10 @@ bool Gdi::ArcLike(uint32_t hdc, int kind, int l, int t, int r, int b, int x1, in
 
 bool Gdi::FillRect(uint32_t hdc, const Rect& r, uint32_t brush) {
     RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
+    const auto dispatched=DispatchSolid(hdc,r,brush);
+    if(dispatched!=RasterDispatch::NotHandled)return dispatched==RasterDispatch::Accepted;
     Ctx c;
-    if (!MakeCtx(hdc, c)) return Dc(hdc) != nullptr;
+    if (!MakeCtx(hdc, c)) return !CpuAccessFault() && Dc(hdc) != nullptr;
     BrushObj* b = Brush(brush);
     if (!b) return false;
     c.rop2 = 13;
@@ -889,11 +917,10 @@ bool Gdi::FillRect(uint32_t hdc, const Rect& r, uint32_t brush) {
 bool Gdi::FrameRect(uint32_t hdc, const Rect& r, uint32_t brush) {
     RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     if (r.Empty()) return true;
-    FillRect(hdc, Rect(r.left, r.top, r.right, r.top + 1), brush);
-    FillRect(hdc, Rect(r.left, r.bottom - 1, r.right, r.bottom), brush);
-    FillRect(hdc, Rect(r.left, r.top, r.left + 1, r.bottom), brush);
-    FillRect(hdc, Rect(r.right - 1, r.top, r.right, r.bottom), brush);
-    return true;
+    return FillRect(hdc, Rect(r.left, r.top, r.right, r.top + 1), brush) &&
+        FillRect(hdc, Rect(r.left, r.bottom - 1, r.right, r.bottom), brush) &&
+        FillRect(hdc, Rect(r.left, r.top, r.left + 1, r.bottom), brush) &&
+        FillRect(hdc, Rect(r.right - 1, r.top, r.right, r.bottom), brush);
 }
 
 bool Gdi::InvertRect(uint32_t hdc, const Rect& r) {
@@ -905,12 +932,18 @@ bool Gdi::FillRgn(uint32_t hdc, uint32_t rgn, uint32_t brush) {
     RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Fill);
     RegionObj* ro = Rgn(rgn);
     if (!ro) return false;
-    for (const Rect& r : ro->rgn.Rects()) FillRect(hdc, r, brush);
+    for (const Rect& r : ro->rgn.Rects()) if(!FillRect(hdc, r, brush))return false;
     return true;
 }
 
 bool Gdi::PatBlt(uint32_t hdc, int x, int y, int w, int h, uint32_t rop) {
     RasterMetrics::Scope timing(g_rasterMetrics,RasterStage::Blit);
+    if(rop==0x00f00021u && w>0 && h>0 && int64_t(x)+w<=16384 && int64_t(y)+h<=16384) {
+        const auto* dc=Dc(hdc);
+        const auto dispatched=DispatchSolid(hdc,{x,y,int(int64_t(x)+w),int(int64_t(y)+h)},dc?dc->st.brush:0);
+        if(dispatched!=RasterDispatch::NotHandled)return dispatched==RasterDispatch::Accepted;
+    }
+    if(CpuAccessFault())return false;
     return BlitCore(hdc, x, y, w, h, nullptr, false, 0, 0, 0, 0, rop, false, 0);
 }
 

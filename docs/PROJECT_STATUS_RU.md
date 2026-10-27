@@ -2,12 +2,13 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-27, после F6a/F6b и G4b.2g (host pixel/fault audit). Проверенный код: `dc254b204a8ba9f77a7a51872a655bacd1cc86aa`,
-[CI 40442170369 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369).
+Актуально на 2026-10-27, после F6a/F6b и G4b.2h (ограниченный обычный GPU-GDI и первые замеры). Проверенный код: `a0a2771a8b475479a4c157c85c01977d64beb6af`,
+[CI 40446491133 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
-**База исполнения и ограниченная функциональная оболочка уже есть. Следующий
-остаток G4b.2 — допуск ограниченного обычного GDI к готовому opt-in mixed выводу.**
+**База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
+обычные solid FillRect/PATCOPY подключены к GPU в явном эксперименте. Следом —
+разделение cold/warm затрат и оптимизация по измерениям; default остаётся CPU.**
 Это среда для поддержанных 32-битных x86 Win32-приложений на Switch. Полного
 ядра Windows, поддержки x64 и универсальной совместимости EXE пока нет.
 
@@ -67,8 +68,9 @@ Paint open/save не подтверждают аппаратную приёмк�
 
 Рабочий путь сейчас: **x86-интерпретатор → GDI на CPU → GPU-композиция
 (либо software fallback) → экран**.
-GPU-композитор уже используется; новое GPU-выполнение самих GDI-команд пока
-проверяется отдельно от живых приложений.
+GPU-композитор уже используется. Явный native experiment теперь допускает
+обычные solid FillRect/PATCOPY небольших top-level окон на GPU; остальные
+операции сохраняют CPU. Это не включено по умолчанию и не обещает ускорение Paint.
 
 | Пакет | Что сделано | Подключение к обычному приложению |
 | --- | --- | --- |
@@ -81,7 +83,8 @@ GPU-композитор уже используется; новое GPU-вып�
 | G4b.2c | GPU-данные доступны реальным x86 GetPixel/ROP/DIB через opt-in CPU-барьеры; layout/fallback проверены | Native-эксперимент; автоматического GDI dispatch нет |
 | G4b.2d/e/f | Владеющие GPU/mixed кадры, живые окна и shell, USER selector и opt-in Switch device/cursor/fallback | Программный opt-in путь; ordinary GDI остаётся CPU |
 | G4b.2g | [Аудит зарегистрированных host pixel/fault путей](G4B2G_HOST_PIXEL_AUDIT.md), CPU views, sticky faults, checked fallback/lifecycle | Проверки real x86/EGL; не перехват произвольной памяти |
-| **Остаток G4b.2** | Ограниченный обычный GDI subset и differential/work-count gates | **Следующий незавершённый рубеж** |
+| G4b.2h | [Обычные solid GDI, public x86/CPU/EGL/count/recovery и первые парные замеры](G4B2H_ORDINARY_GDI_DISPATCH.md) | Явный эксперимент, default CPU; на локальной Mesa первый кадр через GPU медленнее |
+| **Остаток G4b.2** | Разделить cold/warm затраты, затем оптимизировать доказанное узкое место | **Следующий незавершённый рубеж** |
 
 Host EGL/Mesa проверяет пиксели, порядок, лимиты и восстановление. Это не
 физический Switch GPU benchmark. G4-прототипы имеют собственные небольшие лимиты
@@ -91,12 +94,10 @@ Host EGL/Mesa проверяет пиксели, порядок, лимиты и
 
 ## Ближайшие рубежи
 
-1. **Остаток G4b.2:** выборочное обычное GDI-подключение к реализованным native
-   frames/shell/device и проверенным CPU/host/fault границам. Сохранить HWND/DC
-   leases, GL-state, лимиты и настоящий CPU fallback.
-2. Публичные реальные x86 GDI/window/readback/lifecycle проверки и сравнение
-   пикселей CPU/EGL. Затем выборочное включение поддержанного пути с fallback.
-   Сохранить ввод, Luna и возврат между сеансами.
+1. **Остаток G4b.2:** измерить повторные warm batches отдельно от создания targets,
+   импорта и первого GL-вывода; уточнить стоимость допуска/ownership/copy.
+2. Выбрать и проверить общую оптимизацию по этим данным. Сохранить public x86,
+   точные CPU/EGL пиксели, read/ROP/DIB/lifecycle/budget/fallback и Luna/input.
 3. Измерения реальных приложений на Switch и объединённая аппаратная приёмка
    E/F — когда пользователь вернётся к проверкам. Сейчас они отложены.
 4. Параллельная очередь D: конкретные воспроизводимые несовместимости. У Pinball
@@ -120,13 +121,13 @@ H DirectDraw/D3D и универсальная совместимость — о
 окна, ошибки GL и реальная потеря EGL-контекста. Исправлено удаление текущей
 шейдерной программы в основном композиторе. Это проверка корректности;
 CPU-вывод всё ещё требует checkpoint, автоматическое ускорение обычных GDI
-вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame реализован; зарегистрированный host pixel/fault audit готов; следующий шаг — bounded GDI admission.
+вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame и host pixel/fault audit готовы. G4b.2h допускает bounded solid GDI только в явном эксперименте; следующий шаг — cold/warm измерения и общая оптимизация.
 
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
-Это prerequisite для production-подключения ShellSession; текущий следующий
-шаг после зарегистрированного host pixel/fault audit G4b.2g — допуск ограниченного обычного GDI subset.
+Этот prerequisite уже использован в native ShellSession/mixed output и
+G4b.2h solid dispatch. Следующий шаг — cold/warm разделение и общая оптимизация по данным.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -137,7 +138,7 @@ CPU-вывод всё ещё требует checkpoint, автоматическ
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-Следом — ограниченный обычный GDI subset. Обычный GDI и CPU-снимок ShellSession пока не переключены.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. Default остаётся CPU; далее cold/warm затраты и измеренная общая оптимизация.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -147,4 +148,4 @@ CPU-вывод всё ещё требует checkpoint, автоматическ
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**Host pixel/fault audit реализован; следом — ограниченный обычный GPU-GDI.**
+**G4b.2h ordinary solid GDI и первые парные замеры реализованы; далее cold/warm стоимость и оптимизация по данным. Default CPU.**

@@ -3,9 +3,9 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2g registered host-access/fault audit implemented; next bounded ordinary common GDI admission.** Runtime baseline `dc254b204a8ba9f77a7a51872a655bacd1cc86aa`
-passed [CI40442170369, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369).
-G3/G4 GPU-GDI remains isolated; ordinary Paint GDI still runs on CPU.
+G4b.2h bounded ordinary solid GDI and paired first-frame measurements implemented; next cold/warm cost separation.** Runtime baseline `a0a2771a8b475479a4c157c85c01977d64beb6af`
+passed [CI40446491133, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
+Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
 [technical handoff/history](AI_HANDOFF.md). These documents supersede old next-F1,
@@ -86,7 +86,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2e | [Native shell mixed overlay + real USER producer selection](G4B2E_MIXED_WORKSPACE.md), GPU epochs and output-fault acknowledgement | Native selected adapter; persistent Switch device/swap and default GDI activation still open |
 | G4b.2f | [Opt-in Switch mixed output device/cursor adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), staged genuine recovery, teardown and v9 counters | Default off; ordinary GDI CPU, libnx physical acceptance deferred |
 | G4b.2g | [Host pixel access/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky owner faults, checked compose/lifecycle and suspended session isolation | Registered paths audited; arbitrary future raw pointers remain caller responsibility |
-| Remaining G4b.2 | Bounded ordinary GDI admission and differential/work-count gates | **Next, not implemented/activated** |
+| G4b.2h | [Ordinary solid GDI dispatch and paired first-frame measurements](G4B2H_ORDINARY_GDI_DISPATCH.md), sixteen actual-x86 CPU/EGL/exits/count/recovery cases | Explicit native experiment only; default CPU, one bounded workload, local GPU first-frame path slower |
+| Remaining G4b.2 | Cold/warm cost separation, measured common-path optimization and broader workloads | **Next; default activation and physical performance still open** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -103,10 +104,8 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
    Real host x86/EGL/recovery/order checks and Switch CI compilation; default off, not physical acceptance or ordinary GPU GDI.
 4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
    Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
-5. **Next:** admit a bounded ordinary GDI subset through common dispatch with public real-x86
-   CPU/EGL differential, readback/ROP/DIB/layout/lifecycle and explicit budget gates.
-6. Measure full producer/transfer/checkpoint/submission costs on public workloads;
-   select subsequent CPU/GPU optimization from those results, not EXE names.
+5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
+6. **Initial measurement implemented; next refinement:** paired first-frame producer/import/submission/read costs. Local Mesa GPU path is slower; separate cold setup from warm repeated batches and instrument costs before selecting a common-path optimization. Broader workloads/physical evidence remain open.
 7. Continue D compatibility with public reproducers of actual API/memory/unwind
    blockers; Pinball x86 remains a separate unsupported application target.
 8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache

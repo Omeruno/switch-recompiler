@@ -620,10 +620,10 @@ FN(FrameRgn) {
     if (!r) return Ret(0);
     int w = SA(c, m, 3), h = SA(c, m, 4);
     for (const Rect& q : r->rgn.Rects()) {
-        g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.top, q.right, q.top + h), A(c, m, 2));
-        g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.bottom - h, q.right, q.bottom), A(c, m, 2));
-        g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.top, q.left + w, q.bottom), A(c, m, 2));
-        g_gdi.FillRect(A(c, m, 0), Rect(q.right - w, q.top, q.right, q.bottom), A(c, m, 2));
+        if(!g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.top, q.right, q.top + h), A(c, m, 2)))return Ret(0);
+        if(!g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.bottom - h, q.right, q.bottom), A(c, m, 2)))return Ret(0);
+        if(!g_gdi.FillRect(A(c, m, 0), Rect(q.left, q.top, q.left + w, q.bottom), A(c, m, 2)))return Ret(0);
+        if(!g_gdi.FillRect(A(c, m, 0), Rect(q.right - w, q.top, q.right, q.bottom), A(c, m, 2)))return Ret(0);
     }
     return Ret(1);
 }

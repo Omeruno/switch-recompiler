@@ -5,7 +5,8 @@
 #include <array>
 
 namespace ui {
-// Isolated semantic prototype, NEVER selected by production GDI/presentation.
+// Bounded solid primitive, admitted only through the explicit native bridge.
+// Default ordinary GDI remains CPU; see G4B2H_ORDINARY_GDI_DISPATCH.md.
 // Requires the owning thread's current GL 3.3 core context; bounded caller
 // state is restored at handoff. See G4B2_SHARED_CONTEXT.md for preconditions.
 class GpuGdiPrototype {

@@ -4,7 +4,7 @@
 #include "../ui/mixed_presentation.h"
 
 namespace win32::user {
-// Optional native diagnostic bridge; no automatic Win32 GDI dispatch/activation.
+// Optional coherent native bridge; ordinary solid dispatch is separately enabled.
 // The current USER session and GL context must belong to this native caller.
 class WindowGpuBindings {
 public:
@@ -16,8 +16,11 @@ public:
     struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0;};
     bool EnableCoherence(); // explicit native test mode, current fresh USER session
     bool DisableCoherence();
+    bool EnableSolidDispatch(); // explicit experiment only, never default activation
+    struct DispatchStats {uint64_t candidates=0,accepted=0,refused=0,failed=0;};
+    const DispatchStats& DispatchCounters() const {return dispatchStats_;}
     bool CheckpointCpu();
-    enum class Fault {None,DirtyImport,WindowCommit,WindowDescription,Detach,ReentrantCpu};
+    enum class Fault {None,DirtyImport,WindowCommit,WindowDescription,Detach,ReentrantCpu,Dispatch};
     Fault FaultReason() const {return faultReason_;}
     const char* FaultName() const;
     bool CoherenceHealthy() const {return !fault_;}
@@ -47,6 +50,9 @@ public:
 private:
     struct Gate;
     bool BeforeCpu();
+    ui::RasterDispatch DispatchFill(uint32_t,ui::Rect,uint32_t);
+    bool dispatchEnabled_=false;
+    DispatchStats dispatchStats_;
     bool Fail(Fault);
     void RevokeGate();
     bool SameSession() const;

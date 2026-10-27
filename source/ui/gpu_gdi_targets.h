@@ -4,7 +4,8 @@
 #include <memory>
 
 namespace ui {
-// G4a isolated multi-target/presentation bridge, not a production GDI backend.
+// Bounded multi-target/presentation bridge; ordinary solid GDI admission lives
+// in WindowGpuBindings and remains an explicit experiment.
 // One current GL 3.3 core context/native owner thread; bounded state handoff
 // preserves another renderer. See docs/G4B2_SHARED_CONTEXT.md.
 class GpuGdiTargets {

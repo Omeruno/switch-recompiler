@@ -22,6 +22,7 @@ rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
 rm -f "$out/window_gestures.log"
+rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
@@ -355,6 +356,17 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             tail -n 25 "$out/gpu_window_coherence.log" 2>/dev/null || true
             failed=1
         fi
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_gdi_dispatch.cpp" \
+           "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_gpu_gdi_dispatch" &&
+           python3 "$root/tools/benchmark_gdi_dispatch.py" "$out/test_gpu_gdi_dispatch" "$guestRoot/gpu_gdi_dispatch.exe" \
+               "$out/gpu_gdi_dispatch.json" > "$out/gpu_gdi_dispatch.log" 2>&1; then
+            tail -n 4 "$out/gpu_gdi_dispatch.log"
+        else
+            echo "   ORDINARY X86 GPU GDI DISPATCH FAILED"
+            tail -n 25 "$out/gpu_gdi_dispatch.log" 2>/dev/null || true
+            failed=1
+        fi
         glsrc=""
         for obj in $src; do
             case "$obj" in */opengl_presentation.o) ;; *) glsrc="$glsrc $obj" ;; esac
@@ -409,6 +421,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         # Actual EGL/window lifetime inspection uses the dedicated harness.
         [ "$(basename "$exe")" = "gpu_window_bindings.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_window_coherence.exe" ] && continue
+        [ "$(basename "$exe")" = "gpu_gdi_dispatch.exe" ] && continue
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue

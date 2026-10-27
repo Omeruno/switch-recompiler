@@ -133,6 +133,12 @@ struct CpuRasterGate {
     virtual bool Prepare()=0;
 };
 
+enum class RasterDispatch {NotHandled,Accepted,Failed};
+struct SolidRasterBackend {
+    virtual ~SolidRasterBackend()=default;
+    virtual RasterDispatch Fill(uint32_t hdc,Rect logical,uint32_t rgb)=0;
+};
+
 class Gdi {
 public:
     Gdi();
@@ -237,8 +243,10 @@ public:
     // an expired installed gate fails closed, never dereferences a dead owner.
     bool InstallCpuGate(const std::shared_ptr<CpuRasterGate>&);
     bool RemoveCpuGate(const std::shared_ptr<CpuRasterGate>&);
+    bool InstallSolidBackend(const std::shared_ptr<SolidRasterBackend>&);
+    bool RemoveSolidBackend(const std::shared_ptr<SolidRasterBackend>&);
     bool PrepareCpuAccess();
-    bool CpuAccessFault() const {return cpuAccessFault_ || (cpuGateInstalled_ && cpuGate_.expired());}
+    bool CpuAccessFault() const {return cpuAccessFault_ || (cpuGateInstalled_ && cpuGate_.expired()) || (solidInstalled_ && solidBackend_.expired());}
     // Internal exchange helpers: caller already owns the relevant authority.
     // They bypass the CPU gate to avoid recursion inside its implementation.
     // Geometry/visibility only; never invokes CPU coherence or reads pixels.
@@ -259,6 +267,9 @@ private:
     friend struct GdiShapeAccess;
     bool ResolveTarget(uint32_t,Surface*&,int&,int&,Region&,const SurfaceWriteCapture**);
     bool WindowImageInfo(const WindowRasterTarget&,WindowDcInfo&);
+    RasterDispatch DispatchSolid(uint32_t,const Rect&,uint32_t brush);
+    std::weak_ptr<SolidRasterBackend> solidBackend_;
+    bool solidInstalled_=false;
     std::weak_ptr<CpuRasterGate> cpuGate_;
     bool cpuGateInstalled_=false,cpuAccessFault_=false,preparingCpu_=false;
 

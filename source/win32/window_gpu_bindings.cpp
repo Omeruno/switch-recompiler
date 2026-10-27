@@ -96,10 +96,13 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
     }
     return true;
 }
-struct WindowGpuBindings::Gate final:ui::CpuRasterGate {
+struct WindowGpuBindings::Gate final:ui::CpuRasterGate,ui::SolidRasterBackend {
     WindowGpuBindings* owner;
     explicit Gate(WindowGpuBindings* o):owner(o) {}
     bool Prepare() override {return owner && owner->BeforeCpu();}
+    ui::RasterDispatch Fill(uint32_t dc,ui::Rect r,uint32_t rgb) override {
+        return owner?owner->DispatchFill(dc,r,rgb):ui::RasterDispatch::Failed;
+    }
 };
 bool WindowGpuBindings::SameSession() const {
     const auto* desktop=Desktop();return desktop && desktop->rasterIdentity==desktopIdentity_;
@@ -112,9 +115,32 @@ bool WindowGpuBindings::EnableCoherence() {
     gate_=std::move(gate);desktopIdentity_=Desktop()->rasterIdentity;
     coherent_=true;fault_=false;faultReason_=Fault::None;coherenceStats_={};gpuRevision_=0;return true;
 }
+bool WindowGpuBindings::EnableSolidDispatch() {
+    if(!PresentationReady() || !GpuActive())return false;
+    if(dispatchEnabled_)return true;
+    if(!ui::g_gdi.InstallSolidBackend(gate_))return false;
+    dispatchEnabled_=true;dispatchStats_={};return true;
+}
+ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32_t rgb) {
+    ++dispatchStats_.candidates;
+    auto failed=[&](){++dispatchStats_.failed;Fail(Fault::Dispatch);return ui::RasterDispatch::Failed;};
+    auto refused=[&](){++dispatchStats_.refused;return ui::RasterDispatch::NotHandled;};
+    if(!dispatchEnabled_ || !PresentationReady())return failed();
+    const auto* d=ui::g_gdi.Dc(dc);const auto* w=d?Win(d->hwnd):nullptr;
+    if(!GpuActive() || !w || (w->parent && w->parent!=S().desktop))return refused();
+    Lease lease;
+    if(!Acquire(dc,lease))return PresentationReady()?refused():failed();
+    auto* slot=FindSlot(lease);
+    // Seed allocation/refusal precedes any admitted raster operation. Recovery
+    // during import also goes through the genuine CPU path, with no double draw.
+    if(!slot || !Seed(*slot,lease))return PresentationReady()?refused():failed();
+    if(!GpuActive())return refused();
+    if(!Fill(lease,r,rgb))return failed();
+    ++dispatchStats_.accepted;return ui::RasterDispatch::Accepted;
+}
 void WindowGpuBindings::RevokeGate() {
     if(gate_)gate_->owner=nullptr;
-    gate_.reset();coherent_=false;
+    gate_.reset();coherent_=false;dispatchEnabled_=false;
 }
 bool WindowGpuBindings::Fail(Fault reason) {
     fault_=true;if(faultReason_==Fault::None)faultReason_=reason;
@@ -129,13 +155,16 @@ const char* WindowGpuBindings::FaultName() const {
     case Fault::WindowDescription:return "window frame metadata";
     case Fault::Detach:return "coherence detach";
     case Fault::ReentrantCpu:return "reentrant CPU access";
+    case Fault::Dispatch:return "solid dispatch";
     }
     return "unknown";
 }
 bool WindowGpuBindings::DisableCoherence() {
     if(!coherent_)return true;
     if(!SameSession())return false; // a suspended owner must not be revoked by an inner session
-    const bool ok=CheckpointCpu() && ui::g_gdi.RemoveCpuGate(gate_);
+    const bool checkpoint=CheckpointCpu();
+    const bool removed=!dispatchEnabled_ || ui::g_gdi.RemoveSolidBackend(gate_);
+    const bool ok=checkpoint && removed && ui::g_gdi.RemoveCpuGate(gate_);
     RevokeGate();
     return ok?true:Fail(Fault::Detach);
 }

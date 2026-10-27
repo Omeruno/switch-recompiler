@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-27, после F6a/F6b и G4b.2g (host pixel/fault audit).
-Проверенный код `dc254b204a8ba9f77a7a51872a655bacd1cc86aa`:
-[CI40442170369, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369).
+Дата обновления: 2026-10-27, после F6a/F6b и G4b.2h (ordinary solid GDI и первые замеры).
+Проверенный код `a0a2771a8b475479a4c157c85c01977d64beb6af`:
+[CI40446491133, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -26,12 +26,13 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 **Текущая точка: ограниченная программная F0–F5 выполнена; G4b.1/G4b.2a/b/c реализованы
 в изолированном GPU/native-пути с shared-context handoff и HWND/DC leases.
 CPU/GPU-барьеры, владеющие mixed frames, shell/USER selector, opt-in Switch adapter
-и зарегистрированные host pixel/fault границы реализованы. Остаток G4b.2 —
-выборочное подключение обычного GDI. D, физическая E/F, H/I и расширения среды открыты.**
+и зарегистрированные host pixel/fault границы реализованы. G4b.2h добавляет
+ограниченный обычный solid GDI в явном эксперименте и первые парные замеры;
+остаток G4b.2 — cold/warm стоимость и общая оптимизация по данным. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
 или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
-не активирован для обычных Win32-приложений. Процент общей готовности и срок здесь не назначаются.
+допускает ordinary solid FillRect/PATCOPY только в явном эксперименте; default CPU. Процент общей готовности и срок здесь не назначаются.
 
 ## Этап A — корректность и регрессионная база [постоянная работа]
 
@@ -123,6 +124,8 @@ COM, child-process/service зависимостей этим не обеспеч
 
 ## Этап G — измерения и ускорение CPU/GDI [сейчас G4b.2]
 
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) добавляет обычные solid FillRect/PATCOPY в явном native experiment, public x86/CPU/EGL/count/budget/recovery и парные first-frame замеры. Локальный Mesa GPU-путь медленнее CPU; default не меняется. Следом cold/warm разделение и измеренная общая оптимизация.
+
 GPU-GDI — текущий экспериментальный подблок на стыке E/G. Он не заменяет
 исходную задачу CPU-ускорения и не означает готовый dynarec.
 
@@ -142,10 +145,12 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2e | [Native shell overlay + USER mixed selection](G4B2E_MIXED_WORKSPACE.md), GPU-only epochs / отказ вывода | Native adapter; Switch device/swap/default GDI впереди |
 | G4b.2f | [Opt-in Switch mixed output adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), cursor/fallback/lifecycle/v9 | Default off; ordinary GDI CPU, hardware отложен |
 | G4b.2g | [Host pixel/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky faults, checked compose/lifecycle, owner isolation | Зарегистрированные пути; обычный GDI ещё CPU |
-| **Остаток G4b.2** | ordinary GDI admission | **Следующий незавершённый рубеж** |
+| G4b.2h | [Обычный solid dispatch + first-frame измерения](G4B2H_ORDINARY_GDI_DISPATCH.md) | Explicit experiment; default CPU, локально GPU медленнее |
+| **Остаток G4b.2** | Cold/warm стоимость и общая оптимизация | **Следующий незавершённый рубеж** |
 
-До активации нужны реальные x86 GDI/window/lifecycle/pixel tests, EGL oracle и
-измерение transfer/checkpoint/submission overhead. GPU-прототипы сейчас имеют
+Ограниченный opt-in subset имеет реальные x86 GDI/window/lifecycle/pixel tests,
+EGL oracle и первые transfer/checkpoint/submission измерения. Более широкая
+активация требует дополнительных workload/cost/performance свидетельств. GPU-прототипы сейчас имеют
 собственные маленькие лимиты и [ограниченный shared-context контракт](G4B2_SHARED_CONTEXT.md);
 это ещё не общий GPU-путь реальных приложений. Host результаты не являются консольным FPS.
 
@@ -172,7 +177,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. Остаток G4b.2 — выборочный обычный GDI dispatch поверх готовых opt-in frames/shell/device и проверенных host/fault границ, с публичными x86/CPU/EGL/count проверками.
+1. Остаток G4b.2 — после [bounded ordinary solid dispatch/парных первых замеров](G4B2H_ORDINARY_GDI_DISPATCH.md) отделить cold setup от warm batches и выбрать общую оптимизацию по данным. Default CPU; физическая производительность открыта.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -188,13 +193,13 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 
 Контракты текущих подшагов: [G4b.2a GL-state](G4B2_SHARED_CONTEXT.md),
 [G4b.2b HWND/DC](G4B2B_WINDOW_BINDINGS.md). [G4b.2c](G4B2C_CPU_COHERENCE.md) добавляет opt-in CPU/GPU-барьеры.
-Остаются production frame ownership/dispatch, игровой renderer и dynarec.
+Bounded native ownership/solid dispatch реализованы; более широкий dispatch, игровой renderer и dynarec остаются.
 
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
-Это prerequisite для production-подключения ShellSession; текущий следующий
-шаг после зарегистрированного host pixel/fault audit G4b.2g — допуск ограниченного обычного GDI subset.
+Этот prerequisite уже использован в native ShellSession/mixed output и
+G4b.2h solid dispatch. Следующий шаг — cold/warm разделение и общая оптимизация по данным.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -205,7 +210,7 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-Следом — ограниченный обычный GDI subset. Обычный GDI и CPU-снимок ShellSession пока не переключены.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. Default остаётся CPU; далее cold/warm затраты и измеренная общая оптимизация.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -215,4 +220,4 @@ Switch SDK нет; сборка NRO через CI. Host PASS не заменяе
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**Host pixel/fault audit реализован; следом — ограниченный обычный GPU-GDI.**
+**G4b.2h ordinary solid GDI и первые парные замеры реализованы; далее cold/warm стоимость и оптимизация по данным. Default CPU.**

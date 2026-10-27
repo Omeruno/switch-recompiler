@@ -1,21 +1,21 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`dc254b204a8ba9f77a7a51872a655bacd1cc86aa` (2026-10-27).
-[CI 40442170369](https://github.com/Omeruno/switch-recompiler/actions/runs/40442170369)
+`a0a2771a8b475479a4c157c85c01977d64beb6af` (2026-10-27).
+[CI 40446491133](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2g registered host-pixel/fault audit implemented (2026-10-27)
+## Current position: G4b.2h bounded ordinary solid GDI and first-frame measurement implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
 are preserved. G3/G4a/G4b.1 implement isolated actual-GL GPU-GDI targets,
 readback/recovery, generation/lifetime checks, direct texture composition and
-ordered instanced fill batches. They are NOT activated for live Paint/Win32 GDI.
+ordered instanced fill batches. Default GDI remains CPU; G4b.2h selectively admits ordinary solid calls only in the explicit native experiment.
 
 G4b.2a implements bounded GL-state preservation and interleaving with the real
 production renderer; see [contract/evidence](G4B2_SHARED_CONTEXT.md).
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-Next: bounded ordinary common GDI admission with actual x86/CPU/EGL/count gates.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. Next: separate cold preparation from warm repeated work and instrument the measured costs before optimizing.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -2359,3 +2359,55 @@ Local devkitA64/libnx absent; direct Switch fallback/fault diagnostics CI compil
 not physical acceptance. Paint/GPU/fallback/input/relaunch deferred; SD closed.
 Next bounded common solid-window GDI dispatch, eligibility before CPU Target and
 explicit unsupported/accepted/fault handling with public x86/CPU/EGL/count gates.
+
+## G4b.2h — ordinary solid dispatch and paired first-frame costs (2026-10-27)
+
+Cleana0a2771/FETCH_HEAD, no newer work/AGENTS. User authorizes several linked
+steps. Implemented bounded ordinary common FillRect/solid PATCOPY admission before
+CPU Target via weak session-owned backend and explicit refused/accepted/failed
+result. Native bindings validate top-level identity/map/clip/size/budget, seed
+before raster, never duplicate accepted raster on CPU and fail closed on partial
+failure/expired owner. FrameRect/FillRgn/FrameRgn propagate child failure. CPU gate
+cannot detach while solid backend is installed. Existing flag1 now enables this
+subset with native mixed output; default CPU, L/ZL preserved. v10 counters count
+logical admission separately; host GDI timing label includes native preparation.
+See G4B2H_ORDINARY_GDI_DISPATCH.md for full eligibility/recovery/report contract.
+
+New CRT-free public x86 PE issues its own64 FillRect/PATCOPY calls, not injected
+native raster. Sixteen normal-exit0 sessions: seven same-build/PE CPU/GPU pairs
+plus allocation-refusal and actual-context-destruction recovery. Fixed first
+phase gates64 operations/one import+upload/one64-fill batch+seed draw/no readback
+for output, unchanged canonical CPU bytes, then one GetPixel checkpoint and real
+ROP/DIB/raw stores/GetDIBits. Four full1280x720 CPU/EGL phases, selected clip/
+origins, hatch, child/screen/memory, side/combined pixels/fifth image refusal,
+resize/stale identity and resource cleanup. CPU gate tests cover failed/expired
+solid owner despite live CPU owner, aggregate failure and no retry. Existing
+coherence/device/host-audit gates unchanged.
+
+Fresh complete COMPOSITION_GL_TEST=1 host/MinGW/Mesa final-suite.log passed final
+runtime/header/fixture/inspector source; all prior C/E9/F22/native/lifecycle/file/
+measurement/graphics gates pass. Strict O2/no-exceptions/no-RTTI changed GDI,
+binding, GDI32 and final inspector pass. Focused ASan/UBSan these modules plus
+actual GPU/renderer/inspector pass with ordinary remaining runtime objects;
+driver leak scan disabled. Negative deliberately rastering on CPU after accepted
+GPU work fails first-phase import/readback count, not accepted as success.
+Benchmark report gained cache-policy metadata after full suite; final measurement
+script rerun against that suite's exact runner/PE passed. Later runtime edits only
+correct diagnostic wording/comments; no semantic change after full-suite success.
+
+Paired first-frame measurement separates actual guest raster, owning submit,
+production driver output submit and guest read/ROP/DIB phase, excludes independent
+oracle FBO read and guest sleeps; no GPU execution/scanout/FPS claim. Fresh images/
+renderer include import/lazy shader preparation; not a complete application-
+startup or warm-workload benchmark. Local Mesa GPU first-frame path is slower
+than CPU despite batch reduction. No default activation or Paint acceleration
+claim. Next cold/warm repeated same-resource experiment plus eligibility/ownership/
+copy breakdown, then optimize the measured common-path bottleneck. G4b.2 remains
+open; D/Pinball, full dynarec and D3D9 are separate work.
+
+Host SDK ready for this workflow, local devkitA64/libnx absent; CI must compile
+Switch-only flag/diagnostics. No new environment configuration/dependency needed.
+Hardware Paint/GPU/fallback/input/relaunch deferred, SD closed. Maps now show
+bounded admission and initial measurement implemented, cold/warm refinement next.
+Roadmap/link/browser/shell/diff and exact published-SHA six-job CI, Pages and
+public fixture/log/report/contract/NRO verification are final publication gates.
