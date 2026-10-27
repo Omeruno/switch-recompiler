@@ -14,10 +14,12 @@ public:
     enum class Mode {Empty,Gpu,CpuFallback};
     static constexpr int MaxSide=512;
     static constexpr size_t MaxCommands=64,MaxInputBytes=4*1024*1024;
+    static constexpr uint64_t MaxReplayPixels=uint64_t(MaxSide)*MaxSide;
     struct Stats {
         uint64_t draws=0,uploads=0,readbacks=0,recoveries=0,checkpoints=0;
         uint64_t submittedCommands=0,batches=0,batchedCommands=0,cpuImports=0;
         uint64_t capacityCheckpoints=0,coveredRetired=0;
+        uint64_t replayCheckpoints=0,replayCommands=0,replayPixels=0,replayBudgetFallbacks=0,replayFailures=0;
     };
     explicit GpuGdiPrototype(PresentationAllocator* allocator=nullptr);
     ~GpuGdiPrototype();
@@ -38,6 +40,7 @@ public:
     const Stats& Counters() const {return stats_;}
     size_t JournalCommands() const {return count_;}
     size_t InputBytes() const {return inputBytes_;}
+    void EnableCapacityReplay(bool enabled) {capacityReplay_=enabled;} // native same-build control
     void EnableCoveredRetirement(bool enabled) {coveredRetirement_=enabled;} // same-build reference control
     void EnableBatching(bool enabled) {batching_=enabled;} // native same-build reference control
 private:
@@ -61,7 +64,7 @@ private:
     size_t count_=0,flushed_=0,inputBytes_=0;
     uint32_t target_=0,upload_=0,fbo_=0,vao_=0,program_=0,batchProgram_=0;
     struct Locations {int operation=-1,image=-1,origin=-1,fill=-1,rects=-1,colors=-1,size=-1;} locations_;
-    bool batching_=true,coveredRetirement_=false;
+    bool batching_=true,coveredRetirement_=false,capacityReplay_=false;
     Mode mode_=Mode::Empty;
     Stats stats_;
 };

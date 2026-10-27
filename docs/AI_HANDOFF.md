@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`32336422f761199d355fb3e9ffbde84f34fde723` (2026-10-27).
-[CI 40552762647](https://github.com/Omeruno/switch-recompiler/actions/runs/40552762647)
+`146647c6bcb8bdfc2e43d17f775021f9d4e8f911` (2026-10-27).
+[CI 40559453114](https://github.com/Omeruno/switch-recompiler/actions/runs/40559453114)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2k adaptive exact damage and atomic masked CPU commit implemented (2026-10-27)
+## Current position: G4b.2l bounded capacity checkpoint replay implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. Next evaluate remaining journal-capacity synchronization and import/checkpoint cost against GL/CPU oracles.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. Next measure CPU-import/reseed transfer cost before another bounded optimization.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is measured journal-capacity synchronization/checkpoint work, after adaptive exact-damage and actual CPU/capture gates.
+Next is measured CPU-import/reseed transfer work, after bounded capacity replay and actual read/ROP/DIB/capture gates.
 
 ## Working agreement
 
@@ -2609,3 +2609,71 @@ existing coherence artifact, six jobs unchanged. Maps show G4b.2k implemented,
 journal/checkpoint costs next. Roadmap23cards/3views/32docs/link/fence/shell/diff/
 browser and exact published-SHA six-job CI/Pages/NRO/report+publicPE+contract are
 final publication gates. Preserve newer work and normal branch push only.
+
+## G4b.2l — bounded capacity replay, ownership/fault guards and four-policy measurement (2026-10-27)
+
+Clean146647c/FETCH_HEAD, no newer work/AGENTS. User requests several linked large
+blocks before sleep, continuing tomorrow. Completed capacity-checkpoint alternative,
+input/order/budget/loss protection, and public measurement/integration as one
+coherent package. Preserve this exact handoff/queue for the next launch; no alarm
+or autonomous chat wakeup is installed or implied. No hardware test requested.
+
+Existing shifted partial scenario still had8 journal-capacity device readbacks.
+Room can now flush all pending GPU work FIRST, then replay owned opaque Fill/Copy
+journal into its private already-allocated CPU checkpoint. Does not mutate
+canonical/window/capture/ownership epochs or upload/render a duplicate canonical
+CPU frame. Real extra CPU replay replaces synchronization/full-image checkpoint
+copy; counters record that cost. Optional work cap262144 clipped pixel applications
+counts overdraw; larger work retains reference readback. Fixed64-command/4MiB
+input/target limits remain. Failed flush already recovers complete old journal,
+then incoming Fill/Copy applies once in CPU mode. Incoming Copy still snapshots
+BEFORE Room, including source alias of the checkpoint being changed. No new
+allocation or guest callback in successful replay. Native existing experiment
+selects policy; isolated prototypes/reference controls remain off; manager reset
+clears policy. See G4B2L_CAPACITY_REPLAY.md for complete bounds/ownership/scope.
+
+Real GetPixel/ROP/DIB/host/lifecycle reads still physically read device when GPU
+healthy. CPU fallback after actual failure/loss remains genuine checkpoint+journal
+recovery. Previous retirement-only warm comparison explicitly disables this new
+policy, retaining its original gates. v13 separates capacity events/initiating-
+target reads/private CPU replays/pixel applications/budget refusals/failed replay
+submission, aggregated before retirement and captured through bindings shutdown.
+No successful-replay claim on fallback recovery; no physical FPS interpretation.
+
+Public native-shell matrix: four rotated same-build/PE policies,48 normal-exit0
+sessions/432 independent full1280x720 EGL pixels. Partial: capacity reads8→0,
+8 private CPU checkpoints/32768 pixel applications, final real GetPixel stays1,
+no mid-series canonical commits,1 owning snapshot. CPU DIB: pre-guest reads17→9,
+8 private checkpoints/129032 pixel applications, actual final read1,total10;
+imports/canonical commits10 and snapshot builds9 unchanged. Tiles keep covered
+retirement/no capacity work. Native aggregate counts match actual target stats.
+Schema3 records all4 policies/raw432 frames/work/CPU replay/source/PE hashes and
+host/cache identity. No noisy timing pass threshold or universal timing claim.
+
+New native oracle: pending and already-submitted64 commands, independent CPU/
+actual GPU-read pixels, owned-copy preservation after caller mutation, allocator
+zeroing, actual EGL loss after private checkpoint, GL error/incoming-once fallback,
+over-budget65x65 overdraw preserving readback,4MiB owned input pressure, failed
+incoming allocation leaving old journal intact and clipped source alias captured
+before capacity checkpoint. Negative skipped GPU submission fails actual pixels;
+negative disabled work bound fails required refusal/readback gate. No private
+binary or CPU-only false GPU acceptance. Prior mask/odd-child/occluder/capture/
+context/fault/device/snapshot/read/ROP/DIB/lifetime tests retained.
+
+Fresh final-suite.log passed final runtime/headers/native oracle/inspector/report
+and all previous GDI/GPU/shared-state/window/workspace/lifecycle/file/measurement,
+Stage C/six E9/22 F groups. Strict O2/no-exceptions/no-RTTI native core and full
+workspace inspector pass. Focused ASan/UBSan same core/native/workspace modules
+pass with other common runtime objects ordinary; driver leak scanning disabled,
+known native-fiber warning. Both meaningful negative controls fail as intended.
+No runtime/test changes after final full-suite success. Next measure actual
+CPU-import/reseed bytes/cost before a bounded transfer optimization, preserving
+real read/ROP/DIB/alias/capture/lifetime/fallback gates. D/Pinball, dynarec/D3D9,
+installer/archive/game targets including Lineage2/Asterios remain separate.
+
+Host tools ready, no new dependency/environment configuration; local Switch SDK
+absent. Actual v13/libnx compilation remains CI-only. Physical Paint/GPU/fallback/
+input/relaunch deferred; SD closed. Existing host artifact gains native capacity
+log/contract; six core jobs unchanged. Maps show G4b.2l implemented/import costs
+next. Roadmap23cards/3views/33docs, links/fences/shell/diff/browser and exact new
+published-SHA6-job CI/Pages/NRO/report/publicPE/contract are final publication gates.

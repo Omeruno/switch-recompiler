@@ -14,10 +14,12 @@ public:
     explicit WindowGpuBindings(ui::PresentationAllocator* allocator=nullptr):targets_(allocator),frameOwners_(allocator),allocator_(allocator) {}
     ~WindowGpuBindings(){Shutdown();}
     bool Initialize();
-    struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0,maskPromotions=0,maskFallbacks=0,maskCommits=0,maskPixels=0,maskPeakBytes=0;};
+    struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0,maskPromotions=0,maskFallbacks=0,maskCommits=0,maskPixels=0,maskPeakBytes=0;
+        uint64_t capacityCheckpoints=0,capacityReadbacks=0,capacityReplays=0,capacityReplayPixels=0,capacityReplayBudgetFallbacks=0,capacityReplayFailures=0;};
     bool EnableCoherence(); // explicit native test mode, current fresh USER session
     bool DisableCoherence();
     void EnableCoveredRetirement(bool enabled){targets_.EnableCoveredRetirement(enabled);}
+    bool EnableCapacityReplay(bool enabled); // current healthy native owner
     bool EnableExactDamage(bool enabled); // native same-build reference control; current USER owner
     size_t DamageMaskBytes() const;
     bool EnableSolidDispatch(); // explicit experiment only, never default activation

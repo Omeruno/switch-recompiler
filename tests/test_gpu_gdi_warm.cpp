@@ -76,7 +76,7 @@ static void Run(const char* path,int mode,unsigned sample) {
                 assert(stage==checked+1);checked=stage;
                 if(stage==1) {
                     expected=Screen();
-                    if(mode){assert(bindings.EnableSolidDispatch());bindings.EnableCoveredRetirement(mode==2);}
+                    if(mode){assert(bindings.EnableSolidDispatch());bindings.EnableCoveredRetirement(mode==2);assert(bindings.EnableCapacityReplay(false));}
                     phase=Clock::now();
                 } else if(stage<=10) {
                     raster=Us(phase);const unsigned index=stage-2;

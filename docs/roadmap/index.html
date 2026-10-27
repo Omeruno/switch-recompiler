@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40552762647" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40559453114" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Exact damage → journal checkpoint costs</span></div><h2>Точная запись изменённых пикселей</h2><p>G4b.2k: partial CPU commits5→0 и snapshot builds6→1; capture owners нетронутых пикселей сохранены. Real DIB/read barriers остаются. Далее journal checkpoint costs; default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Capacity replay → CPU import costs</span></div><h2>Checkpoint без лишнего device readback</h2><p>G4b.2l: partial capacity reads8→0 через ограниченную CPU-работу после GPU submission. Реальные GetPixel/DIB reads сохранены. Далее CPU-import/reseed cost; default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-27",
-  "runtimeSha": "32336422f761199d355fb3e9ffbde84f34fde723",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40552762647",
+  "runtimeSha": "146647c6bcb8bdfc2e43d17f775021f9d4e8f911",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40559453114",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -185,7 +185,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "current",
-      "summary": "G4b.2k: adaptive exact damage; далее journal-capacity / checkpoint costs.",
+      "summary": "G4b.2l: bounded capacity replay; далее CPU-import/reseed transfer costs.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -195,7 +195,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
       ],
       "todo": [
-        "Adaptive exact damage реализован; далее journal-capacity synchronization/checkpoint/import cost, default CPU.",
+        "Capacity replay проверен; далее CPU-import/reseed cost и bounded optimization, default CPU.",
         "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
         "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],
@@ -419,7 +419,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G4b.2",
       "title": "Мост к реальным окнам",
       "status": "current",
-      "summary": "G4b.2k: partial CPU commits5→0, snapshot builds6→1. Real DIB/read barriers сохранены; default CPU.",
+      "summary": "G4b.2l: partial capacity reads8→0 через ограниченный CPU replay; real GetPixel/DIB boundaries сохранены.",
       "done": [
         "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте.",
         "G4b.2b: привязка ресурсов к реальным HWND/DC, проверки жизни/clip и публичный x86/EGL тест.",
@@ -428,15 +428,17 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "Аудит host CPU/fault/lifecycle и bounded ordinary solid dispatch с public x86/CPU/EGL/count/budget/recovery.",
         "G4b.2i: same-resource CPU/reference/optimized,12 normal exits/108 EGL frames и safe journal retirement.",
         "G4b.2j: ownership epochs/retained snapshot,24 x86 exits/216 native-shell EGL frames и new-owner/CPU/shell/layout/reset/failure gates.",
-        "G4b.2k: sparse Region→exact bounded bitmask, atomic visibility/capture commit,36 ordinary-x86 exits/324 EGL frames, odd-window/fallback/actual-loss oracles."
+        "G4b.2k: sparse Region→exact bounded bitmask, atomic visibility/capture commit,36 ordinary-x86 exits/324 EGL frames, odd-window/fallback/actual-loss oracles.",
+        "G4b.2l: GPU-submit-before-replay, fixed CPU work budget,48 x86 exits/432 EGL frames; owned copy/alias/budget/fault/context-loss gates."
       ],
       "todo": [
-        "Оставшиеся journal-capacity readbacks и checkpoint/import cost.",
-        "Любое изменение проверять через actual GL/CPU/read/ROP/DIB/lifetime gates.",
+        "Измерить actual CPU-import/reseed transfer bytes/cost.",
+        "Выбрать bounded transfer optimization с GL/CPU/read/ROP/DIB/alias/lifetime gates.",
         "Default activation и физическая приёмка остаются открыты."
       ],
       "gate": "Публичный x86-гость проходит GPU-рисование, readback и lifecycle с теми же пикселями, что CPU.",
       "docs": [
+        "docs/G4B2L_CAPACITY_REPLAY.md",
         "docs/G4B2K_EXACT_DAMAGE.md",
         "docs/G4B2J_RETAINED_WORKSPACE.md",
         "docs/G4B2I_WARM_GDI_JOURNAL.md",
@@ -501,7 +503,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "03",
       "title": "Основной вывод",
       "status": "prototype",
-      "summary": "G4b.2k: adaptive exact damage сохраняет capture ownership нетронутых пикселей.",
+      "summary": "G4b.2l: capacity replay заменяет8 синхронизаций ограниченной private CPU работой.",
       "done": [
         "G4b.2a: GPU-GDI восстанавливает настройки GL; проверено чередование с действующим композитором.",
         "G4b.2d.1: native-кадры удерживают текстуры после retirement; лимиты, сброс, GL-error/context-loss fallback проверены.",
@@ -514,14 +516,16 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2h: обычные FillRect/PATCOPY,16 нормальных x86 exits, CPU/EGL/count/budget/recovery и парные first-frame замеры.",
         "G4b.2i: capacity readbacks8→0; pending/partial/copy/recovery сохраняют настоящие пиксели.",
         "G4b.2j: snapshots9→1 tiles,9→6 partial; real CPU DIB сохраняет9. Ошибки/новый owner/CPU/reset не используют старый frame.",
-        "Partial snapshots6→1 и mid-series CPU commits5→0; bitmap≤32771 bytes; real DIB/capture/visibility/fallback сохраняются."
+        "Partial snapshots6→1 и mid-series CPU commits5→0; bitmap≤32771 bytes; real DIB/capture/visibility/fallback сохраняются.",
+        "Partial:8 capacity reads→0,32768 CPU pixel applications; финальный GetPixel остаётся реальным device read. CPU DIB barriers сохранены."
       ],
       "todo": [
-        "Journal-capacity synchronization и checkpoint/import cost.",
-        "Более широкая/default активация и физическая приёмка открыты."
+        "CPU-import/reseed transfer measurements и bounded optimization.",
+        "Default activation и аппаратная приёмка открыты."
       ],
       "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
       "docs": [
+        "docs/G4B2L_CAPACITY_REPLAY.md",
         "docs/G4B2K_EXACT_DAMAGE.md",
         "docs/G4B2J_RETAINED_WORKSPACE.md",
         "docs/G4B2I_WARM_GDI_JOURNAL.md",
@@ -551,13 +555,15 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "Actual EGL context destruction и pre-draw allocation refusal без подмены пикселей.",
         "Ещё12 normal exits/108 warm EGL frames, reference/optimized counts, GL error и actual context loss oracle.",
         "Ещё24 normal exits/216 full native-shell EGL frames плюс parked transition oracle; negative owner/CPU guards fail pixels.",
-        "36 ordinary-x86 exits/324 native-shell EGL frames + odd37×29/child/occluder/clip/capture/allocation/context-loss cases."
+        "36 ordinary-x86 exits/324 native-shell EGL frames + odd37×29/child/occluder/clip/capture/allocation/context-loss cases.",
+        "48 normal exits/432 native-shell EGL frames; pending flush, owned copy/alias, CPU work/input budget, GL failure и actual loss oracles."
       ],
       "todo": [
-        "Journal/checkpoint alternatives с exact GL/CPU/read/ROP/DIB/fault gates."
+        "CPU-import/reseed alternatives с actual GL/CPU/read/ROP/DIB/alias/fault gates."
       ],
       "gate": "Реальный guest корректен при чтении, ошибках и перезапусках.",
       "docs": [
+        "docs/G4B2L_CAPACITY_REPLAY.md",
         "docs/G4B2K_EXACT_DAMAGE.md",
         "docs/G4B2J_RETAINED_WORKSPACE.md",
         "docs/G4B2I_WARM_GDI_JOURNAL.md",
@@ -583,6 +589,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ],
       "gate": "Поддержанные реальные операции идут через GPU; остальные честно обслуживаются CPU.",
       "docs": [
+        "docs/G4B2L_CAPACITY_REPLAY.md",
         "docs/G4B2K_EXACT_DAMAGE.md",
         "docs/G4B2J_RETAINED_WORKSPACE.md",
         "docs/G4B2I_WARM_GDI_JOURNAL.md",

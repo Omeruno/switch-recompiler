@@ -106,7 +106,19 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
         const auto part=screen.Intersect(clip).Intersect(r.frame);if(part.Empty())continue;
         const ui::Rect local{int(int64_t(part.left)-r.frame.left),int(int64_t(part.top)-r.frame.top),
             int(int64_t(part.right)-r.frame.left),int(int64_t(part.bottom)-r.frame.top)};
-        if(!targets_.Fill(lease.target,local,rgb))return false;
+        const auto* counters=targets_.TargetStats(lease.target);
+        const ui::GpuGdiPrototype::Stats before=counters?*counters:ui::GpuGdiPrototype::Stats{};
+        const bool accepted=targets_.Fill(lease.target,local,rgb);
+        counters=targets_.TargetStats(lease.target);
+        if(coherent_ && counters) {
+            coherenceStats_.capacityCheckpoints+=counters->capacityCheckpoints-before.capacityCheckpoints;
+            coherenceStats_.capacityReadbacks+=counters->readbacks-before.readbacks;
+            coherenceStats_.capacityReplays+=counters->replayCheckpoints-before.replayCheckpoints;
+            coherenceStats_.capacityReplayPixels+=counters->replayPixels-before.replayPixels;
+            coherenceStats_.capacityReplayBudgetFallbacks+=counters->replayBudgetFallbacks-before.replayBudgetFallbacks;
+            coherenceStats_.capacityReplayFailures+=counters->replayFailures-before.replayFailures;
+        }
+        if(!accepted)return false;
         if(coherent_){if(!Dirty(*slot))ownershipRevision_=ui::NewPresentationResourceId();if(slot->masked)MarkDamage(*slot,local);else slot->dirty.UnionRect(local);++gpuRevision_;}
     }
     return true;
@@ -134,7 +146,7 @@ bool WindowGpuBindings::EnableSolidDispatch() {
     if(!PresentationReady() || !GpuActive())return false;
     if(dispatchEnabled_)return true;
     if(!ui::g_gdi.InstallSolidBackend(gate_))return false;
-    targets_.EnableCoveredRetirement(true);exactDamage_=true;dispatchEnabled_=true;dispatchStats_={};return true;
+    targets_.EnableCoveredRetirement(true);targets_.EnableCapacityReplay(true);exactDamage_=true;dispatchEnabled_=true;dispatchStats_={};return true;
 }
 ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32_t rgb) {
     ++dispatchStats_.candidates;
@@ -186,6 +198,10 @@ bool WindowGpuBindings::DisableCoherence() {
 WindowGpuBindings::Slot* WindowGpuBindings::FindSlot(const Lease& lease) {
     for(auto& s:slots_)if(s.target==lease.target && s.identity==lease.raster.windowIdentity)return &s;
     return nullptr;
+}
+bool WindowGpuBindings::EnableCapacityReplay(bool enabled) {
+    if(!PresentationReady())return false;
+    targets_.EnableCapacityReplay(enabled);return true;
 }
 bool WindowGpuBindings::EnableExactDamage(bool enabled) {
     if(!PresentationReady())return false;

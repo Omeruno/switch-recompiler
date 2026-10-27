@@ -50,8 +50,31 @@ void GpuGdiPrototype::Recover(bool contextAlive) {
 }
 void GpuGdiPrototype::ContextLost() {if(mode_==Mode::Gpu)Recover(false);}
 bool GpuGdiPrototype::Room(size_t bytes) {
-    if(count_==MaxCommands || inputBytes_>MaxInputBytes-bytes){++stats_.capacityCheckpoints;return CpuRead()!=nullptr;}
-    return true;
+    if(count_!=MaxCommands && inputBytes_<=MaxInputBytes-bytes)return true;
+    ++stats_.capacityCheckpoints;
+    if(capacityReplay_ && mode_==Mode::Gpu) {
+        uint64_t work=0;
+        for(size_t n=0;n<count_;++n) {
+            const auto r=commands_[n].rect.Intersect({0,0,surface_.width,surface_.height});
+            work+=uint64_t(r.Width())*r.Height();
+            if(work>MaxReplayPixels)break;
+        }
+        if(work<=MaxReplayPixels) {
+            // Submit every pending command before freeing its journal/input.
+            // The CPU checkpoint represents the same ordered opaque Fill/Copy
+            // semantics, while the device continues in its own command order.
+            if(FlushGpu()) {
+                const auto commands=count_;Replay();
+                ++stats_.replayCheckpoints;stats_.replayCommands+=commands;stats_.replayPixels+=work;
+                return true;
+            }
+            // Flush failure already recovered the complete old journal. The
+            // incoming operation is applied once by Fill/Copy in CPU mode.
+            ++stats_.replayFailures;return mode_==Mode::CpuFallback;
+        }
+        ++stats_.replayBudgetFallbacks;
+    }
+    return CpuRead()!=nullptr;
 }
 void GpuGdiPrototype::RetireCoveredFlushed(Rect r) {
     // Capacity pressure only; never discard pending GPU work or partially

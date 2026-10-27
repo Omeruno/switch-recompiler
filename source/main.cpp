@@ -1852,7 +1852,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v12\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v13\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1933,6 +1933,10 @@ void EndPresentation() {
         fprintf(log,"Exact dirty mask promotions: %llu\nExact dirty mask tracking fallbacks: %llu\nExact dirty mask CPU commits: %llu\nExact dirty mask committed pixels: %llu\nExact dirty mask peak bytes: %llu\n",
             (unsigned long long)coherence.maskPromotions,(unsigned long long)coherence.maskFallbacks,
             (unsigned long long)coherence.maskCommits,(unsigned long long)coherence.maskPixels,(unsigned long long)coherence.maskPeakBytes);
+        fprintf(log,"Capacity checkpoints: %llu\nCapacity target readbacks: %llu\nCapacity CPU replay checkpoints: %llu\nCapacity CPU replay pixel applications: %llu\nCapacity CPU replay budget refusals: %llu\nCapacity CPU replay failures: %llu\n",
+            (unsigned long long)coherence.capacityCheckpoints,(unsigned long long)coherence.capacityReadbacks,
+            (unsigned long long)coherence.capacityReplays,(unsigned long long)coherence.capacityReplayPixels,
+            (unsigned long long)coherence.capacityReplayBudgetFallbacks,(unsigned long long)coherence.capacityReplayFailures);
         fprintf(log,"CPU access fault: %u\nNative coherence fault: %s\n",unsigned(ui::g_gdi.CpuAccessFault()),g_mixedCoherenceFault.c_str());
         fprintf(log,"Native mixed scope: opt-in device adapter and bounded solid FillRect/PATCOPY admission; default GDI remains CPU. Accepted logical counts are not GPU completion counts. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);

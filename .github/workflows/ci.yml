@@ -99,6 +99,8 @@ jobs:
           name: stage-gpu-window-coherence
           if-no-files-found: error
           path: |
+            build-host/gpu_capacity_replay.log
+            docs/G4B2L_CAPACITY_REPLAY.md
             build-host/gpu_damage_mask.log
             build-host/test_window_damage_mask.log
             build-host/guest-run.*/gpu_damage_mask.exe
