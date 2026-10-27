@@ -3,6 +3,7 @@
 #include <limits>
 
 namespace win32::user {
+static_assert(ui::GpuGdiPrototype::MaxSide==ui::Gdi::MaxWindowMaskSide,"masked commit and GPU image bounds must agree");
 namespace {
 bool SameRect(const ui::Rect& a,const ui::Rect& b) {
     return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
@@ -31,7 +32,7 @@ void WindowGpuBindings::Prune() {
         auto* w=Win(s.hwnd);int width=0,height=0;
         if(!w || w->rasterIdentity!=s.identity || !Size(ScreenRect(w),width,height) ||
            width!=s.width || height!=s.height) {
-            if(coherent_ && !s.dirty.Empty() && !CheckpointCpu())return;
+            if(coherent_ && Dirty(s) && !CheckpointCpu())return;
             targets_.Destroy(s.target);s={};ownershipRevision_=ui::NewPresentationResourceId();
         }
     }
@@ -46,7 +47,7 @@ bool WindowGpuBindings::Acquire(uint32_t hdc,Lease& out) {
     for(auto& s:slots_)if(!s.target) {
         const auto target=targets_.Create(width,height);if(!target)return false;
         s.hwnd=r.hwnd;s.identity=r.windowIdentity;s.width=width;s.height=height;s.target=target;
-        s.seed=ui::PresentationBuffer<uint32_t>(allocator_);
+        s.seed=ui::PresentationBuffer<uint32_t>(allocator_);s.damage=ui::PresentationBuffer<uint8_t>(allocator_);
         out={std::move(r),target};return true;
     }
     return false;
@@ -80,9 +81,23 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
             int(int64_t(part.right)-r.frame.left),int(int64_t(part.bottom)-r.frame.top)});
     }
     if(coherent_) {
-        auto next=slot->dirty;next.Union(operation);
-        if(next.Rects().size()>MaxClipRects && !CheckpointCpu())return false;
         if(operation.Rects().size()>MaxClipRects)return false;
+        if(!slot->masked) {
+            auto next=slot->dirty;bool fragmented=false;
+            // Stop at the first excess; do not construct an entire cross-product
+            // of fragmented clip rectangles just to discover that it is too big.
+            for(const auto& part:operation.Rects()) {
+                next.UnionRect(part);
+                if(next.Rects().size()>MaxClipRects){fragmented=true;break;}
+            }
+            if(fragmented) {
+                const bool promoted=exactDamage_ && PromoteDamage(*slot);
+                if(!promoted) {
+                    if(exactDamage_)++coherenceStats_.maskFallbacks;
+                    if(!CheckpointCpu())return false;
+                }
+            }
+        }
         slot->stamp.hwnd=r.hwnd;slot->stamp.windowIdentity=r.windowIdentity;
         slot->stamp.layoutGeneration=r.layoutGeneration;slot->stamp.frame=r.frame;
     }
@@ -92,7 +107,7 @@ bool WindowGpuBindings::Fill(const Lease& lease,ui::Rect logical,uint32_t rgb) {
         const ui::Rect local{int(int64_t(part.left)-r.frame.left),int(int64_t(part.top)-r.frame.top),
             int(int64_t(part.right)-r.frame.left),int(int64_t(part.bottom)-r.frame.top)};
         if(!targets_.Fill(lease.target,local,rgb))return false;
-        if(coherent_){if(slot->dirty.Empty())ownershipRevision_=ui::NewPresentationResourceId();slot->dirty.UnionRect(local);++gpuRevision_;}
+        if(coherent_){if(!Dirty(*slot))ownershipRevision_=ui::NewPresentationResourceId();if(slot->masked)MarkDamage(*slot,local);else slot->dirty.UnionRect(local);++gpuRevision_;}
     }
     return true;
 }
@@ -119,7 +134,7 @@ bool WindowGpuBindings::EnableSolidDispatch() {
     if(!PresentationReady() || !GpuActive())return false;
     if(dispatchEnabled_)return true;
     if(!ui::g_gdi.InstallSolidBackend(gate_))return false;
-    targets_.EnableCoveredRetirement(true);dispatchEnabled_=true;dispatchStats_={};return true;
+    targets_.EnableCoveredRetirement(true);exactDamage_=true;dispatchEnabled_=true;dispatchStats_={};return true;
 }
 ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32_t rgb) {
     ++dispatchStats_.candidates;
@@ -140,7 +155,7 @@ ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32
 }
 void WindowGpuBindings::RevokeGate() {
     if(gate_)gate_->owner=nullptr;
-    gate_.reset();coherent_=false;dispatchEnabled_=false;
+    gate_.reset();coherent_=false;dispatchEnabled_=false;exactDamage_=false;
 }
 bool WindowGpuBindings::Fail(Fault reason) {
     fault_=true;if(faultReason_==Fault::None)faultReason_=reason;
@@ -172,9 +187,37 @@ WindowGpuBindings::Slot* WindowGpuBindings::FindSlot(const Lease& lease) {
     for(auto& s:slots_)if(s.target==lease.target && s.identity==lease.raster.windowIdentity)return &s;
     return nullptr;
 }
+bool WindowGpuBindings::EnableExactDamage(bool enabled) {
+    if(!PresentationReady())return false;
+    exactDamage_=enabled;return true;
+}
+size_t WindowGpuBindings::DamageMaskBytes() const {
+    size_t bytes=0;for(const auto& s:slots_)bytes+=s.damage.size();return bytes;
+}
+void WindowGpuBindings::MarkDamage(Slot& s,ui::Rect r) {
+    // Bits describe accepted writes only, never their bounding rectangle.
+    // Row spans are at most512 pixels; full bytes avoid a CPU raster per pixel.
+    for(int y=r.top;y<r.bottom;++y) {
+        size_t first=size_t(y)*s.width+r.left,last=size_t(y)*s.width+r.right;
+        while(first<last && first%8){s.damage[first/8]|=uint8_t(1u<<(first%8));++first;}
+        const auto end=last/8*8;
+        if(first<end){std::fill(s.damage.data()+first/8,s.damage.data()+end/8,uint8_t(0xff));first=end;}
+        while(first<last){s.damage[first/8]|=uint8_t(1u<<(first%8));++first;}
+    }
+    s.maskWrites=true;
+}
+bool WindowGpuBindings::PromoteDamage(Slot& s) {
+    const size_t bytes=(size_t(s.width)*s.height+7)/8,live=DamageMaskBytes();
+    if(live>MaxDamageBytes || bytes>MaxDamageBytes-live+s.damage.size() || !s.damage.Resize(bytes))return false;
+    coherenceStats_.maskPeakBytes=std::max(coherenceStats_.maskPeakBytes,uint64_t(DamageMaskBytes()));
+    std::fill(s.damage.data(),s.damage.data()+s.damage.size(),0);
+    s.maskWrites=false;
+    for(const auto& rect:s.dirty.Rects())MarkDamage(s,rect);
+    s.dirty.Clear();s.masked=true;++coherenceStats_.maskPromotions;return true;
+}
 bool WindowGpuBindings::Seed(Slot& s,const Lease& lease) {
     if(!s.import)return true;
-    if(!s.dirty.Empty())return Fail(Fault::DirtyImport);
+    if(Dirty(s))return Fail(Fault::DirtyImport);
     const size_t pixels=size_t(s.width)*s.height;
     if(!s.seed.Resize(pixels) || !ui::g_gdi.SnapshotWindow(lease.raster,s.seed.data(),pixels) ||
        !targets_.ImportCpu(s.target,s.seed.data(),pixels))return false;
@@ -184,10 +227,13 @@ bool WindowGpuBindings::CheckpointCpu() {
     if(!coherent_)return false;
     if(!SameSession())return false;
     if(fault_)return false;
-    for(auto& s:slots_)if(s.target && !s.dirty.Empty()) {
+    for(auto& s:slots_)if(s.target && Dirty(s)) {
         const auto* image=targets_.CpuRead(s.target);size_t pixels=0;
-        if(!image || fault_ || ui::g_gdi.CpuAccessFault() || !ui::g_gdi.CommitWindow(s.stamp,*image,s.dirty,pixels))return Fail(Fault::WindowCommit);
-        s.dirty.Clear();ownershipRevision_=ui::NewPresentationResourceId();++coherenceStats_.commits;coherenceStats_.commitPixels+=pixels;
+        if(!image || fault_ || ui::g_gdi.CpuAccessFault())return Fail(Fault::WindowCommit);
+        const bool committed=s.masked?ui::g_gdi.CommitWindowMask(s.stamp,*image,s.damage.data(),s.damage.size(),pixels):ui::g_gdi.CommitWindow(s.stamp,*image,s.dirty,pixels);
+        if(!committed)return Fail(Fault::WindowCommit);
+        if(s.masked){++coherenceStats_.maskCommits;coherenceStats_.maskPixels+=pixels;}
+        s.dirty.Clear();s.masked=s.maskWrites=false;ownershipRevision_=ui::NewPresentationResourceId();++coherenceStats_.commits;coherenceStats_.commitPixels+=pixels;
     }
     return true;
 }
@@ -218,7 +264,7 @@ bool WindowGpuBindings::SubmitMixed(ui::MixedPresentation& output,const ui::Wind
     std::array<ui::PresentationLayerFrame,ui::WindowLayers::MaxLayers> layers{};
     std::array<uint32_t,ui::GpuGdiTargets::MaxLayers> tokens{};
     size_t count=0;
-    for(const auto& slot:slots_)if(slot.target && !slot.dirty.Empty()) {
+    for(const auto& slot:slots_)if(slot.target && Dirty(slot)) {
         ui::WindowDcInfo image;
         if(slot.import || !ui::g_gdi.DescribeWindowImage(slot.stamp,image))return Fail(Fault::WindowDescription);
         const auto& r=slot.stamp.frame;

@@ -255,6 +255,8 @@ public:
     }
     bool SnapshotWindow(const WindowRasterTarget&,uint32_t* rgb,size_t count);
     bool CommitWindow(const WindowRasterTarget&,const Surface&,const Region& dirty,size_t& pixels);
+    static constexpr int MaxWindowMaskSide=512;
+    bool CommitWindowMask(const WindowRasterTarget&,const Surface&,const uint8_t* mask,size_t bytes,size_t& pixels);
 
     // ExtTextOut: options ETO_OPAQUE 2, ETO_CLIPPED 4
     bool TextOut(uint32_t hdc, int x, int y, const std::u16string& text, int options = 0, const Rect* rect = nullptr,

@@ -534,6 +534,29 @@ bool Gdi::CommitWindow(const WindowRasterTarget& r,const Surface& image,const Re
     return true;
 }
 
+bool Gdi::CommitWindowMask(const WindowRasterTarget& r,const Surface& image,const uint8_t* mask,size_t bytes,size_t& pixels) {
+    pixels=0;WindowDcInfo info;
+    if(!mask || !WindowImageInfo(r,info) || !image.Valid() || image.bpp!=32 ||
+       image.width!=r.frame.Width() || image.height!=r.frame.Height() || image.width>MaxWindowMaskSide || image.height>MaxWindowMaskSide ||
+       image.pitch<int64_t(image.width)*4 || image.pitch%4 || reinterpret_cast<uintptr_t>(image.bits)%alignof(uint32_t))return false;
+    const size_t count=size_t(image.width)*image.height;
+    if(bytes!=(count+7)/8 || (count%8 && (mask[bytes-1] & uint8_t(0xffu<<(count%8)))))return false;
+    // Validate every dirty pixel BEFORE capture setup or any mutation. Expanding
+    // to a bounding box would steal untouched CPU/child-window ownership.
+    for(size_t n=0;n<count;++n)if(mask[n/8] & uint8_t(1u<<(n%8))) {
+        if(!info.visible.Contains(r.frame.left+int(n%image.width),r.frame.top+int(n/image.width)))return false;
+    }
+    info={};info.expectedWindowIdentity=r.windowIdentity;info.captureWrites=true;
+    if(!provider_(r.hwnd,true,info) || info.windowIdentity!=r.windowIdentity)return false;
+    Surface dst=*screen_;dst.writeCapture=info.capture;
+    for(size_t n=0;n<count;++n)if(mask[n/8] & uint8_t(1u<<(n%8))) {
+        const int x=int(n%image.width),y=int(n/image.width);
+        dst.Set(x+r.frame.left,y+r.frame.top,image.Get(x,y));++pixels;
+    }
+    if(pixels)MarkScreenChanged();
+    return true;
+}
+
 void Gdi::DeviceSize(uint32_t hdc, int& w, int& h) {
     w = h = 0;
     DcObj* dc = Dc(hdc);

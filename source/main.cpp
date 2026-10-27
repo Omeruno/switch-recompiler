@@ -1681,6 +1681,7 @@ bool g_mixedRequested=false,g_mixedEnabled=false;
 uint64_t g_mixedSubmissions=0,g_mixedRedraws=0,g_mixedReused=0,g_mixedSnapshotBytes=0;
 std::string g_mixedCoherenceFault="none";
 win32::user::WindowGpuBindings::DispatchStats g_mixedDispatch;
+win32::user::WindowGpuBindings::CoherenceStats g_mixedCoherence;
 constexpr int kOutW=ui::kHandheldWidth,kOutH=ui::kHandheldHeight;
 ui::SoftwarePresentation g_software;
 ui::OpenGlPresentation g_gpu;
@@ -1758,7 +1759,7 @@ win32::user::MixedOutput g_nativeMixedOutput(g_nativeMixedDevice,g_gpu,g_softwar
 void EndMixedPresentation() {
     if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();g_mixedReused=g_mixedWorkspace->ReusedFrames();g_mixedSnapshotBytes=g_mixedWorkspace->SnapshotBytes();}
     g_mixedWorkspace.reset();
-    if(g_mixedBindings){g_mixedDispatch=g_mixedBindings->DispatchCounters();g_mixedBindings->Shutdown();g_mixedCoherenceFault=g_mixedBindings->FaultName();g_mixedBindings.reset();}
+    if(g_mixedBindings){g_mixedDispatch=g_mixedBindings->DispatchCounters();g_mixedBindings->Shutdown();g_mixedCoherence=g_mixedBindings->CoherenceCounters();g_mixedCoherenceFault=g_mixedBindings->FaultName();g_mixedBindings.reset();}
     g_havePresented=false;
 }
 bool BeginMixedPresentation(win32::user::ShellSession& shell) {
@@ -1826,7 +1827,7 @@ bool FallBackToSoftware(const char* error) {
 void BeginPresentation(const char* guestPath) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
-    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
+    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherence={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
@@ -1851,7 +1852,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v11\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v12\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1928,6 +1929,10 @@ void EndPresentation() {
         fprintf(log,"Solid raster candidates: %llu\nSolid raster accepted logical: %llu\nSolid raster refused before draw: %llu\nSolid raster failed: %llu\n",
             (unsigned long long)dispatch.candidates,(unsigned long long)dispatch.accepted,
             (unsigned long long)dispatch.refused,(unsigned long long)dispatch.failed);
+        const auto& coherence=g_mixedBindings?g_mixedBindings->CoherenceCounters():g_mixedCoherence;
+        fprintf(log,"Exact dirty mask promotions: %llu\nExact dirty mask tracking fallbacks: %llu\nExact dirty mask CPU commits: %llu\nExact dirty mask committed pixels: %llu\nExact dirty mask peak bytes: %llu\n",
+            (unsigned long long)coherence.maskPromotions,(unsigned long long)coherence.maskFallbacks,
+            (unsigned long long)coherence.maskCommits,(unsigned long long)coherence.maskPixels,(unsigned long long)coherence.maskPeakBytes);
         fprintf(log,"CPU access fault: %u\nNative coherence fault: %s\n",unsigned(ui::g_gdi.CpuAccessFault()),g_mixedCoherenceFault.c_str());
         fprintf(log,"Native mixed scope: opt-in device adapter and bounded solid FillRect/PATCOPY admission; default GDI remains CPU. Accepted logical counts are not GPU completion counts. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);

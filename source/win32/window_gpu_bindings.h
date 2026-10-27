@@ -10,13 +10,16 @@ class WindowGpuBindings {
 public:
     struct Lease {ui::WindowRasterTarget raster;ui::GpuGdiTargets::Handle target=0;};
     static constexpr size_t MaxClipRects=128;
+    static constexpr size_t MaxDamageBytes=(ui::GpuGdiTargets::MaxPixels+7)/8+ui::GpuGdiTargets::MaxTargets-1;
     explicit WindowGpuBindings(ui::PresentationAllocator* allocator=nullptr):targets_(allocator),frameOwners_(allocator),allocator_(allocator) {}
     ~WindowGpuBindings(){Shutdown();}
     bool Initialize();
-    struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0;};
+    struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0,maskPromotions=0,maskFallbacks=0,maskCommits=0,maskPixels=0,maskPeakBytes=0;};
     bool EnableCoherence(); // explicit native test mode, current fresh USER session
     bool DisableCoherence();
     void EnableCoveredRetirement(bool enabled){targets_.EnableCoveredRetirement(enabled);}
+    bool EnableExactDamage(bool enabled); // native same-build reference control; current USER owner
+    size_t DamageMaskBytes() const;
     bool EnableSolidDispatch(); // explicit experiment only, never default activation
     struct DispatchStats {uint64_t candidates=0,accepted=0,refused=0,failed=0;};
     const DispatchStats& DispatchCounters() const {return dispatchStats_;}
@@ -64,13 +67,18 @@ private:
         bool import=true;
         ui::WindowRasterTarget stamp;
         ui::Region dirty;
+        bool masked=false,maskWrites=false;
+        ui::PresentationBuffer<uint8_t> damage;
         ui::PresentationBuffer<uint32_t> seed;
     };
     Slot* FindSlot(const Lease&);
     bool Seed(Slot&,const Lease&);
+    bool PromoteDamage(Slot&);
+    static bool Dirty(const Slot& s){return s.maskWrites || !s.dirty.Empty();}
+    static void MarkDamage(Slot&,ui::Rect);
     std::shared_ptr<Gate> gate_;
     uint64_t desktopIdentity_=0,gpuRevision_=0,ownershipRevision_=0;
-    bool coherent_=false,fault_=false,barrier_=false;
+    bool coherent_=false,fault_=false,barrier_=false,exactDamage_=false;
     Fault faultReason_=Fault::None;
     CoherenceStats coherenceStats_;
 

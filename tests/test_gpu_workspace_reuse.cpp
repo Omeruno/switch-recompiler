@@ -99,7 +99,7 @@ static void Run(const char* path,int mode,unsigned sample,int workload) {
             const auto stage=memory.Read32(probe);
             if(stage!=checked && stage>=1 && stage<=12){
                 assert(stage==checked+1);checked=stage;
-                if(stage==1){guest=Screen();assert(bindings.EnableSolidDispatch());phase=Clock::now();}
+                if(stage==1){guest=Screen();assert(bindings.EnableSolidDispatch());assert(bindings.EnableExactDamage(mode==2));phase=Clock::now();}
                 else if(stage<=10){
                     const auto raster=Us(phase);const unsigned index=stage-2;
                     for(int y=0;y<128;++y)for(int x=0;x<128;++x) {
@@ -108,22 +108,22 @@ static void Run(const char* path,int mode,unsigned sample,int workload) {
                             guest[size_t(y+50)*1280+x+40]=Tile(index,unsigned(y/16*8+x/16));
                     }
                     if(workload==2){for(int y=0;y<4;++y)for(int x=0;x<4;++x)guest[size_t(y+50)*1280+x+40]=0x100000u+index*0x101u;guest[size_t(150)*1280+140]=0xabc000u+index;}
-                    assert(bindings.Acquire(memory.Read32(probe+8),lease));
+                    assert(bindings.Acquire(memory.Read32(probe+8),lease));assert(bindings.DamageMaskBytes()==size_t(mode==2 && workload==1 && index>0?2048:0));
                     const auto a=Clock::now();assert(workspace.Refresh()==user::NativePresentResult::Submitted);const auto total=Us(a);
                     CompareGl(NativeExpected(shell,guest));
                     const auto* c=bindings.Counters(lease);
                     constexpr unsigned partialReads[]={0,2,3,4,6,7,8,10,11},partialCommits[]={0,1,1,2,3,3,4,5,5};
-                    assert(c && c->readbacks==uint64_t(workload==2?1+index*2:workload==1?partialReads[index]:0));
+                    assert(c && c->readbacks==uint64_t(workload==2?1+index*2:workload==1?(mode==2?index:partialReads[index]):0));
                     assert(c->cpuImports==uint64_t(workload==2?index+2:1));
-                    assert(bindings.CoherenceCounters().commits==uint64_t(workload==2?index+1:workload==1?partialCommits[index]:0));
+                    assert(bindings.CoherenceCounters().commits==uint64_t(workload==2?index+1:workload==1?(mode==2?0:partialCommits[index]):0));
                     if(workload==0)assert(c->batches==index+1);
                     constexpr unsigned partialSnapshots[]={1,2,2,3,4,4,5,6,6};
-                    const auto snapshots=mode?(workload==2?index+1:workload==1?partialSnapshots[index]:1):index+1;
+                    const auto snapshots=mode?(workload==2?index+1:workload==1?(mode==2?1:partialSnapshots[index]):1):index+1;
                     assert(workspace.Submissions()==snapshots && workspace.ReusedFrames()==index+1-snapshots);
-                    printf("FRAME %u %d %d %u %.3f %.3f %.3f %llu %llu %llu %llu\n",sample,mode,workload,index,raster,total,sink.output,
-                        static_cast<unsigned long long>(workspace.Submissions()),static_cast<unsigned long long>(sink.copied),static_cast<unsigned long long>(c->readbacks),static_cast<unsigned long long>(bindings.CoherenceCounters().commits));
+                    printf("FRAME %u %d %d %u %.3f %.3f %.3f %llu %llu %llu %llu %zu\n",sample,mode,workload,index,raster,total,sink.output,
+                        static_cast<unsigned long long>(workspace.Submissions()),static_cast<unsigned long long>(sink.copied),static_cast<unsigned long long>(c->readbacks),static_cast<unsigned long long>(bindings.CoherenceCounters().commits),bindings.DamageMaskBytes());
                     phase=Clock::now();
-                }else if(stage==11){assert(Screen()==guest);assert(bindings.Counters(lease)->readbacks==uint64_t(workload==2?18:workload==1?12:1));}
+                }else if(stage==11){assert(Screen()==guest);assert(bindings.Counters(lease)->readbacks==uint64_t(workload==2?18:workload==1?(mode==2?9:12):1));}
             }
             if(result==rt::GuestExecution::Result::Stopped){stopped=true;break;}
             if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
@@ -201,7 +201,7 @@ static void Transitions(const char* path) {
 }
 int main(int argc,char** argv){
     assert(argc==5);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
-    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<3;++workload)for(int i=0;i<2;++i)Run(argv[workload+1],int((sample+i)%2),sample,workload);
+    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<3;++workload)for(int i=0;i<3;++i)Run(argv[workload+1],int((sample+i)%3),sample,workload);
     Transitions(argv[4]);
     puts("Retained workspace: PASS (real x86, owning native shell frames and pixel/read gates)");
 }

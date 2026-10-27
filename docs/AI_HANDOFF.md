@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`afe681577f79bf2a97fd8c3a63cfbd516b3a6ccc` (2026-10-27).
-[CI 40451764982](https://github.com/Omeruno/switch-recompiler/actions/runs/40451764982)
+`32336422f761199d355fb3e9ffbde84f34fde723` (2026-10-27).
+[CI 40552762647](https://github.com/Omeruno/switch-recompiler/actions/runs/40552762647)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2j retained native workspace snapshots implemented (2026-10-27)
+## Current position: G4b.2k adaptive exact damage and atomic masked CPU commit implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. Next bounded dirty-region accumulation/coalescing with actual visibility/CPU/capture-write gates.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. Next evaluate remaining journal-capacity synchronization and import/checkpoint cost against GL/CPU oracles.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is bounded dirty-region accumulation/coalescing, after the measured retained-workspace/partial/DIB gates.
+Next is measured journal-capacity synchronization/checkpoint work, after adaptive exact-damage and actual CPU/capture gates.
 
 ## Working agreement
 
@@ -2535,3 +2535,77 @@ report/log/contract in existing coherence artifact; six core jobs unchanged.
 Current maps identify G4b.2j implemented and dirty-region costs next. Source/link/
 fence/shell/diff, map23cards/3views/31docs and desktop/mobile browser checks plus
 exact published-SHA CI six jobs/Pages/NRO/report+PE+contract are publication gates.
+
+## G4b.2k — adaptive exact damage and atomic masked CPU/capture commit (2026-10-27)
+
+Clean3233642/FETCH_HEAD, no newer work/AGENTS. User requests several connected
+large steps. Implemented bounded exact damage, atomic CPU/capture exchange, and
+expanded same-build reference/retained/exact measurement plus lifetime/fault cases.
+Default CPU GDI, native experiment flag1, L/ZL, Luna and previous session/input/
+read/ROP/DIB/fallback contracts unchanged. No per-EXE path or physical FPS claim.
+
+Initial always-masked experiment removed partial dirty-region checkpoints but
+added unnecessary metadata to simple tiles. Final adaptive tracker keeps sparse
+Region<=128 first, stops candidate union at first excess, then converts ONLY old
+accepted writes into an owned bitset. Mark new pixels only after actual Fill
+success; no bounding-box expansion, no CPU color raster duplication per operation.
+Fixed512 side/combined512²/four-target budgets derive live mask cap32771 bytes.
+Buffers reuse after clearing and release on retirement/shutdown. Allocation/budget
+refusal preserves the original Region/checkpoint path. Same-build native control
+requires current healthy owner; existing masked writes survive policy changes
+until the real checkpoint. See G4B2K_EXACT_DAMAGE.md for transaction and limits.
+
+Gdi CommitWindowMask validates entire identity/layout/frame/dimensions/pitch/
+alignment/byte count/padding/marked visibility set before capture or mutation.
+Only exact marked pixels change canonical/retained pixels and capture ownership.
+Failed late capture writes nothing; one nonempty transaction bumps CPU revision
+once. GPU/private bindings include both Region and mask in resident/seed/prune/
+checkpoint decisions, retaining ownership epochs and live snapshot reuse. v12
+records promotion/refusal/masked commit/pixel/peak memory counts through shutdown.
+
+Expanded public native-shell matrix:36 actual ordinary-x86 normal exits/324 full
+1280x720 independent EGL pixel frames. Three rotated same-build policies isolate
+historical full snapshot/Region, incoming retained/Region and retained/exact damage;
+initial triplets excluded. Partial mid-series CPU commits5→0, snapshot builds6→1,
+materialized bytes66,443,520→11,073,920, pre-guest target reads11→8/final12→9.
+Remaining8 journal-capacity reads are real; tiles unchanged, no mask allocation.
+Real raw-DIB+SRCCOPY still needs9 builds/pre-guest17/final18/imports10/CPU commits10.
+Bitmap2048 bytes only after partial fragmentation; zero for simple tile/DIB cases.
+Previous ordinary/warm/journal counts, selector/device/recovery/snapshot boundaries
+stay gates. Report schema2 records3 policies,324 raw frames, mask bytes and hashes.
+
+New public odd37x29/child/occluder/selected-hole/window+viewport-origin/sparse
+Win32 fixture:4 normal exits cover CPU reference, masked/reused-bit checks,
+permanent allocation refusal and actual EGL destruction software recovery; one lost-layout
+fault case parked and drained, not a normal exit. Exact pixel counts and retained
+owners of untouched pixels match CPU;135 mask bytes, allocator zero at shutdown.
+Repeated sparse cycles plus full clipped row-byte spans verify odd bit boundaries,
+zeroing and union semantics. Foreign-session control rejects without poisoning
+owner. Native unit checks malformed length/padding/pitch/alignment, invisible
+hole/identity/layout and late capture atomic rejection, exact4 changed pixels/
+retained owners. Negative missing visibility fails hole rejection; stale reused
+bits fail accepted-pixel count on the next fragmented cycle.
+
+Earlier development and intermediate full suites passed preceding runtime gates.
+Fresh final-boundary-suite.log passed final runtime/headers/public variants/native
+unit/report/matrix and all prior GDI/GPU/window/GL/state/lifecycle/file/measurement,
+Stage C/six E9/22 F groups. Full-row/odd-mask oracle was additionally strengthened
+and latest focused strict O2/no-exceptions/no-RTTI and ASan/UBSan core/bridge/GPU/
+renderer/live mask cases pass; workspace strict/ASan324-frame matrix also passes.
+Other common runtime objects ordinary in focused sanitizer builds, driver leak
+scan disabled, known native-fiber warning. No runtime changes after final full
+success. No timing threshold, universal speedup, GPU timestamp or scanout claim.
+
+Next: remaining journal-capacity synchronization on shifted partial writes and
+CPU import/checkpoint cost; evaluate bounded replay/checkpoint alternatives with
+actual GL/CPU/read/ROP/DIB/lifetime gates before changing them. Do not hide real
+application reads or CPU DIB barriers. D/Pinball/full dynarec/D3D9/installer/archive
+and games (including Lineage2 Classic/Asterios) remain separate unsupported goals.
+
+No new dependency/configuration required; host MinGW/Mesa prepared, local Switch
+SDK absent. Actual v12/libnx compilation is CI-only; physical Paint/GPU/fallback/
+input/relaunch deferred, SD closed. New public PE/native+GL logs/contract join
+existing coherence artifact, six jobs unchanged. Maps show G4b.2k implemented,
+journal/checkpoint costs next. Roadmap23cards/3views/32docs/link/fence/shell/diff/
+browser and exact published-SHA six-job CI/Pages/NRO/report+publicPE+contract are
+final publication gates. Preserve newer work and normal branch push only.

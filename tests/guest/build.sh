@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/gpu_damage_mask.c" \
+    -o "$out/gpu_damage_mask.exe" -lkernel32 -luser32 -lgdi32
 $cc -O1 -nostdlib -e _start@0 "$here/window_gestures.c" \
     -o "$out/window_gestures.exe" -lkernel32 -luser32
 for variant in PARTIAL COPY; do
