@@ -17,6 +17,7 @@ public:
     struct Stats {
         uint64_t draws=0,uploads=0,readbacks=0,recoveries=0,checkpoints=0;
         uint64_t submittedCommands=0,batches=0,batchedCommands=0,cpuImports=0;
+        uint64_t capacityCheckpoints=0,coveredRetired=0;
     };
     explicit GpuGdiPrototype(PresentationAllocator* allocator=nullptr);
     ~GpuGdiPrototype();
@@ -37,11 +38,13 @@ public:
     const Stats& Counters() const {return stats_;}
     size_t JournalCommands() const {return count_;}
     size_t InputBytes() const {return inputBytes_;}
+    void EnableCoveredRetirement(bool enabled) {coveredRetirement_=enabled;} // same-build reference control
     void EnableBatching(bool enabled) {batching_=enabled;} // native same-build reference control
 private:
     friend class GpuGdiTargets;
     struct Command {Rect rect;uint32_t color=0;bool copy=false;PresentationBuffer<uint32_t> input;};
     bool Room(size_t bytes);
+    void RetireCoveredFlushed(Rect);
     void Replay();
     void Apply(const Command&);
     void ClearJournal();
@@ -58,7 +61,7 @@ private:
     size_t count_=0,flushed_=0,inputBytes_=0;
     uint32_t target_=0,upload_=0,fbo_=0,vao_=0,program_=0,batchProgram_=0;
     struct Locations {int operation=-1,image=-1,origin=-1,fill=-1,rects=-1,colors=-1,size=-1;} locations_;
-    bool batching_=true;
+    bool batching_=true,coveredRetirement_=false;
     Mode mode_=Mode::Empty;
     Stats stats_;
 };

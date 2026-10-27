@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-27, после F6a/F6b и G4b.2h (ordinary solid GDI и первые замеры).
-Проверенный код `a0a2771a8b475479a4c157c85c01977d64beb6af`:
-[CI40446491133, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
+Дата обновления: 2026-10-27, после F6a/F6b и G4b.2i (warm GDI и journal retirement).
+Проверенный код `d07a19f6400eae316c806957e6ab84289812a8b2`:
+[CI40449504198, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -13,7 +13,7 @@
 
 **Долгосрочная цель — слой исполнения PC-игр на Switch с нативными host
 backends, ARM64-переводом x86 и GPU-переводом графики.** Пользовательские
-ориентиры: Spore, Mirror’s Edge и The Sims 3; это неподтверждённые будущие цели.
+ориентиры: Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios; это неподтверждённые будущие цели.
 [Архитектурные требования и критерии игр](TARGET_GAMES_RU.md). Paint/Сапёр
 проверяют общие механизмы и не определяют предел проекта.
 
@@ -28,7 +28,7 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 CPU/GPU-барьеры, владеющие mixed frames, shell/USER selector, opt-in Switch adapter
 и зарегистрированные host pixel/fault границы реализованы. G4b.2h добавляет
 ограниченный обычный solid GDI в явном эксперименте и первые парные замеры;
-остаток G4b.2 — cold/warm стоимость и общая оптимизация по данным. D, физическая E/F, H/I и расширения среды открыты.**
+остаток G4b.2 — owning snapshot/flush и partial/copy workload costs. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
 или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
@@ -124,7 +124,7 @@ COM, child-process/service зависимостей этим не обеспеч
 
 ## Этап G — измерения и ускорение CPU/GDI [сейчас G4b.2]
 
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) добавляет обычные solid FillRect/PATCOPY в явном native experiment, public x86/CPU/EGL/count/budget/recovery и парные first-frame замеры. Локальный Mesa GPU-путь медленнее CPU; default не меняется. Следом cold/warm разделение и измеренная общая оптимизация.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) добавляет обычные solid FillRect/PATCOPY в явном native experiment, public x86/CPU/EGL/count/budget/recovery и парные first-frame замеры. Локальный Mesa GPU-путь медленнее CPU; default не меняется. G4b.2i реализует cold/warm и retirement; далее owning snapshot/flush и partial/copy затраты.
 
 GPU-GDI — текущий экспериментальный подблок на стыке E/G. Он не заменяет
 исходную задачу CPU-ускорения и не означает готовый dynarec.
@@ -146,7 +146,8 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2f | [Opt-in Switch mixed output adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), cursor/fallback/lifecycle/v9 | Default off; ordinary GDI CPU, hardware отложен |
 | G4b.2g | [Host pixel/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky faults, checked compose/lifecycle, owner isolation | Зарегистрированные пути; обычный GDI ещё CPU |
 | G4b.2h | [Обычный solid dispatch + first-frame измерения](G4B2H_ORDINARY_GDI_DISPATCH.md) | Explicit experiment; default CPU, локально GPU медленнее |
-| **Остаток G4b.2** | Cold/warm стоимость и общая оптимизация | **Следующий незавершённый рубеж** |
+| G4b.2i | [Cold/warm same-resource и covered journal retirement](G4B2I_WARM_GDI_JOURNAL.md) |12 normal exits/108 EGL frames; capacity reads8→0, реальный финальный read сохранён; default CPU |
+| **Остаток G4b.2** | Owning snapshot/ownership/flush и partial/copy затраты | **Следующий незавершённый рубеж** |
 
 Ограниченный opt-in subset имеет реальные x86 GDI/window/lifecycle/pixel tests,
 EGL oracle и первые transfer/checkpoint/submission измерения. Более широкая
@@ -177,7 +178,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. Остаток G4b.2 — после [bounded ordinary solid dispatch/парных первых замеров](G4B2H_ORDINARY_GDI_DISPATCH.md) отделить cold setup от warm batches и выбрать общую оптимизацию по данным. Default CPU; физическая производительность открыта.
+1. Остаток G4b.2 — после [bounded ordinary solid dispatch/парных первых замеров](G4B2H_ORDINARY_GDI_DISPATCH.md) после [cold/warm и covered retirement](G4B2I_WARM_GDI_JOURNAL.md) измерить owning snapshot/flush и partial/copy затраты перед следующей общей оптимизацией. Default CPU; физическая производительность открыта.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -199,7 +200,7 @@ Bounded native ownership/solid dispatch реализованы; более ши�
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Этот prerequisite уже использован в native ShellSession/mixed output и
-G4b.2h solid dispatch. Следующий шаг — cold/warm разделение и общая оптимизация по данным.
+G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; далее owning snapshot/flush и partial/copy затраты.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -210,7 +211,7 @@ G4b.2h solid dispatch. Следующий шаг — cold/warm разделен�
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. Default остаётся CPU; далее cold/warm затраты и измеренная общая оптимизация.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; далее owning snapshot/flush и partial/copy затраты.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -220,4 +221,4 @@ G4b.2h solid dispatch. Следующий шаг — cold/warm разделен�
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**G4b.2h ordinary solid GDI и первые парные замеры реализованы; далее cold/warm стоимость и оптимизация по данным. Default CPU.**
+**G4b.2i cold/warm и covered journal retirement реализованы; далее owning snapshot/flush и partial/copy затраты. Default CPU.**

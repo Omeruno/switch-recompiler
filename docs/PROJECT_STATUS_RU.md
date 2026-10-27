@@ -2,20 +2,20 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-27, после F6a/F6b и G4b.2h (ограниченный обычный GPU-GDI и первые замеры). Проверенный код: `a0a2771a8b475479a4c157c85c01977d64beb6af`,
-[CI 40446491133 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
+Актуально на 2026-10-27, после F6a/F6b и G4b.2i (cold/warm замеры и сокращение лишних checkpoint). Проверенный код: `d07a19f6400eae316c806957e6ab84289812a8b2`,
+[CI 40449504198 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
-обычные solid FillRect/PATCOPY подключены к GPU в явном эксперименте. Следом —
-разделение cold/warm затрат и оптимизация по измерениям; default остаётся CPU.**
+обычные solid FillRect/PATCOPY подключены к GPU в явном эксперименте. G4b.2i разделяет cold/warm затраты и сокращает capacity readback8→0,
+сохраняя настоящее чтение. Далее owning snapshot/flush и partial/copy; default CPU.**
 Это среда для поддержанных 32-битных x86 Win32-приложений на Switch. Полного
 ядра Windows, поддержки x64 и универсальной совместимости EXE пока нет.
 
 ## К чему идём
 
 **К запуску PC-игр на Switch**, а не только к XP-подобному рабочему столу.
-Spore, Mirror’s Edge и The Sims 3 — будущие целевые нагрузки, пока без
+Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие целевые нагрузки, пока без
 подтверждённого запуска/FPS. Для них нужны полноценный x86→ARM64 dynarec,
 игровой графический API (приоритет исследования — D3D9), звук, память,
 потоки и совместимость системных вызовов. Paint/Сапёр — ранние проверки общих
@@ -84,7 +84,8 @@ GPU-композитор уже используется. Явный native expe
 | G4b.2d/e/f | Владеющие GPU/mixed кадры, живые окна и shell, USER selector и opt-in Switch device/cursor/fallback | Программный opt-in путь; ordinary GDI остаётся CPU |
 | G4b.2g | [Аудит зарегистрированных host pixel/fault путей](G4B2G_HOST_PIXEL_AUDIT.md), CPU views, sticky faults, checked fallback/lifecycle | Проверки real x86/EGL; не перехват произвольной памяти |
 | G4b.2h | [Обычные solid GDI, public x86/CPU/EGL/count/recovery и первые парные замеры](G4B2H_ORDINARY_GDI_DISPATCH.md) | Явный эксперимент, default CPU; на локальной Mesa первый кадр через GPU медленнее |
-| **Остаток G4b.2** | Разделить cold/warm затраты, затем оптимизировать доказанное узкое место | **Следующий незавершённый рубеж** |
+| G4b.2i | [Cold/warm same-resource и covered journal retirement](G4B2I_WARM_GDI_JOURNAL.md) |12 normal exits/108 EGL frames; capacity reads8→0, реальный финальный read сохранён; default CPU |
+| **Остаток G4b.2** | Owning snapshot/flush и partial/copy затраты перед следующей оптимизацией | **Следующий незавершённый рубеж** |
 
 Host EGL/Mesa проверяет пиксели, порядок, лимиты и восстановление. Это не
 физический Switch GPU benchmark. G4-прототипы имеют собственные небольшие лимиты
@@ -94,8 +95,8 @@ Host EGL/Mesa проверяет пиксели, порядок, лимиты и
 
 ## Ближайшие рубежи
 
-1. **Остаток G4b.2:** измерить повторные warm batches отдельно от создания targets,
-   импорта и первого GL-вывода; уточнить стоимость допуска/ownership/copy.
+1. **Остаток G4b.2:** после cold/warm и retirement измерить owning snapshot,
+   ownership/flush и partial/copy workloads, сохранив pixel/count/recovery gates.
 2. Выбрать и проверить общую оптимизацию по этим данным. Сохранить public x86,
    точные CPU/EGL пиксели, read/ROP/DIB/lifecycle/budget/fallback и Luna/input.
 3. Измерения реальных приложений на Switch и объединённая аппаратная приёмка
@@ -121,13 +122,13 @@ H DirectDraw/D3D и универсальная совместимость — о
 окна, ошибки GL и реальная потеря EGL-контекста. Исправлено удаление текущей
 шейдерной программы в основном композиторе. Это проверка корректности;
 CPU-вывод всё ещё требует checkpoint, автоматическое ускорение обычных GDI
-вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame и host pixel/fault audit готовы. G4b.2h допускает bounded solid GDI только в явном эксперименте; следующий шаг — cold/warm измерения и общая оптимизация.
+вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame и host pixel/fault audit готовы. G4b.2h допускает bounded solid GDI только в явном эксперименте; G4b.2i даёт cold/warm и covered retirement; далее owning snapshot/flush и partial/copy затраты.
 
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Этот prerequisite уже использован в native ShellSession/mixed output и
-G4b.2h solid dispatch. Следующий шаг — cold/warm разделение и общая оптимизация по данным.
+G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; далее owning snapshot/flush и partial/copy затраты.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -138,7 +139,7 @@ G4b.2h solid dispatch. Следующий шаг — cold/warm разделен�
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. Default остаётся CPU; далее cold/warm затраты и измеренная общая оптимизация.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; далее owning snapshot/flush и partial/copy затраты.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -148,4 +149,4 @@ G4b.2h solid dispatch. Следующий шаг — cold/warm разделен�
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**G4b.2h ordinary solid GDI и первые парные замеры реализованы; далее cold/warm стоимость и оптимизация по данным. Default CPU.**
+**G4b.2i cold/warm и covered journal retirement реализованы; далее owning snapshot/flush и partial/copy затраты. Default CPU.**

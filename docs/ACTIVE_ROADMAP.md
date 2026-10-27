@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2h bounded ordinary solid GDI and paired first-frame measurements implemented; next cold/warm cost separation.** Runtime baseline `a0a2771a8b475479a4c157c85c01977d64beb6af`
-passed [CI40446491133, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133).
+G4b.2i persistent-resource cold/warm measurements and covered-journal retirement implemented; next owning snapshot/flush and partial/copy costs.** Runtime baseline `d07a19f6400eae316c806957e6ab84289812a8b2`
+passed [CI40449504198, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -13,7 +13,7 @@ next-image/F5 and next-G1 notes. No overall project percentage is inferred.
 
 ## Product direction
 
-The user's long-term targets are **Spore, Mirror’s Edge and The Sims 3** as PC
+The user's long-term targets are **Spore, Mirror’s Edge, The Sims 3 and Lineage 2 Classic / Asterios** as PC
 games on Switch. These are planned, unverified compatibility/performance goals;
 Paint/Minesweeper are common-path fixtures, not product limits. See
 [TARGET_GAMES_RU.md](TARGET_GAMES_RU.md): full x86→ARM64 dynarec, real GPU API/shader
@@ -87,7 +87,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2f | [Opt-in Switch mixed output device/cursor adapter](G4B2F_SWITCH_MIXED_OUTPUT.md), staged genuine recovery, teardown and v9 counters | Default off; ordinary GDI CPU, libnx physical acceptance deferred |
 | G4b.2g | [Host pixel access/fault audit](G4B2G_HOST_PIXEL_AUDIT.md), guarded CPU views, sticky owner faults, checked compose/lifecycle and suspended session isolation | Registered paths audited; arbitrary future raw pointers remain caller responsibility |
 | G4b.2h | [Ordinary solid GDI dispatch and paired first-frame measurements](G4B2H_ORDINARY_GDI_DISPATCH.md), sixteen actual-x86 CPU/EGL/exits/count/recovery cases | Explicit native experiment only; default CPU, one bounded workload, local GPU first-frame path slower |
-| Remaining G4b.2 | Cold/warm cost separation, measured common-path optimization and broader workloads | **Next; default activation and physical performance still open** |
+| G4b.2i | [Cold/warm persistent-resource measurement + covered journal retirement](G4B2I_WARM_GDI_JOURNAL.md),12 real-x86 normal exits/108 EGL frames; capacity readbacks8→0, final real read preserved | Native experiment only; partial/pending/recovery/budget gates preserved |
+| Remaining G4b.2 | Owning snapshot/ownership/flush breakdown and partial/copy workloads | **Next; default activation and physical performance still open** |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -105,7 +106,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
    Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
 5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
-6. **Initial measurement implemented; next refinement:** paired first-frame producer/import/submission/read costs. Local Mesa GPU path is slower; separate cold setup from warm repeated batches and instrument costs before selecting a common-path optimization. Broader workloads/physical evidence remain open.
+6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. **Next:** owning snapshot/ownership/flush costs plus partial/copy workloads before a further common-path optimization. Default/physical acceptance remain open.
 7. Continue D compatibility with public reproducers of actual API/memory/unwind
    blockers; Pinball x86 remains a separate unsupported application target.
 8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache

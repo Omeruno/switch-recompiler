@@ -37,6 +37,7 @@ public:
     GpuGdiTargets(const GpuGdiTargets&)=delete;
     GpuGdiTargets& operator=(const GpuGdiTargets&)=delete;
     bool Initialize();
+    void EnableCoveredRetirement(bool enabled); // native same-build reference control
     void Shutdown();
     Handle Create(int width,int height);
     bool Destroy(Handle);
@@ -58,6 +59,7 @@ public:
     const GpuGdiPrototype::Stats* TargetStats(Handle) const;
     const Stats& Counters() const {return stats_;}
 private:
+    bool coveredRetirement_=false;
     struct Slot {Handle handle=0;size_t pixels=0;std::unique_ptr<GpuGdiPrototype> image;
         std::shared_ptr<uint8_t> pin;bool retired=false;};
     void CollectRetired();

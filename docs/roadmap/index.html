@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge и The Sims 3 — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Solid GDI → cold/warm measurements</span></div><h2>Обычный solid GDI подключён</h2><p>В явном эксперименте FillRect/PATCOPY идут через GPU; public x86/CPU/EGL и первые парные замеры готовы. Первый кадр на Mesa медленнее CPU. Следом cold/warm затраты; default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Warm GDI → owning snapshot costs</span></div><h2>Лишние GPU checkpoint сокращены</h2><p>Cold/warm серия в одном ресурсе проверена: capacity readbacks8→0, финальный GetPixel сохранён. Дальше стоимость owning snapshot/flush и partial/copy. Default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-27",
-  "runtimeSha": "a0a2771a8b475479a4c157c85c01977d64beb6af",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133",
+  "runtimeSha": "d07a19f6400eae316c806957e6ab84289812a8b2",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -185,7 +185,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "current",
-      "summary": "G4b.2h: bounded solid GDI + первые парные замеры; далее cold/warm затраты.",
+      "summary": "G4b.2i: cold/warm и covered retirement; далее owning snapshot/flush/partial/copy затраты.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -195,7 +195,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
       ],
       "todo": [
-        "Cold/warm измерения и общая оптимизация по доказанным затратам; default CPU.",
+        "Cold/warm и covered retirement реализованы; далее owning snapshot/flush/partial/copy затраты, default CPU.",
         "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
         "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],
@@ -216,7 +216,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "summary": "Будущие игровые API и шейдеры; приоритет аудита — D3D9.",
       "done": [],
       "todo": [
-        "Исследовать зависимости выбранных Windows-версий Spore, Mirror’s Edge и The Sims 3.",
+        "Исследовать зависимости выбранных Windows-версий Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios.",
         "Выбрать первый проверяемый графический контракт; проверить потребность в D3D9.",
         "Реализовать нужные ресурсы, шейдеры, draw/state/present/reset и сравнение с эталоном.",
         "Добавлять DirectDraw по реальным зависимостям; совместимость игр пока не подтверждена."
@@ -234,14 +234,15 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "I",
       "title": "Готовый продукт",
       "status": "planned",
-      "summary": "Цель: PC-игры на Switch. Spore, Mirror’s Edge, The Sims 3 — пока в плане.",
+      "summary": "Цель: PC-игры на Switch. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — пока в плане.",
       "done": [
         "NRO, CI, логи и публичные тестовые артефакты."
       ],
       "todo": [
         "Матрица совместимости, конфигурация и доставка.",
+        "Lineage 2 Classic / Asterios: точный клиент/сервер, launcher/защита, графика, сеть/авторизация и длительный сеанс — отдельные gates.",
         "Стабильность и итоговая приёмка целевого набора приложений.",
-        "Spore, Mirror’s Edge, The Sims 3: зафиксировать версии и проверить путь до игровой сцены, ввод/звук, сохранения и длительные сеансы.",
+        "Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios: зафиксировать версии и проверить путь до игровой сцены, ввод/звук, сохранения и длительные сеансы.",
         "Измерить CPU/GPU frame time, память, передачи и streaming на Switch; запуск и приемлемый FPS этих игр ещё не подтверждены."
       ],
       "gate": "Целевые программы воспроизводимо работают на Switch с понятными ограничениями.",
@@ -418,21 +419,23 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G4b.2",
       "title": "Мост к реальным окнам",
       "status": "current",
-      "summary": "Solid FillRect/PATCOPY подключены в явном эксперименте. Далее cold/warm стоимость; default CPU.",
+      "summary": "Warm GDI измерен; лишние capacity readbacks8→0, настоящий финальный read сохранён. Default CPU.",
       "done": [
         "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте.",
         "G4b.2b: привязка ресурсов к реальным HWND/DC, проверки жизни/clip и публичный x86/EGL тест.",
         "G4b.2c: opt-in CPU/GPU authority; реальные x86 GetPixel/ROP/DIB/layout barriers, два окна и fallback.",
         "Владеющие mixed frames, живые окна, native shell/USER selector и Switch device/cursor adapter.",
-        "Аудит host CPU/fault/lifecycle и bounded ordinary solid dispatch с public x86/CPU/EGL/count/budget/recovery."
+        "Аудит host CPU/fault/lifecycle и bounded ordinary solid dispatch с public x86/CPU/EGL/count/budget/recovery.",
+        "G4b.2i: same-resource CPU/reference/optimized,12 normal exits/108 EGL frames и safe journal retirement."
       ],
       "todo": [
-        "Разделить cold target/import/GL setup и warm repeated batches.",
-        "Измерить eligibility/ownership/copy и оптимизировать доказанное узкое место.",
-        "Более широкие workloads и физическая приёмка остаются открыты."
+        "Измерить owning snapshot/ownership/flush и repeated partial/copy workloads.",
+        "Следующую общую оптимизацию выбирать по этим данным.",
+        "Более широкая активация и аппаратная приёмка остаются открыты."
       ],
       "gate": "Публичный x86-гость проходит GPU-рисование, readback и lifecycle с теми же пикселями, что CPU.",
       "docs": [
+        "docs/G4B2I_WARM_GDI_JOURNAL.md",
         "docs/G4B2H_ORDINARY_GDI_DISPATCH.md",
         "docs/G4B2C_CPU_COHERENCE.md",
         "docs/G4B2B_WINDOW_BINDINGS.md",
@@ -494,7 +497,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "03",
       "title": "Основной вывод",
       "status": "prototype",
-      "summary": "G4b.2h: ordinary solid dispatch и измерения first-frame готовы; default CPU.",
+      "summary": "G4b.2i: warm ресурсы и covered journal retirement; default CPU.",
       "done": [
         "G4b.2a: GPU-GDI восстанавливает настройки GL; проверено чередование с действующим композитором.",
         "G4b.2d.1: native-кадры удерживают текстуры после retirement; лимиты, сброс, GL-error/context-loss fallback проверены.",
@@ -504,15 +507,16 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2e: native shell overlays и реальный USER mixed selector до CPU checkpoint; GPU-only epochs и output-fault routing.",
         "G4b.2f: opt-in Switch device/swap/cursor adapter, staged recovery и seven-mode x86/EGL oracle; default GDI ещё CPU.",
         "G4b.2g: host CPU views, sticky fault/owner isolation, checked fallback и lifecycle barriers; четыре новых x86/EGL сценария.",
-        "G4b.2h: обычные FillRect/PATCOPY,16 нормальных x86 exits, CPU/EGL/count/budget/recovery и парные first-frame замеры."
+        "G4b.2h: обычные FillRect/PATCOPY,16 нормальных x86 exits, CPU/EGL/count/budget/recovery и парные first-frame замеры.",
+        "G4b.2i: capacity readbacks8→0; pending/partial/copy/recovery сохраняют настоящие пиксели."
       ],
       "todo": [
-        "Разделить cold target/import/GL setup и warm repeated batches.",
-        "Сохранить Luna/input/fallback при bounded GDI dispatch; физическая приёмка отложена.",
-        "Измерить eligibility/ownership/copy и оптимизировать доказанное узкое место."
+        "Owning snapshot/ownership/flush breakdown.",
+        "Repeated partial/copy workloads и следующая оптимизация по данным."
       ],
       "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
       "docs": [
+        "docs/G4B2I_WARM_GDI_JOURNAL.md",
         "docs/G4B2H_ORDINARY_GDI_DISPATCH.md",
         "docs/G4B2G_HOST_PIXEL_AUDIT.md",
         "docs/G4B2F_SWITCH_MIXED_OUTPUT.md",
@@ -536,13 +540,15 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "summary": "Реальные ordinary x86 calls + CPU/EGL pixels/counts/recovery проверены в ограниченном public workload.",
       "done": [
         "16 normal-exit sessions, один seed/64-fill batch, CPU reads/ROP/DIB/layout/budget.",
-        "Actual EGL context destruction и pre-draw allocation refusal без подмены пикселей."
+        "Actual EGL context destruction и pre-draw allocation refusal без подмены пикселей.",
+        "Ещё12 normal exits/108 warm EGL frames, reference/optimized counts, GL error и actual context loss oracle."
       ],
       "todo": [
-        "Расширить реальные нагрузки и отделить cold/warm расходы."
+        "Измерить owning copy/flush и partial/copy workloads."
       ],
       "gate": "Реальный guest корректен при чтении, ошибках и перезапусках.",
       "docs": [
+        "docs/G4B2I_WARM_GDI_JOURNAL.md",
         "docs/G4B2H_ORDINARY_GDI_DISPATCH.md",
         "docs/ACTIVE_ROADMAP.md"
       ],
@@ -565,6 +571,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ],
       "gate": "Поддержанные реальные операции идут через GPU; остальные честно обслуживаются CPU.",
       "docs": [
+        "docs/G4B2I_WARM_GDI_JOURNAL.md",
         "docs/G4B2H_ORDINARY_GDI_DISPATCH.md",
         "docs/ACTIVE_ROADMAP.md"
       ],

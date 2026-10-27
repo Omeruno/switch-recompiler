@@ -16,6 +16,7 @@ public:
     struct CoherenceStats {uint64_t imports=0,importPixels=0,commits=0,commitPixels=0,cpuBarriers=0;};
     bool EnableCoherence(); // explicit native test mode, current fresh USER session
     bool DisableCoherence();
+    void EnableCoveredRetirement(bool enabled){targets_.EnableCoveredRetirement(enabled);}
     bool EnableSolidDispatch(); // explicit experiment only, never default activation
     struct DispatchStats {uint64_t candidates=0,accepted=0,refused=0,failed=0;};
     const DispatchStats& DispatchCounters() const {return dispatchStats_;}

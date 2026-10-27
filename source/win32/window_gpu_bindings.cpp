@@ -119,7 +119,7 @@ bool WindowGpuBindings::EnableSolidDispatch() {
     if(!PresentationReady() || !GpuActive())return false;
     if(dispatchEnabled_)return true;
     if(!ui::g_gdi.InstallSolidBackend(gate_))return false;
-    dispatchEnabled_=true;dispatchStats_={};return true;
+    targets_.EnableCoveredRetirement(true);dispatchEnabled_=true;dispatchStats_={};return true;
 }
 ui::RasterDispatch WindowGpuBindings::DispatchFill(uint32_t dc,ui::Rect r,uint32_t rgb) {
     ++dispatchStats_.candidates;

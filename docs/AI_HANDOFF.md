@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`a0a2771a8b475479a4c157c85c01977d64beb6af` (2026-10-27).
-[CI 40446491133](https://github.com/Omeruno/switch-recompiler/actions/runs/40446491133)
+`d07a19f6400eae316c806957e6ab84289812a8b2` (2026-10-27).
+[CI 40449504198](https://github.com/Omeruno/switch-recompiler/actions/runs/40449504198)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2h bounded ordinary solid GDI and first-frame measurement implemented (2026-10-27)
+## Current position: G4b.2i warm resource measurements and covered-journal retirement implemented (2026-10-27)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. Next: separate cold preparation from warm repeated work and instrument the measured costs before optimizing.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. Next: owning snapshot/ownership/flush breakdown and partial/copy workload costs.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -58,7 +58,7 @@ follows; its old future-tense queues do not supersede this current position.
 
 ## User's long-term product target
 
-Spore, Mirror’s Edge and The Sims 3 are explicit future PC-game targets; none is
+Spore, Mirror’s Edge, The Sims 3 and Lineage 2 Classic / Asterios are explicit future PC-game targets; none is
 certified working. [Architecture/acceptance direction](TARGET_GAMES_RU.md).
 Build common compatibility/performance paths, not a Paint-specific accelerator.
 Full ARM64 dynarec, GPU API/shader translation (audit D3D9 first), audio,
@@ -2411,3 +2411,64 @@ Hardware Paint/GPU/fallback/input/relaunch deferred, SD closed. Maps now show
 bounded admission and initial measurement implemented, cold/warm refinement next.
 Roadmap/link/browser/shell/diff and exact published-SHA six-job CI, Pages and
 public fixture/log/report/contract/NRO verification are final publication gates.
+
+## G4b.2i — warm measurements, covered retirement and Lineage target (2026-10-27)
+
+Cleand07a19f/FETCH_HEAD, no newer work/AGENTS. User requests next paired blocks
+and Lineage2 Classic / Asterios in the game plan. Added target to TARGET_GAMES_RU,
+all current maps and visual game/product cards. Exact server/client/chronicle,
+PE architecture, graphics, network/auth/reconnect, launcher/protection and long
+sessions need future audit; no client compatibility or game performance claimed.
+
+First new public x86 workload measured nine frames in one persistent128×128
+window/DC:64 actual ordinary FillRect/PATCOPY calls each, no inter-frame guest
+pixel reads. Reference generated eight capacity readbacks before the first real
+GetPixel. Implemented capacity-pressure retirement only for already GPU-flushed
+opaque fills/copies wholly covered by a new accepting fill. Stable owned-command
+compaction adjusts flushed prefix and copy bytes, frees obsolete snapshot storage;
+no allocation/GL/yield/failure between retirement and accepting append. Pending/
+partial work retains ordered replay and genuine capacity checkpoints. Fixed
+64-command/4MiB and existing window/target budgets unchanged. Native same-build
+control compares retirement off/on; EnableSolidDispatch enables it only in the
+existing flag1 experiment, target shutdown resets policy. Default GDI still CPU.
+See G4B2I_WARM_GDI_JOURNAL.md for eligibility, ordering and recovery proof.
+
+Dedicated warm inspector:12 actual normal-exit0 sessions, CPU/reference GPU/
+retired GPU with rotated order; initial triplet excluded, three cold plus24 warm
+samples per mode. All108 output frames compare every1280×720 production-EGL pixel
+to independent tile/background oracle. One seed/upload;9×64 calls/9 fill batches,
+576 batched commands plus seed draw. Retirement512 removes capacity reads8→0;
+real final GetPixel still reads once (reference totals9), commits actual pixels
+once, then guest cleanup/exit. Final read time measured separately. Earlier
+ordinary16-session and coherence/device/host-fault gates remain unchanged.
+
+Native five-case oracle verifies partial coverage checkpoint, wholly covered copy
+bytes freed/custom allocator zero, pending suffix partial-overlap order, full
+unflushed journal refusing retirement, real GL error replay and actual EGL-context
+destruction/no-current-context recovery. Strict O2/no-exceptions/no-RTTI native
+and live warm inspectors pass. Focused ASan/UBSan core/manager/bridge/production
+renderer/live inspector pass with other runtime objects ordinary and driver leak
+scanning disabled; existing native-fiber warning remains. Deliberately marking
+pending suffix already flushed fails independent pixel oracle as intended.
+
+First development full suite passed preceding gates. Initial final full run
+executed all runtime/native/warm fixtures successfully but failed the new Python
+report collector: integer target-read count shadowed its sample list. Renamed
+that variable, added read-sample identity gate and reran the corrected collector;
+no runtime workaround. Fresh fixed-final-suite.log passed final runtime/header/fixture/inspector/report
+sources: all new and prior native/GDI/GPU/lifecycle/file/measurement, Stage C,
+six E9 and22 F groups. No runtime/test changes after this full-suite success. Reports record host/cache policy, exact source/PE hashes, cold/warm phase
+samples and actual read counts; failed runner removes stale reports. No timing
+threshold, Switch FPS or GPU execution/scanout duration is inferred. Current
+local timings have cold preparation much larger than warm frames; next measure
+owning snapshot/ownership/flush and partial/copy workloads before another shared
+optimization or wider activation. Do not claim the whole G4b.2/game stack complete.
+
+No new dependency/environment configuration needed; host MinGW/Mesa prepared,
+local devkitA64/libnx absent, actual Switch code compiled by CI only. No physical
+test request or SD rediagnosis. Hardware Paint/GPU/fallback/input/relaunch remain
+deferred. New logs/report/public PE/contract join existing host CI artifact; six
+core jobs unchanged. Roadmap23cards/3views/30docs, local links/fences, shell/diff/
+browser and exact published-SHA six-job CI/Pages/NRO/measurement artifact checks
+are final publication gates. All maps identify G4b.2i implemented and owning
+snapshot/flush/partial/copy costs next; D/Pinball/dynarec/D3D9 remain separate.

@@ -50,13 +50,29 @@ void GpuGdiPrototype::Recover(bool contextAlive) {
 }
 void GpuGdiPrototype::ContextLost() {if(mode_==Mode::Gpu)Recover(false);}
 bool GpuGdiPrototype::Room(size_t bytes) {
-    if(count_==MaxCommands || inputBytes_>MaxInputBytes-bytes)return CpuRead()!=nullptr;
+    if(count_==MaxCommands || inputBytes_>MaxInputBytes-bytes){++stats_.capacityCheckpoints;return CpuRead()!=nullptr;}
     return true;
+}
+void GpuGdiPrototype::RetireCoveredFlushed(Rect r) {
+    // Capacity pressure only; never discard pending GPU work or partially
+    // covered writes. Every journal command is an owned opaque fill/copy, so
+    // a later containing fill makes the earlier result irrelevant to replay.
+    // No GL call/allocation/failure/yield may occur between retirement and append.
+    for(size_t i=0;i<flushed_;) {
+        const auto old=commands_[i].rect.Intersect({0,0,surface_.width,surface_.height});
+        if(old.left<r.left || old.top<r.top || old.right>r.right || old.bottom>r.bottom){++i;continue;}
+        inputBytes_-=commands_[i].input.size()*sizeof(uint32_t);
+        for(size_t j=i;j+1<count_;++j)commands_[j]=std::move(commands_[j+1]);
+        // Release the removed final copy too, rather than retaining its bytes
+        // until ClearJournal. All storage and CPU checkpoint bounds stay fixed.
+        --count_;--flushed_;commands_[count_]=Command{};++stats_.coveredRetired;
+    }
 }
 bool GpuGdiPrototype::Fill(Rect r,uint32_t rgb) {
     if(mode_==Mode::Empty)return false;
     r=r.Intersect({0,0,surface_.width,surface_.height});if(r.Empty())return true;
     Command c;c.rect=r;c.color=rgb&0xffffff;
+    if(coveredRetirement_ && mode_==Mode::Gpu && count_==MaxCommands)RetireCoveredFlushed(r);
     if(!Room(0))return false;
     if(mode_==Mode::CpuFallback)Apply(c);else commands_[count_++]=std::move(c);
     return true;
