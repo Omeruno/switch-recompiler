@@ -2415,7 +2415,7 @@ static void FrontendThreadFunc(void*) {
         bool Alive(){return ContinueApplet();}
         bool Pick(bool initial){return PickDesktopExecutable(shell,desktopPixels,initial);}
         bool BeginGuest(){
-            if(!shell.Media().Stop()){g_launchStatus=shell.Media().Error();return false;}
+            if(!shell.Media().Stop()){g_launchStatus="Could not stop audio. Return to Media Player and retry Stop.";return false;}
             g_activeShell=&shell;padUpdate(&g_pad);
             g_useNewUi=ui::UseNewGuestUi((padGetButtons(&g_pad)&HidNpadButton_L)!=0);
             const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);

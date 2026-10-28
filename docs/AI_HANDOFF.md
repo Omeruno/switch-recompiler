@@ -3368,3 +3368,15 @@ provenance/contract artifact in existing host job,still6 jobs. Map23cards/3views
 43docs. Normal push,exact new-SHA all6 CI/Pages/NRO/new and prior audio/API/GPU/
 clean source-manifest and pinned third-party/fixture byte audits are publication
 completion gates. No force push or rollback of newer work.
+
+
+D4d publication correction: b33473e73e0e728d6cbbd2a0a8723596689bd72e
+CI40771234539 Switch job failed at main.cpp's new failed-audio-stop status:
+std::string was assigned to the existing const-char-pointer launch status. Host
+compilation excludes main.cpp and could not certify this SDK-only integration.
+Use an owned-lifetime static literal for the launch summary; detailed player
+error stays in its owning MediaPlayer. Never borrow Error().c_str() across later
+player mutation/destruction. No backend/PCM/WinMM/MCI/UI behavior or test weakened.
+The first SHA is not Switch acceptance. A normal follow-up commit must pass all
+six exact-SHA jobs and new NRO/artifact audits; no force/amend or earlier-green
+substitution. Incoming verified baseline in maps remains49a52af.
