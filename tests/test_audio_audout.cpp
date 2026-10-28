@@ -6,7 +6,8 @@
 namespace {
 struct Transport {
     bool initFail=false,startFail=false,stopFail=false,flushFail=false,containsFail=false,appendFail=false,pollFail=false;
-    bool initialized=false;unsigned appends=0,exits=0;
+    bool initialized=false,running=false,positionFail=false,volumeFail=false;unsigned appends=0,exits=0;
+    uint64_t played=0;float volume=1;
     std::set<AudioOutBuffer*> queued;std::deque<AudioOutBuffer*> released;
     std::weak_ptr<const rt::AudioBlock> mustOwnAtExit;
     bool checkExitOwner=false;
@@ -15,7 +16,10 @@ struct Transport {
 Result audoutInitialize(){if(t.initFail)return 1;t.initialized=true;return 0;}
 void audoutExit(){if(t.checkExitOwner)assert(!t.mustOwnAtExit.expired());++t.exits;t.initialized=false;t.queued.clear();t.released.clear();}
 u32 audoutGetSampleRate(){return 48000;}u32 audoutGetChannelCount(){return 2;}PcmFormat audoutGetPcmFormat(){return PcmFormat_Int16;}
-Result audoutStartAudioOut(){return t.startFail?1:0;}Result audoutStopAudioOut(){return t.stopFail?1:0;}
+Result audoutStartAudioOut(){if(t.startFail)return 1;t.running=true;return 0;}Result audoutStopAudioOut(){if(t.stopFail)return 1;t.running=false;return 0;}
+Result audoutGetAudioOutPlayedSampleCount(u64* n){if(t.positionFail)return 1;*n=t.played;return 0;}
+Result audoutSetAudioOutVolume(float v){if(t.volumeFail)return 1;t.volume=v;return 0;}
+Result audoutGetAudioOutVolume(float* v){if(t.volumeFail)return 1;*v=t.volume;return 0;}
 Result audoutAppendAudioOutBuffer(AudioOutBuffer* b){assert(b && b->buffer && !(reinterpret_cast<uintptr_t>(b->buffer)&4095) && !(b->buffer_size&4095));t.queued.insert(b);++t.appends;return t.appendFail?1:0;}
 Result audoutGetReleasedAudioOutBuffer(AudioOutBuffer** p,u32* n){if(t.pollFail)return 1;*n=0;*p=nullptr;if(!t.released.empty()){*p=t.released.front();t.released.pop_front();*n=1;}return 0;}
 Result audoutContainsAudioOutBuffer(AudioOutBuffer* p,bool* contains){if(t.containsFail)return 1;*contains=t.queued.count(p)!=0;return 0;}
@@ -25,6 +29,14 @@ int main(){
     t.startFail=true;assert(!device.Initialize() && !t.initialized);t.startFail=false;assert(device.Initialize() && device.Available());
     rt::AudioOutput output;assert(output.Bind(&device));const auto owner=output.Enter();std::vector<int16_t> pcm={123,-456};
     for(unsigned n=0;n<4;++n)assert(output.Submit(owner,pcm)==rt::AudioOutput::Result::Accepted);
+    uint64_t position=0;t.played=123;assert(device.Position(position) && position==123);
+    assert(device.SetPaused(true) && !t.running && t.queued.size()==4);
+    assert(device.Position(position) && position==123);assert(device.SetPaused(false) && t.running && t.queued.size()==4);
+    // Counter restart normalization preserves confirmed samples, no timer estimate.
+    t.played=0;assert(device.Position(position) && position==123);t.played=17;assert(device.Position(position) && position==140);
+    uint16_t volume=0;assert(device.SetVolume(16384) && device.Volume(volume) && volume==16384);
+    t.volumeFail=true;assert(!device.SetVolume(65535) && !device.Volume(volume));t.volumeFail=false;
+    t.positionFail=true;assert(!device.SetPaused(true) && t.running);t.positionFail=false;
     assert(t.queued.size()==4 && t.appends==4);assert(output.Submit(owner,pcm)==rt::AudioOutput::Result::Busy && t.appends==4);
     assert(!device.Submit(5000,std::make_shared<const rt::AudioBlock>(pcm)) && t.appends==4);
     for(auto* p:t.queued){const auto* samples=static_cast<const int16_t*>(p->buffer);assert(samples[0]==123 && samples[1]==-456);}
@@ -44,5 +56,5 @@ int main(){
     auto block=std::make_shared<const rt::AudioBlock>(pcm);t.mustOwnAtExit=block;t.checkExitOwner=true;
     assert(device.Submit(999,block));block.reset();assert(!t.mustOwnAtExit.expired());device.Shutdown();assert(t.mustOwnAtExit.expired() && !t.initialized);
     t.checkExitOwner=false;
-    puts("Audout adapter PASS (production adapter/host transport model: init/start/append/poll/stop/flush/contains/restart faults,4 native slots,actual aligned PCM retention,drained reset,close-before-free)");
+    puts("Audout adapter PASS (production adapter/host transport model: init/start/append/poll/stop/flush/contains/restart faults,4 native slots,actual aligned PCM retention,drained reset,pause retains buffers/native position/counter epochs/volume failures,close-before-free)");
 }

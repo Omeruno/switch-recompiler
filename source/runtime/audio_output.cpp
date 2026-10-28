@@ -66,6 +66,17 @@ AudioOutput::Result AudioOutput::Submit(uint64_t owner,const std::vector<int16_t
     slot->id=id;slot->block=std::move(block);slot->done=std::move(done);++accepted_;return Result::Accepted;
 }
 AudioOutput& Audio(){static AudioOutput output;return output;}
+bool AudioOutput::Pause(uint64_t owner,uint64_t client,bool paused) {
+    if(owner!=owner_ || client!=client_ || !Available())return false;
+    if(!device_->SetPaused(paused)){fault_=true;return false;}return true;
+}
+bool AudioOutput::Position(uint64_t owner,uint64_t client,uint64_t& frames) {
+    return owner==owner_ && client==client_ && Available() && device_->Position(frames);
+}
+bool AudioOutput::SetVolume(uint64_t owner,uint64_t client,uint16_t value) {
+    return owner==owner_ && client==client_ && Available() && device_->SetVolume(value);
+}
+bool AudioOutput::Volume(uint16_t& value) {return Available() && device_->Volume(value);}
 namespace {
 uint16_t U16(const std::vector<uint8_t>& b,size_t at){return uint16_t(b[at])|uint16_t(b[at+1])<<8;}
 uint32_t U32(const std::vector<uint8_t>& b,size_t at){return uint32_t(U16(b,at))|uint32_t(U16(b,at+2))<<16;}

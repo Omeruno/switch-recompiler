@@ -54,8 +54,8 @@ HostCallOutcome Caps(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
     if(!count || !Range(m,output,count))return Ret(11);
     std::vector<uint8_t> bytes(length);bytes[4]=0;bytes[5]=0;bytes[6]=1; // driver version1.0
     const char* name=rt::Audio().Name();for(size_t n=0;n<31 && name[n];++n)bytes[8+n*(wide?2:1)]=uint8_t(name[n]);
-    const size_t formats=wide?72:40;bytes[formats+1]=0x80; // WAVE_FORMAT_48S16
-    bytes[formats+4]=2;
+    const size_t formats=wide?72:40;bytes[formats]=0xff;bytes[formats+1]=0xff;bytes[formats+2]=0x0f; // 11/22/44/48/96k mono/stereo PCM8/16
+    bytes[formats+4]=2;bytes[formats+8]=rt::Audio().VolumeSupported()?4:0; // WAVECAPS_VOLUME, no stereo balance
     for(size_t n=0;n<count;++n)m.Write8(output+uint32_t(n),bytes[n]);
     return Ret(0);
 }

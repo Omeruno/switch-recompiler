@@ -27,6 +27,12 @@ public:
     virtual Completion Poll(uint64_t&)=0;
     // TRUE confirms all previously borrowed buffers revoked; readiness is separate.
     virtual bool Reset()=0;
+    // Optional genuine device controls. Unsupported devices must refuse.
+    virtual bool SetPaused(bool) {return false;}
+    virtual bool Position(uint64_t&) {return false;}
+    virtual bool VolumeSupported() const {return false;}
+    virtual bool SetVolume(uint16_t) {return false;}
+    virtual bool Volume(uint16_t&) {return false;}
 };
 class AudioOutput {
 public:
@@ -47,6 +53,11 @@ public:
     bool ReleaseClient(uint64_t owner,uint64_t client);
     bool Poll();
     bool Reset();
+    bool Pause(uint64_t owner,uint64_t client,bool paused);
+    bool Position(uint64_t owner,uint64_t client,uint64_t& frames);
+    bool SetVolume(uint64_t owner,uint64_t client,uint16_t value);
+    bool Volume(uint16_t& value);
+    bool VolumeSupported() const {return device_ && device_->VolumeSupported();}
     size_t Pending() const;
     uint64_t Accepted() const {return accepted_;}
     uint64_t Completed() const {return completed_;}

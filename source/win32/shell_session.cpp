@@ -68,7 +68,7 @@ bool ShellSession::ReadHost(int timeout,bool independent) {
         if(e.type==InputEvent::Quit && independent) {status_=HostStatus::Quit;break;}
         if(!Filter(e) && !QueueGuest(e))break;
     }
-    if(status_==HostStatus::Running && shell_.ServiceCopy())Refresh();
+    if(status_==HostStatus::Running){const bool copy=shell_.ServiceCopy(),media=shell_.ServiceMedia();if(copy || media)Refresh();}
     if(!alive && status_==HostStatus::Running)status_=HostStatus::SourceClosed;
     return alive;
 }

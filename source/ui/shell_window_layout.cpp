@@ -36,6 +36,10 @@ Rect DesktopShell::ControlBounds(int target) const {
     const auto& w=panelWindows_[size_t(panel_)].bounds;
     const auto caption=[](Rect rect,int slot){return Rect(rect.right-32-slot*26,rect.top+4,rect.right-8-slot*26,rect.top+26);};
     if(target==CancelDialog){const auto& d=CurrentWindow().bounds;return {d.right-188,d.bottom-42,d.right-22,d.bottom-6};}
+    if(dialog_==Dialog::MediaPlayer && target>=MediaPlay && target<=MediaForward){
+        const auto& d=documentWindow_.bounds;const int width=(d.Width()-42-32)/5,x=d.left+20+(target-MediaPlay)*(width+8);
+        return {x,d.top+166,x+width,d.top+206};
+    }
     if(target==NativeTask)return guestActive_?Rect(476,684,786,716):Rect(158,684,468,716);
     if(target==Close || target==Maximize || target==Minimize)return caption(w,target==Close?0:target==Maximize?1:2);
     if(target==DialogClose || target==DialogMaximize || target==DialogMinimize)
@@ -47,7 +51,7 @@ Rect DesktopShell::ControlBounds(int target) const {
     }
     const auto r=Bounds(target);
     if(target==ConfirmDelete || target==CancelDialog || (target>=PreferenceSort && target<=PreferenceSave) ||
-       (target>=TextEdit && target<=TextDiscard) || target==ImageFit || target==ImageActual ||
+       (target>=TextEdit && target<=TextDiscard) || (target>=MediaPlay && target<=MediaForward) || target==MediaChoose || target==MediaVolumeDown || target==MediaVolumeUp || target==ImageFit || target==ImageActual ||
        (target>=TreeOpen && target<=TreeCollapse) || (target>=TreeRowBase && target<TreeRowBase+7))return DialogLayout(r);
     if(target>=BrowserRowBase && target<BrowserRowBase+Rows) {
         if(target>=BrowserRowBase+VisibleRows())return {};

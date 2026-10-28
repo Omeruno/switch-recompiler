@@ -8,6 +8,9 @@
 class AudioCaptureDevice:public rt::AudioDevice {
 public:
     bool ready=true,submitFails=false,pollFails=false,resetFails=false;
+    bool paused=false,controlFails=false;
+    uint64_t playedFrames=0;
+    uint16_t volume=65535;
     std::map<uint64_t,std::shared_ptr<const rt::AudioBlock>> active;
     std::deque<uint64_t> released;
     std::vector<std::vector<int16_t>> submitted;
@@ -21,11 +24,17 @@ public:
     }
     Completion Poll(uint64_t& id) override {
         if(pollFails)return Completion::Error;
+        if(paused)return Completion::None;
         if(released.empty())return Completion::None;
         id=released.front();released.pop_front();active.erase(id);return Completion::Released;
     }
     bool Reset() override {
         if(resetFails)return false;
-        active.clear();released.clear();return true;
+        active.clear();released.clear();paused=false;return true;
     }
+    bool SetPaused(bool value) override {if(controlFails)return false;paused=value;return true;}
+    bool Position(uint64_t& frames) override {if(controlFails)return false;frames=playedFrames;return true;}
+    bool VolumeSupported() const override {return true;}
+    bool SetVolume(uint16_t value) override {if(controlFails)return false;volume=value;return true;}
+    bool Volume(uint16_t& value) override {if(controlFails)return false;value=volume;return true;}
 };

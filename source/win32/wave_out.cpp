@@ -3,6 +3,8 @@
 #include "hle_util.h"
 #include "user32.h"
 #include "../runtime/audio_output.h"
+#include "../runtime/pcm_stream.h"
+#include <algorithm>
 #include <deque>
 #include <map>
 namespace win32 {namespace {
@@ -17,6 +19,8 @@ struct Stream {
     uint64_t owner=0,nextGeneration=1;
     uint32_t handle=0,callback=0,callbackType=0,targetThread=0,instance=0;
     std::shared_ptr<rt::SyncObject> event;
+    rt::PcmFormat format;rt::PcmStream converter;
+    uint64_t positionBase=0,writtenFrames=0;bool positionValid=false;
     bool open=true,notifications=true,fault=false;
     std::map<uint32_t,Header> headers;
     std::deque<Retirement> retired;
@@ -49,14 +53,14 @@ void Drain(Stream& s) {
     }
 }
 std::shared_ptr<Stream> Valid(uint32_t handle){auto s=Current();return s && s->open && s->handle==handle && s->owner==rt::Audio().Owner() && rt::Audio().Client()==handle?s:nullptr;}
-bool Canonical(cpu::IGuestMemory& m,uint32_t p){return m.Read16(p)==1 && m.Read16(p+2)==2 && m.Read32(p+4)==48000 && m.Read32(p+8)==192000 && m.Read16(p+12)==4 && m.Read16(p+14)==16;}
+bool Format(cpu::IGuestMemory& m,uint32_t p,rt::PcmFormat& f){f={m.Read32(p+4),m.Read16(p+2),m.Read16(p+14)};return m.Read16(p)==1 && f.Valid() && m.Read32(p+8)==f.rate*f.Align() && m.Read16(p+12)==f.Align();}
 HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
     const auto output=Arg(c,m,0),device=Arg(c,m,1),format=Arg(c,m,2),callback=Arg(c,m,3),flags=Arg(c,m,5);
     if(flags!=1 && flags!=0 && flags!=0x10000 && flags!=0x20000 && flags!=0x30000 && flags!=0x50000)return Ret(8);
     if(device && device!=0xffffffffu)return Ret(2);
     PollWaveOut();if(!rt::Audio().Available() || !rt::g_process)return Ret(6);
     if(!Range(m,format,16))return Ret(InvalidParam);
-    if(!Canonical(m,format))return Ret(32);
+    rt::PcmFormat pcmFormat;if(!Format(m,format,pcmFormat))return Ret(32);
     if(flags==1)return Ret(0);
     if(!Range(m,output,4))return Ret(InvalidParam);
     uint32_t thread=0;
@@ -81,6 +85,8 @@ HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
     auto s=std::make_shared<Stream>();s->process=rt::g_process;s->memory=&m;s->owner=rt::Audio().Owner();s->handle=handle;s->callback=callback;s->callbackType=flags;s->targetThread=thread;s->instance=Arg(c,m,4);s->event=std::move(event);
     if(!rt::Audio().Claim(s->owner,handle))return Ret(4);
     if(!Notify(*s,OpenMessage)){rt::Audio().ReleaseClient(s->owner,handle);return Ret(NoMemory);}
+    s->format=pcmFormat;s->converter=rt::PcmStream(pcmFormat,false);
+    s->positionValid=rt::Audio().Position(s->owner,handle,s->positionBase);
     rt::LocalState<Holder>().stream=s;m.Write32(output,handle);return Ret(0);
 }
 HostCallOutcome Prepare(cpu::CpuState& c,cpu::IGuestMemory& m,bool remove) {
@@ -94,7 +100,7 @@ HostCallOutcome Prepare(cpu::CpuState& c,cpu::IGuestMemory& m,bool remove) {
     if(remove)return Ret(0);
     const auto data=m.Read32(p),bytes=m.Read32(p+4),flags=m.Read32(p+16);
     if(flags&12)return Ret(8);
-    if(!bytes || bytes%4 || bytes>rt::AudioOutput::MaxSamples*2 || !Range(m,data,bytes))return Ret(InvalidParam);
+    if(!bytes || bytes%s->format.Align() || bytes>uint64_t(s->format.rate)*s->format.Align()*5 || !Range(m,data,bytes))return Ret(InvalidParam);
     if(s->headers.size()>=64 || s->nextGeneration==UINT64_MAX)return Ret(NoMemory);
     s->headers.emplace(p,Header{data,bytes,s->nextGeneration++,false});m.Write32(p+16,(flags&~(Done|InQueue))|Prepared);return Ret(0);
 }
@@ -106,9 +112,11 @@ HostCallOutcome Write(cpu::CpuState& c,cpu::IGuestMemory& m) {
     if(it->second.queued)return Ret(StillPlaying);
     const auto data=m.Read32(p),bytes=m.Read32(p+4),flags=m.Read32(p+16);
     if(flags&12)return Ret(8);
-    if(data!=it->second.data || !bytes || bytes>it->second.capacity || bytes%4 || !Range(m,data,bytes))return Ret(InvalidParam);
+    if(data!=it->second.data || !bytes || bytes>it->second.capacity || bytes%s->format.Align() || !Range(m,data,bytes))return Ret(InvalidParam);
     if(!rt::Audio().Available())return Ret(6);
-    std::vector<int16_t> pcm(bytes/2);for(size_t n=0;n<pcm.size();++n){const auto v=m.Read16(data+uint32_t(n*2));pcm[n]=int16_t(int32_t(v)-(v&0x8000?65536:0));}
+    std::vector<uint8_t> raw(bytes);for(size_t n=0;n<bytes;++n)raw[n]=m.Read8(data+uint32_t(n));
+    auto converter=s->converter;std::vector<int16_t> pcm;
+    if(!converter.Bytes(raw,pcm) || pcm.empty())return Ret(InvalidParam);
     const auto generation=it->second.generation;std::weak_ptr<Stream> weak=s;
     const auto result=rt::Audio().Submit(s->owner,pcm,[weak,p,generation](bool cancelled){
         if(auto state=weak.lock()) {
@@ -117,6 +125,7 @@ HostCallOutcome Write(cpu::CpuState& c,cpu::IGuestMemory& m) {
         }
     },s->handle);
     if(result!=rt::AudioOutput::Result::Accepted)return Ret(result==rt::AudioOutput::Result::Busy?NoMemory:Error);
+    s->converter=converter;s->writtenFrames+=bytes/s->format.Align();
     it->second.queued=true;m.Write32(p+16,(flags&~Done)|Prepared|InQueue);return Ret(0);
 }
 HostCallOutcome Reset(cpu::CpuState& c,cpu::IGuestMemory& m,bool close) {
@@ -124,16 +133,47 @@ HostCallOutcome Reset(cpu::CpuState& c,cpu::IGuestMemory& m,bool close) {
     if(close)for(const auto& h:s->headers)if(h.second.queued)return Ret(StillPlaying);
     if(!rt::Audio().Reset())return Ret(Error);
     Drain(*s);
-    if(!close){for(const auto& h:s->headers)if(!Range(m,h.first,32))return Ret(Error);s->fault=false;return Ret(0);}
+    if(!close){s->converter=rt::PcmStream(s->format,false);s->writtenFrames=0;
+        s->positionValid=rt::Audio().Position(s->owner,s->handle,s->positionBase);
+        for(const auto& h:s->headers){if(!Range(m,h.first,32))return Ret(Error);}
+        s->fault=false;return Ret(0);}
     if(!Notify(*s,CloseMessage))return Ret(NoMemory);
     for(const auto& h:s->headers)if(Range(m,h.first,32))m.Write32(h.first+16,m.Read32(h.first+16)&~(Prepared|InQueue));
     rt::Audio().ReleaseClient(s->owner,s->handle);s->open=false;s->headers.clear();rt::LocalState<Holder>().stream.reset();return Ret(0);
 }
+HostCallOutcome Pause(cpu::CpuState& c,cpu::IGuestMemory& m,bool paused) {
+    PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
+    return Ret(rt::Audio().Pause(s->owner,s->handle,paused)?0:Error);
+}
+HostCallOutcome Position(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
+    const auto p=Arg(c,m,1);if(Arg(c,m,2)<12 || !Range(m,p,12))return Ret(InvalidParam);
+    uint64_t frames=0;
+    if(!s->positionValid || !rt::Audio().Position(s->owner,s->handle,frames) || frames<s->positionBase)return Ret(Error);
+    if(frames-s->positionBase>UINT64_MAX/s->format.rate)return Ret(Error);
+    frames=std::min((frames-s->positionBase)*s->format.rate/48000,s->writtenFrames);
+    auto type=m.Read32(p);uint64_t value=frames;
+    if(type==1)value=frames*1000/s->format.rate;
+    else if(type!=2){type=4;value=frames*s->format.Align();}
+    m.Write32(p,type);m.Write32(p+4,uint32_t(value));m.Write32(p+8,0);return Ret(0);
+}
+HostCallOutcome Volume(cpu::CpuState& c,cpu::IGuestMemory& m,bool set) {
+    const auto handle=Arg(c,m,0),p=Arg(c,m,1);
+    if(handle && handle!=0xffffffffu && !Valid(handle))return Ret(InvalidHandle);
+    if(!rt::Audio().VolumeSupported())return Ret(8);
+    if(set){if(uint16_t(p)!=uint16_t(p>>16))return Ret(8);
+        return Ret(rt::Audio().SetVolume(rt::Audio().Owner(),rt::Audio().Client(),uint16_t(p))?0:Error);}
+    if(!Range(m,p,4))return Ret(InvalidParam);
+    uint16_t value=0;if(!rt::Audio().Volume(value))return Ret(Error);
+    m.Write32(p,uint32_t(value)|uint32_t(value)<<16);return Ret(0);
+}
 #define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
 FN(waveOutOpen){return Open(c,m);} FN(waveOutPrepareHeader){return Prepare(c,m,false);} FN(waveOutUnprepareHeader){return Prepare(c,m,true);}
+FN(waveOutPause){return Pause(c,m,true);} FN(waveOutRestart){return Pause(c,m,false);}
+FN(waveOutGetPosition){return Position(c,m);} FN(waveOutSetVolume){return Volume(c,m,true);} FN(waveOutGetVolume){return Volume(c,m,false);}
 FN(waveOutWrite){return Write(c,m);} FN(waveOutReset){return Reset(c,m,false);} FN(waveOutClose){return Reset(c,m,true);}
 #define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
-const HostFunctionEntry entries[]={E(waveOutOpen,24),E(waveOutPrepareHeader,12),E(waveOutUnprepareHeader,12),E(waveOutWrite,12),E(waveOutReset,4),E(waveOutClose,4)};
+const HostFunctionEntry entries[]={E(waveOutOpen,24),E(waveOutPrepareHeader,12),E(waveOutUnprepareHeader,12),E(waveOutWrite,12),E(waveOutReset,4),E(waveOutClose,4),E(waveOutPause,4),E(waveOutRestart,4),E(waveOutGetPosition,12),E(waveOutSetVolume,8),E(waveOutGetVolume,8)};
 const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
 }
 void PollWaveOut(){rt::Audio().Poll();if(auto s=Current())Drain(*s);}

@@ -1,5 +1,7 @@
 # D4c — scheduled guest waveOut function callbacks and real event objects
 
+Current extension: [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, more PCM formats, MP3/MCI and native Media Player; historical package bounds/next steps below are not the current global queue.
+
 Extends [D4b](D4B_WAVE_STREAMING.md) without changing its PCM format, one-client
 exclusivity, four-device-buffer budget or release/reset ownership rules.
 CALLBACK_FUNCTION and CALLBACK_EVENT now have implementations. Position,

@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`dcb2e5bf3811d62339b23d574947f394077da2df` (2026-10-28).
-[CI 40746297279](https://github.com/Omeruno/switch-recompiler/actions/runs/40746297279)
+`49a52af659315fe6a1509a859d290cb7620759cb` (2026-10-28).
+[CI 40749538149](https://github.com/Omeruno/switch-recompiler/actions/runs/40749538149)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4c scheduled guest function/event callbacks implemented; next frame position/pause/restart (2026-10-28)
+## Current position: D4d PCM/MP3/MCI/native Media Player implemented; next mixing/DirectSound/MIDI (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball passes waveOutGetNumDevs with no output device; next missing WINMM!mciSendCommandA. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. [D4c](D4C_WAVE_CALLBACKS.md) adds real scheduled guest function callbacks and kernel events. Next actual frame position/pause/restart; MCI/MIDI separate, registry persistence remains open.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball is not accepted; D4d adds real MCI file audio, MIDI remains unsupported. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. [D4c](D4C_WAVE_CALLBACKS.md) adds real scheduled guest function callbacks and kernel events. [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, continuous PCM conversion, pinned native MP3, shared MCI/file engine and shell Media Player. Mixing/DirectSound/MIDI, hardware sound and registry persistence remain open.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is genuine played-frame position/pause/restart after [D4c scheduled guest function/event notifications](D4C_WAVE_CALLBACKS.md), preserving all graphics/session gates. Host Pinball also needs MCI mciSendCommandA; no-device host advancement is not sound acceptance. Checked registry persistence remains open.
+Next is real multi-source mixing/DirectSound/MIDI after [D4d native MP3/MCI/Media Player](D4D_AUDIO_MEDIA.md), preserving all graphics/session gates. File audio support is not MIDI/Pinball/game or physical sound acceptance. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -3263,3 +3263,108 @@ New stage-d-wave-callbacks PE/log/contract artifact in existing host job; still6
 core CI jobs. Global/active/user/visual maps/historical scope notices updated;
 23cards/3views/42docs, desktop/mobile browser gates passed. Normal push, exact-SHA
 CI6/Pages/NRO/new+prior audio/API/GPU/source-manifest audits remain publication gates.
+
+## D4d — actual controls/continuous PCM/native MP3/MCI/shell Media Player (2026-10-28)
+
+User requested MP3 and an authored Media Player as one larger audio package.
+Started clean49a52af659315fe6a1509a859d290cb7620759cb; CI40749538149 all6 and
+Pages40749538253 success. No newer fetched changes. Reused prepared host/MinGW/
+Mesa; local devkitA64/libnx remains unavailable. No hardware re-test requested.
+
+AudioDevice optional controls are implemented by actual audout stop/start
+(no pause flush),played-sample counter and real volume IPC. Epoch normalization
+uses native counter observations, not host time. Reset also restarts an empty
+paused device. Host transport model covers queued descriptor retention, actual
+stop/start/count/volume IPC failure and close-before-free. Position/flush4.0+,
+master volume6.0+; no independently supported stereo balance is advertised.
+waveOutPause/Restart/GetPosition/SetVolume/GetVolume are real stdcall exports.
+MMTIME12/ranges/types, source units, successful reset position0, failure/no-write
+and admitted-frame clamp checked. Caps accurately advertise supported PCM and
+master volume,not L/R balance. PCM1 mono/stereo8/16 at8–96k uses owning snapshots
+and integer phase preserved across writes; conversion state commits only after
+native acceptance. Tiny zero-output downsample writes refuse. Streaming uses
+sample-and-hold to avoid borrowing a later WAVEHDR; file playback uses bounded
+linear lookahead/final tail. Four queued/64 prepared/one-source limits remain.
+
+New native AudioDecoder/MediaPlayer are shared by shell and actual MCI. Pinned
+unmodified dr_mp3, commit a466dbe88fe2576d46c43877d602f3d66b8561a7, full SHA256/
+MIT-0+upstream notices in third_party/dr_libs and test manifest. No FFmpeg runtime,
+proprietary music/player binary or per-EXE logic.32MiB owned VFS input snapshot,
+2h duration limit,4096-source-frame incremental decode,at most4 PCM blocks; PCM
+memory does not scale with track length. MP3 VBR/CBR/ID3/gapless metadata and raw
+padding,PCM WAV checked chunks,read/close/size/malformed failures,transactional
+replacement and real decoder seek/EOF handled. Bounded duration scan/input load
+are synchronous; no unlimited network/file streaming/decoder validation promise.
+
+Native Media Player opens from Start or unassociated Explorer MP3/WAV normal Open
+(controller activation after selection); explicit user associations still win.
+Real open/play/pause/resume/stop/±10sec/volume/position,existing owned native window
+move/all-edge resize/min/max/restore/close/task path,keyboard/pad focus and owner
+service while minimized. Start uses actual native command,not a fake guest EXE.
+Desktop AudioScope exists before shell; native playback stops before guest entry.
+ShellSession also services native player independently of another guest MM call.
+Close releases decoder snapshot, failed revoke keeps error/window/buffer owners.
+One native tool group policy remains; no video/playlist/visualization or guaranteed
+service during a blocking system keyboard applet. Final task caption and real
+Liberation font setup checked in native capture; not a Switch screenshot.
+
+A source cannot reset someone else's queue: claim/owner/device failures report
+errors. Paused seeking does not briefly start submitted audio; current output is
+revoked before source positioning. A suspended outer player retains its claim;
+Stop refuses while a newer scope can restore that owner/client. After restore,
+Stop actually releases it. A lost/completed session can be recovered without
+cancelling another source. Error state is latched without rebuilding unchanged
+native chrome every owner tick. Cancellation is not silently treated as played.
+
+Real mciSendCommandA/W,GetDeviceIDA/W,GetErrorStringA/W implement one file-audio
+device: OPEN/CLOSE/PLAY/FROM/PAUSE/RESUME/STOP/SEEK/SET TIME_FORMAT/STATUS/GETDEVCAPS,
+aliases,actual file decoder/PCM controls,ms/sample units,actual EOF/window notify,
+stop abort/supersede/failure and native cooperative WAIT. WAIT abort/exit unwinds
+without more guest code; service before executor quanta never runs guest callbacks.
+Bounded real USER notifications,stale IDs and mapped parameter validation. MIDI/
+sequencer/CD/video/record/TO ranges/unknown flags/types/mciSendString unsupported;
+errors stay errors. Session closes MCI before audio/UI/context teardown.
+
+Public authored CC0 MP3s (220/660Hz stereo8s VBR,440Hz mono CBR,330/990Hz raw48k)
+plus SHA manifest/pinned decoder verified by tools/check_audio_assets.py. Native
+oracle checks actual duration/tone spectra/channel separation,raw padding,seek/
+replay,PCM WAV and malformed/header mutations,independent ramp/chunk partitions,
+queue bounds/device failures/nested lease/busy/refused reset and real shell UI/
+Explorer activation/minimized service/window lifecycle. Public audio_media.exe:
+7 normal exit0 x86 sessions +1 parked native MCI_WAIT abort,22/44/48/96k PCM8/16,
+partial real model counter/pause/restart/volume/reset,MP3 MCI A/W/alias/caps/status/
+wait/notify/abort/seek/close/stale IDs/no-device/MIDI refusal. Abort is not normal
+exit. Existing D4a/b/c+C/E/F/G retained without weakening assertions.
+
+Development spectral oracle caught signed/unsigned interpolation arithmetic;
+fixed actual converter,not sample expectations. Fixture corrections: OwnedSurface
+Allocate is void,normal browser click selects before Accept/Open,VFS root is set
+after the loader's standalone-root setup,and missing include/unused test variable.
+Initial full development run failed at the waveform oracle and is not acceptance.
+Final frozen-source COMPOSITION_GL_TEST=1 host/MinGW/Mesa runner passed all new
+and prior gates,C/six E9/22 F/17 GPU/five bound reports. Focused ASan/UBSan on decoder/
+PCM/player/wave/MCI/audio/UI/session/execution plus native/x86 inspectors passed;
+remaining common objects ordinary,leak scan disabled,known makecontext warning,
+not whole-runtime or hardware certification. Negative unsigned PCM corruption
+fails spectral/channel gate; early MCI notify fails actual pre-completion guest
+gate; fake successful pause without native Stop fails production transport test.
+Logs/mutations/captures/private binaries remain outside public git.
+
+Private host Pinball now passes the old missing mciSendCommandA import (unsupported
+MIDI/no-device remain real errors),then fatals missing KERNEL32!OpenFile. This is
+an actual next compatibility observation,not a playable/music/main-frame/physical
+acceptance. Future OpenFile needs a public legacy OFSTRUCT/path/VFS reproducer;
+no private payload/trace is published. SD recovery remains closed.
+
+Current global/active/user/visual maps and historical-scope notices updated to
+D4d controls/formats/MP3/MCI/native player. Next audio scope is real multi-source
+mixer/per-source state,DirectSound target-version audit,MIDI synthesis/assets and
+physical sound/latency/underruns/relaunch. PlaySound filename/sync/loop,more codecs,
+mciSendString,full WinMM/game audio are not declared closed. Registry persistence,
+dynarec/D3D9/shell and deferred Paint/GPU/input/fallback gates remain open.
+
+New stage-d-audio-media public PE/native+x86+adapter logs/authored MP3/manifest/
+provenance/contract artifact in existing host job,still6 jobs. Map23cards/3views/
+43docs. Normal push,exact new-SHA all6 CI/Pages/NRO/new and prior audio/API/GPU/
+clean source-manifest and pinned third-party/fixture byte audits are publication
+completion gates. No force push or rollback of newer work.

@@ -11,7 +11,7 @@ bool AudoutDevice::Initialize() {
     ready_=true;return true;
 }
 void AudoutDevice::Shutdown() {
-    ready_=false;
+    ready_=false;paused_=false;lastRaw_=positionOffset_=0;
     if(initialized_) {
         audoutStopAudioOut();
         // Closing the IAudioOut session revokes its buffers before host owners drop.
@@ -46,7 +46,7 @@ AudioDevice::Completion AudoutDevice::Poll(uint64_t& token) {
 bool AudoutDevice::Reset() {
     if(!initialized_)return true;
     bool pending=false;for(const auto& slot:slots_)pending|=bool(slot.token);
-    if(!pending && ready_)return true;
+    if(!pending && ready_ && !paused_)return true;
     ready_=false;
     if(R_FAILED(audoutStopAudioOut()))return false;
     bool flushed=false;if(R_FAILED(audoutFlushAudioOutBuffers(&flushed)))return false;
@@ -62,8 +62,31 @@ bool AudoutDevice::Reset() {
     }
     if(!drained)return false;
     for(auto& slot:slots_)slot={};
-    ready_=R_SUCCEEDED(audoutStartAudioOut());
+    ready_=R_SUCCEEDED(audoutStartAudioOut());paused_=false;lastRaw_=positionOffset_=0;
     return true; // revoked, even when restart failed (Available remains FALSE)
+}
+bool AudoutDevice::Position(uint64_t& frames) {
+    if(!initialized_ || !ready_)return false;
+    u64 raw=0;if(R_FAILED(audoutGetAudioOutPlayedSampleCount(&raw)))return false;
+    // Preserve played frames if a native stop/start resets its raw counter.
+    if(raw<lastRaw_)positionOffset_+=lastRaw_;
+    lastRaw_=raw;frames=positionOffset_+raw;return true;
+}
+bool AudoutDevice::SetPaused(bool paused) {
+    if(!ready_)return false;
+    if(paused==paused_)return true;
+    uint64_t before=0;if(!Position(before))return false;
+    const auto result=paused?audoutStopAudioOut():audoutStartAudioOut();
+    if(R_FAILED(result)){ready_=false;return false;}
+    paused_=paused;return Position(before);
+}
+bool AudoutDevice::SetVolume(uint16_t value) {
+    return ready_ && VolumeSupported() && R_SUCCEEDED(audoutSetAudioOutVolume(float(value)/65535.0f));
+}
+bool AudoutDevice::Volume(uint16_t& value) {
+    float volume=0;
+    if(!ready_ || !VolumeSupported() || R_FAILED(audoutGetAudioOutVolume(&volume)) || !(volume>=0 && volume<=1))return false;
+    value=uint16_t(volume*65535.0f+0.5f);return true;
 }
 } // namespace rt
 #endif

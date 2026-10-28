@@ -5,6 +5,7 @@
 #include "../win32/gui_session.h"
 #include "../win32/legacy_session.h"
 #include "../win32/wave_out.h"
+#include "../win32/mci_media.h"
 
 namespace rt {
 GuestSession::Context GuestSession::Capture() {
@@ -24,6 +25,7 @@ GuestSession::GuestSession():previous_(Capture()),process_(memory_) {
 GuestSession::~GuestSession() {
     // GuestExecution has already drained. Host-only state/handles are destroyed
     // with Process, then backing guest memory. No guest callback is run here.
+    win32::EndMciMedia();
     win32::EndWaveOutSession();
     audio_.Close();
     gui_.reset();

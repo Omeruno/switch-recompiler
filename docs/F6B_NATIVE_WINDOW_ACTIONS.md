@@ -1,5 +1,7 @@
 # F6b: stateful native shell windows and adaptive layout
 
+Current extension: [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, more PCM formats, MP3/MCI and native Media Player; historical package bounds/next steps below are not the current global queue.
+
 Incoming `4a91409fc606c1695cbf88412b711bfddd4dbcd7` passed
 [CI40353639236, six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40353639236).
 Extends [guest gestures](F6A_GUEST_WINDOW_GESTURES.md); these are native host UI

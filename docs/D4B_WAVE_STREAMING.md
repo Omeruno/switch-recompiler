@@ -1,5 +1,7 @@
 # D4b — real bounded waveOut streaming and queued notifications
 
+Current extension: [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, more PCM formats, MP3/MCI and native Media Player; historical package bounds/next steps below are not the current global queue.
+
 Historical package scope: [D4c](D4C_WAVE_CALLBACKS.md) now adds real scheduled guest function/event callbacks; old unsupported-mode checks select CALLBACK_TYPEMASK. The original package boundaries below describe their implementation stage.
 
 Implemented after D4a, 2026-10-28. Ordinary x86 WinMM calls now own real stream

@@ -1,0 +1,6 @@
+{
+  "third_party/dr_libs/dr_mp3.h": "390e4e0ef0cff80fb86ebf1b461d6947cfa4ed699a4fe107e5a5e69a47db2950",
+  "tests/data/audio/mono-cbr.mp3": "8a37509a2f8cde210cfe2c7e3339be73e65e15026095fcf94f4eff301625c5cf",
+  "tests/data/audio/stereo-raw.mp3": "4864fd963f6d1e1d1091526477b0c0e794123994d4bdf391b4e52aea3086d53f",
+  "tests/data/audio/stereo-vbr.mp3": "4428f897e47d871d51fc3fb99ff973e304164cf2543ff6194d6d976646a7a5ac"
+}

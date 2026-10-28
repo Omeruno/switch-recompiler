@@ -10,3 +10,6 @@ struct AudioOutBuffer {AudioOutBuffer* next;void* buffer;u64 buffer_size,data_si
 Result audoutInitialize();void audoutExit();u32 audoutGetSampleRate();u32 audoutGetChannelCount();PcmFormat audoutGetPcmFormat();
 Result audoutStartAudioOut();Result audoutStopAudioOut();Result audoutAppendAudioOutBuffer(AudioOutBuffer*);
 Result audoutGetReleasedAudioOutBuffer(AudioOutBuffer**,u32*);Result audoutContainsAudioOutBuffer(AudioOutBuffer*,bool*);Result audoutFlushAudioOutBuffers(bool*);
+Result audoutGetAudioOutPlayedSampleCount(u64*);
+Result audoutSetAudioOutVolume(float);Result audoutGetAudioOutVolume(float*);
+inline bool hosversionAtLeast(unsigned,unsigned,unsigned){return true;}

@@ -2359,11 +2359,12 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             const bool shortcut=shell.PendingTextInput()==ui::DesktopShell::TextInput::ShortcutCommand;
             const bool textLine=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextLine;
             const bool textPath=shell.PendingTextInput()==ui::DesktopShell::TextInput::TextSavePath;
+            const bool mediaPath=shell.PendingTextInput()==ui::DesktopShell::TextInput::MediaPath;
             const bool leaf=newFolder || rename || paste;
             SwkbdConfig config;char text[4097]={};bool accepted=false;
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
-                swkbdConfigSetHeaderText(&config,shortcut?"Ярлык: EXE и аргументы":textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
+                swkbdConfigSetHeaderText(&config,mediaPath?"Открыть MP3 или WAV":shortcut?"Ярлык: EXE и аргументы":textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
                 swkbdConfigSetGuideText(&config,textLine?"До 500 UTF-16. Для новой строки используйте + строка.":textPath?"Полный путь. Существующий файл не заменяется.":leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 if(textLine)swkbdConfigSetReturnButtonFlag(&config,0);
@@ -2382,6 +2383,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             motion.ResetTime(rt::Clock::NowUs());
         }
         if(shell.ServiceCopy())dirty=true;
+        if(shell.ServiceMedia())dirty=true;
         if(shell.ExitRequested() || !shell.LaunchPath().empty())break;
         const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";
         if(localtime_r(&now,&deviceTime))std::strftime(clock,sizeof(clock),"%H:%M",&deviceTime);
@@ -2407,11 +2409,13 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
 // One native owner for selection, loading, guest fibers, output and final cleanup.
 static void FrontendThreadFunc(void*) {
     struct SwitchWorkspace {
+        rt::AudioScope desktopAudio;
         ui::DesktopShell shell;
         ui::PresentationBuffer<uint32_t> desktopPixels;
         bool Alive(){return ContinueApplet();}
         bool Pick(bool initial){return PickDesktopExecutable(shell,desktopPixels,initial);}
         bool BeginGuest(){
+            if(!shell.Media().Stop()){g_launchStatus=shell.Media().Error();return false;}
             g_activeShell=&shell;padUpdate(&g_pad);
             g_useNewUi=ui::UseNewGuestUi((padGetButtons(&g_pad)&HidNpadButton_L)!=0);
             const bool requestGpu=g_useNewUi && !(padGetButtons(&g_pad)&HidNpadButton_ZL);
