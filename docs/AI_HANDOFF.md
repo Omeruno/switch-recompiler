@@ -2982,3 +2982,7 @@ Public negative controls fail their intended guest assertions. Logs stay outside
 job without adding core jobs. Exact published SHA six-job CI/Pages/NRO/public PE/
 logs/contract/clean source-manifest verification remains the publication gate.
 Hardware/Paint/GPU/fallback/input/relaunch deferred; SD diagnosis remains closed.
+
+The GPU ledger decision now refers to ACTIVE_ROADMAP.md for independent D work,
+rather than embedding a stale next-API claim in a graphics acceptance report.
+This evidence metadata change preserves every GPU gate and default policy.

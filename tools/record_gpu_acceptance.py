@@ -99,7 +99,7 @@ def main():
                   source_manifest_sha256=digest(json.dumps(manifest, sort_keys=True).encode()), source_manifest=manifest,
                   workload_comparison=cycles['summary'],
                   default_gdi='CPU', native_activation='flag1 reference native; flag2 no-resident CPU routing; bounded top-level solid FillRect/PATCOPY',
-                  decision='No broad/default activation from host timing. Routing stays explicit flag2 with reference comparisons and real DIB/device/read/owner/fault gates; D1 bounded registry implemented; next real key names/VK-scancode translation.',
+                  decision='No broad/default activation from host timing. Routing stays explicit flag2 with reference comparisons and real DIB/device/read/owner/fault gates. The independent D compatibility queue is maintained in ACTIVE_ROADMAP.md.',
                   pending_hardware=['Paint/GPU/fallback performance and correctness', 'Lite/controller/touch input', 'normal/error/abort repeated console launches'],
                   outside_scope=['full Windows/XP shell', 'arbitrary GDI/ROP/memory GPU dispatch', 'large or child-window native admission', 'x64', 'full ARM64 dynarec', 'DirectDraw/D3D9/shaders/audio translation', 'PC-game compatibility/FPS', 'installers/ZIP/RAR'],
                   contracts=['docs/G4B2N_SOFTWARE_ACCEPTANCE.md', 'docs/G4B2M_DIFFERENTIAL_IMPORT.md', 'docs/G4B2G_HOST_PIXEL_AUDIT.md'])
