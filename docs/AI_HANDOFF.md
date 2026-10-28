@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`25ec8be3a7f44cee4b7de09cab502dacbb1a5115` (2026-10-28).
-[CI 40620546240](https://github.com/Omeruno/switch-recompiler/actions/runs/40620546240)
+`854fe1891706018f95c8f4874a7c4b419024daf5` (2026-10-28).
+[CI 40625056179](https://github.com/Omeruno/switch-recompiler/actions/runs/40625056179)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D1 bounded registry family implemented; next keyboard translation (2026-10-28)
+## Current position: D2 fixed-US keyboard translation implemented; next INI/profile APIs (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. Pinball passes old registry blocker; next missing GetKeyNameTextA. Next keyboard names/VK-scancode translation; registry persistence remains separate.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. Pinball passes GetKeyNameTextA; next missing GetPrivateProfileIntA. Next real INI/profile APIs; registry persistence remains separate.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is correct keyboard names/VK-scancode translation from the actual GetKeyNameTextA blocker, preserving all graphics/session gates. Checked registry persistence remains open.
+Next is genuine INI/profile APIs from the actual GetPrivateProfileIntA blocker, preserving all graphics/session gates. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -2940,3 +2940,45 @@ links/fences/shell/diff/browser and new exact-SHA six-job CI/Pages/NRO/D-registr
 public PE/log/contract/source-manifest audit are publication gates. Native D evidence
 uses new stage-d-registry artifact in the existing host job; still six core jobs.
 Hardware/Paint/GPU/fallback/input/relaunch deferred, SD diagnosis remains closed.
+
+
+## D2 — common fixed-US keyboard translation and real USER scan/state delivery (2026-10-28)
+
+Started from clean published854fe18; exact CI40625056179 six success and no
+newer fetched work. No local devkitA64/libnx; independent host work continues.
+New authored keyboard_layout table supplies MapVirtualKeyA/W modes0–4,
+GetKeyNameTextA/W and physical USER events for existing04090409 profile.
+Numpad/navigation virtual collisions are distinct from physical E0 positions.
+Names use scan/extended/no-side fields; checked A/W buffers, NUL/truncation,
+nonpositive capacities, errors and LastError preservation. No copied third-party
+implementation, layout switching/IME/AltGr/localization or Windows oracle claim.
+
+Host-only InputEvent scanCode added; full common rebuild required. Generic
+modifier wParam carries actual sided scans; async observation is not rewound by
+deferred queue removal. Queue keys update only on removal, retaining aggregate
+state while another side is held. Legacy packed scan producers remain supported.
+Public CRT-free keyboard_layout.exe and real interpreter inspector run four
+fresh normal-exit0 sessions with19 keyboard events each. Native known mappings/
+invalid-range tests and shell deferred-ring/E0/generic-right-side/async tests
+complement actual A/W guest calls, errors, repeat, PM_NOREMOVE, numpad/navigation,
+main/numpad Enter and left-release/right-held Shift state. Identity MapVirtualKey
+and zero-message-scan negative controls fail intended public guest assertions.
+See D2_KEYBOARD_LAYOUT.md for full contract and validation boundaries.
+
+Private Pinball host trace stays outside git/artifacts. It passes key-name calls
+and creates USER windows, then fatal missing KERNEL32!GetPrivateProfileIntA.
+No accepted gameplay/main frame, Switch launch or FPS claim. Next block is real
+bounded VFS-backed INI/profile A/W read/write/integer/default/enumeration/error/
+size/persistence behavior; audit existing default/write-success stubs instead
+of adding a signature-only bypass. Registry disk migration/encoding/enum/delete
+remains open. Global/active/user/visual maps advance to this concrete dependency.
+
+Full host/MinGW/Mesa suite passed with existing C/six E9/22 F/17 GPU groups
+and five source-bound reports. Final extended native deferred-ring checks and
+guest system-message/async-state assertions also passed focused reruns; exact
+CI reruns all final fixtures. Strict O2 and focused ASan/UBSan changed-module
+checks passed; known native-fiber warning and ordinary other objects retained.
+Public negative controls fail their intended guest assertions. Logs stay outside git. New stage-d-keyboard evidence joins the existing host
+job without adding core jobs. Exact published SHA six-job CI/Pages/NRO/public PE/
+logs/contract/clean source-manifest verification remains the publication gate.
+Hardware/Paint/GPU/fallback/input/relaunch deferred; SD diagnosis remains closed.

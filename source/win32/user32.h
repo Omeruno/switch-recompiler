@@ -352,6 +352,7 @@ struct InputEvent {
     // Host-only physical snapshot; queued delivery must not rewind async state.
     bool physicalObserved=false,wasDown=false,altDown=false;
     uint32_t mouseFlags=0;
+    uint16_t scanCode=0; // host-only set-1 position, optional E0/E1 prefix
 };
 enum class NativePresentResult {Unavailable,Submitted,Failed};
 struct Platform {

@@ -13,6 +13,7 @@
 #include "../runtime/resources.h"
 #include "msvcrt_format.h"
 #include "user32.h"
+#include "keyboard_layout.h"
 
 namespace win32 {
 namespace user {
@@ -1236,12 +1237,17 @@ FN(GetKeyState) { ENTER; uint8_t k = Q().keys[A(c, m, 0) & 0xFF]; return Ret(sta
 FN(GetAsyncKeyState) { ENTER; return Ret(S().asyncKeys[A(c, m, 0) & 0xFF] & 0x80 ? 0xFFFF8000u : 0); }
 FN(GetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) m.Write8(A(c, m, 0) + i, Q().keys[i]); return Ret(1); }
 FN(SetKeyboardState) { ENTER; for (int i = 0; i < 256; ++i) Q().keys[i] = m.Read8(A(c, m, 0) + i); return Ret(1); }
-FN(MapVirtualKeyA) {
-    ENTER;
-    uint32_t code = A(c, m, 0), type = A(c, m, 1);
-    if (type == 2) return Ret(code >= 'A' && code <= 'Z' ? code : (code >= '0' && code <= '9' ? code : 0));
-    return Ret(code);
+FN(MapVirtualKeyA) {ENTER;return Ret(keyboard::Map(A(c,m,0),A(c,m,1)));}
+HostCallOutcome KeyName(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
+    ENTER;const int32_t capacity=int32_t(A(c,m,2));if(capacity<=0)return Ret(0);
+    const auto output=A(c,m,1);if(!output){SetLastError(m,87);return Ret(0);}
+    const auto name=keyboard::Name(A(c,m,0));const size_t count=std::min(name.size(),size_t(capacity-1));
+    const size_t bytes=(count+1)*(wide?2:1);
+    if(uint64_t(output)+bytes>uint64_t(0x100000000ull) || !m.IsRangeMapped(output,bytes)){SetLastError(m,998);return Ret(0);}
+    for(size_t n=0;n<=count;++n){const auto ch=n<count?uint8_t(name[n]):0;if(wide)m.Write16(output+uint32_t(n*2),ch);else m.Write8(output+uint32_t(n),ch);}
+    return Ret(uint32_t(count));
 }
+FN(GetKeyNameTextA){return KeyName(c,m,false);} FN(GetKeyNameTextW){return KeyName(c,m,true);}
 FN(GetKeyboardLayout) { ENTER; return Ret(0x04090409); }
 FN(GetKeyboardType) { ENTER; uint32_t t = A(c, m, 0); return Ret(t == 0 ? 4 : t == 2 ? 12 : 0); }
 FN(GetDoubleClickTime) { ENTER; return Ret(500); }
@@ -1482,7 +1488,7 @@ const HostFunctionEntry kEntries[] = {
     E(GetSysColor, 4), E(GetSysColorBrush, 4), E(SetSysColors, 12), E(GetSystemMetrics, 4), EAW(SystemParametersInfo, 16),
     E(SetCursor, 4), E(GetCursor, 0), E(ShowCursor, 4), E(GetCursorPos, 4),
     E(SetCursorPos, 8), E(ClipCursor, 4),
-    E(GetKeyState, 4), E(GetAsyncKeyState, 4), E(GetKeyboardState, 4), E(SetKeyboardState, 4), E(MapVirtualKeyA, 8),
+    E(GetKeyState, 4), E(GetAsyncKeyState, 4), E(GetKeyboardState, 4), E(SetKeyboardState, 4), E(MapVirtualKeyA, 8), EAW(GetKeyNameText, 12),
     {"USER32.dll", "MapVirtualKeyW", 8, CallConv::Stdcall, &MapVirtualKeyA}, E(GetKeyboardLayout, 4), E(GetKeyboardType, 4),
     E(GetDoubleClickTime, 0), E(MessageBeep, 4),
     E(SetRect, 20), E(SetRectEmpty, 4), E(CopyRect, 8), E(IsRectEmpty, 4), E(EqualRect, 8), E(InflateRect, 12),

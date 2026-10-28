@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/keyboard_layout.c" \
+    -o "$out/keyboard_layout.exe" -lkernel32 -luser32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/registry_keys.c" \
     -o "$out/registry_keys.exe" -lkernel32 -ladvapi32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/gpu_damage_mask.c" \

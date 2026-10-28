@@ -13,6 +13,7 @@
 #include "../runtime/clock.h"
 #include "../runtime/guest_execution.h"
 #include "user32.h"
+#include "keyboard_layout.h"
 
 namespace win32 {
 namespace user {
@@ -170,13 +171,15 @@ uint32_t KeyTarget() {
 }
 
 void KeyEvent(const InputEvent& e) {
-    uint32_t vk=e.vk&0xFF;
+    uint32_t vk=keyboard::Generic(e.vk&0xFF);
     const bool down=e.type==InputEvent::KeyDown,wasDown=e.wasDown;
     uint32_t target = KeyTarget();
     if (!target) return;
     bool alt=e.altDown;
     bool sys = (alt && !(e.mouseFlags & 8)) || vk == VK_F10 || vk == VK_MENU;
-    uint32_t lp = 1 | ((e.vk >> 8 & 0xFF) << 16);
+    auto scan=e.scanCode?e.scanCode:keyboard::PhysicalScan(e.vk&255);
+    if(!e.scanCode && ((e.vk>>8)&255))scan=uint16_t((scan&0xff00)|((e.vk>>8)&255));
+    uint32_t lp=1|keyboard::MessageScan(scan);
     if (alt) lp |= 1u << 29;
     if (down && wasDown) lp |= 1u << 30;
     if (!down) lp |= (1u << 30) | (1u << 31);
@@ -222,13 +225,18 @@ bool PollPlatform(int timeoutMs) {
 void UpdateKeyState(const Msg& m) {
     uint8_t* k = Q().keys;
     switch (m.message) {
-    case WM_KEYDOWN: case WM_SYSKEYDOWN:
-        if (!(k[m.wParam & 0xFF] & 0x80)) k[m.wParam & 0xFF] ^= 1; // бит переключения
-        k[m.wParam & 0xFF] |= 0x80;
+    case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP: {
+        const bool down=m.message==WM_KEYDOWN || m.message==WM_SYSKEYDOWN;
+        const auto vk=m.wParam&255;
+        auto update=[&](uint32_t key){if(down){if(!(k[key]&0x80))k[key]^=1;k[key]|=0x80;}else k[key]&=0x7f;};
+        update(vk);
+        const auto scan=uint16_t((m.lParam>>16)&255)|uint16_t(m.lParam&(1u<<24)?0xe000:0);
+        const auto side=keyboard::PhysicalKey(vk,scan);
+        if(side!=vk)update(side);
+        const auto generic=keyboard::Generic(side);
+        if(generic>=0x10 && generic<=0x12){const auto left=0xa0+(generic-0x10)*2;k[generic]=uint8_t((k[generic]&0x7f)|((k[left]|k[left+1])&0x80));}
         break;
-    case WM_KEYUP: case WM_SYSKEYUP:
-        k[m.wParam & 0xFF] &= 0x7F;
-        break;
+    }
     case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: k[VK_LBUTTON] |= 0x80; break;
     case WM_LBUTTONUP: k[VK_LBUTTON] &= 0x7F; break;
     case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: k[VK_RBUTTON] |= 0x80; break;
@@ -251,7 +259,12 @@ void ObservePhysicalInput(InputEvent& e) {
     } else {
         e.x=s.cursorX;e.y=s.cursorY;
         if(e.type==InputEvent::KeyDown || e.type==InputEvent::KeyUp) {
-            const auto vk=e.vk&255;e.wasDown=(s.asyncKeys[vk]&0x80)!=0;
+            const auto logical=e.vk&255;
+            if(!e.scanCode){e.scanCode=keyboard::PhysicalScan(logical);if((e.vk>>8)&255)e.scanCode=uint16_t((e.scanCode&0xff00)|((e.vk>>8)&255));}
+            const auto vk=keyboard::PhysicalKey(logical,e.scanCode);
+            const auto generic=keyboard::Generic(vk);
+            if(generic>=0x10 && generic<=0x12 && keyboard::Generic(keyboard::Map(e.scanCode,3))!=generic)e.scanCode=keyboard::PhysicalScan(vk);
+            e.wasDown=(s.asyncKeys[vk]&0x80)!=0;
             s.asyncKeys[vk]=e.type==InputEvent::KeyDown?0x80:0;
             if(vk==0xA0 || vk==0xA1)s.asyncKeys[VK_SHIFT]=s.asyncKeys[0xA0]|s.asyncKeys[0xA1];
             if(vk==0xA2 || vk==0xA3)s.asyncKeys[VK_CONTROL]=s.asyncKeys[0xA2]|s.asyncKeys[0xA3];
