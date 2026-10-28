@@ -2365,7 +2365,7 @@ static bool PickDesktopExecutable(ui::DesktopShell& shell,ui::PresentationBuffer
             if(R_SUCCEEDED(swkbdCreate(&config,0))) {
                 swkbdConfigMakePresetDefault(&config);
                 swkbdConfigSetHeaderText(&config,mediaPath?"Открыть MP3 или WAV":shortcut?"Ярлык: EXE и аргументы":textLine?"Изменить строку TXT":textPath?"Сохранить TXT под новым именем":newFolder?"Новая папка":rename?"Переименовать":paste?"Вставить: имя нового файла":association?"Приложение: путь к EXE":address?"Путь к папке":openWith?"Выберите приложение: путь к EXE":"Выполнить: путь и аргументы");
-                swkbdConfigSetGuideText(&config,textLine?"До 500 UTF-16. Для новой строки используйте + строка.":textPath?"Полный путь. Существующий файл не заменяется.":leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
+                swkbdConfigSetGuideText(&config,mediaPath?"Полный путь к MP3 или WAV без кавычек. C:\\, S:\\ или R:\\.":textLine?"До 500 UTF-16. Для новой строки используйте + строка.":textPath?"Полный путь. Существующий файл не заменяется.":leaf?"Введите одно имя без пути и кавычек.":association?"Укажите полный путь к приложению EXE.":openWith?"Выбор сохраняется в профиле. Ошибка сохранения будет показана.":"Путь с пробелами укажите в кавычках. C:\\, S:\\ или R:\\.");
                 swkbdConfigSetStringLenMax(&config,leaf?255:500);
                 if(textLine)swkbdConfigSetReturnButtonFlag(&config,0);
                 swkbdConfigSetInitialText(&config,shell.InitialText().c_str());

@@ -83,7 +83,7 @@ is an error/recovery boundary, not a silent jump over unplayed media.
 ## Shell player
 
 Start → Media Player opens an authored native Luna window. Open accepts a VFS
-MP3/PCM-WAV path, or an unassociated MP3/WAV selected in Explorer uses the native
+MP3/PCM-WAV path (ordinary spaces allowed, no command-line quoting), or an unassociated MP3/WAV selected in Explorer uses the native
 player through normal Open/controller activation. An explicit user association
 still wins; context menu also offers native playback. Buttons and keyboard/pad
 focus provide play/pause/resume/stop,±10-second seek and volume. Position/duration

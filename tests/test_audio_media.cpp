@@ -57,10 +57,10 @@ int main(int argc,char**argv){
     }
     char pattern[]="/tmp/sr-media-XXXXXX";assert(mkdtemp(pattern));const fs::path root=pattern;
     struct Cleanup{fs::path p;~Cleanup(){fs::remove_all(p);}}cleanup{root};rt::Vfs vfs;std::string error;assert(vfs.ConfigurePersistent(root.string(),"","",error));
-    fs::copy_file(fixtures/"stereo-vbr.mp3",root/"Programs/Музыка.mp3");
+    fs::copy_file(fixtures/"stereo-vbr.mp3",root/"Programs/Моя музыка.mp3");
     AudioCaptureDevice device;assert(rt::Audio().Bind(&device));
     {
-        rt::AudioScope scope;rt::MediaPlayer player;assert(player.Open(vfs,"C:\\Programs\\Музыка.mp3") && player.Duration()==384000);
+        rt::AudioScope scope;rt::MediaPlayer player;assert(player.Open(vfs,"C:\\Programs\\Моя музыка.mp3") && player.Duration()==384000);
         assert(player.Play() && device.active.size()==4 && rt::Audio().Client());
         const auto first=device.active.begin()->second;assert(first->Bytes()<=rt::AudioDecoder::SourceFrames*24+24);
         assert(player.Pause() && device.paused);const auto position=player.Position();rt::Clock::SetFastForward(true);rt::Clock::Sleep(500);rt::Clock::SetFastForward(false);player.Tick();assert(player.Position()==position && device.active.size()==4);
@@ -78,7 +78,7 @@ int main(int argc,char**argv){
         // Real shell activation, controls, minimise/restore, resize and close.
         ui::DesktopShell shell;assert(shell.ConfigureFilesystem(root.string(),"","",error));Click(shell,ui::DesktopShell::Start);Click(shell,ui::DesktopShell::MediaApp);
         assert(shell.ActiveDialog()==ui::DesktopShell::Dialog::MediaPlayer);Click(shell,ui::DesktopShell::MediaChoose);assert(shell.PendingTextInput()==ui::DesktopShell::TextInput::MediaPath);
-        shell.CompleteTextInput(true,"C:\\Programs\\Музыка.mp3");assert(shell.Media().Status()==rt::MediaPlayer::State::Playing);shell.ServiceMedia();
+        shell.CompleteTextInput(true,"C:\\Programs\\Моя музыка.mp3");assert(shell.Media().Status()==rt::MediaPlayer::State::Playing);shell.ServiceMedia();
         Click(shell,ui::DesktopShell::MediaPause);assert(device.paused);Click(shell,ui::DesktopShell::MediaForward);assert(device.paused && shell.Media().Position()==384000);
         Click(shell,ui::DesktopShell::MediaStop);Click(shell,ui::DesktopShell::MediaPlay);assert(!device.paused && device.active.size()==4);
         Click(shell,ui::DesktopShell::DialogMinimize);assert(shell.NativeMinimized());Release(device);shell.ServiceMedia();assert(device.active.size()==4);
@@ -94,7 +94,7 @@ int main(int argc,char**argv){
         // Default selection/activate route, not only the native Open dialog.
         Click(shell,ui::DesktopShell::Computer);Click(shell,ui::DesktopShell::QuickC);
         for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="Programs"){Click(shell,ui::DesktopShell::BrowserRowBase+int(n));shell.Accept();break;}
-        for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="Музыка.mp3"){Click(shell,ui::DesktopShell::BrowserRowBase+int(n));shell.Accept();break;}
+        for(size_t n=0;n<shell.Browser().Entries().size();++n)if(shell.Browser().Entries()[n].name=="Моя музыка.mp3"){Click(shell,ui::DesktopShell::BrowserRowBase+int(n));shell.Accept();break;}
         if(shell.ActiveDialog()!=ui::DesktopShell::Dialog::MediaPlayer || shell.Media().Status()!=rt::MediaPlayer::State::Playing){fprintf(stderr,"Default media route path=%s dialog=%u state=%u error=%s\n",shell.Browser().Path().c_str(),unsigned(shell.ActiveDialog()),unsigned(shell.Media().Status()),shell.Media().Error().c_str());for(const auto& entry:shell.Browser().Entries())fprintf(stderr,"entry %s\n",entry.name.c_str());}
         assert(shell.ActiveDialog()==ui::DesktopShell::Dialog::MediaPlayer && shell.Media().Status()==rt::MediaPlayer::State::Playing);
         Click(shell,ui::DesktopShell::DialogClose);assert(device.active.empty() && !rt::Audio().Client());

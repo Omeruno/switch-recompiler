@@ -3380,3 +3380,10 @@ player mutation/destruction. No backend/PCM/WinMM/MCI/UI behavior or test weaken
 The first SHA is not Switch acceptance. A normal follow-up commit must pass all
 six exact-SHA jobs and new NRO/artifact audits; no force/amend or earlier-green
 substitution. Incoming verified baseline in maps remains49a52af.
+
+D4d final keyboard clarification: the native Media Path input consumes an ordinary
+VFS path,not a command line. Its Switch keyboard guide now explicitly accepts
+spaces without surrounding quotes,instead of inheriting Run's quoting advice.
+The native player/Explorer fixture uses an actual Unicode filename with spaces.
+Only guide text,fixture path and documentation changed; targeted native check
+and fresh exact-SHA CI remain final gates.
