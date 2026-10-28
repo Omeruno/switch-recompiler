@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2o routing, D1–D3 and D4a audio ownership/device queries implemented; next real waveOut streaming lifecycle/callbacks.** Runtime baseline `b2a347777b4f59697929d2fe083aca660ac40b4c`
-passed [CI40661263751, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40661263751).
+G4b.2o routing, D1–D4b streaming/window-thread callbacks implemented; next scheduled function/event audio callbacks.** Runtime baseline `9b56e12d0e466435ef0fe1bd659aca0816ce92a7`
+passed [CI40665841698, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40665841698).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -28,7 +28,7 @@ choose subsequent CPU/H/D work by measured bottlenecks and actual dependencies.
 | --- | --- | --- |
 | A/B | CPU oracle/regressions, interpreter, scheduled guest threads/TEB/TLS/native continuations | Ongoing correctness, bounded HLE response, compatibility and performance |
 | C | Limited one-Process HANDLE/wait/APC/timer/lifecycle scope accepted on Switch | Full NT/cross-process/security/AttachThreadInput outside acceptance |
-| D | PE/DLL/TLS/unload/rollback, bounded SEH, substantial Win32/CRT | Page-right enforcement, full unwind/COM/API compatibility; D1–D4a implemented; streaming waveOut remains open; host Pinball next blocker MCI mciSendCommandA |
+| D | PE/DLL/TLS/unload/rollback, bounded SEH, substantial Win32/CRT | Page-right enforcement, full unwind/COM/API compatibility; D1–D4b bounded streaming implemented; function/event callbacks and broader formats remain open; host Pinball still needs MCI |
 | E | CPU GDI reference, production Switch GL composition/fallback, retained windows/ownership/revisions, E8/E9 metrics/public oracles | Current physical Paint/GPU/fallback/Lite/input/relaunch and real workload evidence |
 | F | Bounded software F0–F5 passes; Luna updates and active-panel integration retained | Physical acceptance; complete XP window behavior and planned extensions |
 | G | G0/G1 measurement, G2 CPU SRCCOPY enabled; G3/G4a/G4b.1 actual-GL semantic prototypes/count and timing controls | Bounded G4b.2 native software acceptance; default/physical/broader GDI and dynarec/code-cache remain open |
@@ -98,7 +98,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | D2 | [Fixed-US keyboard translation](D2_KEYBOARD_LAYOUT.md), MapVirtualKey/GetKeyNameText A/W, actual USER scan/E0/sided states and four x86 sessions | Other layouts/IME/localization remain open; Pinball passes key names |
 | D3 | [Real bounded INI/profile files](D3_INI_PROFILES.md),16 A/W exports and four fresh x86 writer/reader sessions, checked file publication | ASCII/UTF16LE subset; full ACP/IniFileMapping/profile structs outside scope |
 | D4a | [Owning PCM/device queries](D4A_AUDIO_OWNERSHIP.md), checked audout reset/release, bounded resource/memory PlaySound and real caps/format query | Host capture/transport models; no hardware sound or streaming waveOut acceptance |
-| Next independent block | Real waveOut handles/prepare/write/completion/reset/close/callbacks | Public x86 PCM lifecycle; host Pinball also needs MCI mciSendCommandA; no fabricated device or silent-success output |
+| D4b | [Bounded waveOut stream](D4B_WAVE_STREAMING.md): real handles/prepare/write/reset/close/window-thread callbacks;7 normal exits +1 abort | Canonical PCM only,1 stream; function/event callbacks/positions/pause/mixing broader formats open |
+| Next independent block | Scheduled guest function/event audio callbacks | Public x86 CPU/TEB/ABI/cancellation/exit gates; MCI mciSendCommandA still separate; no silent-success output |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -116,7 +117,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
    Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
 5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
-6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** D waveOut streaming lifecycle/callbacks after [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) and [D3 INI/profile](D3_INI_PROFILES.md); retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
+6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** D scheduled function/event audio callbacks after [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) and [D3 INI/profile](D3_INI_PROFILES.md); retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
 7. Continue D compatibility with public reproducers of actual API/memory/unwind
    blockers; Pinball x86 remains a separate unsupported application target.
 8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache

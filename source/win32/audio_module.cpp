@@ -10,6 +10,7 @@ HostCallOutcome Failure(cpu::IGuestMemory& m,uint32_t error){SetLastError(m,erro
 HostCallOutcome Play(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
     const auto sound=Arg(c,m,0),module=Arg(c,m,1),flags=Arg(c,m,2);
     if(!rt::g_process)return Failure(m,6);
+    if(rt::Audio().Client())return Failure(m,170);
     if(!sound)return rt::Audio().Reset()?Ret(1):Failure(m,1117);
     // Bounded asynchronous resource/memory playback; no invented sync/loop success.
     if(!(flags&1) || (flags&~uint32_t(1|2|4|16|0x40000)))return Failure(m,50);
@@ -62,17 +63,7 @@ HostCallOutcome Caps(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
 FN(PlaySoundW){return Play(c,m,true);} FN(PlaySoundA){return Play(c,m,false);}
 FN(waveOutGetNumDevs){(void)c;(void)m;rt::Audio().Poll();return Ret(rt::Audio().Available()?1:0);}
 FN(waveOutGetDevCapsA){return Caps(c,m,false);} FN(waveOutGetDevCapsW){return Caps(c,m,true);}
-FN(waveOutOpen) {
-    const auto flags=Arg(c,m,5),device=Arg(c,m,1),format=Arg(c,m,2);
-    if(flags!=1)return Ret(8); // streaming handles/callbacks not implemented yet
-    if(device && device!=0xffffffffu)return Ret(2);
-    rt::Audio().Poll();if(!rt::Audio().Available())return Ret(6);
-    if(!Range(m,format,16))return Ret(11);
-    const bool canonical=m.Read16(format)==1 && m.Read16(format+2)==2 && m.Read32(format+4)==48000 &&
-        m.Read32(format+8)==192000 && m.Read16(format+12)==4 && m.Read16(format+14)==16;
-    return Ret(canonical?0:32); // WAVERR_BADFORMAT
-}
 #define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
-const HostFunctionEntry entries[]={E(PlaySoundW,12),E(PlaySoundA,12),E(waveOutGetNumDevs,0),E(waveOutGetDevCapsA,12),E(waveOutGetDevCapsW,12),E(waveOutOpen,24)};
+const HostFunctionEntry entries[]={E(PlaySoundW,12),E(PlaySoundA,12),E(waveOutGetNumDevs,0),E(waveOutGetDevCapsA,12),E(waveOutGetDevCapsW,12)};
 const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
 }}

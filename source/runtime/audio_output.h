@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <vector>
 namespace rt {
 // Immutable canonical 48kHz stereo signed16 PCM, 4096-aligned/padded for audout.
@@ -34,11 +35,16 @@ public:
     ~AudioOutput();
     bool Bind(AudioDevice*);
     uint64_t Enter();
-    void Leave(uint64_t owner,uint64_t previous);
+    void Leave(uint64_t owner,uint64_t previous,uint64_t previousClient=0);
     uint64_t Owner() const {return owner_;}
     bool Available() const {return owner_ && device_ && !fault_ && device_->Available();}
     const char* Name() const {return device_?device_->Name():"";}
-    Result Submit(uint64_t,const std::vector<int16_t>&);
+    // Host-only retirement observer: FALSE=played release, TRUE=confirmed cancel.
+    // It may enqueue notifications but must not execute guest code.
+    Result Submit(uint64_t,const std::vector<int16_t>&,std::function<void(bool)> done={},uint64_t client=0);
+    uint64_t Client() const {return client_;}
+    bool Claim(uint64_t owner,uint64_t client);
+    bool ReleaseClient(uint64_t owner,uint64_t client);
     bool Poll();
     bool Reset();
     size_t Pending() const;
@@ -46,21 +52,23 @@ public:
     uint64_t Completed() const {return completed_;}
     uint64_t Cancelled() const {return cancelled_;}
 private:
-    struct Ticket {uint64_t id=0;std::shared_ptr<const AudioBlock> block;};
+    struct Ticket {uint64_t id=0;std::shared_ptr<const AudioBlock> block;std::function<void(bool)> done;};
     AudioDevice* device_=nullptr;
     std::array<Ticket,Slots> tickets_{};
-    uint64_t owner_=0,nextOwner_=1,nextTicket_=1,accepted_=0,completed_=0,cancelled_=0;
+    uint64_t client_=0,owner_=0,nextOwner_=1,nextTicket_=1,accepted_=0,completed_=0,cancelled_=0;
     bool fault_=false;
 };
 AudioOutput& Audio();
 class AudioScope {
 public:
-    AudioScope():previous_(Audio().Owner()),owner_(Audio().Enter()){}
-    ~AudioScope(){Audio().Leave(owner_,previous_);}
+    AudioScope():previous_(Audio().Owner()),previousClient_(Audio().Client()),owner_(Audio().Enter()){}
+    ~AudioScope(){Close();}
+    void Close(){if(!closed_){Audio().Leave(owner_,previous_,previousClient_);closed_=true;}}
     AudioScope(const AudioScope&)=delete;
     AudioScope& operator=(const AudioScope&)=delete;
 private:
-    uint64_t previous_,owner_;
+    uint64_t previous_,previousClient_,owner_;
+    bool closed_=false;
 };
 // Checked RIFF PCM8/16 mono/stereo -> canonical output; preserves stereo channels.
 bool DecodeWave(const std::vector<uint8_t>&,std::vector<int16_t>&);

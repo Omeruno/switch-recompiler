@@ -1,6 +1,7 @@
 # D4a — owning PCM output, checked audout and honest device queries
 
-Implemented after D3, 2026-10-28. This common audio foundation replaces the old
+Implemented after D3, 2026-10-28. Historical D4a scope: supported streaming
+opens and queued window/thread notifications are now added by [D4b](D4B_WAVE_STREAMING.md). This common audio foundation replaces the old
 void PlaySound callback and four-slot code that freed an in-flight buffer when
 all slots were busy. No fabricated device counts or successful silent writes.
 

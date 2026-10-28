@@ -2,6 +2,7 @@
 #include "../win32/host_functions.h"
 #include "../win32/user32.h"
 #include "../win32/user_apc.h"
+#include "../win32/wave_out.h"
 #include <cerrno>
 #include <new>
 
@@ -202,6 +203,7 @@ void GuestExecution::ReapExited() {
     for (auto& thread:process_.workerThreads_) releaseWithoutContinuation(*thread);
 }
 GuestExecution::Result GuestExecution::RunOne() {
+    if(g_process==&process_)win32::PollWaveOut();
     ReapExited();
     if (stopped_ || win32::g_guestExitRequested) { stopped_=true; return Result::Stopped; }
     GuestThread* thread=process_.Scheduler().Next();

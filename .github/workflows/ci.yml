@@ -96,6 +96,15 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-d-wave-streaming
+          if-no-files-found: error
+          path: |
+            build-host/wave_stream.log
+            build-host/test_audio_output.log
+            build-host/guest-run.*/wave_stream.exe
+            docs/D4B_WAVE_STREAMING.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-d-audio-ownership
           if-no-files-found: error
           path: |

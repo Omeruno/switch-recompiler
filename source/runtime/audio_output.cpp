@@ -16,18 +16,19 @@ bool AudioOutput::Bind(AudioDevice* device) {
     device_=device;fault_=false;return true;
 }
 uint64_t AudioOutput::Enter() {
-    Reset();
+    Reset();client_=0;
     owner_=nextOwner_==std::numeric_limits<uint64_t>::max()?0:nextOwner_++;
     return owner_;
 }
-void AudioOutput::Leave(uint64_t owner,uint64_t previous) {
+void AudioOutput::Leave(uint64_t owner,uint64_t previous,uint64_t previousClient) {
     if(owner_!=owner)return;
-    Reset();owner_=previous;
+    Reset();owner_=previous;client_=previousClient;
 }
 size_t AudioOutput::Pending() const {size_t n=0;for(const auto& t:tickets_)n+=bool(t.id);return n;}
 bool AudioOutput::Reset() {
     if(device_ && !device_->Reset()){fault_=true;return false;}
-    for(auto& t:tickets_){if(t.id)++cancelled_;t={};}
+    auto retired=std::move(tickets_);tickets_={};
+    for(auto& t:retired)if(t.id){++cancelled_;if(t.done)t.done(true);}
     fault_=false;return true;
 }
 bool AudioOutput::Poll() {
@@ -38,12 +39,21 @@ bool AudioOutput::Poll() {
         if(status==AudioDevice::Completion::Error){fault_=true;return false;}
         auto found=std::find_if(tickets_.begin(),tickets_.end(),[&](const Ticket& t){return id && t.id==id;});
         if(found==tickets_.end()){fault_=true;return false;}
-        *found={};++completed_;
+        auto retired=std::move(*found);*found={};++completed_;
+        if(retired.done)retired.done(false);
     }
     fault_=true;return false;
 }
-AudioOutput::Result AudioOutput::Submit(uint64_t owner,const std::vector<int16_t>& pcm) {
-    if(!owner || owner!=owner_)return Result::WrongOwner;
+bool AudioOutput::Claim(uint64_t owner,uint64_t client) {
+    if(!owner || owner!=owner_ || !client || client_ || Pending())return false;
+    client_=client;return true;
+}
+bool AudioOutput::ReleaseClient(uint64_t owner,uint64_t client) {
+    if(owner!=owner_ || !client || client_!=client)return false;
+    client_=0;return true;
+}
+AudioOutput::Result AudioOutput::Submit(uint64_t owner,const std::vector<int16_t>& pcm,std::function<void(bool)> done,uint64_t client) {
+    if(!owner || owner!=owner_ || (client_ && client!=client_))return Result::WrongOwner;
     if(pcm.empty() || pcm.size()%2 || pcm.size()>MaxSamples)return Result::Invalid;
     if(!Poll())return Result::DeviceError;
     if(!Available())return Result::Unavailable;
@@ -53,7 +63,7 @@ AudioOutput::Result AudioOutput::Submit(uint64_t owner,const std::vector<int16_t
     const auto id=nextTicket_++;
     auto block=std::make_shared<const AudioBlock>(pcm);
     if(!device_->Submit(id,block)){fault_=true;return Result::DeviceError;}
-    slot->id=id;slot->block=std::move(block);++accepted_;return Result::Accepted;
+    slot->id=id;slot->block=std::move(block);slot->done=std::move(done);++accepted_;return Result::Accepted;
 }
 AudioOutput& Audio(){static AudioOutput output;return output;}
 namespace {

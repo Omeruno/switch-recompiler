@@ -18,7 +18,7 @@ void WINAPI start(void){
         CHECK(waveOutGetDevCapsA(0,(LPWAVEOUTCAPSA)(ULONG_PTR)0xffffffff,sizeof(a))==MMSYSERR_INVALPARAM);
         CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,0,0,WAVE_FORMAT_QUERY)==0 && (ULONG_PTR)handle==0x12345678);
         format.nSamplesPerSec=1;CHECK(waveOutOpen(NULL,WAVE_MAPPER,&format,0,0,WAVE_FORMAT_QUERY)==WAVERR_BADFORMAT);format.nSamplesPerSec=48000;
-        CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,0,0,0)==MMSYSERR_NOTSUPPORTED && (ULONG_PTR)handle==0x12345678);
+        CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,0,0,CALLBACK_FUNCTION)==MMSYSERR_NOTSUPPORTED && (ULONG_PTR)handle==0x12345678);
         if(mode==2){
             CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC) && GetLastError()==1117);
             CHECK(waveOutGetNumDevs()==0);CHECK(PlaySoundW(NULL,NULL,0));CHECK(waveOutGetNumDevs()==1);

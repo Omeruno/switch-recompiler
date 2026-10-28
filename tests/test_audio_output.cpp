@@ -35,6 +35,15 @@ int main(){
     assert(output.Submit(inner,pcm)==A::Result::Accepted);output.Leave(inner,owner);assert(!output.Pending() && output.Owner()==owner);
     assert(output.Submit(owner,std::vector<int16_t>(A::MaxSamples+2))==A::Result::Invalid);
     device.ready=false;assert(output.Submit(owner,pcm)==A::Result::Unavailable);device.ready=true;
+    std::vector<bool> retirements;assert(output.Claim(owner,1234));
+    assert(output.Submit(owner,pcm)==A::Result::WrongOwner);
+    assert(output.Submit(owner,pcm,[&](bool cancelled){retirements.push_back(cancelled);},1234)==A::Result::Accepted);
+    device.released.push_back(device.active.begin()->first);assert(output.Poll() && retirements==std::vector<bool>{false});
+    assert(output.Submit(owner,pcm,[&](bool cancelled){retirements.push_back(cancelled);},1234)==A::Result::Accepted);
+    device.resetFails=true;assert(!output.Reset() && retirements.size()==1);device.resetFails=false;
+    assert(output.Reset() && retirements==std::vector<bool>({false,true}));assert(output.Reset() && retirements.size()==2);
+    const auto nested=output.Enter();assert(!output.Client());output.Leave(nested,owner,1234);assert(output.Client()==1234);
+    assert(output.ReleaseClient(owner,1234));
     assert(output.Bind(nullptr));
     // Queue destruction does not free buffers still owned by a failed-reset driver.
     {A local;assert(local.Bind(&device));auto id=local.Enter();assert(local.Submit(id,pcm)==A::Result::Accepted);device.resetFails=true;}

@@ -1,0 +1,132 @@
+#include "wave_out.h"
+#include "hle_util.h"
+#include "user32.h"
+#include "../runtime/audio_output.h"
+#include <deque>
+#include <map>
+namespace win32 {namespace {
+using namespace hle;
+constexpr uint32_t InvalidHandle=5,InvalidParam=11,NoMemory=7,Error=1,StillPlaying=33,Unprepared=34;
+constexpr uint32_t Done=1,Prepared=2,InQueue=16;
+constexpr uint32_t OpenMessage=0x3bb,CloseMessage=0x3bc,DoneMessage=0x3bd;
+struct Header {uint32_t data=0,capacity=0;uint64_t generation=0;bool queued=false;};
+struct Retirement {uint32_t header;uint64_t generation;bool cancelled;};
+struct Stream {
+    rt::Process* process=nullptr;cpu::IGuestMemory* memory=nullptr;
+    uint64_t owner=0,nextGeneration=1;
+    uint32_t handle=0,callback=0,callbackType=0,targetThread=0;
+    bool open=true,notifications=true,fault=false;
+    std::map<uint32_t,Header> headers;
+    std::deque<Retirement> retired;
+};
+struct Holder {std::shared_ptr<Stream> stream;};
+uint64_t nextHandle=0x60000100;
+bool Range(cpu::IGuestMemory& m,uint32_t p,size_t n){return p && uint64_t(p)+n<=0x100000000ull && m.IsRangeMapped(p,n);}
+std::shared_ptr<Stream> Current(){return rt::g_process?rt::LocalState<Holder>().stream:nullptr;}
+bool Notify(Stream& s,uint32_t message,uint32_t header=0) {
+    if(!s.notifications || !s.callbackType)return true;
+    if(s.callbackType==0x10000){const auto* w=user::Win(s.callback);if(!w || w->threadId!=s.targetThread)return true;}
+    auto it=user::S().queues.find(s.targetThread);
+    if(it==user::S().queues.end() || it->second.closed)return true;
+    if(it->second.posted.size()>=1024)return false;
+    return user::PostToThread(s.targetThread,s.callbackType==0x10000?s.callback:0,message,s.handle,header);
+}
+void Drain(Stream& s) {
+    if(!s.open || rt::g_process!=s.process || rt::Audio().Owner()!=s.owner)return;
+    while(!s.retired.empty()) {
+        const auto event=s.retired.front();s.retired.pop_front();auto it=s.headers.find(event.header);
+        if(it==s.headers.end() || it->second.generation!=event.generation || !it->second.queued)continue;
+        it->second.queued=false;
+        if(!Range(*s.memory,event.header,32)){s.fault=true;continue;}
+        const auto flags=s.memory->Read32(event.header+16);
+        s.memory->Write32(event.header+16,(flags&~InQueue)|Prepared|Done);
+        if(!Notify(s,DoneMessage,event.header))s.fault=true;
+    }
+}
+std::shared_ptr<Stream> Valid(uint32_t handle){auto s=Current();return s && s->open && s->handle==handle && s->owner==rt::Audio().Owner() && rt::Audio().Client()==handle?s:nullptr;}
+bool Canonical(cpu::IGuestMemory& m,uint32_t p){return m.Read16(p)==1 && m.Read16(p+2)==2 && m.Read32(p+4)==48000 && m.Read32(p+8)==192000 && m.Read16(p+12)==4 && m.Read16(p+14)==16;}
+HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const auto output=Arg(c,m,0),device=Arg(c,m,1),format=Arg(c,m,2),callback=Arg(c,m,3),flags=Arg(c,m,5);
+    if(flags!=1 && flags!=0 && flags!=0x10000 && flags!=0x20000)return Ret(8);
+    if(device && device!=0xffffffffu)return Ret(2);
+    PollWaveOut();if(!rt::Audio().Available() || !rt::g_process)return Ret(6);
+    if(!Range(m,format,16))return Ret(InvalidParam);
+    if(!Canonical(m,format))return Ret(32);
+    if(flags==1)return Ret(0);
+    if(!Range(m,output,4))return Ret(InvalidParam);
+    uint32_t thread=0;
+    if(flags) {
+        if(!IsHostLayerEnabled(kUiLayer))return Ret(8);
+        if(flags==0x10000){auto* w=user::Win(callback);if(!w)return Ret(InvalidParam);thread=w->threadId;}
+        else thread=callback;
+        const auto* target=rt::g_process->FindThread(thread);auto queue=user::S().queues.find(thread);
+        if(!target || target->status==rt::GuestThreadStatus::Exited || queue==user::S().queues.end() || queue->second.closed)return Ret(InvalidParam);
+    }
+    if(rt::Audio().Client() || rt::Audio().Pending())return Ret(4);
+    if(nextHandle>0x6ffffffc)return Ret(NoMemory);
+    const auto handle=uint32_t(nextHandle);nextHandle+=4;
+    auto s=std::make_shared<Stream>();s->process=rt::g_process;s->memory=&m;s->owner=rt::Audio().Owner();s->handle=handle;s->callback=callback;s->callbackType=flags;s->targetThread=thread;
+    if(!rt::Audio().Claim(s->owner,handle))return Ret(4);
+    if(!Notify(*s,OpenMessage)){rt::Audio().ReleaseClient(s->owner,handle);return Ret(NoMemory);}
+    rt::LocalState<Holder>().stream=s;m.Write32(output,handle);return Ret(0);
+}
+HostCallOutcome Prepare(cpu::CpuState& c,cpu::IGuestMemory& m,bool remove) {
+    PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
+    const auto p=Arg(c,m,1),size=Arg(c,m,2);if(size<32 || !Range(m,p,32))return Ret(InvalidParam);
+    auto old=s->headers.find(p);
+    if(old!=s->headers.end()) {
+        if(old->second.queued)return Ret(StillPlaying);
+        if(remove){m.Write32(p+16,m.Read32(p+16)&~(Prepared|InQueue));s->headers.erase(old);}return Ret(0);
+    }
+    if(remove)return Ret(0);
+    const auto data=m.Read32(p),bytes=m.Read32(p+4),flags=m.Read32(p+16);
+    if(flags&12)return Ret(8);
+    if(!bytes || bytes%4 || bytes>rt::AudioOutput::MaxSamples*2 || !Range(m,data,bytes))return Ret(InvalidParam);
+    if(s->headers.size()>=64 || s->nextGeneration==UINT64_MAX)return Ret(NoMemory);
+    s->headers.emplace(p,Header{data,bytes,s->nextGeneration++,false});m.Write32(p+16,(flags&~(Done|InQueue))|Prepared);return Ret(0);
+}
+HostCallOutcome Write(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
+    if(s->fault)return Ret(Error);
+    const auto p=Arg(c,m,1);if(Arg(c,m,2)<32 || !Range(m,p,32))return Ret(InvalidParam);
+    auto it=s->headers.find(p);if(it==s->headers.end())return Ret(Unprepared);
+    if(it->second.queued)return Ret(StillPlaying);
+    const auto data=m.Read32(p),bytes=m.Read32(p+4),flags=m.Read32(p+16);
+    if(flags&12)return Ret(8);
+    if(data!=it->second.data || !bytes || bytes>it->second.capacity || bytes%4 || !Range(m,data,bytes))return Ret(InvalidParam);
+    if(!rt::Audio().Available())return Ret(6);
+    std::vector<int16_t> pcm(bytes/2);for(size_t n=0;n<pcm.size();++n){const auto v=m.Read16(data+uint32_t(n*2));pcm[n]=int16_t(int32_t(v)-(v&0x8000?65536:0));}
+    const auto generation=it->second.generation;std::weak_ptr<Stream> weak=s;
+    const auto result=rt::Audio().Submit(s->owner,pcm,[weak,p,generation](bool cancelled){
+        if(auto state=weak.lock()) {
+            if(state->retired.size()>=rt::AudioOutput::Slots){state->fault=true;return;}
+            state->retired.push_back({p,generation,cancelled});
+        }
+    },s->handle);
+    if(result!=rt::AudioOutput::Result::Accepted)return Ret(result==rt::AudioOutput::Result::Busy?NoMemory:Error);
+    it->second.queued=true;m.Write32(p+16,(flags&~Done)|Prepared|InQueue);return Ret(0);
+}
+HostCallOutcome Reset(cpu::CpuState& c,cpu::IGuestMemory& m,bool close) {
+    PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
+    if(close)for(const auto& h:s->headers)if(h.second.queued)return Ret(StillPlaying);
+    if(!rt::Audio().Reset())return Ret(Error);
+    Drain(*s);
+    if(!close){for(const auto& h:s->headers)if(!Range(m,h.first,32))return Ret(Error);s->fault=false;return Ret(0);}
+    if(!Notify(*s,CloseMessage))return Ret(NoMemory);
+    for(const auto& h:s->headers)if(Range(m,h.first,32))m.Write32(h.first+16,m.Read32(h.first+16)&~(Prepared|InQueue));
+    rt::Audio().ReleaseClient(s->owner,s->handle);s->open=false;s->headers.clear();rt::LocalState<Holder>().stream.reset();return Ret(0);
+}
+#define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
+FN(waveOutOpen){return Open(c,m);} FN(waveOutPrepareHeader){return Prepare(c,m,false);} FN(waveOutUnprepareHeader){return Prepare(c,m,true);}
+FN(waveOutWrite){return Write(c,m);} FN(waveOutReset){return Reset(c,m,false);} FN(waveOutClose){return Reset(c,m,true);}
+#define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
+const HostFunctionEntry entries[]={E(waveOutOpen,24),E(waveOutPrepareHeader,12),E(waveOutUnprepareHeader,12),E(waveOutWrite,12),E(waveOutReset,4),E(waveOutClose,4)};
+const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
+}
+void PollWaveOut(){rt::Audio().Poll();if(auto s=Current())Drain(*s);}
+void EndWaveOutSession(){
+    auto s=Current();if(!s)return;s->notifications=false;
+    if(rt::Audio().Reset())Drain(*s);
+    rt::Audio().ReleaseClient(s->owner,s->handle);s->open=false;rt::LocalState<Holder>().stream.reset();
+}
+} // namespace win32

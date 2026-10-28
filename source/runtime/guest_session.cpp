@@ -4,6 +4,7 @@
 #include "../win32/user32.h"
 #include "../win32/gui_session.h"
 #include "../win32/legacy_session.h"
+#include "../win32/wave_out.h"
 
 namespace rt {
 GuestSession::Context GuestSession::Capture() {
@@ -23,6 +24,8 @@ GuestSession::GuestSession():previous_(Capture()),process_(memory_) {
 GuestSession::~GuestSession() {
     // GuestExecution has already drained. Host-only state/handles are destroyed
     // with Process, then backing guest memory. No guest callback is run here.
+    win32::EndWaveOutSession();
+    audio_.Close();
     gui_.reset();
     legacy_.reset();
     g_process=previous_.process;win32::SetImportBindingMemory(previous_.binding);
