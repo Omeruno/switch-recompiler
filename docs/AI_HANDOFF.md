@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b337366b48f4cb8cb2f1dd26bedbc3622e670807` (2026-10-28).
-[CI 40629027692](https://github.com/Omeruno/switch-recompiler/actions/runs/40629027692)
+`b2a347777b4f59697929d2fe083aca660ac40b4c` (2026-10-28).
+[CI 40661263751](https://github.com/Omeruno/switch-recompiler/actions/runs/40661263751)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D3 real bounded INI/profile implemented; next waveOut/audio backend (2026-10-28)
+## Current position: D4a owning PCM/device queries implemented; next streaming waveOut lifecycle (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. Pinball passes GetPrivateProfileIntA; next missing WINMM!waveOutGetNumDevs. Next genuine audio device/backend; registry persistence remains separate.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball passes waveOutGetNumDevs with no output device; next missing WINMM!mciSendCommandA. Next real waveOut streaming/callback lifecycle; MCI/MIDI separate, registry persistence remains open.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is a genuine waveOut/audio device/backend from the actual WINMM!waveOutGetNumDevs blocker, preserving all graphics/session gates. Checked registry persistence remains open.
+Next is genuine waveOut streaming handles/prepare/write/completion/reset/close/callbacks on the D4a owning backend, preserving all graphics/session gates. Host Pinball also needs MCI mciSendCommandA; no-device host advancement is not sound acceptance. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -3043,3 +3043,75 @@ stage-d-profiles artifact is in the existing host job; still six core CI jobs.
 Roadmap23cards/3views/39docs. Normal push plus exact new-SHA six-job CI/Pages/NRO/
 public profile PE/log/contract and clean GPU source-manifest audit are publication
 gates. Incoming verified SHA is metadata baseline, not a self-referencing commit.
+
+
+## D4a — owning PCM and actual device admission/release contracts (2026-10-28)
+
+Incoming clean b2a3477, exact CI40661263751 six success/Pages40661263666,
+D3/D2/D1/GPU artifacts and NRO verified. No newer work. Local SDK absent;
+existing host/MinGW/Mesa tools reused. Preserve CPU GDI/L/ZL/Luna/hardware deferral.
+
+Audit found a real old audout lifetime fault: slot saturation selected slot0
+and freed PCM still owned by hardware; append/start errors and the void audio
+callback could report unconditional PlaySound success. Old parser could divide
+by zero channels and downmixed stereo. Removed that pool/callback/global and
+legacy callback save/restore. Common AudioOutput now owns4 immutable aligned
+PCM blocks, bounds5s canonical48k/stereo16 each, snapshots inputs, uses monotonic
+tickets and refuses saturation. Device retains shared ownership on ambiguous
+error, completion/reset cancellation are distinct. Poll/stale/duplicate/reset
+faults retain storage and block admission/detach; reset acknowledges revocation
+before freeing. Failed-reset queue destruction cannot free backend-held PCM.
+
+GuestSession AudioScope resets one device on enter/leave and rejects stale
+owner submission, restoring owner identity on nesting. Switching sessions cancels
+old pending audio (not independent multiprocess mixing). No guest pointers or
+callbacks survive. Production AudoutDevice checks initialize/start/canonical
+format/append/release, uses stable native descriptors, stop/flush/contains/drained
+reset and closes native session before freeing. Failed restart reports no device;
+main closes backend then detaches after frontend join. Main guest/native/legacy
+input loops poll completions. Actual libnx compile is CI-only, hardware remains
+unverified. Host transport model tests production adapter control/ownership only.
+
+Six real WINMM entries: PlaySoundA/W async resource/memory PCM, truthful
+waveOutGetNumDevs, capsA/W and waveOutOpen format-query-only. Non-query streaming
+opens explicitly return NOTSUPPORTED without writing a dummy handle. PlaySound
+replaces prior async playback after confirmed reset; NOSTOP refuses pending and
+NULL stops. Unsupported sync/filename/alias/loop flags refuse. RIFF parser bounds
+chunks/PCM/alignment/rates/size/duration; stereo stays stereo, mono duplicates,
+PCM8/16 supported with nearest-neighbor resampling. See D4A_AUDIO_OWNERSHIP.md.
+
+Public authored WAVE resource + audio_output.exe and inspector execute four
+fresh normal-exit0 sessions: no device, real PCM capture, ambiguous submit failure,
+restart. Native sample inspection, snapshot changes, replacement/NOSTOP/release/
+stop, caps/format-query/error/unchanged unsupported handle;10 accepts,2 confirmed
+completions and8 cancellations. Native core tests cover4-slot busy/no reuse,
+out-of-order/stale release, failed reset/detach, retained ownership past queue
+destruction, nested owners, malformed/overflow/truncated/mono/stereo WAV. Actual
+AudoutDevice is compiled in a standalone host transport model and tests init/
+start/append/poll/stop/flush/contains/restart faults, full native-slot refusal,
+aligned PCM, drained reset and close-before-free. This is not a Switch SDK or
+hardware-output claim. No third-party implementation or private PCM imported.
+
+Final full host/MinGW/Mesa regression passed final runtime/API fixtures and
+C/six E9/22 F/17 GPU/five bound reports, including the standalone adapter model.
+Strict and focused ASan/UBSan core/API/GuestSession/inspectors and adapter model
+passed; final extra counter assertions also passed. API sanitizer keeps
+other common objects ordinary and driver/fiber leak scan disabled with known
+fiber warning; native core/model enable leak detection. Negative stereo-loss
+and early-free-before-close failed intended sample/ownership assertions.
+Logs/mutations stay outside git. No executable-specific production branch.
+
+Private host Pinball now passes waveOutGetNumDevs with truthful0 because winrun
+has no audio backend, then fatal missing WINMM!mciSendCommandA. No playable game/
+main frame/audible output/console/FPS acceptance. Next D4b is genuine waveOut
+open/prepare/write/unprepare/actual completion/reset/close and supported callback
+delivery with public x86 stream/lifetime/abort/relaunch gates; MCI/MIDI is an
+additional later music dependency, not a reason to insert a successful stub.
+Never set WHDR_DONE on admission or recycle before backend release. D1 disk
+registry migration/encoding/enum/delete, dynarec/D3D9 and shell expansion remain
+open. Hardware/Paint/GPU/fallback/input/relaunch deferred; SD diagnosis closed.
+
+Maps updated to D4b streaming queue and actual MCI host blocker. New
+stage-d-audio-ownership artifact in existing host job, still6 core jobs.
+Roadmap23cards/3views/40docs. Normal push/exact-SHA6 CI/Pages/NRO/audio public PE/
+resource/source/log/contract/clean GPU code manifest are final publication gates.

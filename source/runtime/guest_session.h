@@ -1,5 +1,6 @@
 #pragma once
 #include "process.h"
+#include "audio_output.h"
 
 namespace win32 {class LegacySession;namespace user {class GuiSession;}}
 
@@ -30,6 +31,7 @@ private:
     Context previous_;
     cpu::PagedGuestMemory memory_;
     Process process_;
+    AudioScope audio_;
     std::unique_ptr<win32::user::GuiSession> gui_;
     std::unique_ptr<win32::LegacySession> legacy_;
 };

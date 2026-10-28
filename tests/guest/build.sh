@@ -5,6 +5,9 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+i686-w64-mingw32-windres "$here/audio_output.rc" "$out/audio_output_resource.o"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/audio_output.c" "$out/audio_output_resource.o" \
+    -o "$out/audio_output.exe" -lkernel32 -lwinmm
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/ini_profile.c" \
     -o "$out/ini_profile.exe" -lkernel32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/keyboard_layout.c" \

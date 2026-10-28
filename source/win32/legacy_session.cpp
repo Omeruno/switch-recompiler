@@ -20,7 +20,6 @@ struct LegacySession::Saved {
     // changes them during the launch. Device ownership stays with the frontend.
     decltype(g_getTickCountImpl) tick=g_getTickCountImpl;
     decltype(g_pumpHostFrame) pump=g_pumpHostFrame;
-    decltype(g_playAudioImpl) audio=g_playAudioImpl;
     decltype(g_consoleWriteImpl) console=g_consoleWriteImpl;
     void* stack=g_threadStackBase;
     bool trace=g_traceHostCalls,ui=IsHostLayerEnabled(kUiLayer);
@@ -36,7 +35,7 @@ LegacySession::LegacySession():previous_(std::make_unique<Saved>()) {previous_->
 LegacySession::~LegacySession() {
     previous_->Exchange();
     g_getTickCountImpl=previous_->tick;g_pumpHostFrame=previous_->pump;
-    g_playAudioImpl=previous_->audio;g_consoleWriteImpl=previous_->console;
+    g_consoleWriteImpl=previous_->console;
     g_threadStackBase=previous_->stack;g_traceHostCalls=previous_->trace;
     EnableHostLayer(kUiLayer,previous_->ui);
 }

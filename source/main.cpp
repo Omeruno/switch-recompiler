@@ -32,6 +32,7 @@
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
 #include "runtime/guest_session.h"
+#include "runtime/audio_audout.h"
 #include "runtime/files.h"
 #include "runtime/guest_execution_log.h"
 #include "ui/presentation.h"
@@ -453,7 +454,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
             const uint64_t now=ui::PerformanceNowNs();
             if(now-nativePollNs>=8'000'000ull) {
                 ui::ExecutionPhaseMetrics::Scope nativeTiming(ui::g_executionPhases,ui::ExecutionPhase::NativeService);
-                nativePollNs=now;
+                nativePollNs=now;rt::Audio().Poll();
                 const auto status=shellSession->ServiceHost();
                 if(status!=win32::user::ShellSession::HostStatus::Running) {
                     stopReason=status==win32::user::ShellSession::HostStatus::InputOverflow
@@ -1393,6 +1394,7 @@ static LegacyPumpState g_legacyPump;
 static win32::HostFrameResult PumpHostFrame()
 {
     win32::HostFrameResult result;
+    rt::Audio().Poll();
 
     if(!ContinueApplet()) {result.shouldQuit=true;return result;}
     padUpdate(&g_pad);
@@ -2089,6 +2091,7 @@ void Mouse(std::vector<win32::user::InputEvent>& out, win32::user::InputEvent::T
 }
 
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
+    rt::Audio().Poll();
     using IE = win32::user::InputEvent;
     uint32_t start = rt::Clock::NowMs();
     uint32_t clockPoll=start;std::u16string lastClock;
@@ -2201,58 +2204,8 @@ static void RunSelectedGuest()
     RunInterpreter(g_selectedExePath.c_str(), 40, 100000000);
 }
 
-// --- Звук через audout ---
-// Простой пул из нескольких слотов-буферов (короткие игровые звуки, их
-// редко нужно больше 2-3 одновременно). Каждый слот — отдельный выровненный
-// буфер (audout требует выравнивание по 0x1000), которым мы владеем, пока
-// audout не сообщит, что буфер отыгран (audoutGetReleasedAudioOutBuffer).
-constexpr int kAudioSlots = 4;
-struct AudioSlot {
-    AudioOutBuffer outBuf;
-    void* rawMem = nullptr;
-    bool inUse = false;
-};
-static AudioSlot g_audioSlots[kAudioSlots];
-
-static void ReclaimReleasedAudioBuffers() {
-    AudioOutBuffer* released;
-    u32 count;
-    while (R_SUCCEEDED(audoutGetReleasedAudioOutBuffer(&released, &count)) && count > 0) {
-        for (auto& slot : g_audioSlots) {
-            if (slot.inUse && &slot.outBuf == released) slot.inUse = false;
-        }
-    }
-}
-
-static void PlayAudioImpl(const std::vector<int16_t>& samples) {
-    if (samples.empty()) return;
-    ReclaimReleasedAudioBuffers();
-
-    int slotIdx = -1;
-    for (int i = 0; i < kAudioSlots; i++) if (!g_audioSlots[i].inUse) { slotIdx = i; break; }
-    if (slotIdx < 0) slotIdx = 0; // все заняты — жертвуем самым старым, короткие звуки, не страшно
-
-    AudioSlot& slot = g_audioSlots[slotIdx];
-    size_t dataSize = samples.size() * sizeof(int16_t);
-    size_t alignedSize = (dataSize + 0xFFFu) & ~0xFFFu; // audout требует выравнивание по 0x1000
-
-    if (slot.rawMem) { free(slot.rawMem); slot.rawMem = nullptr; }
-    slot.rawMem = memalign(0x1000, alignedSize);
-    if (!slot.rawMem) return; // не хватило памяти — просто без звука в этот раз, не крашимся
-
-    memcpy(slot.rawMem, samples.data(), dataSize);
-    if (alignedSize > dataSize) memset(static_cast<uint8_t*>(slot.rawMem) + dataSize, 0, alignedSize - dataSize);
-
-    slot.outBuf.next = nullptr;
-    slot.outBuf.buffer = slot.rawMem;
-    slot.outBuf.buffer_size = alignedSize;
-    slot.outBuf.data_size = static_cast<u32>(dataSize);
-    slot.outBuf.data_offset = 0;
-    slot.inUse = true;
-
-    audoutAppendAudioOutBuffer(&slot.outBuf);
-}
-
+// Device binding is initialized before the frontend and drained after it joins.
+// PCM/native descriptors are owned until release or confirmed revoke.
 // --- Выбор исполняемого файла при старте ---
 // Программы ищутся в romfs (вшиты в .nro) и на карте памяти в
 // sdmc:/switch-recompiler/ — там же, где реестр. На карте программу
@@ -2507,16 +2460,9 @@ int main(int argc, char* argv[])
     mkdir(win32::kRegistryFolderPath, 0777);
     win32::g_registry.LoadFromFile(win32::kRegistryFilePath);
 
-    // Звук: инициализируем audout один раз, заранее (главный поток, до
-    // запуска интерпретатора) — та же логика, что и с графикой: простая,
-    // неглубокая инициализация из безопасного места.
-    Result audRc = audoutInitialize();
-    if (R_SUCCEEDED(audRc)) {
-        audoutStartAudioOut();
-        win32::g_playAudioImpl = &PlayAudioImpl;
-    }
-    // Если audoutInitialize не удался — просто играем без звука (не критично,
-    // win32::g_playAudioImpl останется nullptr, PlaySoundW тихо ничего не сыграет)
+    rt::AudoutDevice audioDevice;
+    audioDevice.Initialize(); // unavailable remains an explicit no-device result
+    rt::Audio().Bind(&audioDevice);
 
     Result rc = romfsInit();
     if (R_FAILED(rc))
@@ -2532,7 +2478,7 @@ int main(int argc, char* argv[])
             if (padGetButtonsDown(&g_pad) & HidNpadButton_Plus) break;
             consoleUpdate(NULL);
         }
-        if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
+        audioDevice.Shutdown();rt::Audio().Bind(nullptr);
         consoleExit(NULL);
         return 0;
     }
@@ -2552,7 +2498,7 @@ int main(int argc, char* argv[])
         while(ContinueApplet()) {padUpdate(&g_pad);if(padGetButtonsDown(&g_pad)&HidNpadButton_Plus)break;consoleUpdate(NULL);svcSleepThread(16'000'000);}
     }
     romfsExit();
-    if(win32::g_playAudioImpl){audoutExit();win32::g_playAudioImpl=nullptr;}
+    audioDevice.Shutdown();rt::Audio().Bind(nullptr);
     if(cpu::g_consoleAvailable)consoleExit(NULL);
     return 0;
 }

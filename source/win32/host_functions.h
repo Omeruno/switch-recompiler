@@ -133,12 +133,7 @@ uint32_t AllocateNamedStubSlot(const std::string& dllName, const std::string& fu
 // через реальные libnx-вызовы; в хостовых тестах можно подставить моки.
 extern uint32_t (*g_getTickCountImpl)();
 
-// Колбэк реального вывода звука в динамики — платформенно-специфичный
-// (audout на Switch), поэтому сам host_functions.cpp занимается только
-// разбором WAV, а вывод делегирует сюда. main.cpp выставляет эту функцию
-// перед запуском интерпретатора (так же, как g_pumpHostFrame). Формат
-// сэмплов: перемежающиеся int16 стерео, 48000 Гц (уже сконвертировано).
-extern void (*g_playAudioImpl)(const std::vector<int16_t>& samples);
+// Audio device ownership and checked submission: runtime/audio_output.h.
 
 // Вывод консольных программ гостя (WriteFile/WriteConsole в stdout/stderr).
 // nullptr — в stdout/stderr хоста, если консоль доступна.

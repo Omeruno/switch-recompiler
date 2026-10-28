@@ -30,7 +30,6 @@ HostFrameResult (*g_pumpHostFrame)() = nullptr;
 bool g_guestExitRequested = false;
 bool g_traceHostCalls = false;
 int32_t g_guestExitCode = 0;
-void (*g_playAudioImpl)(const std::vector<int16_t>& samples) = nullptr;
 
 // Сигнал "выбрать инструмент" (эта сессия) — main.cpp выставляет ID
 // инструмента при клике по тулбару, а мы (там, где есть честный доступ
@@ -4234,134 +4233,7 @@ HostCallOutcome Impl_KillTimer(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     return result;
 }
 
-// BOOL PlaySoundW(LPCWSTR pszSound, HMODULE hmod, DWORD fdwSound) — теперь
-// РЕАЛЬНОЕ воспроизведение. winmine.exe хранит звуки как встроенные
-// ресурсы под нестандартным строковым типом "WAVE" (не RT_RCDATA!) —
-// нашли это, перечислив реальное дерево .rsrc. Сама выдача звука в
-// динамики — платформенно-специфичная вещь (audout на Switch), поэтому
-// тут только разбор WAV и конвертация; реальный вывод — через колбэк
-// g_playAudioImpl, который выставляет main.cpp (как и с g_pumpHostFrame).
-namespace {
-
-constexpr uint32_t SND_RESOURCE_ = 0x00040000u;
-
-// Простейший разбор RIFF/WAVE: находим чанки "fmt " и "data", извлекаем
-// частоту дискретизации/каналы/битность и сами PCM-сэмплы.
-bool ParseWav(const uint8_t* data, uint32_t size,
-              uint16_t& outChannels, uint32_t& outSampleRate, uint16_t& outBitsPerSample,
-              const uint8_t*& outPcmData, uint32_t& outPcmSize) {
-    if (size < 12) return false;
-    if (std::memcmp(data, "RIFF", 4) != 0 || std::memcmp(data + 8, "WAVE", 4) != 0) return false;
-
-    uint32_t pos = 12;
-    bool haveFmt = false, haveData = false;
-    while (pos + 8 <= size) {
-        char chunkId[5] = {0};
-        std::memcpy(chunkId, data + pos, 4);
-        uint32_t chunkSize;
-        std::memcpy(&chunkSize, data + pos + 4, 4);
-        uint32_t chunkDataPos = pos + 8;
-        if (chunkDataPos + chunkSize > size) break;
-
-        if (std::memcmp(chunkId, "fmt ", 4) == 0 && chunkSize >= 16) {
-            std::memcpy(&outChannels, data + chunkDataPos + 2, 2);
-            std::memcpy(&outSampleRate, data + chunkDataPos + 4, 4);
-            std::memcpy(&outBitsPerSample, data + chunkDataPos + 14, 2);
-            haveFmt = true;
-        } else if (std::memcmp(chunkId, "data", 4) == 0) {
-            outPcmData = data + chunkDataPos;
-            outPcmSize = chunkSize;
-            haveData = true;
-        }
-        pos = chunkDataPos + chunkSize + (chunkSize & 1); // чанки выровнены по 2 байта
-    }
-    return haveFmt && haveData;
-}
-
-// Конвертирует произвольный PCM (8/16 бит, моно/стерео, любая частота) в
-// формат, который ожидает наш audout-колбэк: 48000 Гц, стерео, 16 бит,
-// перемежающиеся сэмплы. Ресемплинг — простой (без интерполяции, ближайший
-// сосед) — для коротких игровых звуков этого достаточно.
-std::vector<int16_t> ConvertToOutputFormat(const uint8_t* pcm, uint32_t pcmSize,
-                                            uint16_t channels, uint32_t sampleRate, uint16_t bitsPerSample) {
-    std::vector<int16_t> mono; // сначала приводим к моно int16, потом ресемплим и дублируем в стерео
-
-    if (bitsPerSample == 8) {
-        uint32_t count = pcmSize / channels;
-        mono.reserve(count);
-        for (uint32_t i = 0; i < count; i++) {
-            int32_t sum = 0;
-            for (uint16_t c = 0; c < channels; c++) sum += static_cast<int32_t>(pcm[i * channels + c]) - 128;
-            mono.push_back(static_cast<int16_t>((sum / channels) * 256));
-        }
-    } else if (bitsPerSample == 16) {
-        uint32_t count = pcmSize / (2 * channels);
-        mono.reserve(count);
-        const int16_t* samples = reinterpret_cast<const int16_t*>(pcm);
-        for (uint32_t i = 0; i < count; i++) {
-            int32_t sum = 0;
-            for (uint16_t c = 0; c < channels; c++) sum += samples[i * channels + c];
-            mono.push_back(static_cast<int16_t>(sum / channels));
-        }
-    } else {
-        return {}; // экзотичная битность — пропускаем, не крашимся
-    }
-
-    constexpr uint32_t OUT_RATE = 48000;
-    if (sampleRate == 0) return {};
-    uint32_t outCount = static_cast<uint32_t>(static_cast<uint64_t>(mono.size()) * OUT_RATE / sampleRate);
-
-    std::vector<int16_t> stereo;
-    stereo.reserve(static_cast<size_t>(outCount) * 2);
-    for (uint32_t i = 0; i < outCount; i++) {
-        uint32_t srcIdx = static_cast<uint32_t>(static_cast<uint64_t>(i) * sampleRate / OUT_RATE);
-        if (srcIdx >= mono.size()) srcIdx = static_cast<uint32_t>(mono.size()) - 1;
-        int16_t s = mono[srcIdx];
-        stereo.push_back(s);
-        stereo.push_back(s);
-    }
-    return stereo;
-}
-
-} // namespace
-
-HostCallOutcome Impl_PlaySoundW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t pszSound = ReadArg(cpu, mem, 0);
-    uint32_t fdwSound = ReadArg(cpu, mem, 2);
-
-    HostCallOutcome result;
-    result.returnValue = 1; // TRUE — по умолчанию, даже если реально ничего не сыграли
-
-    // pszSound == 0 значит "остановить текущий звук" — у нас нет реального
-    // проигрывания в фоне (звуки короткие, fire-and-forget), просто ОК
-    if (pszSound == 0) return result;
-
-    // Ресурс распознаём по MAKEINTRESOURCE-паттерну (значение < 0x10000,
-    // выглядит как число, а не как указатель на строку) ИЛИ по явному флагу
-    bool isResource = (fdwSound & SND_RESOURCE_) || (pszSound < 0x10000);
-    if (!isResource || !g_imageBuffer || g_resourceDirRva == 0) return result;
-
-    uint32_t dataRva, dataSize;
-    if (!pe::FindResourceByTypeName(g_imageBuffer, g_imageBufferSize, g_resourceDirRva,
-                                     "WAVE", static_cast<uint16_t>(pszSound), dataRva, dataSize)) {
-        return result; // такого звука нет — не страшно, просто молчим
-    }
-
-    uint16_t channels = 0, bitsPerSample = 0;
-    uint32_t sampleRate = 0;
-    const uint8_t* pcmData = nullptr;
-    uint32_t pcmSize = 0;
-    if (!ParseWav(g_imageBuffer + dataRva, dataSize, channels, sampleRate, bitsPerSample, pcmData, pcmSize)) {
-        return result; // не смогли разобрать WAV — не крашимся, просто молчим
-    }
-
-    std::vector<int16_t> output = ConvertToOutputFormat(pcmData, pcmSize, channels, sampleRate, bitsPerSample);
-    if (!output.empty() && g_playAudioImpl) {
-        g_playAudioImpl(output);
-    }
-
-    return result;
-}
+// Checked PlaySound/device queries live in audio_module.cpp.
 
 // BOOL UpdateWindow(HWND hWnd) — если у окна есть невалидная область,
 // НАПРЯМУЮ (в обход очереди сообщений) вызывает его WndProc с WM_PAINT —
@@ -4617,7 +4489,6 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "USER32.dll",   "ReleaseCapture",         0,  CallConv::Stdcall, &Impl_ReleaseCapture },
     { "USER32.dll",   "SetTimer",               16, CallConv::Stdcall, &Impl_SetTimer },
     { "USER32.dll",   "KillTimer",              8,  CallConv::Stdcall, &Impl_KillTimer },
-    { "WINMM.dll",    "PlaySoundW",             12, CallConv::Stdcall, &Impl_PlaySoundW },
     { "USER32.dll",   "UpdateWindow",           4,  CallConv::Stdcall, &Impl_UpdateWindow },
     { "USER32.dll",   "BeginPaint",             8,  CallConv::Stdcall, &Impl_BeginPaint },
     { "USER32.dll",   "EndPaint",               8,  CallConv::Stdcall, &Impl_EndPaint },
