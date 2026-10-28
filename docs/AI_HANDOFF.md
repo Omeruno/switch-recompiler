@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`4b39a4f8694206fdb5fbe4878fd4db484aa0b154` (2026-10-28).
-[CI 40616821785](https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785)
+`25ec8be3a7f44cee4b7de09cab502dacbb1a5115` (2026-10-28).
+[CI 40620546240](https://github.com/Omeruno/switch-recompiler/actions/runs/40620546240)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2o explicit no-resident CPU output routing (2026-10-28)
+## Current position: D1 bounded registry family implemented; next keyboard translation (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. Next independent D registry compatibility block.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. Pinball passes old registry blocker; next missing GetKeyNameTextA. Next keyboard names/VK-scancode translation; registry persistence remains separate.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is the bounded D registry compatibility block, preserving all actual read/ROP/DIB/capture/owner/fault gates.
+Next is correct keyboard names/VK-scancode translation from the actual GetKeyNameTextA blocker, preserving all graphics/session gates. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -2868,3 +2868,75 @@ known Pinball blocker; G4b.2 default/physical/broader-GDI gates stay open. Hardw
 Paint/GPU/fallback/input/relaunch deferred, SD closed, no new dependencies needed.
 Roadmap23cards/3views/36docs, doc/shell/Python/diff/browser and exact new-SHA six
 CI jobs/Pages/NRO/clean ledger+report+publicPE+contract remain publication gates.
+
+## D1 — real bounded registry family and verified Pinball startup advancement (2026-10-28)
+
+User requests large blocks in one run. First package25ec8be was normal-pushed;
+CI40620546240 verified all six success, Pages40620546090 success, exact clean
+17-group ledger/48-exit432-frame report/8 public PEs/code manifest/contract/v15
+NRO independently audited. Preserve flag1 reference/default CPU; routing flag2
+remains a measured explicit alternative, not a universal performance claim.
+Continued into independent D compatibility on clean published25ec8be; no newer
+remote work/AGENTS found. Local SDK absent; host tools prepared, no new dependencies.
+
+New registry_module.cpp replaces old create/open/query/set/close registrations
+with11 real A/W stdcall exports, adding RegCreateKeyExA/RegSetValueExA/RegOpenKeyA.
+Common backend stores intermediate keys, existing-only opens, case/relative/root/
+default values, created/opened disposition and typed bytes. HKEY stores include
+grants, QUERY/SET enforcement and actual close invalidation, no closed-slot reuse.
+65536 allocations/session and4096-byte paths/component255 are explicit bounds;
+refusal creates nothing. Root pseudo-handles remain valid. LegacySession exchanges
+transient path/grant handles while preserving host values and suspended owners.
+
+Checked mapped guest ranges/sizes before mutation, DWORD/QWORD widths, ASCII A/W
+names and A-string↔canonical UTF16 conversion with exact byte counts/default values,
+size-only/MORE_DATA behavior and last-error preservation. Unsupported name/ACP
+encoding rejects1113; reserved/control/size/output/options/type/security/class/
+WOW64 requests reject explicitly. W string bytes remain available; no silent
+UTF16 truncation in registry APIs. Existing legacy USER class/title helper was
+restored after focused compilation exposed its remaining callers; its behavior
+is preserved. Existing enumeration/deletion successful stubs now return120;
+full enumeration/deletion/security/ACL/full encoding are NOT implemented.
+
+SaveToFile now reports actual stream/flush/close failure, including /dev/full.
+Its old SD provider still has non-atomic/no-fsync/line-format/name/default-value/
+large-value and checked-load gaps. RegSet success is live memory acceptance,
+existing file save best effort; no durable registry/RegFlushKey/power-loss-safe
+or complete SD acceptance. Checked versioned persistence preserving the old hive
+is a separate explicit follow-on. See D1_REGISTRY_KEYS.md for complete boundaries.
+
+Public CRT-free registry_keys.exe executes four fresh normal-exit0 sessions with
+native inspection of stored DWORD and exact UTF16 bytes across writer/reader/
+rewrite/reader. Real A/W lookup/default/ancestors/rights/close/stale/sizes/errors/
+unsupported cases checked. Suspended-session grants/values, allocation-budget
+refusal with no created key and real /dev/full failure are native gates. Historical
+owned test10 had requested sam0 then expected writes; its in-memory instruction
+fixture now requests QUERY|SET before the same real x86 stdcall/ESP/value checks.
+No production permission bypass or per-EXE special case was introduced.
+
+Private Pinball x86 probe outside git passes original missing RegCreateKeyExA,
+performs real registry calls and creates a helper USER HWND, then stops at missing
+USER32!GetKeyNameTextA (unknown-signature fatal). No playable game/main game frame,
+Switch acceptance or FPS claim; no private EXE/frame/trace in public artifacts.
+Next concrete block is common key names and VK/scancode translation, including
+review of existing MapVirtualKey behavior, with public A/W/input fixtures.
+
+Fresh final-root-suite.log passed final runtime/headers/public fixture/tests,
+4 registry sessions + parent/root-empty identity/grants/close/budget/flush checks, all prior CPU/GDI/
+GPU/shared-state/window/routing/read/ROP/DIB/lifecycle/file/measurement regressions,
+Stage C/six E9/22 F and17-group GPU ledger/five reports. Strict O2/no-exceptions/
+no-RTTI registry core/LegacySession/new inspector pass; host-function removal also
+compiles without exceptions/RTTI. Focused ASan/UBSan new registry/legacy/inspector
+passes with other runtime objects ordinary; driver/fiber leak scanning disabled,
+known native-fiber warning retained. Negative no-close fails stale-handle validity;
+negative ignored grants fails read-only mutation rejection. No implementation/test
+changes after final full success, only docs/map/workflow evidence configuration.
+
+Stage D is current on the visual map; GPU integration remains implemented bounded
+experiment with physical/default/broader activation gates open. Updated global/
+active/user maps and actual Pinball blocker; full dynarec/D3D9/audio/game acceptance,
+installers/archive and richer shell remain separate. Roadmap23cards/3views/37docs;
+links/fences/shell/diff/browser and new exact-SHA six-job CI/Pages/NRO/D-registry
+public PE/log/contract/source-manifest audit are publication gates. Native D evidence
+uses new stage-d-registry artifact in the existing host job; still six core jobs.
+Hardware/Paint/GPU/fallback/input/relaunch deferred, SD diagnosis remains closed.

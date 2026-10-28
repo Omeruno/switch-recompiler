@@ -31,6 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
+rm -f "$out/registry_keys.log"
 failed=0
 
 # Verify pinned artwork and committed native RGBA conversion.
@@ -120,6 +121,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_registry_keys.cpp" $src -o "$out/test_registry_keys" &&
+       "$out/test_registry_keys" "$guestRoot/registry_keys.exe" > "$out/registry_keys.log" 2>&1; then
+        tail -n 1 "$out/registry_keys.log"
+    else
+        echo "   REGISTRY KEYS FAILED"
+        tail -n 25 "$out/registry_keys.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_workspace_output.cpp" $src -o "$out/test_workspace_output" &&
@@ -501,6 +510,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_window_coherence.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_gdi_dispatch.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
+        [ "$(basename "$exe")" = "registry_keys.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_damage_mask.exe" ] && continue
         case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe|gpu_workspace_REFUSAL.exe) continue ;; esac
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue

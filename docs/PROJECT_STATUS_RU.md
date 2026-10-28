@@ -2,13 +2,13 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-28, после F6a/F6b и G4b.2o (explicit CPU routing / CPU-native cycles). Проверенный код: `4b39a4f8694206fdb5fbe4878fd4db484aa0b154`,
-[CI 40616821785 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785).
+Актуально на 2026-10-28, после G4b.2o и D1 (bounded real registry family). Проверенный код: `25ec8be3a7f44cee4b7de09cab502dacbb1a5115`,
+[CI 40620546240 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40620546240).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
 обычные solid FillRect/PATCOPY подключены к GPU в явном эксперименте. G4b.2i разделяет cold/warm затраты и сокращает capacity readback8→0,
-сохраняя настоящее чтение. G4b.2j сохраняет snapshot при допустимых обновлениях; G4b.2k добавляет adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; далее D registry compatibility; default CPU.**
+сохраняя настоящее чтение. G4b.2j сохраняет snapshot при допустимых обновлениях; G4b.2k добавляет adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; далее keyboard names/VK-scancode translation; default CPU.**
 Это среда для поддержанных 32-битных x86 Win32-приложений на Switch. Полного
 ядра Windows, поддержки x64 и универсальной совместимости EXE пока нет.
 
@@ -91,7 +91,7 @@ GPU-композитор уже используется. Явный native expe
 | G4b.2m | [Измеренный differential CPU import](G4B2M_DIFFERENTIAL_IMPORT.md) |60 exits/540 EGL frames; DIB uploads655360→66112 bytes; полные CPU seeds и реальные чтения сохранены |
 | G4b.2n | [Software acceptance / CPU-native cycles](G4B2N_SOFTWARE_ACCEPTANCE.md) |17 software groups/five reports;32 exits/288 EGL frames; DIB и size-refusal costs сохранены; default CPU |
 | G4b.2o | [Explicit CPU routing](G4B2O_CPU_ROUTING.md) | Flag2 alternative;48 exits/432 EGL frames; real USER transitions/fault/cached redraw; default CPU |
-| **Следующий блок D** | Registry compatibility с public API/error/lifetime gates | **Следующий незавершённый рубеж** |
+| **Следующий блок D** | [D1 registry](D1_REGISTRY_KEYS.md) implemented; next keyboard names/VK-scancode translation с public API/error/lifetime gates | **Следующий незавершённый рубеж** |
 
 Host EGL/Mesa проверяет пиксели, порядок, лимиты и восстановление. Это не
 физический Switch GPU benchmark. G4-прототипы имеют собственные небольшие лимиты
@@ -101,13 +101,13 @@ Host EGL/Mesa проверяет пиксели, порядок, лимиты и
 
 ## Ближайшие рубежи
 
-1. **Блок D:** после explicit CPU routing перейти к registry compatibility, сохраняя GL/CPU/read/ROP/DIB/alias/lifetime/recovery gates.
+1. **Блок D:** после explicit CPU routing перейти к keyboard names/VK-scancode translation после [D1 registry](D1_REGISTRY_KEYS.md), сохраняя GL/CPU/read/ROP/DIB/alias/lifetime/recovery gates.
 2. Выбрать и проверить общую оптимизацию по этим данным. Сохранить public x86,
    точные CPU/EGL пиксели, read/ROP/DIB/lifecycle/budget/fallback и Luna/input.
 3. Измерения реальных приложений на Switch и объединённая аппаратная приёмка
    E/F — когда пользователь вернётся к проверкам. Сейчас они отложены.
 4. Параллельная очередь D: конкретные воспроизводимые несовместимости. У Pinball
-   x86 первый установленный host-барьер — отсутствующий `RegCreateKeyExA`;
+   x86 прошёл прежний RegCreateKeyExA; следующий host-барьер — `GetKeyNameTextA`;
    совместимость игры не объявлена. Версия x64 не поддерживается архитектурно.
 
 ## Установщики, архивы и дальнейшая среда
@@ -127,13 +127,13 @@ H DirectDraw/D3D и универсальная совместимость — о
 окна, ошибки GL и реальная потеря EGL-контекста. Исправлено удаление текущей
 шейдерной программы в основном композиторе. Это проверка корректности;
 CPU-вывод всё ещё требует checkpoint, автоматическое ускорение обычных GDI
-вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame и host pixel/fault audit готовы. G4b.2h допускает bounded solid GDI только в явном эксперименте; G4b.2i даёт cold/warm и covered retirement; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; далее D registry compatibility.
+вызовов не включено. Основной renderer принимает resident-текстуры; владеющий mixed frame и host pixel/fault audit готовы. G4b.2h допускает bounded solid GDI только в явном эксперименте; G4b.2i даёт cold/warm и covered retirement; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; далее keyboard names/VK-scancode translation.
 
 
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Этот prerequisite уже использован в native ShellSession/mixed output и
-G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; далее D registry compatibility.
+G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; далее keyboard names/VK-scancode translation.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -144,7 +144,7 @@ G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; далее D registry compatibility.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; далее keyboard names/VK-scancode translation.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -154,4 +154,4 @@ G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**G4b.2i cold/warm и covered journal retirement реализованы; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; далее D registry compatibility. Default CPU.**
+**G4b.2i cold/warm и covered journal retirement реализованы; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; далее keyboard names/VK-scancode translation. Default CPU.**

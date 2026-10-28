@@ -1970,177 +1970,10 @@ HostCallOutcome Impl_LoadStringW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
     return result;
 }
 
-// --- ADVAPI32.dll (Win32, stdcall) — виртуальный реестр ---
-
-// LONG RegCreateKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, LPWSTR lpClass,
-//                       DWORD dwOptions, REGSAM samDesired, LPSECURITY_ATTRIBUTES lpSA,
-//                       PHKEY phkResult, LPDWORD lpdwDisposition)
-HostCallOutcome Impl_RegCreateKeyExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t hKeyParent    = ReadArg(cpu, mem, 0);
-    uint32_t subKeyPtr     = ReadArg(cpu, mem, 1);
-    uint32_t phkResult     = ReadArg(cpu, mem, 7);
-    uint32_t lpDisposition = ReadArg(cpu, mem, 8);
-
-    std::string subKey = ReadWideCStringNarrow(mem, subKeyPtr);
-
-    bool existed = false;
-    uint32_t newHandle = g_registry.CreateOrOpenKey(hKeyParent, subKey, existed);
-
-    if (phkResult != 0) mem.Write32(phkResult, newHandle);
-    if (lpDisposition != 0) {
-        mem.Write32(lpDisposition, existed ? 2u /*REG_OPENED_EXISTING_KEY*/ : 1u /*REG_CREATED_NEW_KEY*/);
-    }
-
-    HostCallOutcome result;
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-
-// LONG RegOpenKeyW(HKEY hKey, LPCWSTR lpSubKey, PHKEY phkResult) — более
-// простой (не-Ex) вариант, только 3 аргумента, без ulOptions/samDesired.
-// Семантика открытия — та же (не создаёт ключ, если его нет), просто
-// широкая строка вместо ANSI.
-HostCallOutcome Impl_RegOpenKeyW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t hKeyParent = ReadArg(cpu, mem, 0);
-    uint32_t subKeyPtr  = ReadArg(cpu, mem, 1);
-    uint32_t phkResult  = ReadArg(cpu, mem, 2);
-
-    std::string subKey = ReadWideCStringNarrow(mem, subKeyPtr);
-
-    bool found = false;
-    uint32_t handle = g_registry.OpenExistingKey(hKeyParent, subKey, found);
-
-    HostCallOutcome result;
-    if (!found) {
-        result.returnValue = ERROR_FILE_NOT_FOUND_;
-        return result;
-    }
-    if (phkResult != 0) mem.Write32(phkResult, handle);
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-HostCallOutcome Impl_RegOpenKeyExA(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t hKeyParent = ReadArg(cpu, mem, 0);
-    uint32_t subKeyPtr  = ReadArg(cpu, mem, 1);
-    uint32_t phkResult  = ReadArg(cpu, mem, 4);
-
-    std::string subKey = ReadCString(mem, subKeyPtr); // именно ANSI-версия
-
-    bool found = false;
-    uint32_t handle = g_registry.OpenExistingKey(hKeyParent, subKey, found);
-
-    HostCallOutcome result;
-    if (!found) {
-        result.returnValue = ERROR_FILE_NOT_FOUND_;
-        return result;
-    }
-    if (phkResult != 0) mem.Write32(phkResult, handle);
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-
-// LONG RegOpenKeyExW(hKey, LPCWSTR subKey, options, sam, PHKEY)
-HostCallOutcome Impl_RegOpenKeyExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t phkResult = ReadArg(cpu, mem, 4);
-    bool found = false;
-    uint32_t handle = g_registry.OpenExistingKey(ReadArg(cpu, mem, 0), ReadWideCStringNarrow(mem, ReadArg(cpu, mem, 1)), found);
-    HostCallOutcome result;
-    result.returnValue = found ? ERROR_SUCCESS_ : ERROR_FILE_NOT_FOUND_;
-    if (found && phkResult != 0) mem.Write32(phkResult, handle);
-    return result;
-}
-// Перечисление подключей и удаление: виртуальный реестр подключи не
-// перечисляет, удалённых значений программы потом не ищут
-HostCallOutcome Impl_RegEnumKeyW(cpu::CpuState&, cpu::IGuestMemory&) {
-    HostCallOutcome result;
-    result.returnValue = 259; // ERROR_NO_MORE_ITEMS
-    return result;
-}
-HostCallOutcome Impl_RegDeleteW(cpu::CpuState&, cpu::IGuestMemory&) {
-    HostCallOutcome result;
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-
-// Общая логика для RegQueryValueExW/A — отличаются только тем, как читается имя значения
-HostCallOutcome QueryValueCommon(cpu::CpuState& cpu, cpu::IGuestMemory& mem, const std::string& valueName) {
-    uint32_t hKey     = ReadArg(cpu, mem, 0);
-    uint32_t lpType   = ReadArg(cpu, mem, 3);
-    uint32_t lpData   = ReadArg(cpu, mem, 4);
-    uint32_t lpcbData = ReadArg(cpu, mem, 5);
-
-    win32::RegValue value;
-    HostCallOutcome result;
-    if (!g_registry.GetValue(hKey, valueName, value)) {
-        result.returnValue = ERROR_FILE_NOT_FOUND_;
-        return result;
-    }
-
-    if (lpType != 0) mem.Write32(lpType, value.type);
-
-    uint32_t capacity = (lpcbData != 0) ? mem.Read32(lpcbData) : 0;
-
-    if (lpData == 0) {
-        // Вызов "только узнать размер" — валидный, распространённый паттерн
-        if (lpcbData != 0) mem.Write32(lpcbData, static_cast<uint32_t>(value.data.size()));
-        result.returnValue = ERROR_SUCCESS_;
-        return result;
-    }
-
-    if (value.data.size() > capacity) {
-        if (lpcbData != 0) mem.Write32(lpcbData, static_cast<uint32_t>(value.data.size()));
-        result.returnValue = ERROR_MORE_DATA_;
-        return result;
-    }
-
-    for (size_t i = 0; i < value.data.size(); i++) {
-        mem.Write8(lpData + static_cast<uint32_t>(i), value.data[i]);
-    }
-    if (lpcbData != 0) mem.Write32(lpcbData, static_cast<uint32_t>(value.data.size()));
-
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-
-HostCallOutcome Impl_RegQueryValueExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    std::string valueName = ReadWideCStringNarrow(mem, ReadArg(cpu, mem, 1));
-    return QueryValueCommon(cpu, mem, valueName);
-}
-
-HostCallOutcome Impl_RegQueryValueExA(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    std::string valueName = ReadCString(mem, ReadArg(cpu, mem, 1));
-    return QueryValueCommon(cpu, mem, valueName);
-}
-
-// LONG RegSetValueExW(HKEY hKey, LPCWSTR lpValueName, DWORD Reserved,
-//                       DWORD dwType, const BYTE* lpData, DWORD cbData)
-HostCallOutcome Impl_RegSetValueExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t hKey        = ReadArg(cpu, mem, 0);
-    uint32_t valueNamePtr = ReadArg(cpu, mem, 1);
-    uint32_t dwType      = ReadArg(cpu, mem, 3);
-    uint32_t lpData      = ReadArg(cpu, mem, 4);
-    uint32_t cbData      = ReadArg(cpu, mem, 5);
-
-    std::string valueName = ReadWideCStringNarrow(mem, valueNamePtr);
-
-    std::vector<uint8_t> data(cbData);
-    for (uint32_t i = 0; i < cbData; i++) data[i] = mem.Read8(lpData + i);
-
-    g_registry.SetValue(hKey, valueName, dwType, data);
-    g_registry.SaveToFile(win32::kRegistryFilePath); // реестр маленький — сохраняем сразу, не теряем данные
-
-    HostCallOutcome result;
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
-
-// LONG RegCloseKey(HKEY hKey) — хендлы не освобождаем по-настоящему
-// (упрощение, безопасное: простые игры открывают считанное число ключей)
-HostCallOutcome Impl_RegCloseKey(cpu::CpuState&, cpu::IGuestMemory&) {
-    HostCallOutcome result;
-    result.returnValue = ERROR_SUCCESS_;
-    return result;
-}
+// Registry creation/open/value/close contracts live in registry_module.cpp.
+// Enumeration/deletion remain explicitly unsupported, never successful stubs.
+HostCallOutcome Impl_RegEnumKeyW(cpu::CpuState&,cpu::IGuestMemory&) {HostCallOutcome r;r.returnValue=120;return r;}
+HostCallOutcome Impl_RegDeleteW(cpu::CpuState&,cpu::IGuestMemory&) {HostCallOutcome r;r.returnValue=120;return r;}
 
 // HWND GetDesktopWindow(void) — хендл "окна рабочего стола", часто
 // используется как родительское окно для MessageBox и т.п. Возвращаем
@@ -4730,19 +4563,11 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "KERNEL32.dll", "GetProcAddress",     8,  CallConv::Stdcall, &Impl_GetProcAddress },
     { "USER32.dll",   "LoadStringW",        16, CallConv::Stdcall, &Impl_LoadStringW },
     { "USER32.dll",   "GetSystemMetrics",   4,  CallConv::Stdcall, &Impl_GetSystemMetrics },
-    { "ADVAPI32.dll", "RegCreateKeyExW",    36, CallConv::Stdcall, &Impl_RegCreateKeyExW },
-    { "ADVAPI32.dll", "RegOpenKeyExA",      20, CallConv::Stdcall, &Impl_RegOpenKeyExA },
-    { "ADVAPI32.dll", "RegOpenKeyExW",      20, CallConv::Stdcall, &Impl_RegOpenKeyExW },
     { "ADVAPI32.dll", "RegEnumKeyW",        16, CallConv::Stdcall, &Impl_RegEnumKeyW },
     { "ADVAPI32.dll", "RegEnumKeyExW",      32, CallConv::Stdcall, &Impl_RegEnumKeyW },
     { "ADVAPI32.dll", "RegDeleteKeyW",      8,  CallConv::Stdcall, &Impl_RegDeleteW },
     { "ADVAPI32.dll", "RegDeleteKeyExW",    16, CallConv::Stdcall, &Impl_RegDeleteW },
     { "ADVAPI32.dll", "RegDeleteValueW",    8,  CallConv::Stdcall, &Impl_RegDeleteW },
-    { "ADVAPI32.dll", "RegOpenKeyW",        12, CallConv::Stdcall, &Impl_RegOpenKeyW },
-    { "ADVAPI32.dll", "RegQueryValueExW",   24, CallConv::Stdcall, &Impl_RegQueryValueExW },
-    { "ADVAPI32.dll", "RegQueryValueExA",   24, CallConv::Stdcall, &Impl_RegQueryValueExA },
-    { "ADVAPI32.dll", "RegSetValueExW",     24, CallConv::Stdcall, &Impl_RegSetValueExW },
-    { "ADVAPI32.dll", "RegCloseKey",        4,  CallConv::Stdcall, &Impl_RegCloseKey },
     { "KERNEL32.dll", "GetPrivateProfileIntW",    16, CallConv::Stdcall, &Impl_GetPrivateProfileIntW },
     { "KERNEL32.dll", "GetPrivateProfileStringW", 24, CallConv::Stdcall, &Impl_GetPrivateProfileStringW },
     { "USER32.dll",   "GetDesktopWindow",   0,  CallConv::Stdcall, &Impl_GetDesktopWindow },

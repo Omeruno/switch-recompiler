@@ -24,7 +24,7 @@ struct LegacySession::Saved {
     decltype(g_consoleWriteImpl) console=g_consoleWriteImpl;
     void* stack=g_threadStackBase;
     bool trace=g_traceHostCalls,ui=IsHostLayerEnabled(kUiLayer);
-    std::vector<std::string> registryHandles;
+    std::vector<RegistryHandle> registryHandles;
     void Exchange() {
         g_registry.ExchangeOpenHandles(registryHandles);
 #define SWAP(name,initial) std::swap(win32::name,name);

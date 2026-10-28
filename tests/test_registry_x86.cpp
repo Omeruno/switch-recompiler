@@ -32,6 +32,9 @@ int main() {
 
     auto code = ReadFile("test10.bin");
     mem.LoadBytes(CODE_BASE, code.data(), code.size());
+    // Historical test10 requested samDesired=0 then wrote/read the value.
+    // Request real QUERY_VALUE|SET_VALUE rights for that round-trip.
+    mem.Write8(CODE_BASE+0x0d,3);
 
     // Поднимаем "IAT"
     int idxCreate = win32::FindHostFunction("ADVAPI32.dll", "RegCreateKeyExW");

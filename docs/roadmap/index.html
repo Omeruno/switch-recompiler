@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40620546240" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>CPU routing → D compatibility</span></div><h2>Переходы CPU/GPU и следующий системный блок</h2><p>G4b.2o: flag2 CPU routing,48 exits/432 EGL frames, реальные переходы и ошибки вывода. Flag1/reference сохранён; далее D registry compatibility. Default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D1 registry → keyboard APIs</span></div><h2>Совместимость Windows: реестр и ввод</h2><p>D1:11 реальных A/W registry API, права/закрытие HKEY и четыре свежих x86 сеанса. Pinball прошёл старый блокер; следующий GetKeyNameTextA. GPU default CPU, flag1/2 сохранены.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,9 +38,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-28",
-  "runtimeSha": "4b39a4f8694206fdb5fbe4878fd4db484aa0b154",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785",
-  "current": "g4b2",
+  "runtimeSha": "25ec8be3a7f44cee4b7de09cab502dacbb1a5115",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40620546240",
+  "current": "D",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
   "nodes": [
@@ -111,23 +111,26 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "D",
       "code": "D",
       "title": "Совместимость Windows",
-      "status": "partial",
-      "summary": "Много Win32/CRT уже есть; пробелы ещё блокируют EXE.",
+      "status": "current",
+      "summary": "D1:11 реальных A/W registry API, HKEY rights/close и четыре свежих x86 сеанса. Далее клавиатурные API.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
-        "Существенный Win32/CRT и ограниченный SEH."
+        "Существенный Win32/CRT и ограниченный SEH.",
+        "D1: создание/открытие/typed values, A/W ASCII conversion, реальное закрытие и QUERY/SET rights; public writer/reader/rewrite/reader."
       ],
       "todo": [
+        "GetKeyNameTextA/W и правильный VK↔scancode; checked registry persistence/full encoding/enumeration/deletion отдельно.",
         "Защита страниц, полный unwind/SEH и COM.",
         "API и зависимости конкретных программ.",
         "Аудит игровых системных/audio/middleware API по выбранным версиям; реальные host backends, без успешных заглушек."
       ],
       "gate": "Реальная программа проходит нужные API и сообщает настоящие ошибки.",
       "docs": [
+        "docs/D1_REGISTRY_KEYS.md",
         "docs/ROADMAP.md",
         "docs/PROJECT_STATUS_RU.md"
       ],
-      "limit": "У Pinball x86 первый установленный host-барьер — отсутствующий RegCreateKeyExA. GPU-работы сами по себе его не закрывают.",
+      "limit": "Pinball x86 прошёл RegCreateKeyExA; следующий host-барьер GetKeyNameTextA. Игра и FPS не подтверждены.",
       "kind": "Этап"
     },
     {
@@ -184,8 +187,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "G",
       "code": "G",
       "title": "Ускорение CPU / GDI",
-      "status": "current",
-      "summary": "G4b.2n: software acceptance и CPU/native cycles; далее D registry compatibility.",
+      "status": "partial",
+      "summary": "G4b.2n: software acceptance и CPU/native cycles; D1 registry реализован; далее keyboard names/VK-scancode translation.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -195,7 +198,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
       ],
       "todo": [
-        "Software gates сведены; explicit CPU routing готов; далее D registry compatibility, default CPU.",
+        "Software gates сведены; explicit CPU routing готов; D1 registry реализован; далее keyboard names/VK-scancode translation, default CPU.",
         "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
         "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],
@@ -418,7 +421,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "g4b2",
       "code": "G4b.2",
       "title": "Мост к реальным окнам",
-      "status": "current",
+      "status": "prototype",
       "summary": "G4b.2o: flag2 CPU routing,48 exits/432 EGL frames; actual CPU/GPU transitions, real DIB/refusal costs.",
       "done": [
         "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте.",
@@ -435,7 +438,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2o: flag2 no-resident CPU routing,48 exits/432 EGL frames; three parked transition/fault/actual-loss cases; flag1 reference unchanged."
       ],
       "todo": [
-        "D registry: создание/открытие/значения/дескрипторы с реальным public repro.",
+        "Более широкий GDI по реальным зависимостям и измерениям; explicit native/routed reference controls сохранены.",
         "Учесть admission refusals/CPU-DIB costs перед следующим CPU/dynarec/graphics блоком.",
         "Default activation и физическая приёмка остаются открыты."
       ],
@@ -526,7 +529,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "Partial:8 capacity reads→0,32768 CPU pixel applications; финальный GetPixel остаётся реальным device read. CPU DIB barriers сохранены."
       ],
       "todo": [
-        "D registry compatibility; DIB/fallback gates сохранить.",
+        "Keyboard names/VK-scancode translation; DIB/fallback gates сохранить.",
         "Default activation и аппаратная приёмка открыты."
       ],
       "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
@@ -932,7 +935,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ]
     }
   ]
-}</script>
+}
+</script>
 <script>
 'use strict';
 const data=JSON.parse(document.getElementById('roadmap-data').textContent);

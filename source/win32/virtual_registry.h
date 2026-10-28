@@ -1,15 +1,9 @@
 #pragma once
 // virtual_registry.h
 //
-// Простой виртуальный реестр Windows — key-value хранилище в памяти.
-// Реализует ровно тот контракт, который нужен ADVAPI32-функциям
-// (RegCreateKeyExW/RegOpenKeyExA/RegQueryValueEx*/RegSetValueExW/RegCloseKey).
-//
-// ЧЕСТНОЕ ОГРАНИЧЕНИЕ текущей версии: значения НЕ сохраняются между
-// запусками игры (живут только пока запущен наш homebrew). Это сознательный
-// выбор для первой версии, а не недоделка — полноценное сохранение на SD
-// (JSON-файл через файловую систему Switch) можно добавить позже отдельным
-// шагом, не меняя саму логику работы с реестром.
+// Host-owned values and session-owned HKEY grants. See D1_REGISTRY_KEYS.md.
+// Native save/load is the existing best-effort snapshot provider, not a
+// transactional/power-loss-safe Windows hive or registry-flush implementation.
 
 #include <cstdint>
 #include <string>
@@ -35,28 +29,33 @@ struct RegValue {
     std::vector<uint8_t> data;
 };
 
+struct RegistryHandle {std::string path;uint32_t access=0;};
 class VirtualRegistry {
 public:
     // Values belong to the host registry; transient HKEYs belong to a guest
     // session. Exchange only handles so application settings survive relaunch.
-    void ExchangeOpenHandles(std::vector<std::string>& handles) {openHandles_.swap(handles);}
+    void ExchangeOpenHandles(std::vector<RegistryHandle>& handles) {openHandles_.swap(handles);}
 
+    static constexpr uint32_t AllAccess=0x000f003f;
+    static constexpr size_t MaxHandles=65536,MaxPath=4096;
+    bool ValidKey(uint32_t) const;
+    bool CanAccess(uint32_t,uint32_t) const;
+    bool PathFits(uint32_t,const std::string&) const;
+    bool CloseKey(uint32_t);
     // Открывает ключ, создавая его при отсутствии. existed=true, если ключ
     // уже был (для правильного REG_CREATED_NEW_KEY/REG_OPENED_EXISTING_KEY)
-    uint32_t CreateOrOpenKey(uint32_t hKeyParent, const std::string& subKey, bool& existed);
+    uint32_t CreateOrOpenKey(uint32_t hKeyParent, const std::string& subKey, bool& existed,uint32_t access=AllAccess);
 
     // Открывает ТОЛЬКО существующий ключ. found=false, если такого ключа
     // нет — вызывающий код (RegOpenKeyExA) должен вернуть ERROR_FILE_NOT_FOUND
-    uint32_t OpenExistingKey(uint32_t hKeyParent, const std::string& subKey, bool& found);
+    uint32_t OpenExistingKey(uint32_t hKeyParent, const std::string& subKey, bool& found,uint32_t access=AllAccess);
 
     bool GetValue(uint32_t hKey, const std::string& valueName, RegValue& out) const;
-    void SetValue(uint32_t hKey, const std::string& valueName, uint32_t type, const std::vector<uint8_t>& data);
+    bool SetValue(uint32_t hKey, const std::string& valueName, uint32_t type, const std::vector<uint8_t>& data);
 
-    // Сохранение/загрузка на SD-карту — простой текстовый формат, ключи и
-    // значения построчно. Вызывается автоматически: LoadFromFile — один раз
-    // при старте (main.cpp), SaveToFile — после каждого RegSetValueEx (реестр
-    // маленький, лишний вызов записи на SD не заметен, зато данные никогда
-    // не теряются, даже если консоль выключат посреди игры).
+    // Existing native snapshot provider. No atomic replacement, fsync/error
+    // propagation or complete name/large-value round-trip guarantee. D2 must
+    // replace this separately; successful RegSetValueEx is in-memory acceptance.
     bool SaveToFile(const std::string& path) const;
     bool LoadFromFile(const std::string& path);
 
@@ -66,7 +65,7 @@ private:
 
     // path (уже нормализованный, lowercase) -> (имя значения -> данные)
     std::unordered_map<std::string, std::unordered_map<std::string, RegValue>> keys_;
-    std::vector<std::string> openHandles_; // индекс -> полный путь ключа
+    std::vector<RegistryHandle> openHandles_; // индекс -> полный путь ключа
 };
 
 extern VirtualRegistry g_registry;
@@ -77,8 +76,7 @@ extern VirtualRegistry g_registry;
 constexpr const char* kRegistryFilePath = "sdmc:/switch-recompiler/registry.dat";
 constexpr const char* kRegistryFolderPath = "sdmc:/switch-recompiler";
 
-// Читает wide (UTF-16) C-строку из гостевой памяти, грубо приводя к ASCII —
-// этого достаточно для путей реестра и имён значений (они всегда латиница)
-std::string ReadWideCStringNarrow(cpu::IGuestMemory& mem, uint32_t addr, size_t maxLen = 256);
+// Legacy USER class/title helper only; checked registry APIs do not use it.
+std::string ReadWideCStringNarrow(cpu::IGuestMemory&,uint32_t,size_t maxLen=256);
 
 } // namespace win32

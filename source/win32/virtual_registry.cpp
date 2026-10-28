@@ -40,9 +40,9 @@ std::string VirtualRegistry::ResolveBasePath(uint32_t hKey) const {
         default:
             if (hKey >= FAKE_HKEY_BASE) {
                 size_t idx = hKey - FAKE_HKEY_BASE;
-                if (idx < openHandles_.size()) return openHandles_[idx];
+                if (idx < openHandles_.size()) return openHandles_[idx].path;
             }
-            return "unknown";
+            return {};
     }
 }
 
@@ -52,44 +52,45 @@ std::string VirtualRegistry::JoinPath(const std::string& base, const std::string
     return base + "\\" + sub;
 }
 
-uint32_t VirtualRegistry::CreateOrOpenKey(uint32_t hKeyParent, const std::string& subKey, bool& existed) {
-    std::string fullPath = JoinPath(ResolveBasePath(hKeyParent), subKey);
-
-    existed = keys_.find(fullPath) != keys_.end();
-    if (!existed) {
-        keys_[fullPath]; // создаёт пустую запись значений для этого пути
-    }
-
-    uint32_t idx = static_cast<uint32_t>(openHandles_.size());
-    openHandles_.push_back(fullPath);
-    return FAKE_HKEY_BASE + idx;
+bool VirtualRegistry::ValidKey(uint32_t key) const {return !ResolveBasePath(key).empty();}
+bool VirtualRegistry::CanAccess(uint32_t key,uint32_t access) const {
+    if(!ValidKey(key))return false;
+    return key<FAKE_HKEY_BASE || (openHandles_[key-FAKE_HKEY_BASE].access&access)==access;
 }
-
-uint32_t VirtualRegistry::OpenExistingKey(uint32_t hKeyParent, const std::string& subKey, bool& found) {
-    std::string fullPath = JoinPath(ResolveBasePath(hKeyParent), subKey);
-
-    found = keys_.find(fullPath) != keys_.end();
-    if (!found) return 0;
-
-    uint32_t idx = static_cast<uint32_t>(openHandles_.size());
-    openHandles_.push_back(fullPath);
-    return FAKE_HKEY_BASE + idx;
+bool VirtualRegistry::PathFits(uint32_t key,const std::string& sub) const {
+    const auto base=ResolveBasePath(key);return !base.empty() && base.size()+sub.size()+size_t(!sub.empty())<=MaxPath;
 }
-
-bool VirtualRegistry::GetValue(uint32_t hKey, const std::string& valueName, RegValue& out) const {
-    std::string path = ResolveBasePath(hKey);
-    auto keyIt = keys_.find(path);
-    if (keyIt == keys_.end()) return false;
-    auto valIt = keyIt->second.find(ToLower(valueName));
-    if (valIt == keyIt->second.end()) return false;
-    out = valIt->second;
-    return true;
+bool VirtualRegistry::CloseKey(uint32_t key) {
+    if(!ValidKey(key))return false;
+    if(key>=FAKE_HKEY_BASE)openHandles_[key-FAKE_HKEY_BASE]=RegistryHandle{};
+    return true; // predefined roots stay usable
 }
-
-void VirtualRegistry::SetValue(uint32_t hKey, const std::string& valueName, uint32_t type,
-                                const std::vector<uint8_t>& data) {
-    std::string path = ResolveBasePath(hKey);
-    keys_[path][ToLower(valueName)] = RegValue{type, data};
+uint32_t VirtualRegistry::CreateOrOpenKey(uint32_t parent,const std::string& sub,bool& existed,uint32_t access) {
+    existed=false;if(!PathFits(parent,sub) || openHandles_.size()>=MaxHandles)return 0;
+    const auto path=JoinPath(ResolveBasePath(parent),sub);
+    existed=keys_.find(path)!=keys_.end() || sub.empty();
+    // Create intermediate keys as real entries, so subsequent parent opens work.
+    for(size_t at=path.find('\\');at!=std::string::npos;at=path.find('\\',at+1))keys_.try_emplace(path.substr(0,at));
+    keys_.try_emplace(path);
+    const auto index=uint32_t(openHandles_.size());openHandles_.push_back({path,access});return FAKE_HKEY_BASE+index;
+}
+uint32_t VirtualRegistry::OpenExistingKey(uint32_t parent,const std::string& sub,bool& found,uint32_t access) {
+    found=false;if(!PathFits(parent,sub))return 0;
+    if(sub.empty() && parent<FAKE_HKEY_BASE){found=true;return parent;}
+    const auto path=JoinPath(ResolveBasePath(parent),sub);
+    found=keys_.find(path)!=keys_.end() || sub.empty();
+    if(!found || openHandles_.size()>=MaxHandles)return 0;
+    const auto index=uint32_t(openHandles_.size());openHandles_.push_back({path,access});return FAKE_HKEY_BASE+index;
+}
+bool VirtualRegistry::GetValue(uint32_t key,const std::string& name,RegValue& out) const {
+    if(!CanAccess(key,1))return false;
+    const auto k=keys_.find(ResolveBasePath(key));if(k==keys_.end())return false;
+    const auto v=k->second.find(ToLower(name));if(v==k->second.end())return false;
+    out=v->second;return true;
+}
+bool VirtualRegistry::SetValue(uint32_t key,const std::string& name,uint32_t type,const std::vector<uint8_t>& data) {
+    if(!CanAccess(key,2))return false;
+    keys_[ResolveBasePath(key)][ToLower(name)]={type,data};return true;
 }
 
 namespace {
@@ -117,8 +118,10 @@ bool VirtualRegistry::SaveToFile(const std::string& path) const {
             std::fputc('\n', f);
         }
     }
-    std::fclose(f);
-    return true;
+    bool ok=std::ferror(f)==0;
+    if(std::fflush(f)!=0)ok=false;
+    if(std::fclose(f)!=0)ok=false;
+    return ok;
 }
 
 bool VirtualRegistry::LoadFromFile(const std::string& path) {

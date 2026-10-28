@@ -96,6 +96,15 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-d-registry
+          if-no-files-found: error
+          path: |
+            build-host/registry_keys.log
+            build-host/test_registry_x86.log
+            build-host/guest-run.*/registry_keys.exe
+            docs/D1_REGISTRY_KEYS.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-gpu-window-coherence
           if-no-files-found: error
           path: |
