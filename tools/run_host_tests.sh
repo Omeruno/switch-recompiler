@@ -31,7 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
-rm -f "$out/registry_keys.log" "$out/keyboard_api.log"
+rm -f "$out/registry_keys.log" "$out/keyboard_api.log" "$out/profile_api.log"
 failed=0
 
 # Verify pinned artwork and committed native RGBA conversion.
@@ -79,7 +79,7 @@ for cpp in $src; do
 done
 src="$objects"
 
-for t in test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
+for t in test_ini_profile test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
@@ -121,6 +121,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_profile_api.cpp" $src -o "$out/test_profile_api" &&
+       "$out/test_profile_api" "$guestRoot/ini_profile.exe" > "$out/profile_api.log" 2>&1; then
+        tail -n 1 "$out/profile_api.log"
+    else
+        echo "   PROFILE API FAILED"
+        tail -n 25 "$out/profile_api.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_keyboard_api.cpp" $src -o "$out/test_keyboard_api" &&
@@ -520,6 +528,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
         [ "$(basename "$exe")" = "registry_keys.exe" ] && continue
         [ "$(basename "$exe")" = "keyboard_layout.exe" ] && continue
+        [ "$(basename "$exe")" = "ini_profile.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_damage_mask.exe" ] && continue
         case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe|gpu_workspace_REFUSAL.exe) continue ;; esac
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue

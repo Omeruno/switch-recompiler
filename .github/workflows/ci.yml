@@ -96,6 +96,15 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-d-profiles
+          if-no-files-found: error
+          path: |
+            build-host/profile_api.log
+            build-host/test_ini_profile.log
+            build-host/guest-run.*/ini_profile.exe
+            docs/D3_INI_PROFILES.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-d-keyboard
           if-no-files-found: error
           path: |

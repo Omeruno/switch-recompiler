@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`854fe1891706018f95c8f4874a7c4b419024daf5` (2026-10-28).
-[CI 40625056179](https://github.com/Omeruno/switch-recompiler/actions/runs/40625056179)
+`b337366b48f4cb8cb2f1dd26bedbc3622e670807` (2026-10-28).
+[CI 40629027692](https://github.com/Omeruno/switch-recompiler/actions/runs/40629027692)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D2 fixed-US keyboard translation implemented; next INI/profile APIs (2026-10-28)
+## Current position: D3 real bounded INI/profile implemented; next waveOut/audio backend (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. Pinball passes GetKeyNameTextA; next missing GetPrivateProfileIntA. Next real INI/profile APIs; registry persistence remains separate.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. Pinball passes GetPrivateProfileIntA; next missing WINMM!waveOutGetNumDevs. Next genuine audio device/backend; registry persistence remains separate.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is genuine INI/profile APIs from the actual GetPrivateProfileIntA blocker, preserving all graphics/session gates. Checked registry persistence remains open.
+Next is a genuine waveOut/audio device/backend from the actual WINMM!waveOutGetNumDevs blocker, preserving all graphics/session gates. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -2986,3 +2986,60 @@ Hardware/Paint/GPU/fallback/input/relaunch deferred; SD diagnosis remains closed
 The GPU ledger decision now refers to ACTIVE_ROADMAP.md for independent D work,
 rather than embedding a stale next-API claim in a graphics acceptance report.
 This evidence metadata change preserves every GPU gate and default policy.
+
+
+## D3 — genuine bounded VFS-backed INI/profile family (2026-10-28)
+
+Incoming clean b337366; exact CI40629027692 six success/Pages40629097803,
+NRO0/v15 and D2/D1/GPU source-bound artifacts previously verified. No newer
+remote work. Host toolchain already prepared; local devkitA64/libnx absent.
+
+New runtime IniProfile and common profile_module replace default-only legacy
+GetPrivateProfileIntW/StringW and kernel32_extra write-success/default stubs.
+Sixteen stdcall A/W exports cover private/global string/integer reads and writes,
+section names and section key=value reads. Shared VFS maps bare names and profile
+APIs to C:\WINDOWS, respects C/S/R/readonly/links/case, supports actual ASCII and
+UTF16LE BOM files with checked guest input/output and explicit encoding errors.
+Lists have double-NUL/truncation; scalar strings/quotes/defaults/case/integer
+sign/hex/overflow/trailing behavior, real creation/update/key/section deletion.
+Limits1MiB/file,32768/line/input,16384lines,4096path/case budget,32stage attempts.
+No cache/retained guest pointers; accepted edits use exclusive sibling staging,
+actual short/EINTR writes, fsync, close and rename with original-file preservation
+on failure. No destination-unlink fallback or power-loss/directory-sync claim.
+ASCII case folding/ACP subset, encoding/grammar/duplicate/metadata limitations
+and unsupported IniFileMapping/profile structs are explicit in D3_INI_PROFILES.md.
+
+Public ini_profile.exe + test_profile_api execute four fresh normal-exit0
+writer/reader/rewrite/reader sessions and inspect real scores/comments/other
+sections/Windows-directory files outside guest memory. UTF16LE non-ASCII W
+reads/writes, A/unrepresentable write rejection, lists/errors/truncation/readonly
+and all16 exports are guest assertions. Native provider tests inject actual
+read/write/zero-write/flush/read-close/write-close/rename failures and short/EINTR
+I/O, checking original bytes, bounds, readonly and malformed encodings. The early
+development suite correctly failed a harness error: VFS is Process-local, so
+pre-GuestSession configuration did not configure the guest. Final inspector
+configures each fresh Process and loads its owned public PE inside that mount;
+no production isolation bypass. Linear filtering avoids repeated vector erase
+and section/key queries are folded once.
+
+Final full COMPOSITION_GL_TEST=1 suite passed final code/public fixtures and
+prior C/six E9/22 F/17 GPU evidence groups/five source-bound reports. Strict
+O2/no-exceptions/no-RTTI provider/API/native/guest inspector checks pass. Focused
+ASan/UBSan provider/API/inspector passes with other common objects ordinary,
+driver leak scanning disabled and known native-fiber warning retained. Negative
+write-success without storage and ignored fsync failed their intended public
+guest/native assertions; logs/mutations stay outside git.
+
+Private host Pinball trace passes actual profile calls and reaches fatal missing
+WINMM!waveOutGetNumDevs. No gameplay/main-frame/console/FPS acceptance. Next is
+an audio-device/waveOut audit and genuine supported backend with public PCM/
+format/device/callback/buffer/teardown tests, not fabricated device count or
+silent successful writes. Existing PlaySoundW implementation is separate.
+Registry persistence migration/full encoding/enum/delete and dynarec/D3D9/richer
+shell remain open. Hardware/Paint/GPU/fallback/input/relaunch deferred, SD closed.
+
+Global/active/user/visual maps advance to actual audio dependency. New
+stage-d-profiles artifact is in the existing host job; still six core CI jobs.
+Roadmap23cards/3views/39docs. Normal push plus exact new-SHA six-job CI/Pages/NRO/
+public profile PE/log/contract and clean GPU source-manifest audit are publication
+gates. Incoming verified SHA is metadata baseline, not a self-referencing commit.

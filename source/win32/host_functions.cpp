@@ -1986,44 +1986,7 @@ HostCallOutcome Impl_GetDesktopWindow(cpu::CpuState&, cpu::IGuestMemory&) {
     return result;
 }
 
-// UINT GetPrivateProfileIntW(LPCWSTR lpAppName, LPCWSTR lpKeyName,
-//                             INT nDefault, LPCWSTR lpFileName) —
-// у нас нет настоящего INI-файла, но это НЕ имитация: документированное
-// поведение при отсутствии ключа — вернуть именно nDefault, поэтому
-// "ключ всегда отсутствует" честно укладывается в контракт функции.
-HostCallOutcome Impl_GetPrivateProfileIntW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    HostCallOutcome result;
-    result.returnValue = ReadArg(cpu, mem, 2); // nDefault
-    return result;
-}
-
-// DWORD GetPrivateProfileStringW(LPCWSTR lpAppName, LPCWSTR lpKeyName,
-//                                  LPCWSTR lpDefault, LPWSTR lpReturnedString,
-//                                  DWORD nSize, LPCWSTR lpFileName) —
-// аналогично: копируем lpDefault в буфер (документированное поведение
-// при отсутствии ключа/файла), возвращаем длину скопированной строки.
-HostCallOutcome Impl_GetPrivateProfileStringW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t lpDefault = ReadArg(cpu, mem, 2);
-    uint32_t lpReturnedString = ReadArg(cpu, mem, 3);
-    uint32_t nSize = ReadArg(cpu, mem, 4);
-
-    HostCallOutcome result;
-    if (lpReturnedString == 0 || nSize == 0) {
-        result.returnValue = 0;
-        return result;
-    }
-
-    uint32_t i = 0;
-    for (; i < nSize - 1; i++) {
-        uint16_t c = (lpDefault != 0) ? mem.Read16(lpDefault + i * 2) : 0;
-        if (c == 0) break;
-        mem.Write16(lpReturnedString + i * 2, c);
-    }
-    mem.Write16(lpReturnedString + i * 2, 0); // null-терминатор
-
-    result.returnValue = i;
-    return result;
-}
+// Profile functions are registered by profile_module.cpp.
 
 // --- GDI32.dll / USER32.dll (Win32, stdcall) — рисование ---
 
@@ -4568,8 +4531,6 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "ADVAPI32.dll", "RegDeleteKeyW",      8,  CallConv::Stdcall, &Impl_RegDeleteW },
     { "ADVAPI32.dll", "RegDeleteKeyExW",    16, CallConv::Stdcall, &Impl_RegDeleteW },
     { "ADVAPI32.dll", "RegDeleteValueW",    8,  CallConv::Stdcall, &Impl_RegDeleteW },
-    { "KERNEL32.dll", "GetPrivateProfileIntW",    16, CallConv::Stdcall, &Impl_GetPrivateProfileIntW },
-    { "KERNEL32.dll", "GetPrivateProfileStringW", 24, CallConv::Stdcall, &Impl_GetPrivateProfileStringW },
     { "USER32.dll",   "GetDesktopWindow",   0,  CallConv::Stdcall, &Impl_GetDesktopWindow },
     { "USER32.dll",   "GetDC",              4,  CallConv::Stdcall, &Impl_GetDC },
     { "GDI32.dll",    "CreateCompatibleDC",     4,  CallConv::Stdcall, &Impl_CreateCompatibleDC },

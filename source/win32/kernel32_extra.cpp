@@ -144,17 +144,7 @@ FN(GlobalFindAtomW) { return FindAtomCommon(c, m, true); }
 FN(GlobalGetAtomNameA) { return GetAtomNameCommon(c, m, false); }
 FN(GlobalGetAtomNameW) { return GetAtomNameCommon(c, m, true); }
 
-// --- Профили (win.ini): значений нет, отдаём умолчания ---
-
-FN(GetProfileIntA) { return Ret(A(c, m, 2)); }
-HostCallOutcome GetProfileStringCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    std::u16string def = Text(m, A(c, m, 2), unicode);
-    return Ret(Put(m, A(c, m, 3), def, A(c, m, 4), unicode));
-}
-FN(GetProfileStringA) { return GetProfileStringCommon(c, m, false); }
-FN(GetProfileStringW) { return GetProfileStringCommon(c, m, true); }
-FN(WriteProfileStringA) { (void)c; (void)m; return Ret(1); }
-FN(WritePrivateProfileStringA) { (void)c; (void)m; return Ret(1); }
+// Profile APIs live in profile_module.cpp (real checked INI provider).
 
 // --- Файлы: Unicode-версии ---
 
@@ -464,10 +454,6 @@ const HostFunctionEntry kEntries[] = {
     {"KERNEL32.dll", "GetAtomNameA", 12, CallConv::Stdcall, &GlobalGetAtomNameA},
     {"KERNEL32.dll", "GetAtomNameW", 12, CallConv::Stdcall, &GlobalGetAtomNameW},
     {"KERNEL32.dll", "DeleteAtom", 4, CallConv::Stdcall, &DeleteAtom},
-    E(GetProfileIntA, 12), {"KERNEL32.dll", "GetProfileIntW", 12, CallConv::Stdcall, &GetProfileIntA},
-    E(GetProfileStringA, 20), E(GetProfileStringW, 20), E(WriteProfileStringA, 12),
-    {"KERNEL32.dll", "WriteProfileStringW", 12, CallConv::Stdcall, &WriteProfileStringA},
-    E(WritePrivateProfileStringA, 16), {"KERNEL32.dll", "WritePrivateProfileStringW", 16, CallConv::Stdcall, &WritePrivateProfileStringA},
     E(GetTempFileNameW, 16), E(LockFile, 20), E(UnlockFile, 20),
     E(GetFileSecurityW, 20), {"KERNEL32.dll", "SetFileSecurityW", 12, CallConv::Stdcall, &GetFileSecurityW},
     {"ADVAPI32.dll", "GetFileSecurityW", 20, CallConv::Stdcall, &GetFileSecurityW},
