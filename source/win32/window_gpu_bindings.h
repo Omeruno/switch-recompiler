@@ -38,6 +38,7 @@ public:
     // regions; canonical CPU base may be stale only beneath resident owners.
     bool SubmitMixed(ui::MixedPresentation&,const ui::WindowSceneView* overlay=nullptr);
     bool PresentationReady() const;
+    bool HasResidentWrites() const; // metadata only; caller checks current owner/health first
     uint64_t OwnershipRevision() const {return ownershipRevision_;}
     uint64_t PresentationRevision() const {return gpuRevision_;}
     bool RenderMixed(ui::MixedPresentation&,ui::OpenGlPresentation&,const ui::OutputBuffer&,ui::PresentationCursor={});

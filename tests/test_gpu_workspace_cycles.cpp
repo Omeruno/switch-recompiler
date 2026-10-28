@@ -17,6 +17,7 @@
 #include <cstring>
 #include <vector>
 #include <chrono>
+#include <utility>
 namespace user=win32::user;
 using Bindings=user::WindowGpuBindings;
 struct Allocator:ui::PresentationAllocator {
@@ -62,9 +63,22 @@ static std::vector<uint32_t> NativeExpected(Shell& shell,const std::vector<uint3
            (shell.StartOpen() && x<484 && y>=284 && y<680))result[size_t(y)*1280+x]=chrome.s.Get(x,y);
     return result;
 }
+struct CpuSink final:user::MixedWorkspace::CpuOutput {
+    std::vector<uint32_t>* cpuPixels=nullptr;
+    ui::Presentation& frames;double& output;bool reject=false;unsigned calls=0,resets=0;
+    CpuSink(ui::Presentation& f,double& o):frames(f),output(o) {}
+    bool Present(const ui::Surface& s,const ui::WindowSceneView& scene) override {
+        ++calls;if(reject)return false;
+        if(!(scene.owners?frames.Submit(s,scene):frames.Submit(s)))return false;
+        return Redraw();
+    }
+    bool Redraw() override {const auto start=Clock::now();if(reject)return false;const ui::OutputBuffer target=cpuPixels?ui::OutputBuffer{cpuPixels->data(),1280,720,1280,cpuPixels->size()}:ui::OutputBuffer{nullptr,1280,720,0,0};const bool ok=frames.Render(target);output=Us(start);return ok;}
+    void Reset() override {++resets;frames.ClearFrame();}
+};
 // Compare actual default CPU shell submission with the current native experiment.
 // The final FBO oracle and host bookkeeping are outside timed RunOne/output calls.
-static void Run(const char* path,bool gpu,unsigned sample,int workload) {
+static void Run(const char* path,unsigned mode,unsigned sample,int workload) {
+    const bool gpu=mode!=0;
     Egl egl;rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
     char temp[]="/tmp/sr-cycles-XXXXXX";assert(mkdtemp(temp));
     struct Cleanup{std::string path;~Cleanup(){std::filesystem::remove_all(path);}}cleanup{temp};
@@ -73,11 +87,13 @@ static void Run(const char* path,bool gpu,unsigned sample,int workload) {
     Bindings bindings;if(gpu)assert(bindings.Initialize() && bindings.EnableCoherence());
     ui::OpenGlPresentation renderer;assert(renderer.Initialize());ui::Presentation cpuFrames(&renderer);
     struct Sink{ui::OpenGlPresentation& renderer;double output=0;}sink{renderer};
+    CpuSink cpuSink(cpuFrames,sink.output);
     user::MixedWorkspace workspace(bindings,bridge,[](void* p,Bindings& b,ui::MixedPresentation& frame){
         auto& sink=*static_cast<Sink*>(p);const auto begin=Clock::now();
         const bool ok=b.RenderMixed(frame,sink.renderer,{nullptr,1280,720,0,0});sink.output=Us(begin);return ok;
     },&sink);
     if(gpu)assert(workspace.Attach());
+    if(mode==2)assert(workspace.EnableCpuRouting(&cpuSink));
     auto& process=session.ProcessObject();auto& memory=session.Memory();
     assert(process.LoadMainExe(path,error) && process.PrepareMainThread(process.MainThread().cpu,error));
     const auto probe=process.GetProcAddress(process.MainModule(),"WarmProbe");assert(probe);
@@ -125,18 +141,20 @@ static void Run(const char* path,bool gpu,unsigned sample,int workload) {
                         assert(workspace.Submissions()==uint64_t(workload==2?index+1:1));
                     }
                     assert(!d.failed && d.candidates==d.accepted+d.refused);
+                    assert(workspace.CpuFrames()==uint64_t(mode==2 && workload==3?index+1:0));
+                    if(mode==2 && workload==3)assert(!workspace.Submissions() && !workspace.SnapshotBytes());
                     const auto& transfers=renderer.Timings();
-                    printf("CYCLE %u %u %d %u %.3f %.3f %.3f %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",sample,unsigned(gpu),workload,index,raster,refresh,output,
+                    printf("CYCLE %u %u %d %u %.3f %.3f %.3f %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",sample,mode,workload,index,raster,refresh,output,
                         (unsigned long long)d.candidates,(unsigned long long)d.accepted,(unsigned long long)d.refused,
                         (unsigned long long)c.imports,(unsigned long long)c.commits,(unsigned long long)c.seedUploadBytes,
                         (unsigned long long)(transfers.screenUploadBytes+transfers.ownershipUploadBytes+transfers.layerUploadBytes),
-                        (unsigned long long)(gpu?workspace.Submissions():cpuFrames.Stats().submitted),
+                        (unsigned long long)(gpu?(workspace.Submissions()+workspace.CpuSubmissions()):cpuFrames.Stats().submitted),
                         (unsigned long long)(gpu?workspace.ReusedFrames():0));
                     raster=0;
                 }else if(stage==11){
                     assert(Screen()==guest);
                     if(gpu && workload!=3)assert(bindings.Counters(lease)->readbacks==uint64_t(workload==2?10:1));
-                    printf("READ %u %u %d %.3f %llu\n",sample,unsigned(gpu),workload,raster,
+                    printf("READ %u %u %d %.3f %llu\n",sample,mode,workload,raster,
                         (unsigned long long)(gpu && workload!=3?bindings.Counters(lease)->readbacks:0));
                     raster=0;
                 }
@@ -148,11 +166,72 @@ static void Run(const char* path,bool gpu,unsigned sample,int workload) {
     assert(stopped && checked==12 && outputFrames==9 && process.MainThread().exitCode==0);
     assert(!workspace.Faulted() && !user::S().presentationFault && !ui::g_gdi.CpuAccessFault());
     workspace.Detach();if(gpu)assert(bindings.DisableCoherence());bindings.Shutdown();cpuFrames.Detach();renderer.Shutdown();
-    printf("EXIT %u %u %d 0 %.3f\n",sample,unsigned(gpu),workload,raster);
+    printf("EXIT %u %u %d 0 %.3f\n",sample,mode,workload,raster);
+}
+static void Routing(const char* path,int failure) {
+    Egl egl;rt::GuestSession session;user::EnableUi(1280,720);assert(user::EnableWindowLayers(true));
+    char temp[]="/tmp/sr-routing-XXXXXX";assert(mkdtemp(temp));
+    struct Cleanup{std::string path;~Cleanup(){std::filesystem::remove_all(path);}}cleanup{temp};
+    Shell shell;std::string error;assert(shell.ConfigureFilesystem(temp,"","",error));
+    user::ShellSession bridge(shell);assert(bridge.Attach("Route transitions"));bridge.SetClock(u"14:32");
+    Bindings bindings;assert(bindings.Initialize() && bindings.EnableCoherence());
+    ui::OpenGlPresentation renderer;assert(renderer.Initialize());ui::Presentation frames(&renderer);double output=0;
+    CpuSink cpuSink(frames,output);unsigned native=0;
+    std::pair<ui::OpenGlPresentation*,unsigned*> context{&renderer,&native};
+    user::MixedWorkspace routed(bindings,bridge,[](void* p,Bindings& b,ui::MixedPresentation& f){
+        auto& state=*static_cast<std::pair<ui::OpenGlPresentation*,unsigned*>*>(p);++*state.second;
+        return b.RenderMixed(f,*state.first,{nullptr,1280,720,0,0});
+    },&context);
+    assert(routed.Attach() && routed.EnableCpuRouting(&cpuSink));
+    auto& process=session.ProcessObject();auto& memory=session.Memory();
+    assert(process.LoadMainExe(path,error) && process.PrepareMainThread(process.MainThread().cpu,error));
+    const auto probe=process.GetProcAddress(process.MainModule(),"CoherenceProbe");assert(probe);bool checked=false;
+    {
+        rt::GuestExecution execution(process,[&](rt::GuestThread& t){
+            win32::HostCallOutcome call;if(win32::TryHandleHostCall(t.cpu,memory,call))return !call.requestExit;
+            cpu::Interpreter cpu(memory,t.teb,t.teb);assert(cpu.Step(t.cpu)==cpu::StepResult::Continue);return true;
+        },rt::GuestExecution::Startup::InitializeModules);
+        for(unsigned steps=0;steps<700000 && !checked;++steps){
+            const auto result=execution.RunOne();assert(result!=rt::GuestExecution::Result::AllocationFailed);
+            if(memory.Read32(probe)==1){
+                checked=true;auto guest=Screen();Bindings::Lease lease;assert(bindings.Acquire(memory.Read32(probe+8),lease));
+                user::PresentIfNeeded(true);assert(!user::S().presentationFault && routed.CpuRoute() && routed.CpuSubmissions()==1 && !native && !routed.Submissions() && !routed.SnapshotBytes());CompareGl(NativeExpected(shell,guest));
+                const auto barriers=bindings.CoherenceCounters().cpuBarriers;
+                assert(routed.Redraw()==user::NativePresentResult::Submitted && routed.CpuSubmissions()==1 && bindings.CoherenceCounters().cpuBarriers==barriers);CompareGl(NativeExpected(shell,guest));
+                {rt::GuestSession inner;user::EnableUi(1280,720);assert(!routed.EnableCpuRouting(nullptr));assert(routed.Refresh()==user::NativePresentResult::Unavailable && !routed.Faulted());}
+                assert(routed.FrameCurrent());
+                assert(bindings.Fill(lease,{2,2,3,3},0x123456));guest[size_t(lease.raster.originY+2)*1280+lease.raster.originX+2]=0x123456;
+                user::PresentIfNeeded(true);assert(!routed.CpuRoute() && native==1 && routed.Submissions()==1 && routed.CpuSubmissions()==1);CompareGl(NativeExpected(shell,guest));
+                const auto reads=bindings.Counters(lease)->readbacks;assert(ui::g_gdi.PrepareCpuAccess() && Screen()==guest && bindings.Counters(lease)->readbacks==reads+1);
+                user::PresentIfNeeded(true);assert(routed.CpuRoute() && native==1 && routed.CpuSubmissions()==2);CompareGl(NativeExpected(shell,guest));
+                auto* raw=ui::g_gdi.ScreenForWrite();assert(raw);raw->Set(1000,110,0xc0ffee);guest[size_t(110)*1280+1000]=0xc0ffee;
+                user::PresentIfNeeded(true);assert(routed.CpuSubmissions()==3);CompareGl(NativeExpected(shell,guest));
+                bridge.SetClock(u"14:33");user::PresentIfNeeded(true);assert(routed.CpuSubmissions()==4);CompareGl(NativeExpected(shell,guest,u"14:33"));
+                ui::SoftwarePresentation software;std::vector<uint32_t> cpuPixels(1280*720);
+                if(failure==2){
+                    renderer.Shutdown();egl.Lose();bindings.ContextLost();frames.Attach(&software);frames.ClearLayers();cpuSink.cpuPixels=&cpuPixels;
+                    assert(routed.Redraw()==user::NativePresentResult::Submitted && !bindings.GpuActive());
+                    const auto expected=NativeExpected(shell,guest,u"14:33");
+                    for(size_t n=0;n<expected.size();++n)assert(cpuPixels[n]==(0xff000000u|ui::RgbToColorref(expected[n])));
+                }
+                const auto presented=user::S().presentedChanges,producer=user::S().presentedProducerRevision;const auto calls=cpuSink.calls;
+                cpuSink.reject=true;
+                if(failure==0)user::PresentIfNeeded(true);
+                else assert(routed.Redraw()==user::NativePresentResult::Failed);
+                assert(routed.Faulted() && user::S().presentationFault && routed.CpuSubmissions()==4 && user::S().presentedChanges==presented && user::S().presentedProducerRevision==producer);
+                assert(routed.Refresh()==user::NativePresentResult::Failed && cpuSink.calls==calls+unsigned(failure==0));
+                routed.Detach();assert(cpuSink.resets==1 && !frames.SourceWidth());frames.Detach();assert(bindings.DisableCoherence());
+            }
+            if(result==rt::GuestExecution::Result::Idle)rt::Clock::Sleep(1);
+        }
+    }
+    assert(checked);bindings.Shutdown();frames.Detach();renderer.Shutdown();
+    printf("CPU route transitions mode%d PASS (CPU/GPU/CPU, real read, redraw/clock/raw-write, suspended owner, failed output/no retry/no ack; parked guest drained)\n",failure);
 }
 int main(int argc,char** argv){
-    assert(argc==5);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
-    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<4;++workload)for(int i=0;i<2;++i)
-        Run(argv[workload+1],bool((sample+i)%2),sample,workload);
-    puts("CPU/native workspace cycles PASS (32 normal exits/288 actual EGL frames, production CPU/native routes, real reads/DIB and size refusal)");
+    assert(argc==6);ui::FontCache::SetDirectory("romfs/fonts");rt::Clock::SetFastForward(true);
+    for(unsigned sample=0;sample<4;++sample)for(int workload=0;workload<4;++workload)for(int i=0;i<3;++i)
+        Run(argv[workload+1],(sample+i)%3,sample,workload);
+    Routing(argv[5],0);Routing(argv[5],1);Routing(argv[5],2);
+    puts("CPU/native workspace cycles PASS (48 normal exits/432 actual EGL frames, production CPU/native routes, real reads/DIB and size refusal)");
 }

@@ -12,6 +12,18 @@ public:
     using Output=bool (*)(void*,WindowGpuBindings&,ui::MixedPresentation&);
     MixedWorkspace(WindowGpuBindings&,ShellSession&,Output,void*,ui::PresentationAllocator* =nullptr);
     ~MixedWorkspace();
+    class CpuOutput {
+    public:
+        virtual ~CpuOutput()=default;
+        // Synchronous submission must own all borrowed pixels/scene metadata.
+        virtual bool Present(const ui::Surface&,const ui::WindowSceneView&)=0;
+        virtual bool Redraw()=0;
+        virtual void Reset()=0; // owned storage only; no GL/USER calls
+    };
+    bool EnableCpuRouting(CpuOutput*); // current healthy owner; nullptr selects reference
+    uint64_t CpuFrames() const {return cpuFrames_;}
+    uint64_t CpuSubmissions() const {return cpuSubmissions_;}
+    bool CpuRoute() const {return cpuRoute_ && hasFrame_;}
     bool Attach();
     void Detach();
     NativePresentResult Refresh();
@@ -34,6 +46,9 @@ private:
     Output output_;void* context_;
     ui::MixedPresentation frame_;
     Platform previous_;
+    CpuOutput* cpuOutput_=nullptr;
+    bool cpuRoute_=false;
+    uint64_t cpuFrames_=0,cpuSubmissions_=0;
     bool attached_=false,fault_=false,hasFrame_=false,busy_=false,reuseEnabled_=true;
     uint64_t ownershipRevision_=0,reused_=0,copyStart_=0;
     uint64_t frames_=0,submissions_=0,redraws_=0,cpuRevision_=0,gpuRevision_=0,shellRevision_=0,layoutGeneration_=0;

@@ -111,6 +111,7 @@ jobs:
             build-host/gpu_workspace_cycles.log
             build-host/gpu_workspace_cycles.json
             docs/G4B2N_SOFTWARE_ACCEPTANCE.md
+            docs/G4B2O_CPU_ROUTING.md
             build-host/gpu_capacity_replay.log
             build-host/gpu_differential_import.log
             docs/G4B2L_CAPACITY_REPLAY.md

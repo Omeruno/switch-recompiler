@@ -15,7 +15,7 @@ import sys
 def main():
     runner, *fixtures, output = map(Path, sys.argv[1:])
     output.unlink(missing_ok=True)
-    assert len(fixtures) == 4
+    assert len(fixtures) == 5
     hashes = {}
     for p in fixtures:
         data = p.read_bytes()
@@ -24,7 +24,7 @@ def main():
         assert data[at:at+4] == b'PE\0\0' and struct.unpack_from('<H', data, at+4)[0] == 0x14c, p
         assert struct.unpack_from('<H', data, at+24)[0] == 0x10b, p
         hashes[p.name] = hashlib.sha256(data).hexdigest()
-    assert len(hashes) == 4
+    assert len(hashes) == 5
     run = subprocess.run([str(p.resolve()) for p in (runner, *fixtures)], text=True,
                          capture_output=True, timeout=180,
                          env=dict(os.environ, EGL_PLATFORM='surfaceless', LIBGL_ALWAYS_SOFTWARE='1'))
@@ -33,6 +33,7 @@ def main():
         print(run.stderr, file=sys.stderr)
         raise SystemExit(run.returncode)
     assert 'CPU/native workspace cycles PASS' in run.stdout
+    assert all(f'CPU route transitions mode{n} PASS' in run.stdout for n in range(3))
     rows, reads, exits = {}, {}, {}
     for line in run.stdout.splitlines():
         fields = line.split()
@@ -40,7 +41,7 @@ def main():
             continue
         kind = fields[0]
         sample, gpu, workload = map(int, fields[1:4])
-        assert sample in range(4) and gpu in (0, 1) and workload in range(4)
+        assert sample in range(4) and gpu in (0, 1, 2) and workload in range(4)
         session = (sample, gpu, workload)
         if kind == 'CYCLE':
             frame = int(fields[4]); assert frame in range(9)
@@ -59,7 +60,7 @@ def main():
             assert snapshots == (1 if admitted and workload != 2 else frame+1)
             assert reused == (frame if admitted and workload != 2 else 0)
             assert renderer_bytes > 0
-            rows[key] = dict(sample=sample, mode=('cpu', 'native')[gpu], workload=('tiles', 'partial', 'dib', 'refusal')[workload],
+            rows[key] = dict(sample=sample, mode=('cpu', 'native', 'routed')[gpu], workload=('tiles', 'partial', 'dib', 'refusal')[workload],
                              frame=frame, raster_us=raster, refresh_us=refresh, output_us=output_us,
                              prepare_us=refresh-output_us, cycle_us=raster+refresh,
                              candidates=candidates, accepted=accepted, refused=refused, imports=imports,
@@ -74,18 +75,18 @@ def main():
             assert session not in exits and int(fields[4]) == 0
             tail = float(fields[5]); assert math.isfinite(tail) and tail >= 0
             exits[session] = tail
-    assert len(rows) == 288 and len(reads) == len(exits) == 32 and reads.keys() == exits.keys()
+    assert len(rows) == 432 and len(reads) == len(exits) == 48 and reads.keys() == exits.keys()
     sessions = []
     for key, tail in exits.items():
         frames = [rows[(*key, frame)] for frame in range(9)]
         assert all(frames[n]['renderer_upload_bytes'] >= frames[n-1]['renderer_upload_bytes'] for n in range(1, 9))
-        sessions.append(dict(sample=key[0], mode=('cpu', 'native')[key[1]], workload=('tiles', 'partial', 'dib', 'refusal')[key[2]],
+        sessions.append(dict(sample=key[0], mode=('cpu', 'native', 'routed')[key[1]], workload=('tiles', 'partial', 'dib', 'refusal')[key[2]],
                              exit_code=0, **reads[key], tail_us=tail,
                              sequence_us=sum(r['cycle_us'] for r in frames)+reads[key]['read_us']+tail))
     summary = {}
     for workload in ('tiles', 'partial', 'dib', 'refusal'):
         summary[workload] = {}
-        for mode in ('cpu', 'native'):
+        for mode in ('cpu', 'native', 'routed'):
             phases = {}
             for phase in ('cold', 'warm'):
                 group = [r for r in rows.values() if r['sample'] > 0 and r['mode'] == mode and r['workload'] == workload and ((r['frame'] == 0) == (phase == 'cold'))]
@@ -94,17 +95,18 @@ def main():
             group = [s for s in sessions if s['sample'] > 0 and s['mode'] == mode and s['workload'] == workload]
             phases['sequence'] = {k: statistics.median(s[k] for s in group) for k in ('sequence_us', 'read_us', 'tail_us')}
             summary[workload][mode] = phases
+        summary[workload]['routed_native_warm_ratio'] = summary[workload]['routed']['warm']['cycle_us']/summary[workload]['native']['warm']['cycle_us']
         summary[workload]['native_cpu_warm_ratio'] = summary[workload]['native']['warm']['cycle_us']/summary[workload]['cpu']['warm']['cycle_us']
     root = Path(__file__).resolve().parent.parent
-    report = dict(schema=1, status='PASS_HOST_CPU_NATIVE_CYCLES_PENDING_HARDWARE',
+    report = dict(schema=2, status='PASS_HOST_CPU_NATIVE_CYCLES_PENDING_HARDWARE',
                   head_sha=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
                   working_tree_dirty=bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=root)),
                   fixture_sha256=hashes, runner_sha256=hashlib.sha256(runner.read_bytes()).hexdigest(),
                   host=dict(platform=platform.platform(), machine=platform.machine(), mesa_shader_cache_disable=os.environ.get('MESA_SHADER_CACHE_DISABLE', 'unset')),
                   samples=list(rows.values()), sessions=sessions, summary=summary,
-                  scope='32 real-x86 normal-exit0 sessions, 288 independent full1280x720 actual production EGL frames; four workloads and rotating same-build CPU/native pairs. CPU uses actual ShellSession.TryCompose/Scene -> Presentation.Submit/Render; native uses current coherent solid dispatch -> MixedWorkspace.Refresh -> actual renderer. Not CPU through empty mixed frames. Sample0 pairs excluded from phase/sequence medians. Raster sums timed RunOne calls only (same test-only clock instrumentation), includes real HLE/DIB/checkpoint work. Refresh includes prepare and driver output submit; cycle=raster+refresh. Explicit terminal GetPixel phase and guest exit tail are separate and included in sequence_us. Pixel oracle FBO reads, host inspection/bookkeeping, idle waits, module load/prepare, frontend setup and native teardown are excluded. FBO oracle synchronizes between frames; output is submission without physical swap/scanout/GPU timestamp. Attempted import and renderer payload bytes are distinct, not physical DMA. Size-refusal window is600x128; no target may allocate and all576 calls must refuse to real CPU. No timing threshold, default activation or physical Switch/FPS/game acceptance.')
+                  scope='48 real-x86 normal-exit0 sessions, 432 independent full1280x720 actual production EGL frames; four workloads and rotating same-build CPU/native/routed groups. Routed selects ordinary CPU frames only when no resident GPU writes exist; other workloads retain native path. No-resident refused frames allocate no mixed snapshot. CPU uses actual ShellSession.TryCompose/Scene -> Presentation.Submit/Render; native uses current coherent solid dispatch -> MixedWorkspace.Refresh -> actual renderer. Not CPU through empty mixed frames. Sample0 pairs excluded from phase/sequence medians. Raster sums timed RunOne calls only (same test-only clock instrumentation), includes real HLE/DIB/checkpoint work. Refresh includes prepare and driver output submit; cycle=raster+refresh. Explicit terminal GetPixel phase and guest exit tail are separate and included in sequence_us. Pixel oracle FBO reads, host inspection/bookkeeping, idle waits, module load/prepare, frontend setup and native teardown are excluded. FBO oracle synchronizes between frames; output is submission without physical swap/scanout/GPU timestamp. Attempted import and renderer payload bytes are distinct, not physical DMA. Size-refusal window is600x128; no target may allocate and all576 calls must refuse to real CPU. No timing threshold, default activation or physical Switch/FPS/game acceptance.')
     output.write_text(json.dumps(report, indent=2)+'\n')
-    print('CPU/native measurement PASS (32 normal exits/288 EGL frames; actual CPU/native routes, reads/DIB/refusal, no timing threshold)')
+    print('CPU/native measurement PASS (48 normal exits/432 EGL frames; actual CPU/native routes, reads/DIB/refusal, no timing threshold)')
 
 
 if __name__ == '__main__':

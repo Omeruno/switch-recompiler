@@ -3,8 +3,8 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 **Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2n bounded native software acceptance and CPU/native cycle comparison implemented; next no-resident CPU output routing.** Runtime baseline `a49b2273615f46c19229304d81d294ec261889d5`
-passed [CI40578702073, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40578702073).
+G4b.2o explicit no-resident CPU output routing implemented; next independent D registry compatibility block.** Runtime baseline `4b39a4f8694206fdb5fbe4878fd4db484aa0b154`
+passed [CI40616821785, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -93,7 +93,8 @@ The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
 | G4b.2l | [Bounded capacity checkpoint replay](G4B2L_CAPACITY_REPLAY.md),48 ordinary-x86 exits/432 EGL frames; partial capacity reads8→0 with32768 private CPU pixel applications | Real final GetPixel/DIB reads remain; bounded CPU work/refusal, alias/GL fault/loss gates; native experiment only |
 | G4b.2m | [Measured differential CPU import](G4B2M_DIFFERENTIAL_IMPORT.md),60 x86 exits/540 EGL frames; DIB upload bytes655360→66112 | Full CPU seeds and actual GetPixel/DIB reads retained; bounded scan/owned input/error/loss gates; native experiment only |
 | G4b.2n | [Consolidated native software acceptance / actual default CPU-native cycles](G4B2N_SOFTWARE_ACCEPTANCE.md):17 groups/five reports;32 normal exits/288 EGL frames | DIB and size-refusal costs retained; CPU default, physical/game/full-GDI scope open |
-| Remaining G4b.2 | Admission-aware no-resident CPU output routing with real USER/output/authority/failure gates | **Next; default activation and physical performance still open** |
+| G4b.2o | [Explicit no-resident CPU routing](G4B2O_CPU_ROUTING.md),48 exits/432 EGL frames; actual CPU/GPU transitions and output faults | Flag2 alternative only; flag1/reference and default CPU preserved; physical/default acceptance open |
+| Next independent block | D registry creation/open/value/handle semantics from the real Pinball host blocker | Public fixtures and actual API behavior before application acceptance |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -111,7 +112,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
    Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
 5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
-6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. **Next:** no-resident CPU output routing, with USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
+6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** independent D registry compatibility; retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
 7. Continue D compatibility with public reproducers of actual API/memory/unwind
    blockers; Pinball x86 remains a separate unsupported application target.
 8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache

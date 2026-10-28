@@ -408,7 +408,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
            "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
            "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_gpu_workspace_cycles" &&
            python3 "$root/tools/benchmark_workspace_cycles.py" "$out/test_gpu_workspace_cycles" "$guestRoot/gpu_gdi_warm.exe" \
-               "$guestRoot/gpu_workspace_PARTIAL.exe" "$guestRoot/gpu_workspace_COPY.exe" "$guestRoot/gpu_workspace_REFUSAL.exe" \
+               "$guestRoot/gpu_workspace_PARTIAL.exe" "$guestRoot/gpu_workspace_COPY.exe" "$guestRoot/gpu_workspace_REFUSAL.exe" "$guestRoot/gpu_window_coherence.exe" \
                "$out/gpu_workspace_cycles.json" > "$out/gpu_workspace_cycles.log" 2>&1; then
             tail -n 2 "$out/gpu_workspace_cycles.log"
         else

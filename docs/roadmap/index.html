@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40578702073" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>Software acceptance → CPU routing</span></div><h2>Сводная программная приёмка GPU-пути</h2><p>G4b.2n:17 software groups/five reports и прямое CPU/native сравнение —32 exits/288 EGL frames. DIB и size-refusal costs видимы; далее no-resident CPU routing. Default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>CPU routing → D compatibility</span></div><h2>Переходы CPU/GPU и следующий системный блок</h2><p>G4b.2o: flag2 CPU routing,48 exits/432 EGL frames, реальные переходы и ошибки вывода. Flag1/reference сохранён; далее D registry compatibility. Default CPU.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -38,8 +38,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <script id="roadmap-data" type="application/json">{
   "schema": 1,
   "updated": "2026-10-28",
-  "runtimeSha": "a49b2273615f46c19229304d81d294ec261889d5",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40578702073",
+  "runtimeSha": "4b39a4f8694206fdb5fbe4878fd4db484aa0b154",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40616821785",
   "current": "g4b2",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -185,7 +185,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "current",
-      "summary": "G4b.2n: software acceptance и CPU/native cycles; далее no-resident CPU routing.",
+      "summary": "G4b.2n: software acceptance и CPU/native cycles; далее D registry compatibility.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -195,7 +195,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
       ],
       "todo": [
-        "Software gates сведены; далее no-resident CPU routing, default CPU.",
+        "Software gates сведены; explicit CPU routing готов; далее D registry compatibility, default CPU.",
         "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
         "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],
@@ -419,7 +419,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G4b.2",
       "title": "Мост к реальным окнам",
       "status": "current",
-      "summary": "G4b.2n:17 software groups/five reports; actual CPU/native32 exits/288 EGL frames, real DIB/refusal costs.",
+      "summary": "G4b.2o: flag2 CPU routing,48 exits/432 EGL frames; actual CPU/GPU transitions, real DIB/refusal costs.",
       "done": [
         "G4b.2a: сохранение GL-состояния и проверенное чередование GPU-GDI с основным композитором в одном контексте.",
         "G4b.2b: привязка ресурсов к реальным HWND/DC, проверки жизни/clip и публичный x86/EGL тест.",
@@ -431,15 +431,17 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2k: sparse Region→exact bounded bitmask, atomic visibility/capture commit,36 ordinary-x86 exits/324 EGL frames, odd-window/fallback/actual-loss oracles.",
         "G4b.2l: GPU-submit-before-replay, fixed CPU work budget,48 x86 exits/432 EGL frames; owned copy/alias/budget/fault/context-loss gates.",
         "G4b.2m:60 exits/540 EGL frames, DIB uploads655360→66112 bytes,147456 scan pixels; input/offset/state/refusal/GL error/actual-loss gates.",
-        "G4b.2n:17 evidence groups/five reports; actual CPU/native32 exits/288 EGL frames, 600×128 admission refusal, normal exit/real terminal reads."
+        "G4b.2n:17 evidence groups/five reports; actual CPU/native32 exits/288 EGL frames, 600×128 admission refusal, normal exit/real terminal reads.",
+        "G4b.2o: flag2 no-resident CPU routing,48 exits/432 EGL frames; three parked transition/fault/actual-loss cases; flag1 reference unchanged."
       ],
       "todo": [
-        "No-resident CPU output routing с USER/authority/fault gates.",
+        "D registry: создание/открытие/значения/дескрипторы с реальным public repro.",
         "Учесть admission refusals/CPU-DIB costs перед следующим CPU/dynarec/graphics блоком.",
         "Default activation и физическая приёмка остаются открыты."
       ],
       "gate": "Публичный x86-гость проходит GPU-рисование, readback и lifecycle с теми же пикселями, что CPU.",
       "docs": [
+        "docs/G4B2O_CPU_ROUTING.md",
         "docs/G4B2N_SOFTWARE_ACCEPTANCE.md",
         "docs/G4B2M_DIFFERENTIAL_IMPORT.md",
         "docs/G4B2L_CAPACITY_REPLAY.md",
@@ -507,7 +509,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "03",
       "title": "Основной вывод",
       "status": "prototype",
-      "summary": "G4b.2n: software acceptance и actual CPU/native cycles; default CPU, hardware gates открыты.",
+      "summary": "G4b.2o: CPU/native/routed сравнение, реальные переходы и fallback; default CPU, hardware gates открыты.",
       "done": [
         "G4b.2a: GPU-GDI восстанавливает настройки GL; проверено чередование с действующим композитором.",
         "G4b.2d.1: native-кадры удерживают текстуры после retirement; лимиты, сброс, GL-error/context-loss fallback проверены.",
@@ -524,11 +526,12 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "Partial:8 capacity reads→0,32768 CPU pixel applications; финальный GetPixel остаётся реальным device read. CPU DIB barriers сохранены."
       ],
       "todo": [
-        "No-resident CPU output routing; DIB/fallback gates сохранить.",
+        "D registry compatibility; DIB/fallback gates сохранить.",
         "Default activation и аппаратная приёмка открыты."
       ],
       "gate": "Нет обязательного полного readback/повторного CPU raster ради каждого кадра.",
       "docs": [
+        "docs/G4B2O_CPU_ROUTING.md",
         "docs/G4B2N_SOFTWARE_ACCEPTANCE.md",
         "docs/G4B2M_DIFFERENTIAL_IMPORT.md",
         "docs/G4B2L_CAPACITY_REPLAY.md",
@@ -565,10 +568,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "48 normal exits/432 native-shell EGL frames; pending flush, owned copy/alias, CPU work/input budget, GL failure и actual loss oracles."
       ],
       "todo": [
-        "No-resident CPU routing с actual USER/GL/CPU/read/ROP/DIB/alias/fault gates."
+        "Сохранить actual USER/GL/CPU/read/ROP/DIB/alias/fault gates при дальнейшей D работе."
       ],
       "gate": "Реальный guest корректен при чтении, ошибках и перезапусках.",
       "docs": [
+        "docs/G4B2O_CPU_ROUTING.md",
         "docs/G4B2N_SOFTWARE_ACCEPTANCE.md",
         "docs/G4B2M_DIFFERENTIAL_IMPORT.md",
         "docs/G4B2L_CAPACITY_REPLAY.md",
@@ -597,6 +601,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       ],
       "gate": "Поддержанные реальные операции идут через GPU; остальные честно обслуживаются CPU.",
       "docs": [
+        "docs/G4B2O_CPU_ROUTING.md",
         "docs/G4B2N_SOFTWARE_ACCEPTANCE.md",
         "docs/G4B2M_DIFFERENTIAL_IMPORT.md",
         "docs/G4B2L_CAPACITY_REPLAY.md",

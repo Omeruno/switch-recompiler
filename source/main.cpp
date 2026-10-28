@@ -1677,7 +1677,8 @@ namespace newui {
 win32::user::ShellSession* g_shellSession=nullptr;
 std::unique_ptr<win32::user::WindowGpuBindings> g_mixedBindings;
 std::unique_ptr<win32::user::MixedWorkspace> g_mixedWorkspace;
-bool g_mixedRequested=false,g_mixedEnabled=false;
+bool g_mixedRequested=false,g_mixedEnabled=false,g_cpuRoutingRequested=false;
+uint64_t g_mixedCpuFrames=0,g_mixedCpuSubmissions=0;
 uint64_t g_mixedSubmissions=0,g_mixedRedraws=0,g_mixedReused=0,g_mixedSnapshotBytes=0;
 std::string g_mixedCoherenceFault="none";
 win32::user::WindowGpuBindings::DispatchStats g_mixedDispatch;
@@ -1756,8 +1757,15 @@ struct NativeMixedDevice final:win32::user::MixedOutputDevice {
     }
 } g_nativeMixedDevice;
 win32::user::MixedOutput g_nativeMixedOutput(g_nativeMixedDevice,g_gpu,g_software);
+void BlitCanonical();
+bool OutputHealthy();
+struct NativeCpuWorkspaceOutput final:win32::user::MixedWorkspace::CpuOutput {
+    bool Present(const ui::Surface&,const ui::WindowSceneView&) override;
+    bool Redraw() override;
+    void Reset() override {g_presentation.ClearFrame();}
+} g_nativeCpuWorkspaceOutput;
 void EndMixedPresentation() {
-    if(g_mixedWorkspace){g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();g_mixedReused=g_mixedWorkspace->ReusedFrames();g_mixedSnapshotBytes=g_mixedWorkspace->SnapshotBytes();}
+    if(g_mixedWorkspace){g_mixedCpuFrames=g_mixedWorkspace->CpuFrames();g_mixedCpuSubmissions=g_mixedWorkspace->CpuSubmissions();g_mixedSubmissions=g_mixedWorkspace->Submissions();g_mixedRedraws=g_mixedWorkspace->Redraws();g_mixedReused=g_mixedWorkspace->ReusedFrames();g_mixedSnapshotBytes=g_mixedWorkspace->SnapshotBytes();}
     g_mixedWorkspace.reset();
     if(g_mixedBindings){g_mixedDispatch=g_mixedBindings->DispatchCounters();g_mixedBindings->Shutdown();g_mixedCoherence=g_mixedBindings->CoherenceCounters();g_mixedCoherenceFault=g_mixedBindings->FaultName();g_mixedBindings.reset();}
     g_havePresented=false;
@@ -1765,7 +1773,8 @@ void EndMixedPresentation() {
 bool BeginMixedPresentation(win32::user::ShellSession& shell) {
     EndMixedPresentation();g_mixedEnabled=false;
     FILE* flag=fopen("sdmc:/switch-recompiler/gpu-gdi-native.flag","rb");
-    g_mixedRequested=flag && fgetc(flag)=='1';if(flag)fclose(flag);
+    const int selection=flag?fgetc(flag):0;if(flag)fclose(flag);
+    g_mixedRequested=selection=='1' || selection=='2';g_cpuRoutingRequested=selection=='2';
     if(!g_mixedRequested || !g_gpuActive)return true;
     g_mixedBindings.reset(new(std::nothrow) win32::user::WindowGpuBindings);
     if(!g_mixedBindings || !g_mixedBindings->Initialize() || !g_mixedBindings->EnableCoherence() || !g_mixedBindings->EnableSolidDispatch()) {
@@ -1779,6 +1788,7 @@ bool BeginMixedPresentation(win32::user::ShellSession& shell) {
             return ok;
         },nullptr));
     if(!g_mixedWorkspace || !g_mixedWorkspace->Attach()){EndMixedPresentation();return false;}
+    if(g_cpuRoutingRequested && !g_mixedWorkspace->EnableCpuRouting(&g_nativeCpuWorkspaceOutput)){EndMixedPresentation();return false;}
     g_mixedEnabled=true;return true;
 }
 struct OutputDevice {
@@ -1827,7 +1837,7 @@ bool FallBackToSoftware(const char* error) {
 void BeginPresentation(const char* guestPath) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
-    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherence={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=false;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
+    g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherence={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=g_cpuRoutingRequested=false;g_mixedCpuFrames=g_mixedCpuSubmissions=0;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
     ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
@@ -1852,7 +1862,7 @@ void EndPresentation() {
     const auto& s=g_presentation.Stats();
     FILE* log=fopen("sdmc:/switch-recompiler-renderer.txt","w");
     if(log) {
-        fprintf(log,"Presentation v14\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
+        fprintf(log,"Presentation v15\nBuild: %s\nExecutable: %s\nGuest: %dx%d\nOutput: %dx%d\n",
             SR_BUILD_REVISION,g_presentationGuest.c_str(),g_presentation.SourceWidth(),g_presentation.SourceHeight(),kOutW,kOutH);
         fprintf(log,"Submitted: %llu\nRendered: %llu\nCursor/redraw frames: %llu\nRejected: %llu\nFrame storage: %zu bytes\n",
             (unsigned long long)s.submitted,(unsigned long long)s.rendered,(unsigned long long)s.redraws,
@@ -1941,6 +1951,9 @@ void EndPresentation() {
             (unsigned long long)coherence.seedAttempts,(unsigned long long)coherence.seedSnapshotNs,
             (unsigned long long)coherence.seedImportNs,(unsigned long long)coherence.seedUploadBytes,
             (unsigned long long)coherence.seedScanPixels,(unsigned long long)coherence.seedUnchanged);
+        fprintf(log,"No-resident CPU routing requested: %u\nNo-resident CPU frames: %llu\nNo-resident CPU submissions: %llu\n",unsigned(g_cpuRoutingRequested),
+            (unsigned long long)(g_mixedWorkspace?g_mixedWorkspace->CpuFrames():g_mixedCpuFrames),
+            (unsigned long long)(g_mixedWorkspace?g_mixedWorkspace->CpuSubmissions():g_mixedCpuSubmissions));
         fprintf(log,"CPU access fault: %u\nNative coherence fault: %s\n",unsigned(ui::g_gdi.CpuAccessFault()),g_mixedCoherenceFault.c_str());
         fprintf(log,"Native mixed scope: opt-in device adapter and bounded solid FillRect/PATCOPY admission; default GDI remains CPU. Accepted logical counts are not GPU completion counts. Legacy Presentation/input-correlation counters exclude mixed output; native counts do not imply physical FPS or scanout.\n");
         fclose(log);
@@ -1963,6 +1976,10 @@ void Blit() {
         if(win32::user::S().presentationFault)g_outputFailed=true;
         return;
     }
+    BlitCanonical();
+}
+void BlitCanonical() {
+    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
     if(!g_presentation.SourceWidth())return;
     // libnx linear mode preserves one CPU staging buffer; framebufferEnd
     // copies that staging image into the dequeued display slot. Skip unchanged
@@ -2008,6 +2025,17 @@ void Blit() {
         g_havePresented=true;g_presentedSerial=g_presentation.ContentSerial();
         g_presentedGeneration=g_presentation.ContentGeneration();g_presentedCursor=cursor;
     }
+}
+bool NativeCpuWorkspaceOutput::Present(const ui::Surface& image,const ui::WindowSceneView& scene) {
+    if(!OutputHealthy())return false;
+    if(!(scene.owners?g_presentation.Submit(image,scene):g_presentation.Submit(image)))return false;
+    g_havePresented=false; // last visible image may have used the native route
+    return Redraw();
+}
+bool NativeCpuWorkspaceOutput::Redraw() {
+    if(!OutputHealthy())return false;
+    BlitCanonical();
+    return OutputHealthy();
 }
 std::u16string DeviceClock() {
     const std::time_t now=std::time(nullptr);std::tm deviceTime{};char clock[16]="--:--";

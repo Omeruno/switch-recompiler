@@ -40,7 +40,7 @@ def main():
         'gpu_gdi_dispatch': ['Ordinary x86 GDI dispatch: PASS', 'GDI dispatch measurement: PASS'],
         'gpu_gdi_warm': ['Warm ordinary GDI: PASS', 'Warm GDI measurement: PASS'],
         'gpu_workspace_reuse': ['Retained transitions PASS', 'Workspace reuse measurement: PASS'],
-        'gpu_workspace_cycles': ['CPU/native workspace cycles PASS', 'CPU/native measurement PASS'],
+        'gpu_workspace_cycles': ['CPU/native workspace cycles PASS', 'CPU/native measurement PASS', 'CPU route transitions mode0 PASS', 'CPU route transitions mode1 PASS', 'CPU route transitions mode2 PASS'],
         'gpu_gdi_batches': ['GPU GDI batching: PASS'],
     }
     evidence = []
@@ -66,7 +66,7 @@ def main():
         'gpu_gdi_dispatch': (1, 'PASS_HOST_X86_GL_DISPATCH_PENDING_HARDWARE', 14),
         'gpu_gdi_warm': (1, 'PASS_HOST_WARM_GDI_PENDING_HARDWARE', 108),
         'gpu_workspace_reuse': (4, 'PASS_HOST_RETAINED_WORKSPACE_PENDING_HARDWARE', 540),
-        'gpu_workspace_cycles': (1, 'PASS_HOST_CPU_NATIVE_CYCLES_PENDING_HARDWARE', 288),
+        'gpu_workspace_cycles': (2, 'PASS_HOST_CPU_NATIVE_CYCLES_PENDING_HARDWARE', 432),
         'gpu_gdi_batches': (1, 'PASS_HOST_GL_BATCH_COMPARISON_PENDING_HARDWARE', 42),
     }
     for name, (schema, status, count) in requirements.items():
@@ -85,7 +85,7 @@ def main():
             assert r['runner_sha256'] == digest((build/runner).read_bytes()), f'Stale runner: {name}'
         reports.append(dict(name=name, schema=schema, samples=count, sha256=digest(data)))
     cycles = json.loads((build/'gpu_workspace_cycles.json').read_bytes())
-    assert len(cycles['sessions']) == 32 and all(s['exit_code'] == 0 for s in cycles['sessions'])
+    assert len(cycles['sessions']) == 48 and all(s['exit_code'] == 0 for s in cycles['sessions'])
     # Source snapshot supplements SHA/dirty state for locally uncommitted evidence.
     manifest = {}
     for directory in ('source', 'tests', 'tools'):
@@ -93,13 +93,13 @@ def main():
             if path.is_file() and path.suffix in ('.cpp', '.h', '.c', '.py', '.sh'):
                 manifest[str(path.relative_to(root))] = digest(path.read_bytes())
     report = dict(format='switch-recompiler-gpu-acceptance-v1', status='PASS_BOUNDED_NATIVE_EXPERIMENT_PENDING_HARDWARE',
-                  scope='G4b.2a-n bounded shared-context/window/CPU-GPU/shell/device/ordinary-solid native integration',
+                  scope='G4b.2a-o bounded shared-context/window/CPU-GPU/shell/device/ordinary-solid native integration',
                   head_sha=revision, working_tree_dirty=dirty, full_mingw_mesa_runner_succeeded=True,
                   cases=evidence, measurements=reports, public_fixtures=fixtures,
                   source_manifest_sha256=digest(json.dumps(manifest, sort_keys=True).encode()), source_manifest=manifest,
                   workload_comparison=cycles['summary'],
-                  default_gdi='CPU', native_activation='existing explicit flag only; bounded top-level solid FillRect/PATCOPY',
-                  decision='No broad/default activation from host timing. Next admission-aware CPU output routing for no-resident/refused workloads; preserve DIB/device/read/owner/fault gates.',
+                  default_gdi='CPU', native_activation='flag1 reference native; flag2 no-resident CPU routing; bounded top-level solid FillRect/PATCOPY',
+                  decision='No broad/default activation from host timing. Routing stays explicit flag2 with reference comparisons and real DIB/device/read/owner/fault gates; next independent D registry compatibility block.',
                   pending_hardware=['Paint/GPU/fallback performance and correctness', 'Lite/controller/touch input', 'normal/error/abort repeated console launches'],
                   outside_scope=['full Windows/XP shell', 'arbitrary GDI/ROP/memory GPU dispatch', 'large or child-window native admission', 'x64', 'full ARM64 dynarec', 'DirectDraw/D3D9/shaders/audio translation', 'PC-game compatibility/FPS', 'installers/ZIP/RAR'],
                   contracts=['docs/G4B2N_SOFTWARE_ACCEPTANCE.md', 'docs/G4B2M_DIFFERENTIAL_IMPORT.md', 'docs/G4B2G_HOST_PIXEL_AUDIT.md'])

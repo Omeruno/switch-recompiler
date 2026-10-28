@@ -283,6 +283,10 @@ const ui::Surface* WindowGpuBindings::CpuRead(const Lease& lease) {
 const ui::GpuGdiPrototype::Stats* WindowGpuBindings::Counters(const Lease& lease) {
     return Valid(lease)?targets_.TargetStats(lease.target):nullptr;
 }
+bool WindowGpuBindings::HasResidentWrites() const {
+    for(const auto& slot:slots_)if(slot.target && Dirty(slot))return true;
+    return false;
+}
 bool WindowGpuBindings::PresentationReady() const {
     return coherent_ && !fault_ && SameSession() && !ui::g_gdi.CpuAccessFault() && !S().presentationFault;
 }

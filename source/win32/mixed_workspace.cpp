@@ -4,8 +4,14 @@ namespace win32::user {
 MixedWorkspace::MixedWorkspace(WindowGpuBindings& b,ShellSession& s,Output o,void* c,ui::PresentationAllocator* a)
     :bindings_(b),shell_(s),output_(o),context_(c),frame_(a) {}
 MixedWorkspace::~MixedWorkspace(){Detach();}
+bool MixedWorkspace::EnableCpuRouting(CpuOutput* output) {
+    if(busy_ || !bindings_.PresentationReady() || fault_)return false;
+    if(cpuOutput_ && cpuOutput_!=output)cpuOutput_->Reset();
+    cpuOutput_=output;hasFrame_=false;frame_.Clear();cpuRoute_=false;return true;
+}
 bool MixedWorkspace::Attach() {
     if(attached_ || S().presentationFault || !output_ || !shell_.Ready() || !bindings_.PresentationReady() || g_platform.tryPresent)return false;
+    cpuFrames_=cpuSubmissions_=0;cpuRoute_=false;
     previous_=g_platform;fault_=false;hasFrame_=false;frames_=submissions_=redraws_=reused_=0;copyStart_=frame_.CopiedBytes();
     g_platform.presentationContext=this;g_platform.presentationIdentity=ui::NewPresentationResourceId();
     g_platform.presentationRevision=[](void* p){return static_cast<MixedWorkspace*>(p)->bindings_.PresentationRevision();};
@@ -20,6 +26,8 @@ void MixedWorkspace::Detach() {
         g_platform.tryPresent=previous_.tryPresent;
     }
     attached_=false;hasFrame_=false;frame_.Clear();
+    if(cpuOutput_)cpuOutput_->Reset();
+    cpuOutput_=nullptr;cpuRoute_=false;
 }
 bool MixedWorkspace::SnapshotCurrent() const {
     if(!attached_ || !hasFrame_ || fault_ || !bindings_.PresentationReady())return false;
@@ -30,7 +38,7 @@ bool MixedWorkspace::SnapshotCurrent() const {
         ownershipRevision_==bindings_.OwnershipRevision() && shellRevision_==shell;
 }
 bool MixedWorkspace::FrameCurrent() const {
-    return SnapshotCurrent() && gpuRevision_==bindings_.PresentationRevision();
+    return SnapshotCurrent() && gpuRevision_==bindings_.PresentationRevision() && (!cpuRoute_ || !bindings_.HasResidentWrites());
 }
 NativePresentResult MixedWorkspace::Refresh() {
     const auto result=Present();
@@ -40,15 +48,28 @@ NativePresentResult MixedWorkspace::Refresh() {
 NativePresentResult MixedWorkspace::Redraw() {
     if(!FrameCurrent())return Refresh();
     if(busy_ || S().presentationFault)return NativePresentResult::Failed;
-    busy_=true;const bool ok=output_(context_,bindings_,frame_);busy_=false;
+    busy_=true;const bool ok=cpuRoute_?cpuOutput_->Redraw():output_(context_,bindings_,frame_);busy_=false;
     if(!ok){fault_=true;S().presentationFault=true;return NativePresentResult::Failed;}
-    ++frames_;++redraws_;return NativePresentResult::Submitted;
+    ++frames_;++redraws_;if(cpuRoute_)++cpuFrames_;return NativePresentResult::Submitted;
 }
 NativePresentResult MixedWorkspace::Present() {
     if(!attached_ || fault_ || busy_ || S().presentationFault || ui::g_gdi.CpuAccessFault())return NativePresentResult::Failed;
     if(!bindings_.PresentationReady())return NativePresentResult::Unavailable;
     struct Scope {bool& busy;Scope(bool& b):busy(b){busy=true;}~Scope(){busy=false;}} scope(busy_);
-    const bool reused=reuseEnabled_ && SnapshotCurrent();
+    const bool cpu=cpuOutput_ && !bindings_.HasResidentWrites();
+    if(cpu) {
+        // Release pins/old native pixels before changing output route. A CPU
+        // boundary is still checked by TryCompose; no fabricated read intent.
+        frame_.Clear();hasFrame_=false;
+        const auto* canonical=shell_.TryCompose(S().screen.s);
+        if(!canonical || !cpuOutput_->Present(*canonical,shell_.Scene()) || !bindings_.PresentationReady()){fault_=true;return NativePresentResult::Failed;}
+        cpuRoute_=true;hasFrame_=true;++cpuSubmissions_;++cpuFrames_;++frames_;
+        layoutGeneration_=ui::g_gdi.LayoutGeneration();cpuRevision_=ui::g_gdi.ScreenChangeCounter();
+        ownershipRevision_=bindings_.OwnershipRevision();shellRevision_=shell_.NativeRevision();
+        gpuRevision_=bindings_.PresentationRevision();return NativePresentResult::Submitted;
+    }
+    const bool reused=reuseEnabled_ && !cpuRoute_ && SnapshotCurrent();
+    cpuRoute_=false;
     if(!reused) {
         const auto overlay=shell_.NativeOverlay();
         if(!overlay.owners || !bindings_.SubmitMixed(frame_,&overlay)) {fault_=true;return NativePresentResult::Failed;}
