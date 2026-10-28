@@ -99,6 +99,18 @@ jobs:
           name: stage-gpu-window-coherence
           if-no-files-found: error
           path: |
+            build-host/stage-gpu-acceptance.json
+            build-host/test_gpu_gdi_unavailable.log
+            build-host/gpu_gdi_shared_context.log
+            build-host/gpu_gdi_targets.log
+            build-host/gpu_gdi_prototype.log
+            build-host/gpu_gdi_batches.log
+            build-host/gpu_gdi_batches.json
+            build-host/gpu_window_bindings.log
+            build-host/guest-run.*/gpu_window_bindings.exe
+            build-host/gpu_workspace_cycles.log
+            build-host/gpu_workspace_cycles.json
+            docs/G4B2N_SOFTWARE_ACCEPTANCE.md
             build-host/gpu_capacity_replay.log
             build-host/gpu_differential_import.log
             docs/G4B2L_CAPACITY_REPLAY.md

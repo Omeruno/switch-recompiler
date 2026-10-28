@@ -17,7 +17,8 @@ flags="-std=c++17 -O1 -Wall -I$root"
 src="$root/source/cpu/*.cpp $root/source/ui/*.cpp $root/source/runtime/*.cpp $root/source/loader/*.cpp $root/source/decoder/*.cpp $root/source/win32/*.cpp"
 
 mkdir -p "$out"
-rm -f "$out/stage-f-acceptance.json"
+rm -f "$out/stage-f-acceptance.json" "$out/stage-gpu-acceptance.json"
+rm -f "$out/gpu_workspace_cycles.log" "$out/gpu_workspace_cycles.json"
 rm -f "$out/stage-g-measurement.json"
 rm -f "$out/stage-g-blit.json"
 rm -f "$out/gpu_gdi_prototype.log"
@@ -403,6 +404,18 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
             tail -n 25 "$out/gpu_workspace_reuse.log" 2>/dev/null || true
             failed=1
         fi
+        if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_workspace_cycles.cpp" \
+           "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
+           "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_gpu_workspace_cycles" &&
+           python3 "$root/tools/benchmark_workspace_cycles.py" "$out/test_gpu_workspace_cycles" "$guestRoot/gpu_gdi_warm.exe" \
+               "$guestRoot/gpu_workspace_PARTIAL.exe" "$guestRoot/gpu_workspace_COPY.exe" "$guestRoot/gpu_workspace_REFUSAL.exe" \
+               "$out/gpu_workspace_cycles.json" > "$out/gpu_workspace_cycles.log" 2>&1; then
+            tail -n 2 "$out/gpu_workspace_cycles.log"
+        else
+            echo "   CPU/NATIVE WORKSPACE CYCLES FAILED"
+            tail -n 25 "$out/gpu_workspace_cycles.log" 2>/dev/null || true
+            failed=1
+        fi
         if $cxx $flags -DSR_OPENGL_TEST "$root/tests/test_gpu_damage_mask.cpp" \
            "$root/source/ui/gpu_gdi_targets.cpp" "$root/source/ui/gpu_gdi_prototype.cpp" \
            "$root/source/ui/opengl_presentation.cpp" $coherencesrc -lEGL -lGL -o "$out/test_gpu_damage_mask" &&
@@ -489,7 +502,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_gdi_dispatch.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_damage_mask.exe" ] && continue
-        case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe) continue ;; esac
+        case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe|gpu_workspace_REFUSAL.exe) continue ;; esac
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue
         [ "$(basename "$exe")" = "gui_comdlg_interactive.exe" ] && continue
         [ "$(basename "$exe")" = "gui_shell32.exe" ] && continue
@@ -621,6 +634,7 @@ fi
 
 if [ "$failed" -eq 0 ] && [ "${COMPOSITION_GL_TEST:-0}" = 1 ] && command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     python3 "$root/tools/record_stage_f_acceptance.py" --root "$root" --guests "$guestRoot"
+    python3 "$root/tools/record_gpu_acceptance.py" --root "$root" --guests "$guestRoot"
 fi
 
 [ "$failed" -eq 0 ] && echo "Все тесты пройдены." || echo "Есть ошибки."

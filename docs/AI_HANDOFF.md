@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`88be5ef350d8e8034a113c903288729f7a0e6f63` (2026-10-27).
-[CI 40564792157](https://github.com/Omeruno/switch-recompiler/actions/runs/40564792157)
+`a49b2273615f46c19229304d81d294ec261889d5` (2026-10-28).
+[CI 40578702073](https://github.com/Omeruno/switch-recompiler/actions/runs/40578702073)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G4b.2m measured differential CPU import implemented (2026-10-27)
+## Current position: G4b.2n bounded native software acceptance and CPU/native cycles (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. Next consolidate software acceptance and compare complete CPU/native cycles.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. Next admission-aware CPU output routing with no resident GPU owners.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is consolidated G4b.2 software acceptance and full CPU/native cycle comparison, preserving actual read/ROP/DIB/capture gates.
+Next is admission-aware no-resident CPU output routing, preserving actual read/ROP/DIB/capture/owner/fault gates.
 
 ## Working agreement
 
@@ -2748,3 +2748,70 @@ installer/archive and game targets including Lineage2/Asterios remain separate.
 Map23cards/3views/34docs, desktop/mobile browser/link/fence/shell/diff checks pass;
 normal push and exact published-SHA6-job CI/Pages/NRO/report/publicPE/contract
 verification are final publication gates. No alarm/autonomous wakeup is installed.
+
+## G4b.2n — consolidated software ledger and actual CPU/native cycles (2026-10-28)
+
+Clean a49b227/FETCH_HEAD, no newer work/AGENTS; incoming exact CI40578702073
+reverified all six jobs. User requests next large block. No production runtime
+source or default activation changes: this consolidates native integration
+acceptance and measures the actual alternative CPU route before further tuning.
+Host tools prepared, no new dependencies; local devkitA64/libnx absent, NRO CI-only.
+Hardware Paint/GPU/fallback/input/Lite/relaunch deferred; SD diagnosis closed.
+
+Added public600x128 size-refusal variant of existing warm fixture; generated PE
+is excluded from generic no-argument sweep and runs in its dedicated harness.
+New inspector rotates four same-build/PE CPU/native workload pairs,32 real normal
+exit0 sessions/288 independent1280x720 production-EGL frames: tiles, shifted partial,
+raw-DIB/SRCCOPY+sentinel, and oversized refusal. CPU installs no native coherence/
+solid gate and uses actual ShellSession.TryCompose/Scene→Presentation.Submit/Render;
+not a CPU image through empty mixed frames. Native uses current solid policy and
+MixedWorkspace.Refresh. Exact pixels, candidate/accepted/refused/import/commit/
+transfer/snapshot/reuse counts, actual final GetPixel and normal exit required.
+Size refusal has576 candidates/refusals, zero admitted work/target allocation.
+
+Raster sums only timed RunOne calls including real HLE/DIB/checkpoint work;
+host bookkeeping/expected pixels/idle waits are excluded. Refresh includes native
+prepare and actual driver submission; compare raster+Refresh. Terminal GetPixel
+and guest exit tail are separate and included in sequence totals. No module load,
+frontend setup/teardown, FBO oracle-read, physical swap/scanout or GPU duration.
+Test-only clock overhead identical between routes. Schema1 records all288 frames,
+32 read/exit sessions, cold/warm/sequence medians, input/runner/source/host/cache
+identity; sample0 pairs excluded, no timing pass threshold. Local final warm CPU/
+native cycle medians(us): tiles5187/2879, partial5107/3159, DIB5083/6518,
+refusal6075/6200. Host variation is not Switch performance or default admission.
+
+record_gpu_acceptance.py runs only after the successful complete MinGW/Mesa runner
+and existing F report. Runner/reporter remove old ledger first.17 log groups
+require named modes (including all seven device/four host audits), five subordinate
+reports require expected schema/status/sample count and current HEAD/dirty state,
+matching generated fixture/actual native runner hashes. Eight fixtures validate
+actual i386 PE32 headers. Full source/test/tool code manifest supplements local
+dirty-SHA evidence. Outputs PASS_BOUNDED_NATIVE_EXPERIMENT_PENDING_HARDWARE,
+explicit default CPU, current activation/bounds and pending/outside scopes. Clean
+exact-published-SHA CI report is the publication evidence. All logs/reports/public
+PEs/contract join existing coherence artifact; still six core jobs. See
+G4B2N_SOFTWARE_ACCEPTANCE.md. No parked case is counted as a normal exit.
+
+Fresh final-suite.log passed final fixture/harness/scripts, new32-session/288-frame
+matrix,17-group ledger, all prior window/native/CPU/GPU/shared-state/coherence/
+read/ROP/DIB/context/lifecycle/file/measurement tests, Stage C/six E9/22 F groups.
+Strict O2/no-exceptions/no-RTTI new inspector and seven coherent/GPU/renderer modules
+pass. Focused ASan/UBSan same inspector/modules pass with ordinary other runtime
+objects; driver leak scan disabled, known native-fiber warning retained. Negative
+omitted CPU renderer fails actual framebuffer pixel0,0. Wrong-architecture input
+fails measurement and removes stale report. Negative missing device6 result,
+stale subordinate source SHA and mismatched PE hash each reject with no stale
+ledger; restored genuine evidence reconstructs byte-identical original ledger.
+No runtime/test/script changes after full-suite success, only documentation.
+
+Measured next decision: retain default CPU/native opt-in; when no resident GPU
+owners exist, evaluate ordinary CPU USER output selection instead of materializing
+empty mixed frames. Next admission-aware no-resident routing needs real USER/
+authority/acknowledgement/shell/cursor/ownership/lifetime/failure gates. This does
+not fix DIB synchronization by itself. Bounded G4b.2 software acceptance now
+consolidated, physical performance/default/broader GDI still open. D/Pinball,
+full ARM64 dynarec/D3D9/installer/archive/game acceptance remain separate.
+Maps show G4b.2n/next no-resident routing,23 cards/3 views/35 docs; links/fences/
+shell/Python/diff and desktop/mobile browser checks pass. Normal branch push and
+exact published-SHA six-job CI, clean ledger+five reports+8 PEs+contract/NRO and
+Pages publication are final gates. No alarm/autonomous chat wakeup is installed.

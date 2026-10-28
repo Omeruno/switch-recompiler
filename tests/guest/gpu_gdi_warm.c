@@ -9,8 +9,13 @@ static LRESULT CALLBACK proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowPr
 void WINAPI start(void){
     WNDCLASSA cls={0};HWND w;HDC dc;unsigned frame,i;
     cls.lpfnWndProc=proc;cls.hInstance=GetModuleHandleA(NULL);cls.lpszClassName="WarmGdi";CHECK(RegisterClassA(&cls));
-    w=CreateWindowExA(WS_EX_NOACTIVATE,cls.lpszClassName,"warm",WS_POPUP|WS_VISIBLE,40,50,128,128,NULL,NULL,cls.hInstance,NULL);CHECK(w);dc=GetDC(w);CHECK(dc);
-    {RECT r={0,0,128,128};HBRUSH b=CreateSolidBrush(color(0x112233));CHECK(b&&FillRect(dc,&r,b));CHECK(DeleteObject(b));}
+#ifdef WORKSPACE_REFUSAL
+    const int width=600;
+#else
+    const int width=128;
+#endif
+    w=CreateWindowExA(WS_EX_NOACTIVATE,cls.lpszClassName,"warm",WS_POPUP|WS_VISIBLE,40,50,width,128,NULL,NULL,cls.hInstance,NULL);CHECK(w);dc=GetDC(w);CHECK(dc);
+    {RECT r={0,0,width,128};HBRUSH b=CreateSolidBrush(color(0x112233));CHECK(b&&FillRect(dc,&r,b));CHECK(DeleteObject(b));}
 #ifdef WORKSPACE_COPY
     HDC mem=CreateCompatibleDC(dc);BITMAPINFO info={0};DWORD* bits;HBITMAP dib,old;
     CHECK(mem);info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=4;info.bmiHeader.biHeight=-4;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
