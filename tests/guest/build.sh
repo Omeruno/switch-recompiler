@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/wave_callbacks.c" \
+    -o "$out/wave_callbacks.exe" -lkernel32 -lwinmm
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/wave_stream.c" \
     -o "$out/wave_stream.exe" -lkernel32 -luser32 -lwinmm
 i686-w64-mingw32-windres "$here/audio_output.rc" "$out/audio_output_resource.o"

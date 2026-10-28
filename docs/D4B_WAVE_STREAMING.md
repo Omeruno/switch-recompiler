@@ -1,5 +1,7 @@
 # D4b — real bounded waveOut streaming and queued notifications
 
+Historical package scope: [D4c](D4C_WAVE_CALLBACKS.md) now adds real scheduled guest function/event callbacks; old unsupported-mode checks select CALLBACK_TYPEMASK. The original package boundaries below describe their implementation stage.
+
 Implemented after D4a, 2026-10-28. Ordinary x86 WinMM calls now own real stream
 and prepared-buffer state, submit PCM to the D4a device and retire WAVEHDR only
 on confirmed release or cancellation. No dummy handle or admission-time DONE.

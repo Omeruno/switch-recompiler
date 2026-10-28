@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`9b56e12d0e466435ef0fe1bd659aca0816ce92a7` (2026-10-28).
-[CI 40665841698](https://github.com/Omeruno/switch-recompiler/actions/runs/40665841698)
+`dcb2e5bf3811d62339b23d574947f394077da2df` (2026-10-28).
+[CI 40746297279](https://github.com/Omeruno/switch-recompiler/actions/runs/40746297279)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4b bounded waveOut/window-thread callbacks implemented; next function/event callbacks (2026-10-28)
+## Current position: D4c scheduled guest function/event callbacks implemented; next frame position/pause/restart (2026-10-28)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball passes waveOutGetNumDevs with no output device; next missing WINMM!mciSendCommandA. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. Next scheduled guest function/event audio callbacks; MCI/MIDI separate, registry persistence remains open.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball passes waveOutGetNumDevs with no output device; next missing WINMM!mciSendCommandA. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. [D4c](D4C_WAVE_CALLBACKS.md) adds real scheduled guest function callbacks and kernel events. Next actual frame position/pause/restart; MCI/MIDI separate, registry persistence remains open.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -67,7 +67,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is scheduled guest CALLBACK_FUNCTION and event audio notifications after bounded D4b streaming/window-thread callbacks, preserving all graphics/session gates. Host Pinball also needs MCI mciSendCommandA; no-device host advancement is not sound acceptance. Checked registry persistence remains open.
+Next is genuine played-frame position/pause/restart after [D4c scheduled guest function/event notifications](D4C_WAVE_CALLBACKS.md), preserving all graphics/session gates. Host Pinball also needs MCI mciSendCommandA; no-device host advancement is not sound acceptance. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -3187,3 +3187,79 @@ Updated global/active/user/visual maps, historical D4a scope notice, new
 stage-d-wave-streaming public PE/log/contract artifact in existing host job; still
 6 core jobs. Roadmap23cards/3views/41docs. Exact new-SHA CI6/Pages/NRO/stream and
 prior audio/API/GPU artifacts with clean code manifest are publication gates.
+
+## D4c — real scheduled guest function callbacks and kernel events (2026-10-28)
+
+Started clean dcb2e5bf3811d62339b23d574947f394077da2df; CI40746297279 all6
+success, Pages40746297254 success; NRO/stream/prior audio/API/GPU artifacts checked.
+No newer fetched work. Local devkitA64/libnx absent; prepared host/MinGW/Mesa used.
+
+CALLBACK_FUNCTION now creates one reusable genuine service GuestThread per Process
+with CPU/TEB/stack/TLS, loader thread attach/detach and native continuation. The
+worker calls real x86 via existing stdcall20 interpreter/SEH path, five actual
+WinMM arguments/instance, ordered OPEN/DONE/CLOSE. No device-stack call or user APC.
+A128-value-record Process queue plus one active callback bounds pending work;
+producer only wakes the dispatcher's idle wait, never a callback's own blocking
+wait. Enqueued callbacks survive successful close as ordinary value records;
+caller code/instance/header storage must remain valid until delivered. Full
+queue refuses open/close; missed completion notification latches stream error.
+Dead/explicitly exited service refuses later function-mode writes/notifications;
+no automatic worker resurrection or false successful CLOSE. Details/limits in
+[D4C_WAVE_CALLBACKS.md](D4C_WAVE_CALLBACKS.md).
+
+CALLBACK_EVENT validates actual Event type and MODIFY_STATE rights, retains a
+strong object reference and signals real kernel state/aliases for OPEN/DONE/CLOSE.
+Manual/auto-reset waits and signal coalescing are existing kernel semantics;
+closing the opening handle cannot redirect the retained object. No USER queue
+or alertable wait is necessary. Canonical PCM/one client/four blocks unchanged.
+
+GuestThread background metadata distinguishes service scheduling from application
+liveness. Round-robin still runs it; last app ExitThread triggers ordinary process
+shutdown and drains parked callbacks. Callback ExitProcess uses normal shutdown;
+callback ExitThread exits only that worker. Session cleanup discards work without
+executing guest code after native continuation drain. Nested guest queues/events/
+workers stay isolated and outer retirement waits for owner restoration.
+
+Process::CreateGuestThread now accepts an actual registered HLE entry point as
+well as a mapped x86 start address; pseudo-host exports intentionally have no
+instruction page. HostAddressToIndex validates exact alignment/table membership;
+this is a common runtime entry fix, not an EXE-specific bypass.
+
+Public wave_callbacks.exe/native inspector:10 isolated sessions,9 normal process
+terminations (including intentional ExitProcess37 and last-app ExitThread55) plus
+one deliberately parked callback abort. Actual CPU/FS/TEB/dynamic TLS/last-error,
+stdcall arguments, immutable PCM, release/reset before DONE, blocked non-alertable
+callback/peer progress,128-record pressure/failed CLOSE/retry, reopen with one
+worker, event type/rights/manual/auto/retained aliases, explicit callback ExitThread73,
+nested owner and native callbackDepth/memory release checked.27 accepted,9 actual
+played releases,18 confirmed cancellations. Abort is not a normal exit0. Existing
+D4b fixture remains unchanged; old D4a unsupported function-mode assertion now
+selects still-unsupported CALLBACK_TYPEMASK. No production success stub introduced.
+
+Development checks corrected the fixture's shared-stage handshake and normal
+TlsGetValue last-error clearing. OpenThread is not implemented: its test call was
+removed in favor of the inspector observing actual worker exit73, while the guest
+independently confirms continued execution and dead-dispatcher error behavior.
+Initial full development run failed before the registered-HLE start fix; it is
+not final acceptance. Final full COMPOSITION_GL_TEST=1 host/MinGW/Mesa runner
+passed final runtime/fixtures, C/six E9/22 F/17 GPU groups/five bound reports
+and all new+prior audio/API regressions.
+Strict O2/no-exceptions/no-RTTI wave modules and scheduler passed. Focused ASan/
+UBSan on audio/wave worker/process/session/execution plus inspector passed; other
+common objects ordinary, native fiber warning and leak scan disabled, not whole
+runtime sanitizer certification. Negative wrong dwInstance failed guest ABI check;
+counting the service as foreground failed the actual last-app ExitThread55 gate
+(mode5 remains unstopped). Earlier foreground-flag mutation also failed metadata
+gate; neither mutation is in git. Logs/mutations/private payload stay outside git.
+
+Current maps move to D4d played-frame position/pause/restart, then streaming format/
+resampler continuity. Count only actual played frames, cancellations separately;
+pause/resume need real backend behavior. MCI/MIDI/music remains additional work;
+truthful no-device host Pinball still needs mciSendCommandA. No audible console
+sound/game/Paint speedup/FPS or physical GPU/input/relaunch acceptance. Default
+CPU, Luna/L legacy/ZL fallback, one persistent frontend and SD-closed status retained.
+
+New stage-d-wave-callbacks PE/log/contract artifact in existing host job; still6
+core CI jobs. Global/active/user/visual maps/historical scope notices updated;
+23cards/3views/42docs, desktop/mobile browser gates passed. Normal push, exact-SHA
+CI6/Pages/NRO/new+prior audio/API/GPU/source-manifest audits remain publication gates.

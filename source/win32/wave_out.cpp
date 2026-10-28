@@ -1,4 +1,5 @@
 #include "wave_out.h"
+#include "wave_callbacks.h"
 #include "hle_util.h"
 #include "user32.h"
 #include "../runtime/audio_output.h"
@@ -14,7 +15,8 @@ struct Retirement {uint32_t header;uint64_t generation;bool cancelled;};
 struct Stream {
     rt::Process* process=nullptr;cpu::IGuestMemory* memory=nullptr;
     uint64_t owner=0,nextGeneration=1;
-    uint32_t handle=0,callback=0,callbackType=0,targetThread=0;
+    uint32_t handle=0,callback=0,callbackType=0,targetThread=0,instance=0;
+    std::shared_ptr<rt::SyncObject> event;
     bool open=true,notifications=true,fault=false;
     std::map<uint32_t,Header> headers;
     std::deque<Retirement> retired;
@@ -25,6 +27,9 @@ bool Range(cpu::IGuestMemory& m,uint32_t p,size_t n){return p && uint64_t(p)+n<=
 std::shared_ptr<Stream> Current(){return rt::g_process?rt::LocalState<Holder>().stream:nullptr;}
 bool Notify(Stream& s,uint32_t message,uint32_t header=0) {
     if(!s.notifications || !s.callbackType)return true;
+    if(s.callbackType==0x30000)
+        return QueueWaveCallback(s.callback,s.handle,message,s.instance,header);
+    if(s.callbackType==0x50000){s.event->signaled=true;rt::SignalObject(s.event.get());return true;}
     if(s.callbackType==0x10000){const auto* w=user::Win(s.callback);if(!w || w->threadId!=s.targetThread)return true;}
     auto it=user::S().queues.find(s.targetThread);
     if(it==user::S().queues.end() || it->second.closed)return true;
@@ -47,7 +52,7 @@ std::shared_ptr<Stream> Valid(uint32_t handle){auto s=Current();return s && s->o
 bool Canonical(cpu::IGuestMemory& m,uint32_t p){return m.Read16(p)==1 && m.Read16(p+2)==2 && m.Read32(p+4)==48000 && m.Read32(p+8)==192000 && m.Read16(p+12)==4 && m.Read16(p+14)==16;}
 HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
     const auto output=Arg(c,m,0),device=Arg(c,m,1),format=Arg(c,m,2),callback=Arg(c,m,3),flags=Arg(c,m,5);
-    if(flags!=1 && flags!=0 && flags!=0x10000 && flags!=0x20000)return Ret(8);
+    if(flags!=1 && flags!=0 && flags!=0x10000 && flags!=0x20000 && flags!=0x30000 && flags!=0x50000)return Ret(8);
     if(device && device!=0xffffffffu)return Ret(2);
     PollWaveOut();if(!rt::Audio().Available() || !rt::g_process)return Ret(6);
     if(!Range(m,format,16))return Ret(InvalidParam);
@@ -55,7 +60,14 @@ HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
     if(flags==1)return Ret(0);
     if(!Range(m,output,4))return Ret(InvalidParam);
     uint32_t thread=0;
-    if(flags) {
+    std::shared_ptr<rt::SyncObject> event;
+    if(flags==0x30000) {
+        if(!Range(m,callback,1))return Ret(InvalidParam);
+    }else if(flags==0x50000) {
+        auto object=rt::Handles().Get(callback);
+        if(!object || object->type!=rt::ObjectKind::Event || !rt::Handles().HasAccess(callback,2))return Ret(InvalidParam);
+        event=std::static_pointer_cast<rt::SyncObject>(object);
+    }else if(flags) {
         if(!IsHostLayerEnabled(kUiLayer))return Ret(8);
         if(flags==0x10000){auto* w=user::Win(callback);if(!w)return Ret(InvalidParam);thread=w->threadId;}
         else thread=callback;
@@ -64,8 +76,9 @@ HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
     }
     if(rt::Audio().Client() || rt::Audio().Pending())return Ret(4);
     if(nextHandle>0x6ffffffc)return Ret(NoMemory);
+    if(flags==0x30000 && !PrepareWaveCallbacks())return Ret(Error);
     const auto handle=uint32_t(nextHandle);nextHandle+=4;
-    auto s=std::make_shared<Stream>();s->process=rt::g_process;s->memory=&m;s->owner=rt::Audio().Owner();s->handle=handle;s->callback=callback;s->callbackType=flags;s->targetThread=thread;
+    auto s=std::make_shared<Stream>();s->process=rt::g_process;s->memory=&m;s->owner=rt::Audio().Owner();s->handle=handle;s->callback=callback;s->callbackType=flags;s->targetThread=thread;s->instance=Arg(c,m,4);s->event=std::move(event);
     if(!rt::Audio().Claim(s->owner,handle))return Ret(4);
     if(!Notify(*s,OpenMessage)){rt::Audio().ReleaseClient(s->owner,handle);return Ret(NoMemory);}
     rt::LocalState<Holder>().stream=s;m.Write32(output,handle);return Ret(0);
@@ -87,7 +100,7 @@ HostCallOutcome Prepare(cpu::CpuState& c,cpu::IGuestMemory& m,bool remove) {
 }
 HostCallOutcome Write(cpu::CpuState& c,cpu::IGuestMemory& m) {
     PollWaveOut();auto s=Valid(Arg(c,m,0));if(!s)return Ret(InvalidHandle);
-    if(s->fault)return Ret(Error);
+    if(s->fault || (s->callbackType==0x30000 && !WaveCallbacksHealthy()))return Ret(Error);
     const auto p=Arg(c,m,1);if(Arg(c,m,2)<32 || !Range(m,p,32))return Ret(InvalidParam);
     auto it=s->headers.find(p);if(it==s->headers.end())return Ret(Unprepared);
     if(it->second.queued)return Ret(StillPlaying);
@@ -125,6 +138,7 @@ const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entri
 }
 void PollWaveOut(){rt::Audio().Poll();if(auto s=Current())Drain(*s);}
 void EndWaveOutSession(){
+    EndWaveCallbacks();
     auto s=Current();if(!s)return;s->notifications=false;
     if(rt::Audio().Reset())Drain(*s);
     rt::Audio().ReleaseClient(s->owner,s->handle);s->open=false;rt::LocalState<Holder>().stream.reset();

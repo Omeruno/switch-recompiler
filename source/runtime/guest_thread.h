@@ -33,6 +33,9 @@ struct GuestThread {
     std::map<uint32_t,std::pair<uint32_t,uint32_t>> staticTlsRegions;
     bool memoryReleased = false;
     bool needsThreadAttach = false;
+    // Runtime service threads execute real guest code but cannot keep a
+    // process alive after its last application thread exits.
+    bool background = false;
     bool exitRequested = false;
     uint32_t requestedExitCode = 0;
     bool detaching = false;

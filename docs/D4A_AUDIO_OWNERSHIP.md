@@ -1,5 +1,7 @@
 # D4a — owning PCM output, checked audout and honest device queries
 
+Historical package scope: [D4c](D4C_WAVE_CALLBACKS.md) now adds real scheduled guest function/event callbacks; old unsupported-mode checks select CALLBACK_TYPEMASK. The original package boundaries below describe their implementation stage.
+
 Implemented after D3, 2026-10-28. Historical D4a scope: supported streaming
 opens and queued window/thread notifications are now added by [D4b](D4B_WAVE_STREAMING.md). This common audio foundation replaces the old
 void PlaySound callback and four-slot code that freed an in-flight buffer when

@@ -265,12 +265,12 @@ public:
     size_t Size() const { return threads_.size(); }
     bool HasLiveThreads() const {
         for (const GuestThread* thread : threads_)
-            if (thread->status != GuestThreadStatus::Exited) return true;
+            if (!thread->background && thread->status != GuestThreadStatus::Exited) return true;
         return false;
     }
     bool HasLivePeer(uint32_t id) const {
         for (const GuestThread* thread:threads_)
-            if (thread->id!=id && thread->status!=GuestThreadStatus::Exited) return true;
+            if (thread->id!=id && !thread->background && thread->status!=GuestThreadStatus::Exited) return true;
         return false;
     }
     uint32_t LastExitCode() const { return lastExitCode_; }

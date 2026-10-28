@@ -31,7 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
-rm -f "$out/wave_stream.log"
+rm -f "$out/wave_stream.log" "$out/wave_callbacks.log"
 rm -f "$out/audio_api.log" "$out/audio_audout.log"
 rm -f "$out/registry_keys.log" "$out/keyboard_api.log" "$out/profile_api.log"
 failed=0
@@ -135,6 +135,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_wave_callbacks.cpp" $src -o "$out/test_wave_callbacks" &&
+       "$out/test_wave_callbacks" "$guestRoot/wave_callbacks.exe" > "$out/wave_callbacks.log" 2>&1; then
+        tail -n 1 "$out/wave_callbacks.log"
+    else
+        echo "   WAVE CALLBACKS FAILED"
+        tail -n 25 "$out/wave_callbacks.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_wave_stream.cpp" $src -o "$out/test_wave_stream" &&
@@ -561,6 +569,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "ini_profile.exe" ] && continue
         [ "$(basename "$exe")" = "audio_output.exe" ] && continue
         [ "$(basename "$exe")" = "wave_stream.exe" ] && continue
+        [ "$(basename "$exe")" = "wave_callbacks.exe" ] && continue
         [ "$(basename "$exe")" = "gpu_damage_mask.exe" ] && continue
         case "$(basename "$exe")" in gpu_workspace_PARTIAL.exe|gpu_workspace_COPY.exe|gpu_workspace_REFUSAL.exe) continue ;; esac
         [ "$(basename "$exe")" = "window_gestures.exe" ] && continue

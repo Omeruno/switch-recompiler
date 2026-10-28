@@ -825,7 +825,10 @@ GuestThread* Process::CreateGuestThread(uint32_t startAddress, uint32_t paramete
         error = "guest process main thread is not ready";
         return nullptr;
     }
-    if (!startAddress || !mem_.IsMapped(startAddress)) {
+    // Registered HLE exports are executable interpreter entry points too;
+    // they deliberately have no guest instruction page (e.g. a service worker).
+    if (!startAddress || (!mem_.IsMapped(startAddress) &&
+                         win32::HostAddressToIndex(startAddress)<0)) {
         error = "worker thread start address is not mapped";
         return nullptr;
     }

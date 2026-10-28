@@ -36,5 +36,5 @@ int main(int argc,char** argv){
     }
     assert(rt::Audio().Accepted()==10 && rt::Audio().Completed()==2 && rt::Audio().Cancelled()==8);
     assert(rt::Audio().Bind(nullptr));
-    puts("Audio APIs PASS (4 normal x86 sessions,no-device/capture/submit-error/restart,actual resource+memory PCM snapshots,stereo,replace/NOSTOP/release/stop,real caps/query and unsupported function-callback refusal)");
+    puts("Audio APIs PASS (4 normal x86 sessions,no-device/capture/submit-error/restart,actual resource+memory PCM snapshots,stereo,replace/NOSTOP/release/stop,real caps/query and unsupported callback-mode refusal)");
 }

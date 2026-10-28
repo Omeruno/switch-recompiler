@@ -22,9 +22,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 </style>
 </head>
 <body>
-<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40665841698" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
+<header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40746297279" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D4b streaming → function/event callbacks</span></div><h2>Звуковой слой: поток, буферы и уведомления</h2><p>D4b: real waveOut streaming/header lifecycle и уведомления окна/потока;7 normal x86 exits +1 abort. Далее function/event callbacks. Host Pinball требует MCI; звук/игра на Switch не подтверждены.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D4c callbacks → позиция и пауза</span></div><h2>Звуковой слой: исполнение колбэков и события</h2><p>D4c: колбэки исполняются в настоящем гостевом потоке; события используют kernel HANDLE и права. Далее позиция воспроизведения и пауза. Host Pinball требует MCI; звук/игра на Switch не подтверждены.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -39,8 +39,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 {
   "schema": 1,
   "updated": "2026-10-28",
-  "runtimeSha": "9b56e12d0e466435ef0fe1bd659aca0816ce92a7",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40665841698",
+  "runtimeSha": "dcb2e5bf3811d62339b23d574947f394077da2df",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/40746297279",
   "current": "D",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -113,7 +113,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "D",
       "title": "Совместимость Windows",
       "status": "current",
-      "summary": "D1–D4b bounded streaming/window-thread callbacks реализованы; далее scheduled function/event audio callbacks.",
+      "summary": "D1–D4c реализованы: потоковый PCM, оконные/потоковые уведомления, гостевые function callbacks и kernel events; далее позиция/пауза.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
         "Существенный Win32/CRT и ограниченный SEH.",
@@ -121,10 +121,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "D2: fixed-US MapVirtualKey/GetKeyNameText A/W, реальные USER scan/E0/state; четыре свежих x86 сеанса по19 событий.",
         "D3:16 INI/profile A/W exports, VFS-backed файлы, checked flush/close/rename и четыре свежих x86 writer/reader сеанса.",
         "D4a: immutable aligned PCM, checked native submit/release/reset, PlaySound replacement/NOSTOP, truthful caps/query; public4-session capture and native adapter transport tests.",
-        "D4b: real stream/header state, release/cancel before DONE, exclusive client и USER callbacks;35 accepts/11 releases/24 cancellations,7 exits +1 parked abort."
+        "D4b: real stream/header state, release/cancel before DONE, exclusive client и USER callbacks;35 accepts/11 releases/24 cancellations,7 exits +1 parked abort.",
+        "D4c: real guest worker CPU/TEB/TLS/stdcall20, bounded128-record queue, event rights/manual/auto/aliases;9 process terminations +1 parked callback abort."
       ],
       "todo": [
-        "Scheduled function/event callbacks с реальным guest CPU/TEB/ABI и lifecycle gates; broader formats/position/pause, MCI/MIDI и registry persistence отдельно.",
+        "Played-frame position/pause/restart с реальным backend state; broader formats/resampler/mixing, MCI/MIDI и registry persistence отдельно.",
         "Защита страниц, полный unwind/SEH и COM.",
         "API и зависимости конкретных программ.",
         "Аудит игровых системных/audio/middleware API по выбранным версиям; реальные host backends, без успешных заглушек."
@@ -136,10 +137,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/D3_INI_PROFILES.md",
         "docs/D4A_AUDIO_OWNERSHIP.md",
         "docs/D4B_WAVE_STREAMING.md",
+        "docs/D4C_WAVE_CALLBACKS.md",
         "docs/ROADMAP.md",
         "docs/PROJECT_STATUS_RU.md"
       ],
-      "limit": "Canonical PCM/one stream only; function/event callbacks, аппаратный звук/игра/FPS не подтверждены. Host Pinball требует MCI mciSendCommandA.",
+      "limit": "Canonical PCM/one stream; positions/pause/mixing/other formats, аппаратный звук/игра/FPS не подтверждены. Host Pinball требует MCI mciSendCommandA.",
       "kind": "Этап"
     },
     {
@@ -197,7 +199,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "G",
       "title": "Ускорение CPU / GDI",
       "status": "partial",
-      "summary": "G4b.2n: software acceptance и CPU/native cycles; D1–D4b streaming реализованы; далее function/event audio callbacks.",
+      "summary": "G4b.2n: software acceptance и CPU/native cycles; D1–D4c audio callbacks реализованы; далее position/pause/restart.",
       "done": [
         "G1 измерения и включённый CPU fast path G2.",
         "Реальные GL-прототипы G3/G4a и упорядоченные пакеты G4b.1.",
@@ -207,7 +209,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
       ],
       "todo": [
-        "Software gates сведены; explicit CPU routing готов; D1–D4b streaming реализованы; далее function/event audio callbacks, default CPU.",
+        "Software gates сведены; explicit CPU routing готов; D1–D4c audio callbacks реализованы; далее position/pause/restart, default CPU.",
         "Затем замеры настоящих приложений и дальнейшее CPU-ускорение.",
         "Полноценный x86→ARM64 dynarec/code cache, SSE/x87/атомики и корректный fallback для PC-игр; сейчас не реализован."
       ],

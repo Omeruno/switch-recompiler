@@ -147,5 +147,17 @@ int main() {
     deadlines.Next();
     assert(waiting.IsRunnable() && waiting.timedOutHandle==0x1111);
     rt::Clock::SetFastForward(false);
-    puts("PASSED: round-robin, suspend, wait, wake and exit");
+    // Service workers get normal quanta but do not keep the process alive.
+    rt::GuestScheduler services;
+    rt::GuestThread app,service;
+    app.id=501;service.id=502;service.background=true;
+    app.status=service.status=rt::GuestThreadStatus::Runnable;
+    assert(services.Add(app) && services.Add(service));
+    assert(!services.HasLivePeer(app.id) && services.HasLivePeer(service.id));
+    assert(services.Next()==&app && services.Next()==&service);
+    services.Exit(app,55);
+    assert(!services.HasLiveThreads() && services.Next()==&service);
+    services.Exit(service,0);
+    assert(!services.Next());
+    puts("PASSED: round-robin, suspend, wait, wake, background liveness and exit");
 }
