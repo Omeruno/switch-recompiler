@@ -20,7 +20,7 @@ int main(int argc,char**argv){
     const fs::path fixtures=argc>1?argv[1]:"audio";
     ui::FontCache::SetDirectory((fs::absolute(fixtures).parent_path().parent_path().parent_path()/"romfs/fonts").string());
     for(const char* name:{"stereo-vbr.mp3","mono-cbr.mp3","stereo-raw.mp3"}){
-        rt::AudioDecoder decoder;assert(decoder.OpenBytes(Bytes(fixtures/name)));assert(decoder.IsMp3());std::vector<int16_t> all,first;
+        rt::AudioDecoder decoder;assert(decoder.OpenBytes(Bytes(fixtures/name)));assert(decoder.IsMp3());assert(decoder.SampleRate()==(std::string(name)=="stereo-vbr.mp3"?44100:std::string(name)=="mono-cbr.mp3"?22050:48000));assert(decoder.SourceFrameCount()*48000/decoder.SampleRate()==decoder.Duration());std::vector<int16_t> all,first;
         for(unsigned n=0;n<1000;++n){std::vector<int16_t> pcm;assert(decoder.Read(pcm));assert(pcm.size()<=rt::AudioDecoder::SourceFrames*12+12);if(pcm.empty())break;if(first.empty())first=pcm;all.insert(all.end(),pcm.begin(),pcm.end());}
         assert(all.size()/2==decoder.Duration());
         if(std::string(name)=="stereo-vbr.mp3"){
@@ -62,8 +62,11 @@ int main(int argc,char**argv){
     {
         rt::AudioScope scope;rt::MediaPlayer player;assert(player.Open(vfs,"C:\\Programs\\Моя музыка.mp3") && player.Duration()==384000);
         assert(player.Play() && device.active.size()==4 && rt::Audio().Client());
+        std::array<int16_t,512> visual{};assert(player.Visualization(visual));const auto* actual=static_cast<const int16_t*>(device.active.begin()->second->Data());
+        for(size_t n=0;n<visual.size();++n)assert(visual[n]==actual[n]);
+        device.playedFrames+=128;assert(player.Visualization(visual));for(size_t n=0;n<visual.size();++n)assert(visual[n]==actual[n+256]);
         const auto first=device.active.begin()->second;assert(first->Bytes()<=rt::AudioDecoder::SourceFrames*24+24);
-        assert(player.Pause() && device.paused);const auto position=player.Position();rt::Clock::SetFastForward(true);rt::Clock::Sleep(500);rt::Clock::SetFastForward(false);player.Tick();assert(player.Position()==position && device.active.size()==4);
+        assert(player.Pause() && device.paused);std::array<int16_t,512> frozen{};assert(player.Visualization(frozen));const auto position=player.Position();rt::Clock::SetFastForward(true);rt::Clock::Sleep(500);rt::Clock::SetFastForward(false);player.Tick();assert(player.Position()==position && device.active.size()==4);assert(player.Visualization(visual) && visual==frozen);
         assert(player.Seek(48000) && device.paused && device.active.empty() && player.Position()==48000);
         assert(player.Play() && !device.paused);player.Tick();assert(device.active.size()==4);
         assert(player.SetVolume(25) && player.Volume()==25 && device.volume==16383);
@@ -79,6 +82,9 @@ int main(int argc,char**argv){
         ui::DesktopShell shell;assert(shell.ConfigureFilesystem(root.string(),"","",error));Click(shell,ui::DesktopShell::Start);Click(shell,ui::DesktopShell::MediaApp);
         assert(shell.ActiveDialog()==ui::DesktopShell::Dialog::MediaPlayer);Click(shell,ui::DesktopShell::MediaChoose);assert(shell.PendingTextInput()==ui::DesktopShell::TextInput::MediaPath);
         shell.CompleteTextInput(true,"C:\\Programs\\Моя музыка.mp3");assert(shell.Media().Status()==rt::MediaPlayer::State::Playing);shell.ServiceMedia();
+        const auto previewTokens=device.active.size();Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==1 && device.active.size()==previewTokens);
+        Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==2);{ui::OwnedSurface frame;frame.Allocate(1280,720);shell.Render(frame.s,u"12:34");}Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==3);{ui::OwnedSurface frame;frame.Allocate(1280,720);shell.Render(frame.s,u"12:34");}Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==0);
+        Click(shell,ui::DesktopShell::MediaSeek);assert(shell.Media().Position()>180000 && shell.Media().Position()<200000);
         Click(shell,ui::DesktopShell::MediaPause);assert(device.paused);Click(shell,ui::DesktopShell::MediaForward);assert(device.paused && shell.Media().Position()==384000);
         Click(shell,ui::DesktopShell::MediaStop);Click(shell,ui::DesktopShell::MediaPlay);assert(!device.paused && device.active.size()==4);
         Click(shell,ui::DesktopShell::DialogMinimize);assert(shell.NativeMinimized());Release(device);shell.ServiceMedia();assert(device.active.size()==4);
@@ -89,7 +95,12 @@ int main(int argc,char**argv){
             for(int y=0;y<720;++y)for(int x=0;x<1280;++x){const auto pixel=surface.s.Get(x,y);const uint8_t rgb[]={uint8_t(pixel>>16),uint8_t(pixel>>8),uint8_t(pixel)};assert(std::fwrite(rgb,1,3,file)==3);}
             assert(!std::fclose(file));
         }
-        Click(shell,ui::DesktopShell::DialogMaximize);const auto bounds=shell.DialogBounds();shell.PointerDown(bounds.right-2,bounds.bottom-2);assert(shell.DraggingWindow());shell.PointerMove(bounds.right+90,bounds.bottom+50);shell.PointerUp(bounds.right+90,bounds.bottom+50);assert(shell.DialogBounds().Width()>bounds.Width());
+        Click(shell,ui::DesktopShell::DialogMaximize);
+        if(const auto* capture=std::getenv("AUDIO_MEDIA_CAPTURE")){
+            Click(shell,ui::DesktopShell::MediaEffect);shell.Render(surface.s,u"12:34");const auto path=std::string(capture)+"-wave.ppm";FILE* file=std::fopen(path.c_str(),"wb");assert(file);std::fprintf(file,"P6\n1280 720\n255\n");
+            for(int y=0;y<720;++y)for(int x=0;x<1280;++x){const auto pixel=surface.s.Get(x,y);const uint8_t rgb[]={uint8_t(pixel>>16),uint8_t(pixel>>8),uint8_t(pixel)};assert(std::fwrite(rgb,1,3,file)==3);}assert(!std::fclose(file));Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);
+        }
+        const auto bounds=shell.DialogBounds();shell.PointerDown(bounds.right-2,bounds.bottom-2);assert(shell.DraggingWindow());shell.PointerMove(bounds.right+90,bounds.bottom+50);shell.PointerUp(bounds.right+90,bounds.bottom+50);assert(shell.DialogBounds().Width()>bounds.Width());
         Click(shell,ui::DesktopShell::DialogClose);assert(shell.ActiveDialog()==ui::DesktopShell::Dialog::None && !shell.Media().Loaded() && device.active.empty() && !rt::Audio().Client());
         // Default selection/activate route, not only the native Open dialog.
         Click(shell,ui::DesktopShell::Computer);Click(shell,ui::DesktopShell::QuickC);

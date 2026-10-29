@@ -2,8 +2,8 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-28, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `49a52af659315fe6a1509a859d290cb7620759cb`,
-[CI 40749538149 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40749538149).
+Актуально на 2026-10-29, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b`,
+[CI 40773201160 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
@@ -98,6 +98,9 @@ Host EGL/Mesa проверяет пиксели, порядок, лимиты и
 и ограниченный [shared-context контракт](G4B2_SHARED_CONTEXT.md); это ещё не
 готовый GPU-путь обычных приложений.
 Минимальный JIT-probe ранее возвращал 42 на Switch, но code cache/dynarec не готов.
+
+[F6c](F6C_MEDIA_VISUALS.md): плеер в стиле XP, настоящие PCM-визуализации,
+музыкальные значки и двойной щелчок в проводнике; аппаратная приёмка не добавлена.
 
 ## Ближайшие рубежи
 

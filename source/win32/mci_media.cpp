@@ -38,8 +38,19 @@ bool Notify(uint32_t window,uint32_t id,uint32_t reason){
     if(queue->second.posted.size()>=1024){State().notificationFailed=true;return false;}
     return user::PostToThread(w->threadId,window,0x3b9,reason,id);
 }
-uint64_t Frames(uint32_t value){return State().timeFormat==9?value:uint64_t(value)*48;}
-uint32_t Units(uint64_t frames){return uint32_t(State().timeFormat==9?frames:frames/48);}
+uint64_t Frames(uint32_t value){
+    auto& s=State();if(s.timeFormat!=9)return uint64_t(value)*48;
+    if(value>s.player.SourceFrameCount() || !s.player.SampleRate())return UINT64_MAX;
+    if(value==s.player.SourceFrameCount())return s.player.Duration();
+    // Source samples, not the device's resampled 48k frames. Round upward to
+    // the first representable output frame; EOF is the exact duration boundary.
+    return (uint64_t(value)*48000+s.player.SampleRate()-1)/s.player.SampleRate();
+}
+uint32_t Units(uint64_t frames){
+    auto& s=State();if(s.timeFormat!=9)return uint32_t(frames/48);
+    if(frames>=s.player.Duration())return uint32_t(s.player.SourceFrameCount());
+    return uint32_t(frames*s.player.SampleRate()/48000);
+}
 HostCallOutcome Command(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide){
     if(!rt::g_process)return Ret(NotReady);
     PollMciMedia();auto& s=State();const auto device=Arg(c,m,0),command=Arg(c,m,1),flags=Arg(c,m,2),p=Arg(c,m,3);

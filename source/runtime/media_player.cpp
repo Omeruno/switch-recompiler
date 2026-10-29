@@ -46,7 +46,7 @@ bool MediaPlayer::Stop() {
         if(!Audio().Reset()){state_=State::Error;return Fail("Audio reset failed; buffers retained");}
         Audio().ReleaseClient(owner_,client_);
     }
-    client_=owner_=0;retirement_.reset();eof_=false;submitted_=offset_=lastPosition_=0;
+    client_=owner_=0;retirement_.reset();previews_.clear();eof_=false;submitted_=offset_=lastPosition_=0;
     if(decoder_ && !decoder_->Seek(0)){state_=State::Error;return Fail(decoder_->Error());}
     state_=decoder_?State::Ready:State::Empty;error_.clear();return true;
 }
@@ -66,6 +66,18 @@ uint64_t MediaPlayer::Position() const {
         lastPosition_=std::min(Duration(),offset_+std::min(frames-positionBase_,submitted_));
     return lastPosition_;
 }
+bool MediaPlayer::Visualization(std::array<int16_t,512>& stereo) const {
+    stereo.fill(0);
+    if(!Owns() || (state_!=State::Playing && state_!=State::Paused))return false;
+    const auto position=Position();bool found=false;
+    for(size_t n=0;n<stereo.size()/2;++n)for(const auto& block:previews_){
+        const auto frame=position+n;
+        if(!block->retired && frame>=block->start && frame-block->start<block->pcm.size()/2){
+            const auto at=size_t(frame-block->start)*2;stereo[n*2]=block->pcm[at];stereo[n*2+1]=block->pcm[at+1];found=true;break;
+        }
+    }
+    return found;
+}
 unsigned MediaPlayer::Volume() const {uint16_t value=0;return Audio().Volume(value)?unsigned((uint32_t(value)*100+32767)/65535):0;}
 bool MediaPlayer::SetVolume(unsigned percent) {
     if(percent>100)return Fail("Volume must be 0 to 100");
@@ -81,15 +93,18 @@ bool MediaPlayer::Tick() {
     if(!Audio().Position(owner_,client_,raw) || raw<positionBase_){state_=State::Error;Fail("Audio position failed; Stop to recover");return true;}
     if(retirement_ && retirement_->cancelled){state_=State::Error;Fail("Audio was cancelled; press Stop");return true;}
     if(!Audio().Poll()){state_=State::Error;Fail("Audio device failed; Stop to recover");return true;}
+    previews_.erase(std::remove_if(previews_.begin(),previews_.end(),[](const auto& block){return block->retired;}),previews_.end());
     if(state_==State::Paused)return Position()!=before;
     // At most four bounded decode/submission operations per owner tick.
     for(size_t n=0;n<AudioOutput::Slots && !eof_ && Audio().Pending()<AudioOutput::Slots;++n){
         std::vector<int16_t> pcm;if(!decoder_->Read(pcm)){state_=State::Error;Fail(decoder_->Error());return true;}
         if(pcm.empty()){eof_=true;break;}
         const auto frames=pcm.size()/2;std::weak_ptr<Retirement> weak=retirement_;
-        const auto result=Audio().Submit(owner_,pcm,[weak,frames](bool cancelled){if(auto state=weak.lock()){if(cancelled)state->cancelled+=frames;else state->completed+=frames;}},client_);
+        auto preview=std::make_shared<Preview>();preview->start=offset_+submitted_;std::weak_ptr<Preview> weakPreview=preview;
+        const auto result=Audio().Submit(owner_,pcm,[weak,frames,weakPreview](bool cancelled){if(auto block=weakPreview.lock())block->retired=true;if(auto state=weak.lock()){if(cancelled)state->cancelled+=frames;else state->completed+=frames;}},client_);
         if(result!=AudioOutput::Result::Accepted){state_=State::Error;Fail("Audio submission failed; Stop to recover");return true;}
-        submitted_+=frames;
+        previews_.erase(std::remove_if(previews_.begin(),previews_.end(),[](const auto& block){return block->retired;}),previews_.end());
+        preview->pcm=std::move(pcm);previews_.push_back(std::move(preview));submitted_+=frames;
     }
     if(eof_ && !Audio().Pending()){
         Audio().ReleaseClient(owner_,client_);client_=owner_=0;state_=State::Finished;lastPosition_=Duration();return true;}

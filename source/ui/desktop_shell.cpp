@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <chrono>
 
 namespace ui {
 namespace {
@@ -121,6 +122,7 @@ xp::IconKind EntryIcon(const ShellBrowser::Entry& e) {
         return xp::IconKind::Folder;
     }
     auto ends=[&](const char* ext){const size_t n=std::strlen(ext);return name.size()>n && name.compare(name.size()-n,n,ext)==0;};
+    if(ends(".mp3") || ends(".wav"))return xp::IconKind::MusicFile;
     if(ends(".exe"))return xp::IconKind::Application;
     if(ends(".txt") || ends(".ini") || ends(".log"))return xp::IconKind::TextFile;
     if(ends(".bmp") || ends(".png") || ends(".jpg") || ends(".jpeg") || ends(".gif"))return xp::IconKind::ImageFile;
@@ -135,6 +137,7 @@ std::u16string EntryType(const ShellBrowser::Entry& e) {
     case xp::IconKind::Folder:case xp::IconKind::Documents:case xp::IconKind::Pictures:case xp::IconKind::Programs:return u"Папка с файлами";
     case xp::IconKind::Application:return u"Приложение";
     case xp::IconKind::TextFile:return u"Текстовый документ";
+    case xp::IconKind::MusicFile:return u"Аудиозапись";
     case xp::IconKind::ImageFile:return u"Рисунок";
     default:return u"Файл";
     }
@@ -304,10 +307,10 @@ bool DesktopShell::ControlEnabled(int t) const {
     }
     if(dialog_==Dialog::MediaPlayer){
         using MS=rt::MediaPlayer::State;
-        if(t==MediaChoose || t==CancelDialog)return true;
+        if(t==MediaChoose || t==MediaEffect || t==CancelDialog)return true;
         if(t==MediaPlay)return media_.Loaded() && media_.Status()!=MS::Playing;
         if(t==MediaPause)return media_.Status()==MS::Playing;
-        if(t==MediaStop || t==MediaBack || t==MediaForward)return media_.Loaded();
+        if(t==MediaStop || t==MediaBack || t==MediaForward || t==MediaSeek)return media_.Loaded();
         return t==MediaVolumeDown || t==MediaVolumeUp;
     }
     if(dialog_==Dialog::ImageViewer)return t==ImageFit || t==ImageActual || t==CancelDialog;
@@ -389,7 +392,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(textInput_!=TextInput::None)return {None};
     if(dialog_==Dialog::FolderTree)return {TreeExpand,TreeCollapse,TreeOpen,CancelDialog};
     if(dialog_==Dialog::MediaPlayer){std::vector<int> order;
-        for(int t:{MediaChoose,MediaPlay,MediaPause,MediaStop,MediaBack,MediaForward,MediaVolumeDown,MediaVolumeUp,CancelDialog,DialogMinimize,DialogMaximize,DialogClose,NativeTask})if(Enabled(t))order.push_back(t);
+        for(int t:{MediaChoose,MediaPlay,MediaPause,MediaStop,MediaBack,MediaForward,MediaVolumeDown,MediaVolumeUp,MediaEffect,CancelDialog,DialogMinimize,DialogMaximize,DialogClose,NativeTask})if(Enabled(t))order.push_back(t);
         return order;
     }
     if(dialog_==Dialog::ImageViewer)return {ImageFit,ImageActual,CancelDialog,DialogMinimize,DialogMaximize,DialogClose,NativeTask};
@@ -431,6 +434,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     return out;
 }
 void DesktopShell::NextFocus() {
+    clickIdentity_.clear();
     if(textInput_!=TextInput::None)return;
     const auto order=FocusOrder();const auto it=std::find(order.begin(),order.end(),focus_);
     focus_=it==order.end() || it+1==order.end()?order.front():*(it+1);
@@ -586,6 +590,7 @@ Rect DesktopShell::ContextBounds(int target) const {
     return {contextRect_.left+4,contextRect_.top+4+row*30,contextRect_.right-4,contextRect_.top+34+row*30};
 }
 void DesktopShell::CloseContext() {
+    clickIdentity_.clear();
     if(!contextOpen_)return;
     contextOpen_=false;contextCount_=0;contextPath_.clear();pressed_=hover_=None;focus_=contextReturnFocus_;
 }
@@ -613,6 +618,7 @@ void DesktopShell::ShowContext(bool folder,int x,int y) {
     const auto order=FocusOrder();focus_=order.front();
 }
 void DesktopShell::OpenContext(bool folder) {
+    clickIdentity_.clear();
     if(contextOpen_){CloseContext();return;}
     const auto row=ControlBounds(BrowserRowBase+int(browser_.Selected()%VisibleRows()));
     ShowContext(folder || focus_==FolderActions,row.left+40,row.top);
@@ -623,6 +629,7 @@ int DesktopShell::SecondaryTarget(int x,int y) const {
     return target>=BrowserRowBase && target<BrowserRowBase+VisibleRows() && Enabled(target)?target:-1;
 }
 void DesktopShell::SecondaryDown(int x,int y) {
+    clickIdentity_.clear();
     secondaryTarget_=-2;
     if(contextOpen_){CloseContext();return;}
     if(ModalActive() || startOpen_ || panel_!=Panel::Explorer || pressed_!=None)return;
@@ -640,6 +647,7 @@ void DesktopShell::SecondaryUp(int x,int y) {
     ShowContext(target==-1,x,y);
 }
 void DesktopShell::ToggleStart() {
+    clickIdentity_.clear();
     if(nativeMinimized_ && dialog_!=Dialog::None){ToggleNativeTask();return;}
     if(ModalActive())return;
     pressed_=None;
@@ -647,6 +655,7 @@ void DesktopShell::ToggleStart() {
     else {startOpen_=false;focus_=menuReturnFocus_;}
 }
 void DesktopShell::Move(int delta) {
+    clickIdentity_.clear();
     if(dialog_==Dialog::MediaPlayer && textInput_==TextInput::None){
         const auto order=FocusOrder();if(order.empty())return;
         auto it=std::find(order.begin(),order.end(),focus_);const int index=it==order.end()?0:int(it-order.begin()),count=int(order.size());
@@ -687,6 +696,7 @@ void DesktopShell::Move(int delta) {
     focus_=order[size_t((current+delta%count+count)%count)];
 }
 void DesktopShell::Page(int delta) {
+    clickIdentity_.clear();
     if(dialog_==Dialog::MediaPlayer){if(media_.Loaded()){const auto p=media_.Position();media_.Seek(delta<0?(p>480000?p-480000:0):std::min(media_.Duration(),p+480000));}return;}
     if(dialog_==Dialog::FolderTree){if(delta>0)tree_.Expand(treeSelection_);else tree_.Collapse(treeSelection_);return;}
     if(dialog_==Dialog::ImageViewer) {
@@ -703,7 +713,7 @@ void DesktopShell::Page(int delta) {
     const int page=std::max(0,std::min(int(First()/VisibleRows())+delta,int((files_.size()-1)/VisibleRows())));
     selected_=std::min(size_t(page*VisibleRows())+selected_%VisibleRows(),files_.size()-1);focus_=RowBase+int(selected_%VisibleRows());
 }
-void DesktopShell::Accept() {Activate(focus_);}
+void DesktopShell::Accept() {clickIdentity_.clear();Activate(focus_);}
 void DesktopShell::Back() {
     if(DraggingWindow()){CancelPointer();return;}
     if(nativeMinimized_ && !startOpen_){ToggleNativeTask();return;}
@@ -740,7 +750,7 @@ int DesktopShell::HitTest(int x,int y) const {
         for(int i=0;i<7;++i)if(ControlBounds(TreeRowBase+i).Contains(x,y))return TreeRowBase+i;
         return None;
     }
-    if(dialog_==Dialog::MediaPlayer){for(int t:FocusOrder())if(ControlBounds(t).Contains(x,y))return t;return None;}
+    if(dialog_==Dialog::MediaPlayer){if(ControlBounds(MediaSeek).Contains(x,y) && Enabled(MediaSeek))return MediaSeek;for(int t:FocusOrder())if(ControlBounds(t).Contains(x,y))return t;return None;}
     if(dialog_==Dialog::ImageViewer) {
         for(int t:{ImageFit,ImageActual,CancelDialog})if(ControlBounds(t).Contains(x,y))return t;
         return None;
@@ -804,8 +814,19 @@ void DesktopShell::PointerMove(int x,int y) {
     }
     hover_=HitTest(x,y);if(contextOpen_ && Enabled(hover_))focus_=hover_;
 }
+uint64_t DesktopShell::PointerTime() const {
+    if(pointerClock_)return pointerClock_();
+    return uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+bool DesktopShell::DoubleClick(const std::string& identity,int x,int y){
+    const auto now=PointerTime();
+    if(now<pressTime_ || now-pressTime_>500000 || std::abs(x-pressX_)>6 || std::abs(y-pressY_)>6){clickIdentity_.clear();return false;}
+    const bool twice=clickIdentity_==identity && now>=clickTime_ && now-clickTime_<=500000 && std::abs(x-clickX_)<=6 && std::abs(y-clickY_)<=6;
+    clickIdentity_=twice?"":identity;clickTime_=now;clickX_=x;clickY_=y;return twice;
+}
 void DesktopShell::PointerDown(int x,int y) {
-    secondaryTarget_=-2;PointerMove(x,y);pressed_=hover_;
+    secondaryTarget_=-2;PointerMove(x,y);pressed_=hover_;pressX_=x;pressY_=y;pressTime_=PointerTime();
+    if(!(hover_>=RowBase && hover_<RowBase+Rows) && !(hover_>=BrowserRowBase && hover_<BrowserRowBase+Rows))clickIdentity_.clear();
     if(hover_==TitleBar || (hover_>=ResizeBase && hover_<ResizeBase+8)) {
         dragTarget_=hover_;dragDialog_=dialog_!=Dialog::None;dragX_=x;dragY_=y;dragOriginal_=CurrentWindow().bounds;
     }
@@ -817,19 +838,26 @@ void DesktopShell::PointerUp(int x,int y) {
     if(target==None){if(contextOpen_)CloseContext();else if(startOpen_){ToggleStart();}return;}
     if(!Enabled(target))return;
     focus_=target;
+    if(target==MediaSeek){const auto r=ControlBounds(MediaSeek);media_.Seek(uint64_t(std::max(0,std::min(r.Width()-1,x-r.left)))*media_.Duration()/std::max(1,r.Width()-1));return;}
     if(target>=DesktopLinkBase && target<DesktopLinkBase+24){browser_.OpenPath(desktopLinks_[size_t(target-DesktopLinkBase)],request_);return;}
     if(target>=TreeRowBase && dialog_==Dialog::FolderTree){treeSelection_=treeSelection_/7*7+size_t(target-TreeRowBase);focus_=TreeOpen;return;}
     if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/VisibleTextRows()*VisibleTextRows()+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
-    if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase));return;}
+    if(target>=BrowserRowBase) {
+        browser_.Select(browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase));
+        if(!browser_.Entries().empty() && DoubleClick(browser_.Path()+"|"+browser_.Entries()[browser_.Selected()].path,x,y))OpenCurrent();
+        return;
+    }
     if(target>=RowBase) {
         const auto next=First()+size_t(target-RowBase);
-        // First click selects; Open or controller Accept explicitly launches.
-        selected_=next;return;
+        selected_=next;
+        if(selected_<files_.size() && DoubleClick("program|"+files_[selected_],x,y))LaunchProgram();
+        return;
     }
     Activate(target);
 }
 void DesktopShell::Activate(int target) {
     if(!Enabled(target))return;
+    if(target==MediaSeek)return;
     if(target==NativeTask){ToggleNativeTask();return;}
     if(target==Minimize || target==DialogMinimize){ToggleNativeTask();return;}
     if(target==Maximize || target==DialogMaximize){ToggleNativeMaximize();return;}
@@ -872,6 +900,7 @@ void DesktopShell::Activate(int target) {
         if(target==MediaOpen && media_.Open(browser_.Filesystem(),browser_.Entries()[browser_.Selected()].path))media_.Play();
         break;
     }
+    case MediaEffect:mediaEffect_=(mediaEffect_+1)%4;break;
     case MediaChoose:textInput_=TextInput::MediaPath;initialText_=media_.Path().empty()?browser_.Path():media_.Path();break;
     case MediaPlay:media_.Play();break;
     case MediaPause:media_.Pause();break;
@@ -1225,7 +1254,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
     if(HasNativeWindow()) {
         const auto task=ControlBounds(NativeTask);xp::DrawTaskButton(s,task,!nativeMinimized_,hover_==NativeTask);
         const auto label=dialog_==Dialog::MediaPlayer?u"Media Player":DocumentWindow()?TextDialog()?u"Текстовый документ":u"Просмотр BMP":panel_==Panel::Programs?u"Программы":panel_==Panel::About?u"О программе":u"Проводник";
-        xp::DrawIcon(s,DocumentWindow()?xp::IconKind::TextFile:xp::IconKind::FolderOpen,task.left+6,task.top+5,24);
+        xp::DrawIcon(s,dialog_==Dialog::MediaPlayer?xp::IconKind::MusicFile:DocumentWindow()?xp::IconKind::TextFile:xp::IconKind::FolderOpen,task.left+6,task.top+5,24);
         Text(s,{task.left+38,task.top+7,task.right-6,task.bottom},label,0xFFFFFF,14,true);
     }
     xp::DrawTray(s,{1158,680,1280,720});
@@ -1251,7 +1280,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         };
         item(Settings,xp::IconKind::Computer,32,u"Настройки оболочки",u"Сортировка и ассоциации",true);
         item(About,xp::IconKind::Application,32,u"О программе",u"Switch Recompiler",true);
-        item(MediaApp,xp::IconKind::Application,32,u"Media Player",u"Музыка MP3 и WAV",true);
+        item(MediaApp,xp::IconKind::MusicFile,32,u"Media Player",u"Музыка MP3 и WAV",true);
         xp::DrawMenuSeparator(s,14,232,574);
         {
             const auto r=ControlBounds(MenuPrograms);const bool hot=Enabled(MenuPrograms) && (focus_==MenuPrograms || hover_==MenuPrograms);
@@ -1307,22 +1336,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             }
             control(TreeExpand,u"Развернуть",ControlBounds(TreeExpand));control(TreeCollapse,u"Свернуть",ControlBounds(TreeCollapse));control(TreeOpen,u"Открыть",ControlBounds(TreeOpen));control(CancelDialog,u"Закрыть",ControlBounds(CancelDialog));
         } else if(dialog_==Dialog::MediaPlayer){
-            const auto path=media_.Path();const auto slash=path.find_last_of("/\\");
-            Text(s,DialogLayout({416,242,1006,266}),path.empty()?u"Музыка на вашем Switch":Wide(path.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-            using MS=rt::MediaPlayer::State;const auto state=media_.Status();
-            const auto status=state==MS::Playing?u"Воспроизведение":state==MS::Paused?u"Пауза":state==MS::Finished?u"Запись завершена":state==MS::Error?u"Ошибка воспроизведения":u"Готов";
-            const uint64_t now=media_.Position()/48000,total=media_.Duration()/48000;
-            char time[128];std::snprintf(time,sizeof(time),"%llu:%02llu / %llu:%02llu   %s",(unsigned long long)(now/60),(unsigned long long)(now%60),(unsigned long long)(total/60),(unsigned long long)(total%60),media_.Mp3()?"MP3":"PCM WAV");
-            Text(s,DialogLayout({416,268,1006,290}),Wide(time)+u"   "+status,0x42576B,14);
-            const auto bar=DialogLayout({416,340,1006,350});Fill(s,bar,0xCAD6E5);
-            if(media_.Duration())Fill(s,{bar.left,bar.top,bar.left+int(uint64_t(bar.Width())*std::min(media_.Position(),media_.Duration())/media_.Duration()),bar.bottom},0x3177CA);
-            control(MediaChoose,u"Открыть…",ControlBounds(MediaChoose));
-            control(MediaPlay,state==MS::Paused?u"Продолжить":u"Играть",ControlBounds(MediaPlay));control(MediaPause,u"Пауза",ControlBounds(MediaPause));control(MediaStop,u"Стоп",ControlBounds(MediaStop));
-            control(MediaBack,u"−10 сек",ControlBounds(MediaBack));control(MediaForward,u"+10 сек",ControlBounds(MediaForward));
-            control(MediaVolumeDown,u"Тише",ControlBounds(MediaVolumeDown));control(MediaVolumeUp,u"Громче",ControlBounds(MediaVolumeUp));
-            Text(s,DialogLayout({652,448,1006,476}),u"Громкость: "+Wide(std::to_string(media_.Volume()))+u"%",0x24354A,16);
-            Text(s,DialogLayout({416,482,1006,502}),media_.Error().empty()?u"MP3 / PCM WAV • C:, S: и R: • Y/Tab: кнопки":Wide(media_.Error()),media_.Error().empty()?0x42576B:0x9E3020,12);
-            control(CancelDialog,u"Закрыть",ControlBounds(CancelDialog));
+            RenderMedia(s);
         } else if(dialog_==Dialog::ImageViewer) {
             char info[100];std::snprintf(info,sizeof(info),"%d × %d   %s   ←/→/↑/↓",image_.Width(),image_.Height(),imageFit_?"Вписать":"100%");
             Text(s,DialogLayout({416,240,1006,260}),Wide(image_.Path()),0x123D75,14,true);

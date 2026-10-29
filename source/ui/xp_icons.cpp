@@ -303,6 +303,18 @@ void Render(Canvas& cv, IconKind kind) {
         Page(cv, 0.20f, 0.06f, 0.80f, 0.92f, false);
         Landscape(cv, 0.28f, 0.34f, 0.72f, 0.74f);
         break;
+    case IconKind::MusicFile:
+        Shadow(cv,0.5f,0.92f,0.34f,0.05f);
+        Page(cv,0.17f,0.06f,0.83f,0.92f,false);
+        Round(cv,0.30f,0.28f,0.73f,0.74f,0.06f,VGrad(0x79C6F4,0x235BA7,0.28f,0.74f),0x174A80);
+        Stroke(cv,{0.43f,0.60f},{0.43f,0.37f},0xFFFFFF,0.045f);
+        Stroke(cv,{0.64f,0.55f},{0.64f,0.33f},0xFFFFFF,0.045f);
+        Stroke(cv,{0.43f,0.37f},{0.64f,0.33f},0xFFFFFF,0.055f);
+        Ellipse(cv,0.39f,0.61f,0.07f,0.045f,Solid(0xF5FDFF));
+        Ellipse(cv,0.60f,0.56f,0.07f,0.045f,Solid(0xF5FDFF));
+        Ellipse(cv,0.75f,0.79f,0.17f,0.17f,VGrad(0xB6E769,0x388921,0.62f,0.96f),0x256C20);
+        Poly(cv,{{0.71f,0.70f},{0.71f,0.88f},{0.84f,0.79f}},Solid(0xFFFFFF));
+        break;
     case IconKind::File:
         Shadow(cv, 0.5f, 0.92f, 0.32f, 0.05f);
         Page(cv, 0.20f, 0.06f, 0.80f, 0.92f, false);

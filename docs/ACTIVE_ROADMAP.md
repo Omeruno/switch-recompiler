@@ -1,10 +1,10 @@
-# Active implementation map — 2026-10-28
+# Active implementation map — 2026-10-29
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: F6a/F6b bounded guest/native window actions implemented.
-G4b.2o routing, D1–D4d playback controls/PCM formats/MP3/MCI/native Media Player implemented; next real mixing/DirectSound/MIDI and audio hardware evidence.** Runtime baseline `49a52af659315fe6a1509a859d290cb7620759cb`
-passed [CI40749538149, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40749538149).
+**Current position: F6a/F6b window actions and F6c media visuals/double-click implemented.
+G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; mixing/DirectSound/MIDI and physical sound remain open.** Runtime baseline `c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b`
+passed [CI40773201160, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -66,6 +66,10 @@ focus/capture/lifetime handling. [F6b native Explorer/Programs/About/TXT/BMP
 actions](F6B_NATIVE_WINDOW_ACTIONS.md) add true geometry/layout/input/composition,
 min/max/task restore, close policy and resize. One native tool group remains.
 The existing bounded F0–F5 acceptance is preserved, not expanded into full XP.
+
+[F6c media UI](F6C_MEDIA_VISUALS.md) adds XP-era player chrome, real playback-cursor PCM
+spectrum/wave/circles/VU, authored music icons and timed path-safe Explorer/program
+double-click; single selection/controller Open remain. One native tool group.
 
 ## G implementation state
 
@@ -142,7 +146,7 @@ G4b.2 is not full x86→ARM64 dynarec or DirectDraw/D3D.
 real supported installer payload/filesystem/API/shortcut handling, then ZIP,
 RAR/other formats later. Existing ProgramFiles/profile paths and native links
 are infrastructure, not universal installer/child-process/MSI/COM acceptance.
-Native window ergonomics/Luna polish, multi-Process, broader images and product
+F6c adds [media visuals/music icons/double-click](F6C_MEDIA_VISUALS.md). Further native window ergonomics/Luna polish, multi-Process, broader images and product
 compatibility/configuration remain visible future work.
 
 ## Validation and working agreement

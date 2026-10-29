@@ -108,7 +108,7 @@ acceptance work, not inferred from the host capture tests.
 Real exports: mciSendCommandA/W, mciGetDeviceIDA/W and mciGetErrorStringA/W.
 One monotonic MCI device per Process supports file-backed mpegvideo/waveaudio
 (MP3/PCM-WAV audio only), OPEN/CLOSE/PLAY/PAUSE/RESUME/STOP/SEEK/SET TIME_FORMAT/
-STATUS/GETDEVCAPS. Alias lookup, millisecond/sample units, error strings, actual
+STATUS/GETDEVCAPS. MCI_FORMAT_SAMPLES reports the file's original sample rate/count, not resampled48k device frames; sample seeks map to representable device frames, with exact EOF. Alias lookup, millisecond/source-sample units, error strings, actual
 file/device admission and stale-ID rejection are implemented. Error-string
 queries do not report every unknown error as recognized. Unsupported flags,
 commands, MIDI/sequencer/CD/video/recording/multiple devices return real MCI errors.
@@ -155,3 +155,7 @@ PlaySound filename/sync/loop extensions,more codecs/stream sources and measured
 underrun/latency/relaunch behavior. Full game audio and all of WinMM are not closed.
 Local devkitA64/libnx is absent; exact-SHA CI builds the NRO. Physical sound,
 Paint/GPU/input/fallback/relaunch checks stay deferred; SD recovery stays closed.
+
+The authored [F6c media UI](F6C_MEDIA_VISUALS.md) now adds source-backed PCM
+visualizations/music icons/double-click; earlier absence of visualization above
+describes D4d package scope. This is not video decoding or album-art extraction.

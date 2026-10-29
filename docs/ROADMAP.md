@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-28, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player.
-Проверенный код `49a52af659315fe6a1509a859d290cb7620759cb`:
-[CI40749538149, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40749538149).
+Дата обновления: 2026-10-29, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player.
+Проверенный код `c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b`:
+[CI40773201160, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.

@@ -26,6 +26,7 @@ enum class IconKind {
     ImageFile,     // картинка
     File,          // прочий файл
     Shortcut,      // стрелка ярлыка (накладывается поверх)
+    MusicFile,     // собственный музыкальный файл с нотами и кнопкой Play
     Count
 };
 

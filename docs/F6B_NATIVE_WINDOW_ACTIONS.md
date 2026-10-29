@@ -135,3 +135,7 @@ features remain separate work. Native placement is retained in the live shell,
 not newly persisted across process restarts. Resume G4b.2 owned mixed CPU/resident
 frames, live-window/shell integration and raw-host/fault audit before ordinary
 GDI GPU activation. Installer/archive and PC-game compatibility queues remain.
+
+Current [F6c extension](F6C_MEDIA_VISUALS.md) adds the authored XP-era media UI,
+real PCM effects/music icons and actual Explorer/program double-click. The original
+F6b one-native-tool-group/window bounds remain; hardware acceptance stays deferred.

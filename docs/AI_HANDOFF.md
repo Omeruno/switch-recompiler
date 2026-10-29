@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`49a52af659315fe6a1509a859d290cb7620759cb` (2026-10-28).
-[CI 40749538149](https://github.com/Omeruno/switch-recompiler/actions/runs/40749538149)
+`c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b` (2026-10-29).
+[CI 40773201160](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4d PCM/MP3/MCI/native Media Player implemented; next mixing/DirectSound/MIDI (2026-10-28)
+## Current position: D4d audio + F6c XP-style player/PCM effects/music icons/double-click implemented; next mixing/DirectSound/MIDI (2026-10-29)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -41,7 +41,7 @@ output-fault acknowledgement/drain routing.
 device adapter, staged genuine CPU recovery, cached cursor redraw and v9 counters.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) adds guarded host CPU access, sticky store/owner
 faults, suspended-session isolation, checked fallback and lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball is not accepted; D4d adds real MCI file audio, MIDI remains unsupported. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. [D4c](D4C_WAVE_CALLBACKS.md) adds real scheduled guest function callbacks and kernel events. [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, continuous PCM conversion, pinned native MP3, shared MCI/file engine and shell Media Player. Mixing/DirectSound/MIDI, hardware sound and registry persistence remain open.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) adds opt-in common solid FillRect/PATCOPY dispatch, public actual-x86 CPU/EGL/count/recovery gates and paired first-frame measurements. Default off; local Mesa first-frame path is slower than CPU. [G4b.2i](G4B2I_WARM_GDI_JOURNAL.md) measures cold/warm same-resource frames and removes redundant capacity checkpoints by retiring fully covered flushed journal commands. Real final GetPixel stays synchronous; default off. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) adds ownership-epoch guarded retained snapshots, native-shell reference/reuse measurements and real partial/DIB cases. Tiles9→1 builds; diagonal partial9→6; CPU DIB remains9. [G4b.2k](G4B2K_EXACT_DAMAGE.md) adds bounded adaptive exact damage and atomic masked CPU/capture exchange. Partial mid-series commits5→0, snapshots6→1, real DIB boundaries retained. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) adds bounded private CPU replay after real GPU submission; partial capacity device reads8→0 while actual GetPixel/DIB reads remain. Four-policy48-exit/432-EGL-frame and budget/alias/fault/loss gates pass. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures full CPU seeds and uploads only the changed rectangle; DIB upload bytes655360→66112,60 x86 exits/540 EGL frames with real reads unchanged. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates17 software evidence groups/five identity-bound reports and adds actual default CPU/native32 exits/288 EGL frames including DIB and size refusal. [G4b.2o](G4B2O_CPU_ROUTING.md) implements flag2 no-resident CPU output with cached redraw/transitions/fault gates and48 exits/432 EGL frames. [D1](D1_REGISTRY_KEYS.md) implements11 A/W registry APIs, actual HKEY grants/close and four fresh x86 writer/reader sessions. [D2](D2_KEYBOARD_LAYOUT.md) adds fixed-US maps/names and actual USER scan/side-state delivery. [D3](D3_INI_PROFILES.md) implements16 actual A/W INI/profile exports, checked VFS publication and four fresh x86 writer/reader sessions. [D4a](D4A_AUDIO_OWNERSHIP.md) adds owning bounded PCM/checked audout and truthful device/caps/format queries. Host Pinball is not accepted; D4d adds real MCI file audio, MIDI remains unsupported. [D4b](D4B_WAVE_STREAMING.md) adds real canonical stream handles/header state/reset/close/window-thread callbacks. [D4c](D4C_WAVE_CALLBACKS.md) adds real scheduled guest function callbacks and kernel events. [D4d](D4D_AUDIO_MEDIA.md) adds real device controls, continuous PCM conversion, pinned native MP3, shared MCI/file engine and shell Media Player. [F6c](F6C_MEDIA_VISUALS.md) adds real PCM spectrum/wave/circles/VU, authored music icons and path/timing-safe double-click. Mixing/DirectSound/MIDI, hardware sound and registry persistence remain open.
 Current ShellSession CPU canonical memcpy cannot remain plus duplicate GPU work
 and be called an optimization. Actual-x86 GDI/window/readback/lifecycle fixtures
 and CPU/EGL pixel/fallback comparisons precede selective activation. No physical
@@ -3387,3 +3387,53 @@ spaces without surrounding quotes,instead of inheriting Run's quoting advice.
 The native player/Explorer fixture uses an actual Unicode filename with spaces.
 Only guide text,fixture path and documentation changed; targeted native check
 and fresh exact-SHA CI remain final gates.
+
+D4d source-sample unit audit: MCI_FORMAT_SAMPLES must describe the source file,
+not canonical48k output. AudioDecoder/MediaPlayer now expose actual source rate/
+frame count; MCI length/position/seek convert those units and handle exact EOF.
+The public44.1k MP3 checks352800 source frames for8seconds,2205 at50ms and a
+176400-sample seek mapping to4000ms. This corrects metadata/unit semantics without
+changing the native48k device or waveOut source-unit behavior. Fresh full host/
+MinGW/Mesa and exact-SHA CI are required for this final audited source.
+
+## 2026-10-29 — F6c native Media Player visuals and Explorer double-click
+
+Incoming verified HEAD c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b,
+CI40773201160 all six green; fetched branch matched and newer work was preserved.
+User requested XP-era player polish, signal effects, music icons and actual folder
+double-click. Contract: [F6c](F6C_MEDIA_VISUALS.md). Maps now locate F as current;
+D remains partial, with mixing/DirectSound/MIDI and hardware sound still open.
+
+Authored silver/blue native player has compact/wide layouts and real seek rail,
+source metadata and existing transport/window controls. Four display choices:
+32-band Hann FFT spectrum, stereo waveform, PCM-driven radial circles, effects-off
+file icon. Pre-master PCM is sampled at actual played-frame cursor, not newest
+queued block/time/random data. Weak retirement observers and at most four owning
+preview blocks preserve audio/device/session lifetimes. Paused samples freeze.
+MusicFile art is used for MP3/WAV entries, player, Start and task button.
+
+Explorer/program rows select on one primary click, activate on the second same
+path within500ms/6 logical pixels. Real steady receipt clock; injected test clock.
+Slow/held/drag/different-item/keyboard/context/session/window transitions break
+sequences. Open/Enter/controller/context commands remain. No guest USER message
+or native file-drag claim. Existing application associations retain precedence.
+D4d source-sample MCI correction above ships with this package.
+
+Frozen-source full host/MinGW/Mesa runner passed, including fresh public x86 MCI
+sample-unit assertions, all22 F groups and17 GPU groups/five bound reports.
+Changed runtime/MCI/UI/icon modules passed strict warnings and focused ASan/UBSan;
+remaining common objects ordinary, leak scan disabled, known makecontext caveat.
+Fresh latest-fixture sanitized x86 MCI run also passed. Negative mutations of the
+500ms gate, PCM cursor and MCI source sample length all failed their independent
+oracles. Actual native renderer produced expanded spectrum/compact waveform PPM
+captures; these are host captures, not physical Switch screenshots. Offline map
+browser checks passed desktop/mobile/search/filter/deep-link/keyboard/focus/resize
+without JS errors; map23cards/3views/44docs and pinned audio asset checks passed.
+
+New stage-native-media-visuals artifact carries three native logs, both captures
+and the contract, retaining the existing six CI jobs/audio/API/GPU artifacts.
+Normal publication must pass exact-SHA all-six CI, Pages/public bytes, Switch NRO
+and new/prior artifact/source identity audits. Local devkitA64/libnx absent;
+console sound/timing/input/Paint/GPU/fallback/relaunch remain deferred, SD closed.
+Next common-system scope: real source mixing/DirectSound audit/MIDI or public
+legacy OpenFile reproducer, according to the active map; no game/full XP closure.

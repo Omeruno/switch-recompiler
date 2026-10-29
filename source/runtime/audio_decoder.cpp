@@ -21,6 +21,8 @@ struct AudioDecoder::Impl {
     ~Impl(){if(initialized)drmp3_uninit(&mp3);}
 };
 AudioDecoder::AudioDecoder()=default;AudioDecoder::~AudioDecoder()=default;
+uint32_t AudioDecoder::SampleRate() const {return impl_?impl_->format.rate:0;}
+uint64_t AudioDecoder::SourceFrameCount() const {return impl_?impl_->frames:0;}
 uint64_t AudioDecoder::Duration() const {return impl_?impl_->frames*48000/impl_->format.rate:0;}
 bool AudioDecoder::IsMp3() const {return impl_ && impl_->initialized;}
 bool AudioDecoder::Open(const Vfs& vfs,const std::string& path) {

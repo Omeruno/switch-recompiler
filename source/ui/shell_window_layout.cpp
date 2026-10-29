@@ -35,10 +35,19 @@ Rect DesktopShell::DialogLayout(Rect r) const {
 Rect DesktopShell::ControlBounds(int target) const {
     const auto& w=panelWindows_[size_t(panel_)].bounds;
     const auto caption=[](Rect rect,int slot){return Rect(rect.right-32-slot*26,rect.top+4,rect.right-8-slot*26,rect.top+26);};
+    if(dialog_==Dialog::MediaPlayer){
+        const auto& d=documentWindow_.bounds;const int left=d.left+14,right=d.right-14,bottom=d.bottom;
+        if(target==MediaSeek)return {d.left+20,bottom-136,d.right-20,bottom-116};
+        if(target==MediaChoose)return {left,bottom-48,left+112,bottom-12};
+        if(target==MediaEffect)return {left+122,bottom-48,left+254,bottom-12};
+        if(target==MediaVolumeDown)return {right-230,bottom-48,right-184,bottom-12};
+        if(target==MediaVolumeUp)return {right-174,bottom-48,right-128,bottom-12};
+        if(target==CancelDialog)return {right-112,bottom-48,right,bottom-12};
+    }
     if(target==CancelDialog){const auto& d=CurrentWindow().bounds;return {d.right-188,d.bottom-42,d.right-22,d.bottom-6};}
     if(dialog_==Dialog::MediaPlayer && target>=MediaPlay && target<=MediaForward){
         const auto& d=documentWindow_.bounds;const int width=(d.Width()-42-32)/5,x=d.left+20+(target-MediaPlay)*(width+8);
-        return {x,d.top+166,x+width,d.top+206};
+        return {x,d.bottom-104,x+width,d.bottom-64};
     }
     if(target==NativeTask)return guestActive_?Rect(476,684,786,716):Rect(158,684,468,716);
     if(target==Close || target==Maximize || target==Minimize)return caption(w,target==Close?0:target==Maximize?1:2);
@@ -99,6 +108,7 @@ int DesktopShell::WindowHit(int x,int y) const {
     return None;
 }
 void DesktopShell::CancelPointer() {
+    clickIdentity_.clear();
     if(DraggingWindow()) {
         auto& w=dragDialog_?(DocumentWindow()?documentWindow_:modalWindow_):panelWindows_[size_t(panel_)];
         w.bounds=w.normal=dragOriginal_;dragTarget_=None;ReflowFocus();++visualRevision_;

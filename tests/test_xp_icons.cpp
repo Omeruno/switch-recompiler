@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     uint32_t mid = ui::xp::IconPixel(IconKind::Folder, 48, 24, 34);
     CHECK(((mid >> 16) & 255) > 200 && ((mid >> 8) & 255) > 150 && (mid & 255) < 140);
 
+    bool distinct=false;for(int y=0;y<32;++y)for(int x=0;x<32;++x)distinct|=ui::xp::IconPixel(IconKind::MusicFile,32,x,y)!=ui::xp::IconPixel(IconKind::File,32,x,y);CHECK(distinct);
     // лист: строка значков каждого размера, выделенный вариант рядом
     ui::OwnedSurface sheet;
     sheet.Allocate(kinds * 112 + 16, 3 * 64 + 16);

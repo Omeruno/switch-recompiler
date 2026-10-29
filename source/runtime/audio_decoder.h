@@ -16,6 +16,8 @@ public:
     bool Read(std::vector<int16_t>&);
     bool Seek(uint64_t canonicalFrame);
     uint64_t Duration() const;
+    uint32_t SampleRate() const;
+    uint64_t SourceFrameCount() const;
     bool IsMp3() const;
     const char* Error() const {return error_;}
 private:

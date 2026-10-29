@@ -35,7 +35,7 @@ void WINAPI start(void){
         CHECK(waveOutRestart(wave)==0);Stage(3);CHECK(headers[0].dwFlags&WHDR_DONE);time.wType=TIME_SAMPLES;CHECK(waveOutGetPosition(wave,&time,sizeof(time))==0 && time.u.sample==P[12]*fmt.nSamplesPerSec/48000);
         CHECK(waveOutReset(wave)==0);time.wType=TIME_SAMPLES;CHECK(waveOutGetPosition(wave,&time,sizeof(time))==0 && !time.u.sample);CHECK(waveOutClose(wave)==0);CHECK(waveOutPause(wave)==MMSYSERR_INVALHANDLE);
     }else{
-        WNDCLASSA cls={0};HWND window;MCI_OPEN_PARMSA open={0};MCI_OPEN_PARMSW wide={0};MCI_PLAY_PARMS play={0};MCI_STATUS_PARMS status={0};MCI_GETDEVCAPS_PARMS caps={0};MCI_SEEK_PARMS seek={0};WCHAR error[64];
+        WNDCLASSA cls={0};HWND window;MCI_OPEN_PARMSA open={0};MCI_OPEN_PARMSW wide={0};MCI_PLAY_PARMS play={0};MCI_STATUS_PARMS status={0};MCI_GETDEVCAPS_PARMS caps={0};MCI_SEEK_PARMS seek={0};MCI_SET_PARMS set={0};WCHAR error[64];
         cls.lpszClassName="PublicMedia";cls.lpfnWndProc=WindowProc;CHECK(RegisterClassA(&cls));window=CreateWindowA(cls.lpszClassName,"Media",0,0,0,1,1,NULL,NULL,NULL,NULL);CHECK(window);
         open.dwCallback=(DWORD)window;open.wDeviceID=0x1234;open.lpstrDeviceType="sequencer";open.lpstrElementName="C:\\tone.mp3";
         CHECK(mciSendCommandA(0,MCI_OPEN,MCI_OPEN_TYPE|MCI_OPEN_ELEMENT,(DWORD)&open)==MCIERR_UNSUPPORTED_FUNCTION && open.wDeviceID==0x1234);
@@ -47,15 +47,23 @@ void WINAPI start(void){
         if(P[14])CHECK(mciSendCommandA(P[14],MCI_PAUSE,0,0)==MCIERR_INVALID_DEVICE_ID);
         CHECK(mciGetErrorStringW(MCIERR_UNSUPPORTED_FUNCTION,error,64) && error[0]);error[0]=0x1234;CHECK(!mciGetErrorStringW(0xffffffff,error,64) && error[0]==0x1234);
         status.dwItem=MCI_STATUS_LENGTH;CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==8000);
+        set.dwTimeFormat=MCI_FORMAT_SAMPLES;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);
+        CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==352800);
+        set.dwTimeFormat=MCI_FORMAT_MILLISECONDS;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);
         caps.dwItem=MCI_GETDEVCAPS_HAS_AUDIO;CHECK(mciSendCommandA(device,MCI_GETDEVCAPS,MCI_GETDEVCAPS_ITEM,(DWORD)&caps)==0 && caps.dwReturn==1);
         caps.dwItem=MCI_GETDEVCAPS_HAS_VIDEO;CHECK(mciSendCommandA(device,MCI_GETDEVCAPS,MCI_GETDEVCAPS_ITEM,(DWORD)&caps)==0 && !caps.dwReturn);
         play.dwCallback=(DWORD)window;
         if(mode==6){P[3]=9;CHECK(mciSendCommandA(device,MCI_PLAY,MCI_WAIT,(DWORD)&play)==0);ExitProcess(99);}
         CHECK(mciSendCommandA(device,MCI_PLAY,MCI_NOTIFY,(DWORD)&play)==0);Stage(1);Pump();CHECK(successful==1);
         status.dwItem=MCI_STATUS_POSITION;CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==50);
+        set.dwTimeFormat=MCI_FORMAT_SAMPLES;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);
+        CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==2205);
+        set.dwTimeFormat=MCI_FORMAT_MILLISECONDS;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);
         CHECK(mciSendCommandA(device,MCI_PAUSE,0,0)==0);Stage(2);CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==50);
         CHECK(mciSendCommandA(device,MCI_RESUME,0,0)==0);CHECK(mciSendCommandA(device,MCI_STOP,0,0)==0);Pump();CHECK(aborted==1 && successful==1);
-        seek.dwTo=4000;CHECK(mciSendCommandA(device,MCI_SEEK,MCI_TO,(DWORD)&seek)==0);CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==4000);
+        set.dwTimeFormat=MCI_FORMAT_SAMPLES;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);
+        seek.dwTo=176400;CHECK(mciSendCommandA(device,MCI_SEEK,MCI_TO,(DWORD)&seek)==0);
+        set.dwTimeFormat=MCI_FORMAT_MILLISECONDS;CHECK(mciSendCommandA(device,MCI_SET,MCI_SET_TIME_FORMAT,(DWORD)&set)==0);CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==4000);
         P[3]=3;CHECK(mciSendCommandA(device,MCI_PLAY,mode==4?MCI_WAIT:MCI_NOTIFY,(DWORD)&play)==0);
         if(mode!=4){while(successful<2){Pump();Sleep(0);}CHECK(successful==2);}
         status.dwItem=MCI_STATUS_MODE;CHECK(mciSendCommandA(device,MCI_STATUS,MCI_STATUS_ITEM,(DWORD)&status)==0 && status.dwReturn==MCI_MODE_STOP);
