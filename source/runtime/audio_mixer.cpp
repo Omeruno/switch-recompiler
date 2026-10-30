@@ -25,7 +25,7 @@ bool AudioMixer::End() {
     // Observe already played data before revoking. Recovery may cancel all
     // remaining packets after a fault, but never label them as played.
     if(!fault_ && !Quiesce())fault_=true;
-    if(!output_.Reset()){fault_=true;return false;}
+    if(fault_ && !output_.Reset()){fault_=true;return false;}
     for(auto& item:sources_)Cancel(item.second);
     sources_.clear();blocks_.clear();output_.ReleaseClient(owner_,client_);
     owner_=client_=0;submitted_=played_=base_=0;fault_=false;return true;

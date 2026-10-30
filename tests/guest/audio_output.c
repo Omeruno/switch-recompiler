@@ -11,7 +11,7 @@ void WINAPI start(void){
         CHECK(waveOutOpen(NULL,WAVE_MAPPER,&format,0,0,WAVE_FORMAT_QUERY)==MMSYSERR_NODRIVER);
         CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC) && GetLastError()==6);
     }else{
-        CHECK(waveOutGetNumDevs()==1);
+        CHECK(waveOutGetNumDevs()==2);
         CHECK(waveOutGetDevCapsA(0,&a,sizeof(a))==0 && a.wChannels==2 && (a.dwFormats&WAVE_FORMAT_48S16));
         CHECK(waveOutGetDevCapsW(WAVE_MAPPER,&w,sizeof(w))==0 && w.szPname[0]=='P' && w.wChannels==2);
         CHECK(waveOutGetDevCapsA(4,&a,sizeof(a))==MMSYSERR_BADDEVICEID);
@@ -21,7 +21,7 @@ void WINAPI start(void){
         CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,0,0,CALLBACK_TYPEMASK)==MMSYSERR_NOTSUPPORTED && (ULONG_PTR)handle==0x12345678);
         if(mode==2){
             CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC) && GetLastError()==1117);
-            CHECK(waveOutGetNumDevs()==0);CHECK(PlaySoundW(NULL,NULL,0));CHECK(waveOutGetNumDevs()==1);
+            CHECK(waveOutGetNumDevs()==0);CHECK(PlaySoundW(NULL,NULL,0));CHECK(waveOutGetNumDevs()==2);
         }else{
             CHECK(!PlaySoundW(MAKEINTRESOURCEW(999),GetModuleHandleW(NULL),SND_RESOURCE|SND_ASYNC) && GetLastError()==1814);
             CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY) && GetLastError()==ERROR_NOT_SUPPORTED);
@@ -32,7 +32,7 @@ void WINAPI start(void){
             CHECK(PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC));CHECK(PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC));
             wave[44]=7;CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC|SND_NOSTOP) && GetLastError()==170);
             AudioProbe[1]=1;while(!AudioProbe[2])Sleep(0);
-            CHECK(waveOutGetNumDevs()==1);CHECK(PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC));
+            CHECK(waveOutGetNumDevs()==2);CHECK(PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC));
             CHECK(PlaySoundW(NULL,NULL,0));
             wave[22]=0;CHECK(!PlaySoundA((LPCSTR)wave,NULL,SND_MEMORY|SND_ASYNC) && GetLastError()==ERROR_INVALID_DATA);
         }

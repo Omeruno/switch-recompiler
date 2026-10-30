@@ -131,3 +131,10 @@ WINMM!mciSendCommandA; MCI/MIDI/music output is separate later compatibility wor
 No playable game, full Windows audio, console sound or FPS is accepted. Registry
 persistence/dynarec/D3D9/richer shell remain open. SD recovery remains closed;
 hardware/Paint/GPU/fallback/input/relaunch checks remain deferred.
+
+[D4f mixed waveOut](D4F_WAVE_MIXER.md) now integrates the native core with real
+WinMM sources/mapper and direct fallback. Earlier exclusivity/activation limits
+describe this document’s original package scope. Historical wave fixtures now
+explicitly select device0 to retain strict direct-buffer/count oracles; the new
+public x86 fixture independently certifies multi-stream mapper behavior. MCI/
+MediaPlayer/PlaySound remain exclusive until their shared-source integration.

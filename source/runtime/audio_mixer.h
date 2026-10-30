@@ -3,8 +3,8 @@
 #include <deque>
 #include <map>
 namespace rt {
-// Explicit native mixer over the production AudioOutput lease. Existing WinMM/
-// MCI clients remain exclusive until migrated to this source contract.
+// Native mixer over the production AudioOutput lease. Mixed waveOut uses sources;
+// the direct compatibility device and MCI/MediaPlayer still use exclusive leases.
 class AudioMixer {
 public:
     static constexpr size_t MaxSources=8,MaxPackets=4,MaxQueuedFrames=48000,Quantum=256;

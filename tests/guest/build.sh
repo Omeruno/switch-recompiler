@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/wave_mixer.c" \
+    -o "$out/wave_mixer.exe" -lkernel32 -luser32 -lwinmm
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/legacy_file.c" \
     -o "$out/legacy_file.exe" -lkernel32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/audio_media.c" \

@@ -31,6 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
+rm -f "$out/wave_mixer.log"
 rm -f "$out/legacy_file_api.log"
 rm -f "$out/audio_media_api.log"
 rm -f "$out/wave_stream.log" "$out/wave_callbacks.log"
@@ -139,6 +140,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_wave_mixer.cpp" $src -o "$out/test_wave_mixer" &&
+       "$out/test_wave_mixer" "$guestRoot/wave_mixer.exe" > "$out/wave_mixer.log" 2>&1; then
+        tail -n 1 "$out/wave_mixer.log"
+    else
+        echo "   D4F MIXED WAVEOUT FAILED"
+        tail -n 25 "$out/wave_mixer.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_legacy_file_api.cpp" $src -o "$out/test_legacy_file_api" &&
@@ -586,6 +595,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
         [ "$(basename "$exe")" = "registry_keys.exe" ] && continue
         [ "$(basename "$exe")" = "keyboard_layout.exe" ] && continue
+        [ "$(basename "$exe")" = "wave_mixer.exe" ] && continue
         [ "$(basename "$exe")" = "legacy_file.exe" ] && continue
         [ "$(basename "$exe")" = "ini_profile.exe" ] && continue
         [ "$(basename "$exe")" = "audio_output.exe" ] && continue

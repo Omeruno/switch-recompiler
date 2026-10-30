@@ -24,7 +24,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <body>
 <header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D4e · ядро аудиомикшера</span></div><h2>Несколько источников, независимое состояние</h2><p>Готово native-ядро на8 источников: стереосмешивание, громкость, пауза, позиции и отмена. Далее подключение waveOut/MCI/плеера: сейчас они ещё эксклюзивны. Физический звук и игровые API остаются открытыми.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D4f · многопоточный WinMM</span></div><h2>Микшер подключён к waveOut</h2><p>До8 waveOut-потоков: форматы, позиции, громкость, пауза, сброс и callback’и. WAVE_MAPPER использует микшер с настоящим счётчиком; прямой fallback сохранён. Далее MCI/плеер/PlaySound вместе с waveOut. Pinball и физический звук ещё не приняты.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -39,8 +39,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 {
   "schema": 1,
   "updated": "2026-10-30",
-  "runtimeSha": "068ea7d7be144c66fb4d405c87788c9b8d12c53b",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41009876088",
+  "runtimeSha": "534ad7254d3434da7684d43bc3abacb1f58b1c1b",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41013450644",
   "current": "D",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -113,7 +113,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "D",
       "title": "Совместимость Windows",
       "status": "current",
-      "summary": "D4e: native-ядро микшера на8 источников; D5 file API и D1–D4d/F6c сохранены. Далее миграция waveOut/MCI/плеера; DirectSound/MIDI открыты.",
+      "summary": "D4f: WinMM waveOut/mapper подключены к8-source микшеру; прямой fallback и D5/D1–D4d/F6c сохранены. Далее общие MCI/плеер/PlaySound sources.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
         "Существенный Win32/CRT и ограниченный SEH.",
@@ -125,10 +125,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "D4c: real guest worker CPU/TEB/TLS/stdcall20, bounded128-record queue, event rights/manual/auto/aliases;9 process terminations +1 parked callback abort.",
         "D4d: pinned native MP3,8-second signal oracle,shared player/MCI A/W,actual device controls/continuous PCM,real native player window and lifetime/error gates.",
         "D5:9 real legacy file APIs,checked OFSTRUCT/reopen/search,shared bounded transfers/EOF/truncate,CP1252 and public x86 sessions.",
-        "D4e: bounded8-source native PCM mixer,stereo sum/clipping/gain,actual played-span positions,independent pause/reset/close/replay and production audout host-model evidence."
+        "D4e: bounded8-source native PCM mixer,stereo sum/clipping/gain,actual played-span positions,independent pause/reset/close/replay and production audout host-model evidence.",
+        "D4f: real mixed waveOut handles/mapper,owning5-second header feeding,per-source formats/position/gain/pause/reset/close and actual x86 function/event/thread/window/fault/abort tests."
       ],
       "todo": [
-        "Подключение waveOut/MCI/MediaPlayer/PlaySound к mixer sources с публичными x86 multi-stream/callback/session проверками; затем DirectSound/MIDI и физический звук.",
+        "Общий bus/sources для MCI/MediaPlayer/PlaySound вместе с waveOut,public x86 music+PCM/lifetime/error fixtures; затем DirectSound/MIDI и физический звук.",
         "Защита страниц, полный unwind/SEH и COM.",
         "API и зависимости конкретных программ.",
         "Аудит игровых системных/audio/middleware API по выбранным версиям; реальные host backends, без успешных заглушек."
@@ -145,9 +146,10 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/ROADMAP.md",
         "docs/PROJECT_STATUS_RU.md",
         "docs/D5_LEGACY_FILE.md",
-        "docs/D4E_AUDIO_MIXER.md"
+        "docs/D4E_AUDIO_MIXER.md",
+        "docs/D4F_WAVE_MIXER.md"
       ],
-      "limit": "Native core — до8 источников; гостевые WinMM/MCI/плеер пока эксклюзивны. MP3/WAV input до32MiB; нет DirectSound/MIDI/video или физической/игровой аудиоприёмки. Pinball и игры не приняты.",
+      "limit": "До8 mixed waveOut источников,один физический audout и direct fallback. MCI/плеер/PlaySound пока эксклюзивны; нет DirectSound/MIDI/video. Pinball,игры и аппаратный звук не приняты.",
       "kind": "Этап"
     },
     {

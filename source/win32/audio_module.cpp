@@ -1,4 +1,5 @@
 #include "hle_util.h"
+#include "wave_mixer.h"
 #include "../runtime/audio_output.h"
 #include "../runtime/resources.h"
 #include <algorithm>
@@ -48,20 +49,23 @@ HostCallOutcome Play(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
 }
 HostCallOutcome Caps(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
     const auto device=Arg(c,m,0),output=Arg(c,m,1),size=Arg(c,m,2);
-    if(device && device!=0xffffffffu)return Ret(2);
+    if(IsMixedWaveHandle(device) && !MixedWaveHandleLive(device))return Ret(2);
+    const bool mixed=device==1 || IsMixedWaveHandle(device) || (device==0xffffffffu && MixedWaveSupported());
+    if(device && device!=0xffffffffu && !mixed)return Ret(2);
+    if(mixed && !MixedWaveSupported())return Ret(6);
     rt::Audio().Poll();if(!rt::Audio().Available())return Ret(6);
     const size_t length=wide?84:52,count=std::min(size_t(size),length);
     if(!count || !Range(m,output,count))return Ret(11);
     std::vector<uint8_t> bytes(length);bytes[4]=0;bytes[5]=0;bytes[6]=1; // driver version1.0
-    const char* name=rt::Audio().Name();for(size_t n=0;n<31 && name[n];++n)bytes[8+n*(wide?2:1)]=uint8_t(name[n]);
+    const char* name=mixed?"PCM software mixer":rt::Audio().Name();for(size_t n=0;n<31 && name[n];++n)bytes[8+n*(wide?2:1)]=uint8_t(name[n]);
     const size_t formats=wide?72:40;bytes[formats]=0xff;bytes[formats+1]=0xff;bytes[formats+2]=0x0f; // 11/22/44/48/96k mono/stereo PCM8/16
-    bytes[formats+4]=2;bytes[formats+8]=rt::Audio().VolumeSupported()?4:0; // WAVECAPS_VOLUME, no stereo balance
+    bytes[formats+4]=2;bytes[formats+8]=mixed?12:rt::Audio().VolumeSupported()?4:0; // WAVECAPS_VOLUME, no stereo balance
     for(size_t n=0;n<count;++n)m.Write8(output+uint32_t(n),bytes[n]);
     return Ret(0);
 }
 #define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
 FN(PlaySoundW){return Play(c,m,true);} FN(PlaySoundA){return Play(c,m,false);}
-FN(waveOutGetNumDevs){(void)c;(void)m;rt::Audio().Poll();return Ret(rt::Audio().Available()?1:0);}
+FN(waveOutGetNumDevs){(void)c;(void)m;rt::Audio().Poll();return Ret(rt::Audio().Available()?(MixedWaveSupported()?2:1):0);}
 FN(waveOutGetDevCapsA){return Caps(c,m,false);} FN(waveOutGetDevCapsW){return Caps(c,m,true);}
 #define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
 const HostFunctionEntry entries[]={E(PlaySoundW,12),E(PlaySoundA,12),E(waveOutGetNumDevs,0),E(waveOutGetDevCapsA,12),E(waveOutGetDevCapsW,12)};

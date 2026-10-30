@@ -101,3 +101,10 @@ D4d: real frame-position accounting and pause/restart, then selected streaming
 formats with continuous resampler state across buffer boundaries. Preserve
 confirmed played-versus-cancelled accounting, all callback modes and ownership/
 reset/error/teardown gates. Only advertise formats/capabilities with real support.
+
+[D4f mixed waveOut](D4F_WAVE_MIXER.md) now integrates the native core with real
+WinMM sources/mapper and direct fallback. Earlier exclusivity/activation limits
+describe this document’s original package scope. Historical wave fixtures now
+explicitly select device0 to retain strict direct-buffer/count oracles; the new
+public x86 fixture independently certifies multi-stream mapper behavior. MCI/
+MediaPlayer/PlaySound remain exclusive until their shared-source integration.

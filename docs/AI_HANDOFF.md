@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`068ea7d7be144c66fb4d405c87788c9b8d12c53b` (2026-10-30).
-[CI 41009876088](https://github.com/Omeruno/switch-recompiler/actions/runs/41009876088)
+`534ad7254d3434da7684d43bc3abacb1f58b1c1b` (2026-10-30).
+[CI 41013450644](https://github.com/Omeruno/switch-recompiler/actions/runs/41013450644)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4e native mixer core implemented; WinMM/MCI source migration next (2026-10-30)
+## Current position: D4f mixed waveOut/mapper implemented; shared MCI/MediaPlayer/PlaySound sources next (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -60,6 +60,8 @@ follows; its old future-tense queues do not supersede this current position.
 
 [D4e native mixer core](D4E_AUDIO_MIXER.md):8 bounded sources,actual PCM/gain/clipping/played-span position,independent pause/reset/close through real audout revocation/replay. Production adapter transport test passes; WinMM/MCI/MediaPlayer are not migrated yet and stay exclusive. Next is real waveOut source integration with public simultaneous x86 streams, then MCI/MediaPlayer/PlaySound. No hardware/game audio acceptance.
 
+[D4f](D4F_WAVE_MIXER.md) activates actual waveOut mixer sources and WAVE_MAPPER on counter-capable devices; device0/direct fallback and strict old physical descriptor oracles remain.9 normal x86 sessions +2 parked main/function-callback aborts check actual multi-format samples,positions,stereo gain,pause/reset/peer completion,8 sources/5-second header feeding and faults. MCI/MediaPlayer/PlaySound still exclusive.
+
 ## User's long-term product target
 
 Spore, Mirror’s Edge, The Sims 3 and Lineage 2 Classic / Asterios are explicit future PC-game targets; none is
@@ -71,7 +73,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is waveOut source migration onto [D4e native mixer](D4E_AUDIO_MIXER.md), then MCI/MediaPlayer/PlaySound and DirectSound/MIDI, preserving all graphics/session gates. File audio support is not MIDI/Pinball/game or physical sound acceptance. Checked registry persistence remains open.
+Next is shared MCI/MediaPlayer/PlaySound integration with [D4f mixed waveOut](D4F_WAVE_MIXER.md), then DirectSound/MIDI, preserving all graphics/session gates. File audio support is not MIDI/Pinball/game or physical sound acceptance. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -3584,3 +3586,84 @@ MCI/MediaPlayer/PlaySound use the same source contract; only then change admissi
 caps. DirectSound target-version audit and MIDI remain subsequent dependencies.
 F6c/Luna/default CPU/L legacy/ZL software preserved. Physical sound/timing/underrun/
 Paint/GPU/fallback/input/relaunch remain deferred; SD recovery stays closed.
+
+## 2026-10-30 — D4f real mixed waveOut and mapper activation
+
+Incoming534ad7254d3434da7684d43bc3abacb1f58b1c1b, clean/fetched match;
+CI41013450644 all6 and Pages41013450658 success, D4e/prior artifacts/NRO audited.
+[Contract](D4F_WAVE_MIXER.md). Local SDK absent; prepared host/MinGW/Mesa reused.
+No force/reset/newer-work overwrite. F6c/Luna/default CPU/L legacy/ZL preserved.
+
+New wave_mixer uses D4e sources from real WinMM HLE and ordinary GuestExecution
+owner service. Device1 software mixer and WAVE_MAPPER on counter-capable devices;
+device0/direct fallback preserved. Two logical routes share one physical audout,
+never steal another client's claim. Missing counter exposes1 direct route; no
+device exposes0 routes. Mixed caps expose actual per-handle L/R gain; direct native master
+controls/caps retained. MCI/MediaPlayer/PlaySound remain exclusive, not mixed yet.
+
+Up to8 unique stream handles,64 prepared/4 queued snapshots each,per-stream PCM
+phase/position/gain/header generation/notifications. Admission owns canonical
+snapshot before success;5-second headers feed4096-frame chunks into bounded core,
+original WAVEHDR DONE only after all chunks play or confirmed cancel/revoke.
+Original payload memory <=30,720,000 bytes globally plus bounded conversion/core
+storage. Distinct direct/mixed handle ranges, old direct range capped before mixed
+range. Active Process/owner/mapped header checks guard flag writes and callbacks.
+Weak native observers enqueue retirement, never execute guest code.
+
+Independent pause/restart/gain/reset/close use actual core counter/revoke/replay;
+peer positions and unplayed PCM survive normal controls. Failed native append/
+reset/poll/control retains owners and latches error. Recovering a faulted *physical
+bus* confirms revoke then cancels all affected originals, recreates sources and
+requires explicit peer reset acknowledgement. No false DONE before successful
+reset. Core End avoids redundant second Reset after Quiesce proved revocation or
+there were no borrowed blocks; fault recovery still requires actual Reset.
+Nested owners cannot drain old guest memory. Session ends service/notifications,
+revokes and drains before memory destruction. Native immutable blocks survive a
+failed revoke independently of guest memory lifetime. No gapless hardware promise.
+
+Public CRT-free wave_mixer.exe/native inspector:9 normal exit0 sessions +2 genuine
+parked aborts (main and function callback). Actual mapper/device1 stereo48k16 +
+mono22.05k8 samples,100/137 source positions,stereo gain/pause/reset/peer completion,
+8 sources/source9 refusal,5-second original header (not early first-chunk DONE),
+function/event/thread/window notifications,blocked worker with peer progress,
+retained reset/ambiguous append/retry,nested owner,stale handle/caps,teardown,
+no-counter direct fallback/no device. Accepted guest data mutations do not change
+native PCM; direct open cannot steal the mixed lease. Callback worker is genuine
+scheduled guest with native continuation; abort is not normal exit.
+
+D4b/D4c/D4d historical wave fixtures now explicitly select device0 so all strict
+physical-descriptor/release/IPC oracles and35/11/24,27/9/18 remain unchanged. This
+is the direct reference, not an exclusive-mapper assertion. New mapper behavior
+has independent real-x86 multi-stream samples/callback/position gates. D4a device
+count now expects2 actual logical routes with its real counter-capable model;
+no-device/recovery/format query/count/caps/error/byte assertions retained.
+No signature-only stubs or per-EXE shortcuts were introduced.
+
+Full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed production runtime and existing+
+new fixtures,C/six E9/22 F/17 GPU/five bound reports. Final additional guest snapshot/
+busy-lease assertions were freshly rebuilt/rerun natively and under sanitizers.
+Changed modules strict O2/Wall/Wextra/Werror/no-exceptions/no-RTTI passed. Focused
+ASan/UBSan on changed mixer/wave/audio/ownership/callback modules plus new inspector
+passed (other common objects ordinary,leak scan off/native fiber caveat). Full
+standalone core ASan/UBSan/leak scan passed. Negative early-original-header DONE
+fails actual5-second position gate; cross-source gain mutation fails PCM oracle.
+Initial strict compiles caught misleading compact indentation; braces/newlines
+fixed before final validation, no assertion weakened. Private logs outside git.
+
+Pinball refreshed on incoming HEAD and again final tested host tree with -t -v:
+new UI stops GDI32!SetSystemPaletteUse, legacy UI USER32!LoadStringA, both host
+exit1. Earlier OpenFile trace is profile/history-specific, not current universal
+next import. No accepted main frame, gameplay, sound/MIDI/FPS or physical result.
+Next Pinball compatibility package needs public palette/DC-capability + ANSI
+resource-string reproducers and common implementations, followed by a fresh trace;
+never fill an ABI table just to pretend those functions succeeded.
+
+Global/active/user/visual maps updated:47docs/23cards/3views. Desktop/mobile/search/
+filter/deep-link/keyboard/focus/resize browser gate passed. New stage-d-wave-mixer
+public PE/C/native inspector log/contract artifact,still6 jobs and retained old
+artifact gates. Normal publication requires all6 exact-SHA CI/Pages/public bytes,
+Switch build/NRO/new+prior artifacts and clean source-manifest identity audits.
+Next audio package: shared owner bus/source lifetime for MCI/MediaPlayer/PlaySound
+with waveOut, retaining decoder/previews/seek/callback/errors/direct fallback;
+then DirectSound target-version audit/MIDI. Physical sound/underruns/timing/Paint/
+GPU/fallback/input/relaunch deferred. SD recovery remains closed.

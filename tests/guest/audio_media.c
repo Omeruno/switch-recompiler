@@ -21,8 +21,8 @@ void WINAPI start(void){
         if(mode==3)fmt.nSamplesPerSec=96000;
         fmt.nBlockAlign=fmt.nChannels*fmt.wBitsPerSample/8;fmt.nAvgBytesPerSec=fmt.nSamplesPerSec*fmt.nBlockAlign;
         CHECK(waveOutGetDevCapsA(0,&caps,sizeof(caps))==0 && (caps.dwSupport&WAVECAPS_VOLUME) && !(caps.dwSupport&WAVECAPS_LRVOLUME));
-        CHECK(waveOutOpen(NULL,WAVE_MAPPER,&fmt,0,0,WAVE_FORMAT_QUERY)==0);
-        CHECK(waveOutOpen(&wave,WAVE_MAPPER,&fmt,0,0,CALLBACK_NULL)==0);P[1]=(DWORD)wave;
+        CHECK(waveOutOpen(NULL,0 /* direct compatibility device */,&fmt,0,0,WAVE_FORMAT_QUERY)==0);
+        CHECK(waveOutOpen(&wave,0 /* direct compatibility device */,&fmt,0,0,CALLBACK_NULL)==0);P[1]=(DWORD)wave;
         for(i=0;i<2;++i){for(j=0;j<2048;++j){if(fmt.wBitsPerSample==8)input[i][j]=(BYTE)(128+j%64);else{short* samples=(short*)input[i];samples[j*fmt.nChannels]=1000;if(fmt.nChannels==2)samples[j*2+1]=-2000;}}
             headers[i].lpData=(LPSTR)input[i];headers[i].dwBufferLength=2048*fmt.nBlockAlign;CHECK(waveOutPrepareHeader(wave,&headers[i],32)==0 && waveOutWrite(wave,&headers[i],32)==0);}
         P[2]=(DWORD)headers;Stage(1);time.wType=TIME_SAMPLES;CHECK(waveOutGetPosition(wave,&time,sizeof(time))==0 && time.u.sample==240*fmt.nSamplesPerSec/48000);

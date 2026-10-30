@@ -163,3 +163,10 @@ describes D4d package scope. This is not video decoding or album-art extraction.
 [D4e](D4E_AUDIO_MIXER.md) now implements a bounded8-source native mixer core
 with actual audout adapter evidence. This does not yet change D4d MediaPlayer/MCI
 or WinMM exclusivity; their source-lifetime migration and x86 fixtures come next.
+
+[D4f mixed waveOut](D4F_WAVE_MIXER.md) now integrates the native core with real
+WinMM sources/mapper and direct fallback. Earlier exclusivity/activation limits
+describe this document’s original package scope. Historical wave fixtures now
+explicitly select device0 to retain strict direct-buffer/count oracles; the new
+public x86 fixture independently certifies multi-stream mapper behavior. MCI/
+MediaPlayer/PlaySound remain exclusive until their shared-source integration.

@@ -36,15 +36,15 @@ void WINAPI start(void){
     HWAVEOUT bad=(HWAVEOUT)0x12345678;HANDLE mutex,readonly;
     P[11]=GetCurrentThreadId();P[13]=Teb();tls=TlsAlloc();CHECK(tls!=TLS_OUT_OF_INDEXES && TlsSetValue(tls,(void*)0x1111));
     gate=CreateEventA(NULL,TRUE,FALSE,NULL);CHECK(gate);P[12]=(DWORD)gate;
-    CHECK(waveOutOpen(&bad,WAVE_MAPPER,&format,0,0,CALLBACK_FUNCTION)==MMSYSERR_INVALPARAM && (DWORD)bad==0x12345678);
-    CHECK(waveOutOpen(&bad,WAVE_MAPPER,&format,0xfffffff0,0,CALLBACK_FUNCTION)==MMSYSERR_INVALPARAM && (DWORD)bad==0x12345678);
+    CHECK(waveOutOpen(&bad,0 /* direct compatibility device */,&format,0,0,CALLBACK_FUNCTION)==MMSYSERR_INVALPARAM && (DWORD)bad==0x12345678);
+    CHECK(waveOutOpen(&bad,0 /* direct compatibility device */,&format,0xfffffff0,0,CALLBACK_FUNCTION)==MMSYSERR_INVALPARAM && (DWORD)bad==0x12345678);
     mutex=CreateMutexA(NULL,FALSE,NULL);CHECK(mutex);
-    CHECK(waveOutOpen(&bad,WAVE_MAPPER,&format,(DWORD)mutex,0,CALLBACK_EVENT)==MMSYSERR_INVALPARAM);CHECK(CloseHandle(mutex));
+    CHECK(waveOutOpen(&bad,0 /* direct compatibility device */,&format,(DWORD)mutex,0,CALLBACK_EVENT)==MMSYSERR_INVALPARAM);CHECK(CloseHandle(mutex));
     signalEvent=CreateEventA(NULL,mode!=2,FALSE,NULL);CHECK(signalEvent);
     CHECK(DuplicateHandle(GetCurrentProcess(),signalEvent,GetCurrentProcess(),&readonly,SYNCHRONIZE,FALSE,0));
-    CHECK(waveOutOpen(&bad,WAVE_MAPPER,&format,(DWORD)readonly,0,CALLBACK_EVENT)==MMSYSERR_INVALPARAM);CHECK(CloseHandle(readonly));
+    CHECK(waveOutOpen(&bad,0 /* direct compatibility device */,&format,(DWORD)readonly,0,CALLBACK_EVENT)==MMSYSERR_INVALPARAM);CHECK(CloseHandle(readonly));
     SetLastError(0x3333);
-    CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,(mode==1 || mode==2)?(DWORD)signalEvent:(DWORD)Callback,0x7654ab21,(mode==1 || mode==2)?CALLBACK_EVENT:CALLBACK_FUNCTION)==0);P[1]=(DWORD)handle;
+    CHECK(waveOutOpen(&handle,0 /* direct compatibility device */,&format,(mode==1 || mode==2)?(DWORD)signalEvent:(DWORD)Callback,0x7654ab21,(mode==1 || mode==2)?CALLBACK_EVENT:CALLBACK_FUNCTION)==0);P[1]=(DWORD)handle;
     if(mode==1 || mode==2){CHECK(WaitForSingleObject(signalEvent,0)==WAIT_OBJECT_0);if(mode==2)CHECK(WaitForSingleObject(signalEvent,0)==WAIT_TIMEOUT);else CHECK(ResetEvent(signalEvent));}
     else WaitCount(&opened,1);
     if(mode==4){
@@ -57,8 +57,8 @@ void WINAPI start(void){
         while(!blocked){Sleep(0);}
         CHECK(waveOutClose(handle)==0);
         /* CLOSE plus 63 complete pairs and one OPEN fill the 128-record queue. */
-        for(i=0;i<63;++i){CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);CHECK(waveOutClose(handle)==0);}
-        CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);
+        for(i=0;i<63;++i){CHECK(waveOutOpen(&handle,0 /* direct compatibility device */,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);CHECK(waveOutClose(handle)==0);}
+        CHECK(waveOutOpen(&handle,0 /* direct compatibility device */,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);
         CHECK(waveOutClose(handle)==MMSYSERR_NOMEM);CHECK(opened==1 && !closed);CHECK(SetEvent(gate));
         WaitCount(&opened,65);WaitCount(&closed,64);CHECK(waveOutClose(handle)==0);WaitCount(&closed,65);
         CHECK((DWORD)TlsGetValue(tls)==0x1111);P[6]=1;ExitProcess(0);
@@ -84,7 +84,7 @@ void WINAPI start(void){
     for(i=0;i<4;++i){CHECK(headers[i].dwUser==0xdead0000+i);CHECK(waveOutUnprepareHeader(handle,&headers[i],32)==0);}
     if(mode==1 || mode==2){CHECK(waveOutClose(handle)==0);CHECK(WaitForSingleObject(signalEvent,0)==WAIT_OBJECT_0);CHECK(CloseHandle(signalEvent));}
     else{CHECK(waveOutClose(handle)==0);WaitCount(&closed,1);
-        if(mode==7){CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);WaitCount(&opened,2);CHECK(waveOutClose(handle)==0);WaitCount(&closed,2);}
+        if(mode==7){CHECK(waveOutOpen(&handle,0 /* direct compatibility device */,&format,(DWORD)Callback,0x7654ab21,CALLBACK_FUNCTION)==0);WaitCount(&opened,2);CHECK(waveOutClose(handle)==0);WaitCount(&closed,2);}
         CHECK(GetLastError()==0x3333 && (DWORD)TlsGetValue(tls)==0x1111);
     }
     CHECK(CloseHandle(gate) && TlsFree(tls));P[6]=1;ExitProcess(0);

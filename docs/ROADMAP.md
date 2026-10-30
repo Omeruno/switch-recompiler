@@ -3,15 +3,17 @@
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
 Дата обновления: 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player.
-Проверенный код `068ea7d7be144c66fb4d405c87788c9b8d12c53b`:
-[CI41009876088, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41009876088).
+Проверенный код `534ad7254d3434da7684d43bc3abacb1f58b1c1b`:
+[CI41013450644, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41013450644).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
 
 Текущий системный пакет [D5 legacy file I/O](D5_LEGACY_FILE.md):9 реальных API, OFSTRUCT/search/reopen и общие checked transfers. Аудио mixing/DirectSound/MIDI остаётся открытым.
 
-[D4e native mixer core](D4E_AUDIO_MIXER.md) реализован:8 источников с независимым состоянием и реальным audout-путём. Следующий пакет переводит waveOut, затем MCI/MediaPlayer/PlaySound; существующие гостевые API пока эксклюзивны.
+[D4e native mixer core](D4E_AUDIO_MIXER.md) реализован:8 источников с независимым состоянием и реальным audout-путём. D4f переводит waveOut и WAVE_MAPPER; следующий пакет подключает MCI/MediaPlayer/PlaySound, которые пока эксклюзивны.
+
+[D4f mixed waveOut](D4F_WAVE_MIXER.md): до8 потоков через настоящий WinMM и mixed WAVE_MAPPER, независимые параметры и реальные callback’и. Прямой device0/fallback сохранён; MCI/плеер/PlaySound ещё не смешиваются вместе с waveOut.
 
 ## Цель и границы
 
@@ -32,7 +34,7 @@ backends, ARM64-переводом x86 и GPU-переводом графики.
 CPU/GPU-барьеры, владеющие mixed frames, shell/USER selector, opt-in Switch adapter
 и зарегистрированные host pixel/fault границы реализованы. G4b.2h добавляет
 ограниченный обычный solid GDI в явном эксперименте и первые парные замеры;
-D1–D4c и [D4d MP3/MCI/Media Player](D4D_AUDIO_MEDIA.md) реализованы; D4e native mixer core готов; далее waveOut/MCI source integration и DirectSound/MIDI и аппаратная приёмка звука. D, физическая E/F, H/I и расширения среды открыты.**
+D1–D4c и [D4d MP3/MCI/Media Player](D4D_AUDIO_MEDIA.md) реализованы; D4e native mixer core готов; далее MCI/MediaPlayer/PlaySound shared sources after D4f waveOut и DirectSound/MIDI и аппаратная приёмка звука. D, физическая E/F, H/I и расширения среды открыты.**
 
 Рабочий путь живых приложений: x86-интерпретатор → CPU GDI → GPU-композиция
 или software fallback → экран. G2 CPU fast path включён. G3/G4 GPU-GDI ещё
@@ -130,7 +132,7 @@ COM, child-process/service зависимостей этим не обеспеч
 
 ## Этап G — измерения и ускорение CPU/GDI [сейчас G4b.2]
 
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) добавляет обычные solid FillRect/PATCOPY в явном native experiment, public x86/CPU/EGL/count/budget/recovery и парные first-frame замеры. Локальный Mesa GPU-путь медленнее CPU; default не меняется. G4b.2i реализует cold/warm и retirement; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее waveOut/MCI source integration и DirectSound/MIDI.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) добавляет обычные solid FillRect/PATCOPY в явном native experiment, public x86/CPU/EGL/count/budget/recovery и парные first-frame замеры. Локальный Mesa GPU-путь медленнее CPU; default не меняется. G4b.2i реализует cold/warm и retirement; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее MCI/MediaPlayer/PlaySound shared sources after D4f waveOut и DirectSound/MIDI.
 
 GPU-GDI — текущий экспериментальный подблок на стыке E/G. Он не заменяет
 исходную задачу CPU-ускорения и не означает готовый dynarec.
@@ -159,7 +161,7 @@ GPU-GDI — текущий экспериментальный подблок н�
 | G4b.2m | [Измеренный differential CPU import](G4B2M_DIFFERENTIAL_IMPORT.md) |60 exits/540 EGL frames; DIB uploads655360→66112 bytes; полные CPU seeds и реальные чтения сохранены |
 | G4b.2n | [Software acceptance / CPU-native cycles](G4B2N_SOFTWARE_ACCEPTANCE.md) |17 software groups/five reports;32 exits/288 EGL frames; DIB и size-refusal costs сохранены; default CPU |
 | G4b.2o | [Explicit CPU routing](G4B2O_CPU_ROUTING.md) | Flag2 alternative;48 exits/432 EGL frames; real USER transitions/fault/cached redraw; default CPU |
-| **Следующий блок D** | [D1–D4d](D4D_AUDIO_MEDIA.md): real controls/PCM formats/MP3/MCI/native Media Player; D4e native core ready; next waveOut/MCI source integration,DirectSound/MIDI and physical audio gates | **Следующий незавершённый рубеж** |
+| **Следующий блок D** | [D1–D4d](D4D_AUDIO_MEDIA.md): real controls/PCM formats/MP3/MCI/native Media Player; D4e native core ready; next MCI/MediaPlayer/PlaySound shared sources after D4f waveOut,DirectSound/MIDI and physical audio gates | **Следующий незавершённый рубеж** |
 
 Ограниченный opt-in subset имеет реальные x86 GDI/window/lifecycle/pixel tests,
 EGL oracle и первые transfer/checkpoint/submission измерения. Более широкая
@@ -190,7 +192,7 @@ CI/NRO/логи/публичные fixtures уже есть. Остаются м
 
 ## Рабочая очередь и правила
 
-1. Следующий системный блок D — после [retained workspace/partial/DIB](G4B2J_RETAINED_WORKSPACE.md) после [adaptive exact damage](G4B2K_EXACT_DAMAGE.md) после [software acceptance/CPU-native cycles](G4B2N_SOFTWARE_ACCEPTANCE.md) перейти к waveOut/MCI source integration поверх D4e,затем DirectSound/MIDI после [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) и [D3 INI/profile](D3_INI_PROFILES.md); GL/CPU/read/ROP/DIB/alias gates сохранить. Default CPU; физическая производительность открыта.
+1. Следующий системный блок D — после [retained workspace/partial/DIB](G4B2J_RETAINED_WORKSPACE.md) после [adaptive exact damage](G4B2K_EXACT_DAMAGE.md) после [software acceptance/CPU-native cycles](G4B2N_SOFTWARE_ACCEPTANCE.md) перейти к MCI/MediaPlayer/PlaySound shared sources after D4f waveOut поверх D4e,затем DirectSound/MIDI после [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) и [D3 INI/profile](D3_INI_PROFILES.md); GL/CPU/read/ROP/DIB/alias gates сохранить. Default CPU; физическая производительность открыта.
 2. D — конкретные compatibility gaps, отдельно memory/SEH/COM и installers.
 3. Дальнейшая F/Luna/input/window ergonomics и planned installer/archive scope.
 4. Физические E/F и замеры реальных нагрузок — позже, когда пользователь сможет;
@@ -212,7 +214,7 @@ Bounded native ownership/solid dispatch реализованы; более ши�
 [G4b.2d.1 — владение GPU-ресурсами кадра](G4B2D_RESIDENT_FRAMES.md) реализовано
 в native-менеджере: удержание после retirement, лимиты, сброс и fallback.
 Этот prerequisite уже использован в native ShellSession/mixed output и
-G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее waveOut/MCI source integration и DirectSound/MIDI.
+G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает capacity reads8→0; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее MCI/MediaPlayer/PlaySound shared sources after D4f waveOut и DirectSound/MIDI.
 
 
 [G4b.2d.2 — GPU-слои в основном GL-композиторе](G4B2D2_RESIDENT_PRESENTATION.md):
@@ -223,7 +225,7 @@ G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает
 [G4b.2e](G4B2E_MIXED_WORKSPACE.md) добавляет native-слои shell и выбор mixed-пути в USER до CPU checkpoint.
 [G4b.2f](G4B2F_SWITCH_MIXED_OUTPUT.md) добавляет Switch device/swap/cursor adapter как opt-in; ordinary GDI ещё CPU.
 [G4b.2g](G4B2G_HOST_PIXEL_AUDIT.md) добавляет защищённый CPU-доступ, фиксацию отказов, checked fallback и lifecycle barriers.
-[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее waveOut/MCI source integration и DirectSound/MIDI.
+[G4b.2h](G4B2H_ORDINARY_GDI_DISPATCH.md) допускает обычные solid FillRect/PATCOPY в явном native experiment и измеряет первый кадр. G4b.2i добавляет cold/warm и retirement. Default остаётся CPU; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее MCI/MediaPlayer/PlaySound shared sources after D4f waveOut и DirectSound/MIDI.
 
 
 Пользовательский приоритет — настоящее управление окнами.
@@ -233,4 +235,4 @@ G4b.2h solid dispatch. G4b.2i разделяет cold/warm и сокращает
 [F6b: native-окна](F6B_NATIVE_WINDOW_ACTIONS.md) реализуют min/max/task restore,
 безопасное закрытие, move/resize, адаптивный layout и точный input/composition.
 Поддерживается одна native-группа с модальным документом.
-**G4b.2i cold/warm и covered journal retirement реализованы; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее waveOut/MCI source integration и DirectSound/MIDI. Default CPU.**
+**G4b.2i cold/warm и covered journal retirement реализованы; G4b.2k реализует adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; D4e native mixer core готов; далее MCI/MediaPlayer/PlaySound shared sources after D4f waveOut и DirectSound/MIDI. Default CPU.**

@@ -1,4 +1,5 @@
 #include "wave_out.h"
+#include "wave_mixer.h"
 #include "wave_callbacks.h"
 #include "hle_util.h"
 #include "user32.h"
@@ -79,7 +80,7 @@ HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m) {
         if(!target || target->status==rt::GuestThreadStatus::Exited || queue==user::S().queues.end() || queue->second.closed)return Ret(InvalidParam);
     }
     if(rt::Audio().Client() || rt::Audio().Pending())return Ret(4);
-    if(nextHandle>0x6ffffffc)return Ret(NoMemory);
+    if(nextHandle>0x60fffffc)return Ret(NoMemory);
     if(flags==0x30000 && !PrepareWaveCallbacks())return Ret(Error);
     const auto handle=uint32_t(nextHandle);nextHandle+=4;
     auto s=std::make_shared<Stream>();s->process=rt::g_process;s->memory=&m;s->owner=rt::Audio().Owner();s->handle=handle;s->callback=callback;s->callbackType=flags;s->targetThread=thread;s->instance=Arg(c,m,4);s->event=std::move(event);
@@ -168,17 +169,20 @@ HostCallOutcome Volume(cpu::CpuState& c,cpu::IGuestMemory& m,bool set) {
     m.Write32(p,uint32_t(value)|uint32_t(value)<<16);return Ret(0);
 }
 #define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
-FN(waveOutOpen){return Open(c,m);} FN(waveOutPrepareHeader){return Prepare(c,m,false);} FN(waveOutUnprepareHeader){return Prepare(c,m,true);}
-FN(waveOutPause){return Pause(c,m,true);} FN(waveOutRestart){return Pause(c,m,false);}
-FN(waveOutGetPosition){return Position(c,m);} FN(waveOutSetVolume){return Volume(c,m,true);} FN(waveOutGetVolume){return Volume(c,m,false);}
-FN(waveOutWrite){return Write(c,m);} FN(waveOutReset){return Reset(c,m,false);} FN(waveOutClose){return Reset(c,m,true);}
+#define ROUTE(name,op,direct) FN(name){return IsMixedWaveHandle(Arg(c,m,0))?MixedWaveCall(MixedWaveOp::op,c,m):(direct);}
+FN(waveOutOpen){return (Arg(c,m,1)==1 || (Arg(c,m,1)==0xffffffffu && MixedWaveSupported()))?MixedWaveCall(MixedWaveOp::Open,c,m):Open(c,m);}
+ROUTE(waveOutPrepareHeader,Prepare,Prepare(c,m,false)) ROUTE(waveOutUnprepareHeader,Unprepare,Prepare(c,m,true))
+ROUTE(waveOutPause,Pause,Pause(c,m,true)) ROUTE(waveOutRestart,Restart,Pause(c,m,false))
+ROUTE(waveOutGetPosition,Position,Position(c,m)) ROUTE(waveOutSetVolume,SetVolume,Volume(c,m,true)) ROUTE(waveOutGetVolume,GetVolume,Volume(c,m,false))
+ROUTE(waveOutWrite,Write,Write(c,m)) ROUTE(waveOutReset,Reset,Reset(c,m,false)) ROUTE(waveOutClose,Close,Reset(c,m,true))
 #define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
 const HostFunctionEntry entries[]={E(waveOutOpen,24),E(waveOutPrepareHeader,12),E(waveOutUnprepareHeader,12),E(waveOutWrite,12),E(waveOutReset,4),E(waveOutClose,4),E(waveOutPause,4),E(waveOutRestart,4),E(waveOutGetPosition,12),E(waveOutSetVolume,8),E(waveOutGetVolume,8)};
 const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
 }
-void PollWaveOut(){rt::Audio().Poll();if(auto s=Current())Drain(*s);}
+void PollWaveOut(){PollMixedWave();rt::Audio().Poll();if(auto s=Current())Drain(*s);}
 void EndWaveOutSession(){
     EndWaveCallbacks();
+    EndMixedWave();
     auto s=Current();if(!s)return;s->notifications=false;
     if(rt::Audio().Reset())Drain(*s);
     rt::Audio().ReleaseClient(s->owner,s->handle);s->open=false;rt::LocalState<Holder>().stream.reset();

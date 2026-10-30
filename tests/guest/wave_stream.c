@@ -36,9 +36,9 @@ void WINAPI start(void){
     if(mode==1){WNDCLASSA cls={0};cls.lpfnWndProc=WindowProc;cls.lpszClassName="PublicWave";CHECK(RegisterClassA(&cls));window=CreateWindowA(cls.lpszClassName,"Public wave",0,0,0,1,1,NULL,NULL,NULL,NULL);CHECK(window);target=(DWORD)window;}
     if(mode==2){receiver=CreateThread(NULL,0,Receiver,NULL,0,&target);CHECK(receiver);while(!receiverReady)Sleep(0);}
     if(mode==6)target=GetCurrentThreadId();
-    CHECK(waveOutOpen(&handle,WAVE_MAPPER,&format,target,0x76543210,flags)==0 && handle);WaveProbe[1]=(DWORD)handle;
+    CHECK(waveOutOpen(&handle,0 /* direct compatibility device */,&format,target,0x76543210,flags)==0 && handle);WaveProbe[1]=(DWORD)handle;
     if(WaveProbe[7])CHECK(waveOutClose((HWAVEOUT)(ULONG_PTR)WaveProbe[7])==MMSYSERR_INVALHANDLE);
-    CHECK(waveOutOpen(&extra,WAVE_MAPPER,&format,0,0,0)==MMSYSERR_ALLOCATED && (DWORD)extra==0x12345678);
+    CHECK(waveOutOpen(&extra,0 /* direct compatibility device */,&format,0,0,0)==MMSYSERR_ALLOCATED && (DWORD)extra==0x12345678);
     CHECK(!PlaySoundW(NULL,NULL,0) && GetLastError()==170);Pump(mode);CHECK(openCount==(mode==1 || mode==2 || mode==6));
     for(i=0;i<5;++i){headers[i].lpData=(LPSTR)samples[i];headers[i].dwBufferLength=sizeof(samples[i]);headers[i].dwUser=0xdead0000+i;
         CHECK(waveOutWrite(handle,&headers[i],sizeof(WAVEHDR))==WAVERR_UNPREPARED);
