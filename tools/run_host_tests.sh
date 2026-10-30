@@ -54,7 +54,7 @@ fi
 # Production audout adapter with an explicit host transport model (not libnx).
 if $cxx $flags -D__SWITCH__ -I"$root/tests/audio_audout_shim" \
    "$root/tests/test_audio_audout.cpp" "$root/source/runtime/audio_output.cpp" \
-   "$root/source/runtime/audio_audout.cpp" -o "$out/test_audio_audout" &&
+   "$root/source/runtime/audio_audout.cpp" "$root/source/runtime/audio_mixer.cpp" -o "$out/test_audio_audout" &&
    "$out/test_audio_audout" > "$out/audio_audout.log" 2>&1; then
     tail -n 1 "$out/audio_audout.log"
 else
@@ -97,7 +97,7 @@ done
 src="$objects"
 
 export AUDIO_MEDIA_CAPTURE="$out/native-media-player.ppm"
-for t in test_legacy_file test_audio_visualization test_shell_double_click test_audio_media test_audio_output test_ini_profile test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
+for t in test_audio_mixer test_legacy_file test_audio_visualization test_shell_double_click test_audio_media test_audio_output test_ini_profile test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then

@@ -159,3 +159,7 @@ Paint/GPU/input/fallback/relaunch checks stay deferred; SD recovery stays closed
 The authored [F6c media UI](F6C_MEDIA_VISUALS.md) now adds source-backed PCM
 visualizations/music icons/double-click; earlier absence of visualization above
 describes D4d package scope. This is not video decoding or album-art extraction.
+
+[D4e](D4E_AUDIO_MIXER.md) now implements a bounded8-source native mixer core
+with actual audout adapter evidence. This does not yet change D4d MediaPlayer/MCI
+or WinMM exclusivity; their source-lifetime migration and x86 fixtures come next.

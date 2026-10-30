@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b0f5a674035c59444f44c2e252c50375e445cada` (2026-10-30).
-[CI 40957595661](https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661)
+`068ea7d7be144c66fb4d405c87788c9b8d12c53b` (2026-10-30).
+[CI 41009876088](https://github.com/Omeruno/switch-recompiler/actions/runs/41009876088)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D5 legacy file I/O implemented; D4d/F6c preserved; mixing/DirectSound/MIDI open (2026-10-30)
+## Current position: D4e native mixer core implemented; WinMM/MCI source migration next (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -58,6 +58,8 @@ follows; its old future-tense queues do not supersede this current position.
 
 [D5 legacy file I/O](D5_LEGACY_FILE.md) implements the observed OpenFile entry blocker through9 real stdcall APIs/shared VFS, with public native+x86 evidence. Unsupported share locks/VERIFY/PROMPT/attributes remain explicit errors; Pinball is not accepted.
 
+[D4e native mixer core](D4E_AUDIO_MIXER.md):8 bounded sources,actual PCM/gain/clipping/played-span position,independent pause/reset/close through real audout revocation/replay. Production adapter transport test passes; WinMM/MCI/MediaPlayer are not migrated yet and stay exclusive. Next is real waveOut source integration with public simultaneous x86 streams, then MCI/MediaPlayer/PlaySound. No hardware/game audio acceptance.
+
 ## User's long-term product target
 
 Spore, Mirror’s Edge, The Sims 3 and Lineage 2 Classic / Asterios are explicit future PC-game targets; none is
@@ -69,7 +71,7 @@ Use real Horizon/homebrew backends within available system budgets; x86 is not
 native ARM64 and DirectX is not a native Switch GPU API. No guaranteed100% usage
 or playable FPS without version-specific physical evidence. Hardware remains
 deferred; F6b native window actions are implemented within one tool group.
-Next is real multi-source mixing/DirectSound/MIDI after [D4d native MP3/MCI/Media Player](D4D_AUDIO_MEDIA.md), preserving all graphics/session gates. File audio support is not MIDI/Pinball/game or physical sound acceptance. Checked registry persistence remains open.
+Next is waveOut source migration onto [D4e native mixer](D4E_AUDIO_MIXER.md), then MCI/MediaPlayer/PlaySound and DirectSound/MIDI, preserving all graphics/session gates. File audio support is not MIDI/Pinball/game or physical sound acceptance. Checked registry persistence remains open.
 
 ## Working agreement
 
@@ -3504,3 +3506,81 @@ prior artifacts/clean source-manifest audit. Next: real bounded multi-source aud
 mixer/per-source state before DirectSound/MIDI, preserving device/header/callback/
 MP3 lifetimes. CPU default,L legacy,ZL software and Luna stay. Hardware sound/
 Paint/GPU/fallback/input/relaunch deferred; SD recovery closed.
+
+## 2026-10-30 — D4e bounded native PCM mixer core
+
+Started clean068ea7d7be144c66fb4d405c87788c9b8d12c53b, fetched branch matched;
+CI41009876088 all6, Pages41009876083 success and D5/prior NRO/artifacts audited.
+No newer work reset or overwritten. Local Switch SDK remains absent. Contract:
+[D4e](D4E_AUDIO_MIXER.md). This package is native core + real adapter evidence;
+existing waveOut/MCI/MediaPlayer/PlaySound stay exclusive until actual migration.
+No guest simultaneous playback, DirectSound/MIDI/game/physical sound acceptance.
+
+AudioMixer explicitly claims an existing AudioOutput owner/client lease, refuses
+competing clients and requires a genuine played-frame counter. Up to8 sources,
+4 packets each,48000 retained stereo frames/source including partially played
+prefixes (<=1,536,000 source PCM bytes). Accepted writes own copies. Four256-frame
+immutable native blocks and four bounded source-span journal records;per-source
+L/R gain, signed32 sums and final signed16 clamp. Source IDs never reused
+within the same instance, including End/Begin. They are instance-local native IDs,
+not newly implemented guest handles. No allocation or guest-sized file decoder
+changes; public access remains single-threaded/native-service driven.
+
+Actual device counter credits source spans; neither submission nor release alone
+completes a packet. Partial cursor pause/gain/reset/close freezes the real device,
+credits its stopped position, requires confirmed native revocation, rewinds all
+surviving schedules to their played cursors and regenerates only unplayed tails.
+Only target source packets cancel/reset; peer PCM/position survives. This performs
+native stop/reset/restart globally and needs Pump to refill; no physically gapless
+control/latency promise. Reset retains gain and clears pause/queue/position.
+Played-prefix cancelled packets are cancelled, not falsely fully completed.
+
+Faults retain source/native block ownership and latch error until genuine End
+reset succeeds; ambiguous append is not an accepted/played packet. Counter
+regression/overrun fails instead of synthesizing progress. Observer callbacks are
+host enqueue-only, never guest code/global-owner mutations; mixer mutating reentry
+refuses. Nested inactive-owner End/write refuse; after restoration a descriptor
+cancellation faults the outer mixer and End cleans it. Mixer/output/device/scope
+must follow documented lifetime order; recovery requires keeping the failed owner
+alive until explicit End succeeds. Unused core functions may be NRO-dead-stripped
+until the following production caller integration; Switch compilation is not activation.
+
+Public native oracle compares independent int64 expected sample bytes: stereo
+clipping,8 concurrent sources, per-channel gain, immutable input copy,100-frame
+pause/peer continuation,17-frame gain rebuild, packet partitions and actual EOF,
+all-paused silence,31-frame target reset and peer-only replay, source/packet/actual
+storage bounds, stale IDs, observers/reentry, released descriptors with stalled
+counter, ambiguous append/poll/pause/reset failure retention/retry, competing
+clients/no-position and nested-owner isolation. Early future-span credit and
+wrapping-sum negative mutations both fail the actual position/PCM assertions.
+Credit implementation explicitly skips unplayed future spans; their start cursor
+alone must never advance source progress. Initial strict adapter harness caught
+misleading for-loop indentation, corrected with braces before final validation.
+
+Production AudoutDevice test runs the same native core through actual aligned
+AudioOutBuffer descriptors with a host libnx transport model: two-source stereo
+sums,37 native frames, one-source pause/rebuild/close, peer-only bytes and512-frame
+peer completion. Original adapter error/revoke/close-before-free gates retained.
+Standalone core + production-adapter ASan/UBSan with actual leak scan passed for
+all linked modules/harnesses (no fibers in those standalone runs); strict O2/
+Wall/Wextra/Werror/no-exceptions/no-RTTI core compilation passed. Full final
+COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed new and all prior D5/WinMM/MCI/MP3/
+C/six E9/22 F/17 GPU/five bound reports. No old x86 evidence count was weakened.
+
+Active/global/user/visual maps updated to native-core-versus-guest-integration
+boundary.23cards/3views/46docs; desktop/mobile/browser links/search/filters/focus/
+keyboard/resize gate passed. Restore Pinball's explicit unaccepted boundary in
+D card after browser search caught its missing searchable keyword; no test weakened.
+New stage-d-audio-mixer artifact includes native executable/test+adapter logs/core
+source+header/test source/contract; still six CI jobs and retained old artifacts.
+Normal push, exact-SHA all6 CI/Pages/public bytes, actual NRO/compiler evidence and
+new/prior public artifacts/clean code-manifest audit remain completion gates.
+
+Next concrete package: migrate waveOut's single Holder/client model into bounded
+mixer sources, preserving per-stream header/resampler/position/gain/pause/reset/
+close and delayed actual callback lifetimes; public simultaneous real-x86 streams
+must pass alongside existing function/event/window/abort/session cases. Then
+MCI/MediaPlayer/PlaySound use the same source contract; only then change admission/
+caps. DirectSound target-version audit and MIDI remain subsequent dependencies.
+F6c/Luna/default CPU/L legacy/ZL software preserved. Physical sound/timing/underrun/
+Paint/GPU/fallback/input/relaunch remain deferred; SD recovery stays closed.

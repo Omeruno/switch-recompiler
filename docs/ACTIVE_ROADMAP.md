@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: D5 legacy file I/O implemented; F6c player/double-click preserved.
-G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; mixing/DirectSound/MIDI and physical sound remain open.** Runtime baseline `b0f5a674035c59444f44c2e252c50375e445cada`
-passed [CI40957595661, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661).
+**Current position: D4e native mixer core implemented; WinMM/MCI source migration next.
+G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; WinMM/MCI mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `068ea7d7be144c66fb4d405c87788c9b8d12c53b`
+passed [CI41009876088, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41009876088).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -106,7 +106,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | D4c | [Guest function/event audio callbacks](D4C_WAVE_CALLBACKS.md): real service CPU/TEB/TLS/stdcall20 and128-record queue, event type/rights/aliases;9 process terminations +1 callback abort | D4d adds controls/formats/MP3/MCI; one physical source, mixing/DirectSound/MIDI remain open |
 | D4d | [Playback controls/MP3/MCI/native Media Player](D4D_AUDIO_MEDIA.md): actual device position/pause/master volume, PCM8/16 mono/stereo8–96k, native MP3 decoder, shared engine and real shell controls | One source, compressed/input snapshot32MiB, no MIDI/DirectSound/mixing/video or physical sound acceptance |
 | D5 | [Real legacy file I/O](D5_LEGACY_FILE.md):9 stdcall APIs, checked OFSTRUCT/search/reopen, shared transfers/truncation and public x86 sessions | Regular files/CP1252/bounded search; deny locks/VERIFY/PROMPT/extra attributes unsupported; no Pinball acceptance |
-| Next independent block | Actual multi-source mixing/DirectSound/MIDI | Preserve device/header/callback/decoder lifetimes; audit target-game audio APIs; physical sound/latency/underruns remain pending |
+| D4e | [Native mixer core](D4E_AUDIO_MIXER.md):8 sources,owning bounded PCM,actual played-span credits,independent gain/pause/reset/close and real audout adapter path | Explicit native core only; existing WinMM/MCI/MediaPlayer stay exclusive; no physical/game audio acceptance |
+| Next independent block | Migrate waveOut to mixer sources with public simultaneous x86 streams,then MCI/MediaPlayer/PlaySound | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -124,7 +125,7 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
    Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
 5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
-6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** D mixing/DirectSound/MIDI after [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) and [D3 INI/profile](D3_INI_PROFILES.md); retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
+6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** D4e waveOut source integration,then MCI/MediaPlayer/PlaySound and DirectSound/MIDI after [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) and [D3 INI/profile](D3_INI_PROFILES.md); retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
 7. [D5 legacy file I/O](D5_LEGACY_FILE.md) implements the observed OpenFile entry blocker with a public reproducer. Continue D compatibility with public reproducers of actual API/memory/unwind
    blockers; Pinball x86 remains a separate unsupported application target.
 8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache

@@ -1,4 +1,5 @@
 #include "source/runtime/audio_audout.h"
+#include "source/runtime/audio_mixer.h"
 #include <cassert>
 #include <deque>
 #include <set>
@@ -51,6 +52,26 @@ int main(){
     const auto* ambiguous=static_cast<const int16_t*>((*t.queued.begin())->buffer);assert(ambiguous[0]==123 && ambiguous[1]==-456);
     t.appendFail=false;assert(output.Reset() && t.queued.empty() && device.Available());
     assert(output.Submit(owner,pcm)==rt::AudioOutput::Result::Accepted);t.pollFail=true;assert(!output.Poll() && output.Pending()==1);t.pollFail=false;assert(output.Reset());
+    // Native mixer through the actual production audout adapter and transport.
+    // This observes real submitted descriptor bytes, not an alternate mixer mock.
+    {
+        rt::AudioMixer mixer(output);assert(mixer.Begin(owner));const auto a=mixer.CreateSource(),b=mixer.CreateSource();
+        std::vector<int16_t> one(1024),two(1024);for(unsigned n=0;n<512;++n){one[n*2]=1000+int(n);one[n*2+1]=-1000-int(n);two[n*2]=2000;two[n*2+1]=-2000;}
+        unsigned cancelled=0,played=0;
+        assert(mixer.Write(a,one,[&](bool c){assert(c);++cancelled;})==rt::AudioOutput::Result::Accepted);
+        assert(mixer.Write(b,two,[&](bool c){assert(!c);++played;})==rt::AudioOutput::Result::Accepted);
+        assert(mixer.Pump() && t.queued.size()==2 && !played && !cancelled);
+        bool first=false,second=false;for(auto* p:t.queued){auto* data=static_cast<const int16_t*>(p->buffer);assert(p->data_size==256*4);
+            first|=data[0]==3000 && data[1]==-3000;second|=data[0]==3256 && data[1]==-3256;}
+        assert(first && second);
+        t.played+=37;assert(mixer.SetPaused(a,true) && t.queued.empty() && t.running);
+        uint64_t frames=0;assert(mixer.Position(a,frames) && frames==37 && mixer.Position(b,frames) && frames==37);
+        assert(mixer.Pump() && t.queued.size()==2);for(auto* p:t.queued){const auto* data=static_cast<const int16_t*>(p->buffer);assert(data[0]==2000 && data[1]==-2000);}
+        assert(mixer.CloseSource(a) && cancelled==1 && !played);assert(mixer.Pump());
+        for(auto* p:t.queued){t.released.push_back(p);}t.queued.clear();t.played+=475;
+        assert(mixer.Pump() && played==1 && mixer.Position(b,frames) && frames==512 && mixer.End());
+        puts("Audout mixer PASS (production descriptor stereo sums,partial native counter,source pause/rebuild/close,independent peer completion;host transport model,not physical sound)");
+    }
     assert(output.Bind(nullptr));
     // No queue/reference can conceal an early free before native session close.
     auto block=std::make_shared<const rt::AudioBlock>(pcm);t.mustOwnAtExit=block;t.checkExitOwner=true;
