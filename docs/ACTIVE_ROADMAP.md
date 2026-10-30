@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: D10 audout reset/MP3 seek recovery and sound-enabled sndPlaySound/MMIO startup implemented. F7 retained; physical recovery/full game acceptance open.
-G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `7055480a49ed6e0bc573fead55d7934391c2b97c`
-passed [CI41062014304, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41062014304).
+**Current position: F8 live enlarged window view/arcade preset and measured indexed CPU SRCCOPY implemented. Limited main-path launch reported; new physical control/view/FPS and full game acceptance open.
+G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `c978514d4fec4e803435218f9ce88bc4bbf2c2b5`
+passed [CI41131710506, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41131710506).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -114,7 +114,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | D9 | [Owning class menus](D9_CLASS_MENUS.md):actual resource loading before callbacks,per-window trees,checked templates/lifetime,4 x86 sessions+2 callback aborts | Private host ball launch/movement/score observed; full game/flipper/audio/FPS/Switch remain open |
 | F7 | [Controller keyboard binding settings](F7_CONTROLLER_BINDINGS.md):12-button global profile,real editor/apply/save/reset,v1→2 migration,duplicate/held-context ownership and actual mapped x86 loop | New USER/shell only;R/Plus/mouse reserved;physical/USB/layout/per-EXE profiles outside acceptance |
 | D10 | [Audio recovery/MMIO](D10_AUDIO_RECOVERY.md):correct audout release ordering,indexed MP3 seeks,real sndPlaySound A/W/read-only file MMIO/RIFF and4 x86 exits+2 owning aborts | Physical seek/black-screen recovery remains unverified; no full MMIO/game acceptance |
-| Next independent block | Shared MCI/MediaPlayer/PlaySound + waveOut bus/sources | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
+| F8/G2 indexed | [Live window view/preset/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md):real Start/R mode,absolute input/offset cursor,touch,preset Apply/Save,4 x86 exits+2 aborts;2800 raster cases/paired native measurements | Physical FPS/view/input open;view is presentation,not virtual display-mode/maximize support |
+| Next independent block | Actual control/view/performance evidence,measured common CPU/GDI work and virtual display-mode audit;audio bus retained | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.

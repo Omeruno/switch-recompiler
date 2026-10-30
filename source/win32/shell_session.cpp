@@ -112,6 +112,8 @@ ShellSession::HostStatus ShellSession::ServiceHost() {
 }
 void ShellSession::Refresh() {
     ObserveTask();
+    shell_.SetGuestViewAllowed(!g_platform.tryPresent);
+    if(shell_.TakeGuestViewRequest())EnterFocusedView();
     if(shell_.NativeMinimized() && !shell_.StartOpen())keyboard_=false;
     if(shell_.PendingTextInput()!=ui::DesktopShell::TextInput::None) {
         std::u16string output;
@@ -135,6 +137,12 @@ const ui::Surface* ShellSession::TryCompose(const ui::Surface& guest) {
     if(!ui::g_gdi.PrepareCpuAccess()){S().presentationFault=true;return nullptr;}
     if(!ready_ || guest.width!=W || guest.height!=H || !guest.Valid())return guest.Valid()?&guest:nullptr;
     if(ObserveTask())Refresh();
+    const auto rect=PresentationRect();
+    if(viewHwnd_){
+        focusedSurface_=guest;focusedSurface_.bits=guest.Row(rect.top)+rect.left*4;
+        focusedSurface_.width=rect.Width();focusedSurface_.height=rect.Height();
+        focusedSurface_.writeCapture=nullptr;return &focusedSurface_;
+    }
     Copy(outputSurface_,guest,{0,0,W,H});
     Copy(outputSurface_,chromeSurface_,{0,680,W,H});
     if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop)Copy(outputSurface_,chromeSurface_,shell_.PanelBounds());
@@ -163,6 +171,7 @@ ui::WindowSceneView ShellSession::NativeOverlay() {
     return {owners_.data(),W,H,sceneLayers_.data(),1,false,nullptr,sceneGeneration_};
 }
 ui::WindowSceneView ShellSession::Scene() {
+    PresentationRect();if(viewHwnd_)return {};
     if(!ready_ || !owners_.Resize(size_t(W)*H))return {};
     const auto guest=S().windowLayers.Scene();
     if(guest.owners && guest.width==W && guest.height==H)std::memcpy(owners_.data(),guest.owners,size_t(W)*H*4);
@@ -194,6 +203,7 @@ ui::WindowSceneView ShellSession::Scene() {
     return {owners_.data(),W,H,sceneLayers_.data(),count,false,nullptr,sceneGeneration_};
 }
 bool ShellSession::ShellPoint(int x,int y) const {
+    if(viewHwnd_)return false;
     if(y>=680 || shell_.StartOpen() || shell_.ModalActive())return true;
     if(shell_.ActivePanel()!=ui::DesktopShell::Panel::Desktop && shell_.PanelBounds().Contains(x,y))return true;
     return !WindowFromPoint(x,y,false); // exposed native desktop, never guest chrome
@@ -268,7 +278,7 @@ bool ShellSession::Filter(const InputEvent& e) {
         if(e.type==IE::Char)return keyboard_;
         const auto vk=e.vk&255;const bool down=e.type==IE::KeyDown;
         if(vk==0x5B) {
-            if(down && !guestHeld){shell_.ToggleStart();keyboard_=shell_.StartOpen() || shell_.ModalActive();Refresh();}
+            if(down && !guestHeld){if(viewHwnd_){viewHwnd_=0;viewIdentity_=0;++revision_;}shell_.ToggleStart();keyboard_=shell_.StartOpen() || shell_.ModalActive();Refresh();}
             return true;
         }
         if(!down) {const bool owned=shellKeys_[vk];shellKeys_[vk]=false;return owned;}

@@ -118,3 +118,8 @@ run medians 19.79 ms reference /15.69 ms fast, with raster-timed nested blits
 4.70 ms /0.63 ms. CPU control medians were 5.00 ms /4.98 ms. These are bounded
 host synthetic observations; use exact-SHA CI raw samples for reproduction,
 not these rounded figures as a Switch FPS guarantee.
+
+[F8 view/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md) adds an explicitly
+selected arcade draft profile and bounded live-window aspect-fit view. It also
+extends the common CPU fast path to indexed8→32 SRCCOPY with per-call palette
+lookup,reference/capture gates and paired native observations;no hardware FPS claim.

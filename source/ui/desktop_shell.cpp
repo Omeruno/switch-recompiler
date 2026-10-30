@@ -192,6 +192,8 @@ Rect DesktopShell::Bounds(int t) {
     case Settings:return {6,358,238,410};
     case PreferenceSort:return {416,276,630,310};
     case ControllerSettings:return {648,276,1006,310};
+    case BindingArcade:return {782,360,1006,396};
+    case GuestView:return {6,526,238,570};
     case BindingPrevious:return {416,284,500,318};
     case BindingNext:return {508,284,592,318};
     case KeyPrevious:return {416,360,590,396};
@@ -270,7 +272,7 @@ bool DesktopShell::ConfigureFilesystem(const std::string& system,const std::stri
 }
 void DesktopShell::SetStatus(const std::string& status) {status_=status.substr(0,240);}
 void DesktopShell::SetGuestActive(const std::string& label) {
-    CancelPointer();
+    CancelPointer();guestViewRequest_=false;guestViewAllowed_=true;
     returnPanel_=panel_;returnFocus_=focus_;guestActive_=true;guestMinimized_=false;guestTaskPending_=false;
     guestLabel_=label.substr(0,240);panel_=Panel::Desktop;Enter();
 }
@@ -278,7 +280,7 @@ void DesktopShell::EndGuest() {
     CancelPointer();
     CloseContext();secondaryTarget_=-2;
     browser_.CancelCopy();
-    guestActive_=false;guestLabel_.clear();
+    guestActive_=false;guestViewRequest_=false;guestLabel_.clear();
     if(!TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer){panel_=returnPanel_;focus_=returnFocus_;}
     request_.Clear();startOpen_=false;pressed_=None;
     if(!TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer){dialog_=Dialog::None;textInput_=TextInput::None;operationPath_.clear();}
@@ -330,7 +332,7 @@ bool DesktopShell::ControlEnabled(int t) const {
         if(t==TextInsert || t==TextErase)return true;
         return t>=TextLineBase && t<TextLineBase+int(VisibleTextRows()) && textSelection_/VisibleTextRows()*VisibleTextRows()+size_t(t-TextLineBase)<document_.Lines().size();
     }
-    if(dialog_==Dialog::Bindings)return t==BindingPrevious || t==BindingNext || t==KeyPrevious || t==KeyNext || t==BindingApply || t==BindingSave || t==BindingReset || t==CancelDialog;
+    if(dialog_==Dialog::Bindings)return t==BindingPrevious || t==BindingNext || t==KeyPrevious || t==KeyNext || t==BindingApply || t==BindingSave || t==BindingReset || t==BindingArcade || t==CancelDialog;
     if(dialog_==Dialog::Preferences) {
         if(t==ControllerSettings || t==PreferenceSort || t==PreferenceSave || t==CancelDialog)return true;
         if(t==AssociationPrevious || t==AssociationNext)return browser_.Associations().size()>1;
@@ -365,6 +367,7 @@ bool DesktopShell::ControlEnabled(int t) const {
         std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return c>='A' && c<='Z'?char(c+32):char(c);});
         return entry.kind==ShellBrowser::Kind::File && name.size()>=4 && name.substr(name.size()-4)==".txt";
     }
+    if(t==GuestView)return guestActive_ && guestViewAllowed_;
     if(t==Settings)return browser_.Ready();
     if(t==FileActions)return panel_==Panel::Explorer && !browser_.Entries().empty();
     if(t==FolderActions)return panel_==Panel::Explorer;
@@ -411,7 +414,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
         for(int t:{TextSave,TextSaveAs,TextDiscard,CancelDialog,DialogMinimize,DialogMaximize,DialogClose,NativeTask})if(Enabled(t))out.push_back(t);
         return out;
     }
-    if(dialog_==Dialog::Bindings)return {BindingPrevious,BindingNext,KeyPrevious,KeyNext,BindingApply,BindingSave,BindingReset,CancelDialog};
+    if(dialog_==Dialog::Bindings)return {BindingPrevious,BindingNext,KeyPrevious,KeyNext,BindingApply,BindingSave,BindingReset,BindingArcade,CancelDialog};
     if(dialog_==Dialog::Preferences) {
         std::vector<int> out;for(int t:{PreferenceSort,ControllerSettings,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Enabled(t))out.push_back(t);
         return out;
@@ -420,7 +423,7 @@ std::vector<int> DesktopShell::FocusOrder() const {
     if(dialog_==Dialog::Properties || dialog_==Dialog::CopyProgress)return {CancelDialog};
     if(startOpen_) {
         std::vector<int> out;
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,MediaApp,About,Settings,Exit,Start})if(Enabled(t))out.push_back(t);
+        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,MediaApp,GuestView,About,Settings,Exit,Start})if(Enabled(t))out.push_back(t);
         return out;
     }
     if(panel_==Panel::About)return {Minimize,Maximize,Close,NativeTask,Start};
@@ -791,7 +794,7 @@ int DesktopShell::HitTest(int x,int y) const {
     }
     if(ControlBounds(Start).Contains(x,y))return Start;
     if(startOpen_) {
-        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,MediaApp,About,Settings,Exit})if(ControlBounds(t).Contains(x,y))return t;
+        for(int t:{MenuPrograms,MenuComputer,MenuDocuments,MenuRun,MediaApp,GuestView,About,Settings,Exit})if(ControlBounds(t).Contains(x,y))return t;
         return None; // Menu is modal to clicks; no click-through to desktop/window.
     }
     if(!nativeMinimized_ && panel_!=Panel::Desktop && PanelBounds().Contains(x,y)) {
@@ -966,6 +969,8 @@ void DesktopShell::Activate(int target) {
     case BindingNext:Move(1);break;
     case KeyPrevious:CycleBindingKey(-1);break;
     case KeyNext:CycleBindingKey(1);break;
+    case BindingArcade:bindingDraft_=ArcadeControllerBindings();bindingNotice_=u"Аркада: B=Space · L=Z · X=/ · Y=F2 · −=Esc.";break;
+    case GuestView:startOpen_=false;nativeMinimized_=HasNativeWindow();guestViewRequest_=true;CancelPointer();break;
     case BindingReset:bindingDraft_={};bindingNotice_=u"Выбран стандартный профиль. Примените или сохраните.";break;
     case BindingApply:case BindingSave:
         if(browser_.ApplyKeyBindings(bindingDraft_)) {
@@ -1313,6 +1318,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         item(Settings,xp::IconKind::Computer,32,u"Настройки оболочки",u"Кнопки, сортировка и ассоциации",true);
         item(About,xp::IconKind::Application,32,u"О программе",u"Switch Recompiler",true);
         item(MediaApp,xp::IconKind::MusicFile,32,u"Media Player",u"Музыка MP3 и WAV",true);
+        if(guestActive_)item(GuestView,xp::IconKind::Application,24,u"Окно на весь экран",u"R — вернуться к рабочему столу",true);
         xp::DrawMenuSeparator(s,14,232,574);
         {
             const auto r=ControlBounds(MenuPrograms);const bool hot=Enabled(MenuPrograms) && (focus_==MenuPrograms || hover_==MenuPrograms);
@@ -1401,7 +1407,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             Text(s,DialogLayout({416,246,1006,276}),u"Кнопка: "+Wide(ControllerButtonName(bindingSelection_))+u"   (↑/↓ — выбор)",0x24354A,17,true);
             control(BindingPrevious,u"↑",ControlBounds(BindingPrevious));control(BindingNext,u"↓",ControlBounds(BindingNext));
             Text(s,DialogLayout({416,326,1006,354}),u"Клавиша: "+Wide(ControllerKeyName(bindingDraft_.keys[bindingSelection_])),0x123D75,18,true);
-            control(KeyPrevious,u"← Предыдущая",ControlBounds(KeyPrevious));control(KeyNext,u"Следующая →",ControlBounds(KeyNext));
+            control(KeyPrevious,u"← Предыдущая",ControlBounds(KeyPrevious));control(KeyNext,u"Следующая →",ControlBounds(KeyNext));control(BindingArcade,u"Профиль: аркада",ControlBounds(BindingArcade));
             Text(s,DialogLayout({416,402,1006,436}),!bindingNotice_.empty()?bindingNotice_:bindingDraft_!=browser_.KeyBindings()?u"Есть изменения. Нажмите Применить или Сохранить.":u"←/→ — клавиша. Unbound — без привязки. Y — сменить действие.",0x42576B,13);
             control(BindingApply,u"Применить",ControlBounds(BindingApply));control(BindingSave,u"Сохранить",ControlBounds(BindingSave));control(BindingReset,u"По умолчанию",ControlBounds(BindingReset));
             Text(s,DialogLayout({416,484,1006,502}),u"R — Пуск · + — выход · A/ZR — мышь",0x526477,12);

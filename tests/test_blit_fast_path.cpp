@@ -5,7 +5,7 @@
 
 // Compare complete storage (including X bytes/padding/guards), capture ownership
 // and revisions with the retained general rasterizer, not another fast copy.
-static std::vector<uint8_t> Draw(bool fast,unsigned scenario) {
+static std::vector<uint8_t> Draw(bool fast,unsigned scenario,unsigned paletteMode=0) {
     constexpr int width=32,height=24;
     const int format=scenario%8;
     const int srcBpp=format==1?24:format==2?8:32;
@@ -13,10 +13,13 @@ static std::vector<uint8_t> Draw(bool fast,unsigned scenario) {
     ui::OwnedSurface source,dest;source.Allocate(width,height,srcBpp);dest.Allocate(width,height,dstBpp);
     source.storage.resize(source.storage.size()+32,0xa5);dest.storage.resize(dest.storage.size()+32,0x5a);
     source.s.bits=source.storage.data();dest.s.bits=dest.storage.data();
-    if(format==5 || format==7){source.s.bits+=source.s.pitch*(height-1);source.s.pitch=-source.s.pitch;}
-    if(format==6 || format==7){dest.s.bits+=dest.s.pitch*(height-1);dest.s.pitch=-dest.s.pitch;}
+    if(format==5 || format==7 || (srcBpp==8 && (paletteMode==3 || paletteMode==4 || paletteMode==6))){source.s.bits+=source.s.pitch*(height-1);source.s.pitch=-source.s.pitch;}
+    if(format==6 || format==7 || (srcBpp==8 && paletteMode>=5)){dest.s.bits+=dest.s.pitch*(height-1);dest.s.pitch=-dest.s.pitch;}
+    if(srcBpp==8 && paletteMode){source.s.palette.resize((paletteMode==2 || paletteMode==4)?17:256);
+        for(size_t n=0;n<source.s.palette.size();++n)source.s.palette[n]=uint32_t((n*917391u)^0xa7003311u);}
     for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
-        source.s.Set(x,y,(x*7219+y*3311+scenario*117)&0xffffff);
+        if(srcBpp==8)source.s.Row(y)[x]=uint8_t(x*19+y*31+scenario);
+        else source.s.Set(x,y,(x*7219+y*3311+scenario*117)&0xffffff);
         dest.s.Set(x,y,(x*4127+y*9187+scenario*13)&0xffffff);
         if(srcBpp==32)reinterpret_cast<uint32_t*>(source.s.Row(y))[x]|=0xa7000000;
         if(dstBpp==32)reinterpret_cast<uint32_t*>(dest.s.Row(y))[x]|=0x9b000000;
@@ -64,5 +67,6 @@ static std::vector<uint8_t> Draw(bool fast,unsigned scenario) {
 }
 int main() {
     for(unsigned i=0;i<1600;++i)assert(Draw(false,i)==Draw(true,i));
-    puts("PASSED: 1600 reference/fast GDI copies, clips/formats/pitch/X bytes/overlap/ROP/key/capture/revisions/guards");
+    for(unsigned palette=1;palette<=6;++palette)for(unsigned i=2;i<1600;i+=8)assert(Draw(false,i,palette)==Draw(true,i,palette));
+    puts("PASSED: 2800 reference/fast GDI copies (including full/short indexed palettes), clips/formats/pitch/X bytes/overlap/ROP/key/capture/revisions/guards");
 }

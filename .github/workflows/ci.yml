@@ -96,6 +96,28 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-game-view
+          if-no-files-found: error
+          path: |
+            build-host/game_view.log
+            build-host/focused-view.ppm
+            build-host/benchmark_indexed_blit.log
+            build-host/test_blit_fast_path.log
+            build-host/test_presentation.log
+            build-host/guest-run.*/game_loop.exe
+            tests/guest/game_loop.c
+            tests/test_game_loop.cpp
+            tests/test_controller_settings.cpp
+            tests/test_blit_fast_path.cpp
+            tests/test_presentation.cpp
+            tests/benchmark_indexed_blit.cpp
+            source/win32/shell_session_view.cpp
+            source/ui/controller_bindings.cpp
+            source/ui/ui_gdi.cpp
+            docs/F8_GAME_VIEW_AND_INDEXED_BLITS.md
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-d-audio-recovery
           if-no-files-found: error
           path: |

@@ -1007,18 +1007,28 @@ bool Gdi::BlitCore(uint32_t dst, int x, int y, int w, int h, const Surface* src,
         srcMono = false;
     }
 
-    // Common 1:1 RGB copy: skip general scaling division, palette conversion
-    // and ROP dispatch. Keep the reference alpha normalization and write capture.
-    if(blitFastPath_ && code==0xCC && !useKey && src && src->bpp==32 && c.s->bpp==32 &&
+    // Common 1:1 RGB/indexed copy: skip general scaling division and ROP
+    // dispatch; indexed input uses a bounded palette lookup rebuilt per call.
+    // Mutable/short/missing palettes keep Surface::PaletteColor semantics.
+    // Keep the reference alpha normalization and write capture.
+    if(blitFastPath_ && code==0xCC && !useKey && src && (src->bpp==32 || src->bpp==8) && !srcMono && c.s->bpp==32 &&
        !flipX && !flipY && SW==W && SH==H && sx0>=0 && sy0>=0 &&
        int64_t(sx0)+W<=src->width && int64_t(sy0)+H<=src->height) {
+        uint32_t palette[256];
+        if(src->bpp==8)for(unsigned n=0;n<256;++n)palette[n]=src->PaletteColor(n)&0xffffffu;
         for(const Rect& cr:c.clip.Rects()) {
             const int ya=std::max(dy0,cr.top),yb=std::min(dy0+H,cr.bottom);
             const int xa=std::max(dx0,cr.left),xb=std::min(dx0+W,cr.right);
             if(xa>=xb)continue;
             for(int yy=ya;yy<yb;++yy) {
-                const auto* in=reinterpret_cast<const uint32_t*>(src->Row(sy0+yy-dy0))+sx0+xa-dx0;
                 auto* out=reinterpret_cast<uint32_t*>(c.s->Row(yy))+xa;
+                if(src->bpp==8){
+                    const auto* indices=src->Row(sy0+yy-dy0)+sx0+xa-dx0;
+                    if(c.s->writeCapture){for(int xx=xa;xx<xb;++xx)c.s->Set(xx,yy,palette[*indices++]);}
+                    else {for(int xx=xa;xx<xb;++xx)*out++=palette[*indices++];}
+                    continue;
+                }
+                const auto* in=reinterpret_cast<const uint32_t*>(src->Row(sy0+yy-dy0))+sx0+xa-dx0;
                 if(c.s->writeCapture) {
                     for(int xx=xa;xx<xb;++xx)c.s->Set(xx,yy,*in++);
                 } else {

@@ -146,6 +146,16 @@ static void NativeRows() {
     }
 }
 int main() {
+    {const auto viewport=ui::FitViewport(320,180,1280,720);float x=-1,y=-1;
+        assert(viewport.ToSource(0,0,ui::Rect(20,30,340,210),x,y) && x==20 && y==30);
+        assert(viewport.ToSource(640,360,ui::Rect(20,30,340,210),x,y) && x==180 && y==120);
+        assert(viewport.ToSource(1279,719,ui::Rect(20,30,340,210),x,y) && x==339 && y==209);
+        assert(!viewport.ToSource(0,0,ui::Rect{},x,y) && x==339 && y==209);
+        assert(!viewport.ToSource(0,0,ui::Rect(INT32_MIN,0,INT32_MAX,720),x,y) && x==339 && y==209);
+        const auto boxed=ui::FitViewport(320,240,1280,720);assert(!boxed.Contains(0,100));
+        assert(boxed.ToSource(-500,100,ui::Rect(15,25,335,265),x,y) && x==15);
+    }
+
     CheckViewport();Golden(800,600);Golden(1280,720);FormatsAndOwnership();NativeRows();Benchmark(800,600);Benchmark(1280,720);
     puts("PASSED: old-output pixel equivalence, Lite full width, aspect/input mapping, DIB formats, padding, owned redraw, detach/resize/failure and bounded metrics");
 }

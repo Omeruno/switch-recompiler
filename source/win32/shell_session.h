@@ -12,6 +12,8 @@ public:
     explicit ShellSession(ui::DesktopShell& shell,ui::PresentationAllocator* allocator=nullptr);
     ~ShellSession();
     bool Attach(const std::string& label);
+    Rect PresentationRect(); // guest coordinates; bounded focused-window view
+    bool FocusedView() const {return viewHwnd_!=0;}
     bool Ready() const {return ready_;}
     enum class HostStatus {Running,Quit,SourceClosed,InputOverflow};
     static constexpr size_t MaxGuestInput=256;
@@ -32,6 +34,9 @@ public:
     ShellSession& operator=(const ShellSession&)=delete;
 private:
     void Refresh();
+    void EnterFocusedView();
+    uint32_t viewHwnd_=0;uint64_t viewIdentity_=0;
+    ui::Surface focusedSurface_;
     bool ReadHost(int timeoutMs,bool independent=false);
     bool WaitGuest(int timeoutMs,std::vector<InputEvent>& out);
     bool QueueGuest(InputEvent event);

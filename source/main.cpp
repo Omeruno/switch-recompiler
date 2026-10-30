@@ -1965,9 +1965,13 @@ void EndPresentation() {
     g_presentation.ClearLayers();
     win32::user::EnableWindowLayers(false);g_guestPresentation=false;
 }
+ui::PresentationCursor OutputCursor(){
+    const auto rect=g_shellSession?g_shellSession->PresentationRect():win32::user::Rect{};
+    return {int(g_cx)-rect.left,int(g_cy)-rect.top,g_cursorVisible};
+}
 void Blit() {
     if(!OutputHealthy())return;
-    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
+    const auto cursor=OutputCursor();
     if(g_mixedWorkspace && g_mixedBindings && g_mixedBindings->PresentationReady()) {
         if(g_havePresented && g_mixedWorkspace->FrameCurrent() && g_presentedCursor.x==cursor.x &&
            g_presentedCursor.y==cursor.y && g_presentedCursor.visible==cursor.visible) {
@@ -1981,7 +1985,7 @@ void Blit() {
     BlitCanonical();
 }
 void BlitCanonical() {
-    const ui::PresentationCursor cursor{static_cast<int>(g_cx),static_cast<int>(g_cy),g_cursorVisible};
+    const auto cursor=OutputCursor();
     if(!g_presentation.SourceWidth())return;
     // libnx linear mode preserves one CPU staging buffer; framebufferEnd
     // copies that staging image into the dequeued display slot. Skip unchanged
@@ -2108,11 +2112,15 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         const bool rawTouching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
         const auto edges=g_pointerInputGate.Update(padIsConnected(&g_pad)?padGetButtons(&g_pad):0,rawTouching);
         const u64 down=edges.down,up=edges.up;
-        const int sw=g_presentation.SourceWidth()?g_presentation.SourceWidth():win32::user::S().screenW;
-        const int sh=g_presentation.SourceHeight()?g_presentation.SourceHeight():win32::user::S().screenH;
+        const auto inputRect=g_shellSession?g_shellSession->PresentationRect():win32::user::Rect(0,0,
+            g_presentation.SourceWidth()?g_presentation.SourceWidth():win32::user::S().screenW,
+            g_presentation.SourceHeight()?g_presentation.SourceHeight():win32::user::S().screenH);
+        const int sw=inputRect.Width(),sh=inputRect.Height();
         // Stick speed is in pixels/second; rendering frequency is not a speed multiplier.
         HidAnalogStickState stick = padGetStickPos(&g_pad, 0);
-        bool moved=g_pointerMotion.Advance(g_cx,g_cy,stick.x,stick.y,rt::Clock::NowUs(),sw,sh);
+        float localX=g_cx-inputRect.left,localY=g_cy-inputRect.top;
+        bool moved=g_pointerMotion.Advance(localX,localY,stick.x,stick.y,rt::Clock::NowUs(),sw,sh);
+        g_cx=localX+inputRect.left;g_cy=localY+inputRect.top;
         // тач
         bool touching=edges.touching;
         const auto viewport=ui::FitViewport(sw,sh,kOutW,kOutH);
@@ -2123,7 +2131,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         }
         if (touching) {
             int tx=static_cast<int>(ts.touches[0].x),ty=static_cast<int>(ts.touches[0].y);
-            viewport.ToSource(tx,ty,sw,sh,g_cx,g_cy);
+            viewport.ToSource(tx,ty,inputRect,g_cx,g_cy);
             if (!g_touching || tx != g_lastTouchX || ty != g_lastTouchY) moved = true;
             g_lastTouchX = tx;
             g_lastTouchY = ty;

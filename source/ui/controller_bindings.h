@@ -12,6 +12,7 @@ struct ControllerBindings {
     bool operator!=(const ControllerBindings& b) const {return !(*this==b);}
     static bool Valid(const ControllerBindings&);
 };
+ControllerBindings ArcadeControllerBindings();
 const std::vector<uint16_t>& ControllerKeyChoices();
 std::string ControllerKeyName(uint16_t key);
 const char* ControllerButtonName(size_t button);

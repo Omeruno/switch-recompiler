@@ -45,6 +45,11 @@ int main(int argc,char** argv){
     Shell restored;assert(restored.ConfigureFilesystem(root.string(),sd.string(),rom.string(),error) && restored.Browser().KeyBindings().keys[0]==0x71);
     assert(restored.Browser().Ordering()==ui::ShellBrowser::Sort::NameDescending && restored.Browser().Associations().size()==1);
     Click(shell,Shell::BindingReset);assert(shell.Browser().KeyBindings().keys[0]==0x71);Click(shell,Shell::BindingApply);assert(shell.Browser().KeyBindings()==ui::ControllerBindings{});
+    Click(shell,Shell::BindingArcade);assert(shell.Browser().KeyBindings()==ui::ControllerBindings{});
+    Click(shell,Shell::BindingSave);const auto arcade=shell.Browser().KeyBindings();
+    assert(arcade.keys[0]==0x20 && arcade.keys[1]==0xbf && arcade.keys[2]==0x71 && arcade.keys[3]=='Z' && arcade.keys[5]==0x1b && arcade.keys[11]==0);
+    Shell arcadeRestore;assert(arcadeRestore.ConfigureFilesystem(root.string(),sd.string(),rom.string(),error) && arcadeRestore.Browser().KeyBindings()==arcade);
+    Click(shell,Shell::BindingReset);Click(shell,Shell::BindingApply);
     // Controller focus can reach every action,including Save and Back.
     for(int n=0;n<8 && shell.Focus()!=Shell::BindingSave;++n)shell.NextFocus();
     assert(shell.Focus()==Shell::BindingSave);shell.Accept();

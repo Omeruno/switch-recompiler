@@ -24,7 +24,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <body>
 <header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D10 · восстановление аудио / запуск</span></div><h2>Перемотка и запуск со звуком</h2><p>Исправлен порядок освобождения аудиобуферов; MP3 получил индекс перемотки. Реализованы настоящие sndPlaySound/MMIO для звуковой ветки запуска. Проверка восстановления на Switch ещё открыта.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>F8 · управление / увеличенный вид</span></div><h2>Кнопки, увеличенный вид и CPU-копии</h2><p>Профиль «Аркада»: B — Space, L — Z, X — /. Пуск → «Окно на весь экран» увеличивает вид, R возвращает рабочий стол. Общие индексированные CPU-копии ускорены и сверены с эталоном; FPS на Switch ещё нужно измерить.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -39,9 +39,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 {
   "schema": 1,
   "updated": "2026-10-31",
-  "runtimeSha": "7055480a49ed6e0bc573fead55d7934391c2b97c",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41062014304",
-  "current": "D",
+  "runtimeSha": "c978514d4fec4e803435218f9ce88bc4bbf2c2b5",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41131710506",
+  "current": "F",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
   "nodes": [
@@ -112,8 +112,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "D",
       "code": "D",
       "title": "Совместимость Windows",
-      "status": "current",
-      "summary": "D10: корректный сброс audout,индекс MP3,реальные sndPlaySound A/W и чтение файлов MMIO/RIFF. Sound-enabled host Pinball рисует стол/шар/текст; Switch recovery ещё не принят.",
+      "status": "partial",
+      "summary": "D10: реальный сброс audout/индекс MP3/sndPlaySound/MMIO. Pinball дошёл до запуска на Switch;полная игра,ввод,звук,FPS и виртуальные видеорежимы остаются открыты.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
         "Существенный Win32/CRT и ограниченный SEH.",
@@ -190,8 +190,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "F",
       "code": "F",
       "title": "Оболочка и файлы",
-      "status": "partial",
-      "summary": "F7: настоящий профиль12 кнопок Switch→клавиши,редактор/применить/сохранить/сброс,владение клавишами и миграция настроек. Аппаратная проверка открыта.",
+      "status": "current",
+      "summary": "F8: общий профиль «Аркада»,увеличенный вид живого окна и R-возврат,корректные координаты ввода;общие8-битные CPU-копии ускорены. Физическая проверка/FPS открыты.",
       "done": [
         "Постоянные C/S/R, Пуск, проводник, дерево и реальные .lnk.",
         "Папки, свойства, Copy/Paste, контекстные меню и настройки.",
@@ -201,9 +201,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "F6b: native геометрия/reflow, move/resize/min/max/task restore, безопасное закрытие TXT/BMP и точный input/composition.",
         "Native Media Player: MP3/PCM WAV,open/play/pause/stop/seek/volume,real min/max/resize/close; existing one native tool group.",
         "F6c: authored XP-era Media Player, hardware-cursor PCM spectrum/stereo wave/circles/VU, music icons, real seek rail and timed/path-safe folder/file double-click.",
-        "F7: shared12-button keyboard mapping/physical owners,duplicate+sided modifiers,held context/profile quarantine;native editor/apply/save/reset,v1→v2 preferences migration;4 normal actual mapped x86 sessions+2 held-key aborts,real USER states/chars/timers/pixels,source-close/overflow gates."
+        "F7: shared12-button keyboard mapping/physical owners,duplicate+sided modifiers,held context/profile quarantine;native editor/apply/save/reset,v1→v2 preferences migration;4 normal actual mapped x86 sessions+2 held-key aborts,real USER states/chars/timers/pixels,source-close/overflow gates.",
+        "F8: explicit arcade preset Apply/Save,fresh restore;live HWND/native identity view,aspect fit,offset-aware touch/absolute guest input;4 normal mapped x86 sessions+2 held-key aborts,independent changed/scaled pixels,R exit/native Back,unchanged geometry/owning redraw. 2800 raster cases/paired native indexed-copy measurements."
       ],
       "todo": [
+        "Проверить управление/увеличенный вид/FPS на Switch. Настоящие виртуальные видеорежимы и отдельные пользовательские профили EXE — дальнейшие задачи.",
         "Физическая проверка назначений/тача/перезапуска и сохранения на Switch. Языки/USB/DirectInput/профили EXE и переназначение мыши — отдельные будущие блоки.",
         "Аппаратная приёмка F.",
         "Полное поведение окон XP и дальнейшее расширение среды."
@@ -217,7 +219,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/D4D_AUDIO_MEDIA.md",
         "docs/F6C_MEDIA_VISUALS.md",
         "docs/F7_CONTROLLER_BINDINGS_PLAN.md",
-        "docs/F7_CONTROLLER_BINDINGS.md"
+        "docs/F7_CONTROLLER_BINDINGS.md",
+        "docs/F8_GAME_VIEW_AND_INDEXED_BLITS.md"
       ],
       "limit": "Один активный EXE с несколькими его окнами. Одна native-группа; произвольная native-многооконность, несколько одновременных EXE и полная среда XP не готовы.",
       "kind": "Этап"
@@ -234,7 +237,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G4b.2a: общий GL-контекст с восстановлением состояния, проверенный с основным композитором.",
         "G4b.2b: ресурсы HWND/DC с проверками жизни, clip и сеансов; явный native-путь.",
         "G4b.2c: opt-in CPU/GPU authority, реальный x86 read/ROP/DIB/layout тест, renderer shader cleanup.",
-        "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры."
+        "G4b.2d–h: retained mixed output, shell/device/fault audit и bounded ordinary solid GDI; public x86/CPU/EGL и первые парные замеры.",
+        "G2 indexed: bounded mutable palette8→32 SRCCOPY1:1 CPU path;full/short/missing palettes,signed pitch,capture/clip/revision/reference gates;7 paired native samples for4 cases,no timing threshold or Switch FPS claim."
       ],
       "todo": [
         "Software gates сведены; explicit CPU routing готов; D1–D4d MP3/MCI/Media Player реализованы; далее mixing/DirectSound/MIDI, default CPU.",
@@ -245,7 +249,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "docs": [
         "docs/ACTIVE_ROADMAP.md",
         "docs/G4B_GPU_BATCHES.md",
-        "docs/TARGET_GAMES_RU.md"
+        "docs/TARGET_GAMES_RU.md",
+        "docs/F8_GAME_VIEW_AND_INDEXED_BLITS.md"
       ],
       "limit": "GPU-прототип ещё не включён для Paint. Dynarec остаётся отдельной незавершённой работой.",
       "kind": "Этап"

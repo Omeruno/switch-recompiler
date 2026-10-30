@@ -59,7 +59,7 @@ Rect DesktopShell::ControlBounds(int target) const {
         return {d.left+20,y,d.right-22,y+28};
     }
     const auto r=Bounds(target);
-    if((target>=ControllerSettings && target<=BindingReset) || target==ConfirmDelete || target==CancelDialog || (target>=PreferenceSort && target<=PreferenceSave) ||
+    if((target>=ControllerSettings && target<=BindingArcade) || target==ConfirmDelete || target==CancelDialog || (target>=PreferenceSort && target<=PreferenceSave) ||
        (target>=TextEdit && target<=TextDiscard) || (target>=MediaPlay && target<=MediaForward) || target==MediaChoose || target==MediaVolumeDown || target==MediaVolumeUp || target==ImageFit || target==ImageActual ||
        (target>=TreeOpen && target<=TreeCollapse) || (target>=TreeRowBase && target<TreeRowBase+7))return DialogLayout(r);
     if(target>=BrowserRowBase && target<BrowserRowBase+Rows) {

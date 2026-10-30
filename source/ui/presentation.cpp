@@ -34,6 +34,12 @@ bool Viewport::ToSource(int px,int py,int sw,int sh,float& sx,float& sy) const {
     sy=std::max(0.0f,std::min(static_cast<float>((int64_t(py)-y)*sh)/height,static_cast<float>(sh-1)));
     return true;
 }
+bool Viewport::ToSource(int px,int py,Rect source,float& sx,float& sy) const {
+    const int64_t width=int64_t(source.right)-source.left,height=int64_t(source.bottom)-source.top;
+    if(width<=0 || height<=0 || width>8192 || height>8192)return false;
+    float x=0,y=0;if(!ToSource(px,py,int(width),int(height),x,y))return false;
+    sx=x+source.left;sy=y+source.top;return true;
+}
 Viewport FitViewport(int sw,int sh,int ow,int oh) {
     if(!Dimensions(sw,sh) || !Dimensions(ow,oh))return {};
     int w=ow,h=oh;

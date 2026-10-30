@@ -1,15 +1,30 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`7055480a49ed6e0bc573fead55d7934391c2b97c` (2026-10-31).
-[CI 41062014304](https://github.com/Omeruno/switch-recompiler/actions/runs/41062014304)
+`c978514d4fec4e803435218f9ce88bc4bbf2c2b5` (2026-10-31).
+[CI 41131710506](https://github.com/Omeruno/switch-recompiler/actions/runs/41131710506)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D10 audout reset/MP3 seek recovery and sound-enabled MMIO startup; physical recovery/game acceptance open (2026-10-31)
+## Current position: F8 enlarged window view/arcade preset and measured indexed CPU copies; physical control/view/FPS acceptance open (2026-10-31)
+
+[F8 enlarged view/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md): actual Start
+command crops the live foreground root window for aspect-fit output;R returns
+ordinary desktop. Guest geometry/style/maximize policy remains real and unchanged.
+Input stays in absolute guest coordinates;cursor is local to the crop. Real virtual
+display-mode/ChangeDisplaySettings support remains separate. Explicit experimental
+mixed-resident output keeps view action disabled. Global arcade draft preset maps
+B Space,L Z,X /,Y F2,Minus Escape;explicit Apply/Save preserves custom bindings.
+Measured8-bit→32-bit1:1 SRCCOPY uses a per-call bounded palette lookup and retains
+CPU/capture/clip/lifetime barriers;2800 reference cases and public native paired
+measurements pass. Four normal public x86 focused sessions+two held-key aborts
+check genuine mapped input,independent changed/scaled pixels,R exit/native Back,
+unchanged HWND geometry and owning redraw. No physical FPS gain is inferred.
+Limited main-path startup has user confirmation after D10;full game/input/view/
+performance and MP3 seek recovery remain separate gates. No report contents added.
 
 [D10 audio recovery](D10_AUDIO_RECOVERY.md): production audout drains released tags
 before Contains; corrected transport exposes the old refusal. MP3 has an owning
@@ -3980,3 +3995,50 @@ Old reset and removed RIFF bound fail independent oracles.54 document links and
 desktop/mobile/search/deep-link/filter/zoom/focus passed. Private sound-enabled
 1280x720 ShellSession table/ball/text observed;console recovery remains unverified.
 Publish normally,verify exact-SHA all6 CI/Pages/NRO/public source artifacts.
+
+## 2026-10-31 F8/G2 indexed — control preset,live window view and shared CPU raster
+
+Incoming c978514d4fec4e803435218f9ce88bc4bbf2c2b5 passed all6 CI41131710506.
+Global explicit arcade preset is real F7 key ownership/persistent settings: B Space,
+L Z,X /,Y F2,Minus Escape;no per-EXE/default overwrite. User-reported launch is a
+limited milestone,not game/input/FPS or seek acceptance. Grey maximize may reflect
+an application's missing style;legacy LoadIconA and virtual display modes stay open.
+
+Start GuestView action selects foreground root HWND/native raster identity;clipped
+live canonical pixels are submitted synchronously into owning Presentation. Cursor
+subtracts crop origin;touch uses validated shared offset-aware Viewport mapping;
+absolute guest input/capture stay unchanged. R leaves the view before native Start,
+with existing held-key release/quarantine. Missing/hidden/minimized/reused windows
+exit the view;fresh sessions have no old crop. Experimental resident routing is
+explicitly excluded;CPU/software/default GL composition retained. No fake resize,
+WM_SIZE,maximize or ChangeDisplaySettings success is introduced by this feature.
+
+Common8→32 SRCCOPY1:1 no-flip/no-key source-bounded branch rebuilds256 RGB palette
+lookup each call,handles mutable/full/short/missing palettes/signed pitch,and keeps
+Surface::Set for capture destinations. Scaling/ROP/mono/key fallbacks unchanged.
+Public benchmark alternates reference/fast in same build,7 pairs per4 size/pitch
+cases,48 changing-palette calls,independent exact pixels,median wall observations;
+no timing threshold/hardware FPS claim. 2800 general/fast cases include palette,
+negative src/dst pitch,capture revisions/owners,clip/ROP/key/overlap/guard bytes.
+Private diagnostic confirms actual indexed admission;trace/captures stay outside git.
+
+Same authored game_loop.exe now --view:4 normal real/fast-forward x86 sessions+2
+held-key aborts use saved preset,actual Start pointer route/mapper/USER,independent
+96x64 changing CPU+scaled output pixels,unchanged320x180 HWND,R return to1280/native
+B Back without Space leakage,owning redraw and fresh restart. Public authored view
+capture is included;no proprietary payload. Full host/MinGW/Mesa and focused strict/
+ASan/UBSan plus corrupted-palette/removed-R-exit negatives pass. Next exact-SHA six-
+job CI/Pages/NRO/public artifact/source audits;local Switch SDK remains unavailable.
+Then actual control/view/FPS evidence and measured common performance work;virtual
+display audit and audio-source/DirectSound/MIDI/dynarec/D3D9 queues remain visible.
+
+Final F8 local validation: full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed,
+including new actual --view public x86 flow,all prior D/audio/C/E/F7,22 F software
+groups and17 GPU groups/five reports. Additional extreme-offset/R-exit assertions
+and seven changed-module/inspector strict+focused ASan/UBSan passed;native leak
+scans on,x86 ucontext scan off,remaining runtime ordinary. Bad palette and missing
+R exit fail independent oracles.55 linked documents plus desktop/mobile/search/
+deep-link/filter/zoom/focus passed. Public focused renderer capture inspected.
+Private diagnostic observed actual indexed admissions;no private content committed.
+Publish normally,then exact-SHA all6 CI/Pages/NRO/public artifact/source audits.
+Physical control/view/FPS and virtual display semantics remain open.

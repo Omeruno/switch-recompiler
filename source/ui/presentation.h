@@ -19,6 +19,7 @@ struct Viewport {
     bool Contains(int px,int py) const;
     // Clamps drags outside the image to its edges. Call Contains for a new press.
     bool ToSource(int px,int py,int sourceW,int sourceH,float& sx,float& sy) const;
+    bool ToSource(int px,int py,Rect source,float& sx,float& sy) const;
 };
 Viewport FitViewport(int sourceW,int sourceH,int outputW,int outputH);
 struct PresentationCursor {int x=0,y=0;bool visible=false;};

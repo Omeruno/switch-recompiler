@@ -2,6 +2,13 @@
 #include "../win32/keyboard_layout.h"
 #include <algorithm>
 namespace ui {
+ControllerBindings ArcadeControllerBindings(){
+    ControllerBindings p;p.keys[size_t(PadKeyButton::B)]=0x20;
+    p.keys[size_t(PadKeyButton::X)]=0xbf;p.keys[size_t(PadKeyButton::Y)]=0x71;
+    p.keys[size_t(PadKeyButton::L)]='Z';p.keys[size_t(PadKeyButton::Minus)]=0x1b;
+    return p;
+}
+
 const std::vector<uint16_t>& ControllerKeyChoices() {
     static const auto choices=[] {
         std::vector<uint16_t> out{0,0x20,0x0d,0x1b,0x09,0x08,0x25,0x26,0x27,0x28,

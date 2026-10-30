@@ -120,3 +120,8 @@ waveOut,then version-specific DirectSound/MIDI and larger dynarec/D3D9 queues.
 Physical consolidated Paint/GPU/input/relaunch/audio/controller evidence is separate.
 See [D2](D2_KEYBOARD_LAYOUT.md),[F4b](F4B_INPUT_SERVICE.md),[D8](D8_GAME_LOOP.md),
 [previous plan](F7_CONTROLLER_BINDINGS_PLAN.md),[preferences](F3C_PREFERENCES.md).
+
+[F8 view/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md) adds an explicitly
+selected arcade draft profile and bounded live-window aspect-fit view. It also
+extends the common CPU fast path to indexed8→32 SRCCOPY with per-call palette
+lookup,reference/capture gates and paired native observations;no hardware FPS claim.
