@@ -48,12 +48,6 @@ void ReadNameOrAtom(uint32_t p, bool unicode, std::u16string& name, uint16_t& at
     else { atom = 0; name = ReadText(p, unicode); }
 }
 
-rt::Module* ModuleOf(uint32_t hInstance) {
-    if (!rt::g_process) return nullptr;
-    if (!hInstance) return rt::g_process->MainModule();
-    return rt::g_process->FindByHandle(hInstance);
-}
-
 // --- Классы ---
 
 HostCallOutcome RegisterClassImplCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool ex, bool unicode) {
@@ -802,9 +796,8 @@ FN(InSendMessage) { ENTER; return Ret(SendMessageState() ? 1 : 0); }
 FN(InSendMessageEx) { ENTER; return Ret(SendMessageState()); }
 FN(ReplyMessage) { ENTER; return Ret(ReplyToSender(A(c,m,0)) ? 1 : 0); }
 HostCallOutcome RegisterWindowMessageImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    return Ret(RegisterMessage(ReadText(A(c,m,0),unicode)));
+    return RegisteredMessageCall(c,m,unicode);
 }
-AW(RegisterWindowMessage)
 
 // --- Таймеры ---
 
@@ -1293,26 +1286,6 @@ FN(PtInRect) { ENTER; return Ret(ReadRect(m, A(c, m, 0)).Contains(SA(c, m, 1), S
 
 // --- Строки ---
 
-HostCallOutcome LoadStringImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    uint32_t inst = A(c, m, 0), id = A(c, m, 1), buf = A(c, m, 2);
-    int cap = SA(c, m, 3);
-    std::u16string s;
-    rt::Module* mod = ModuleOf(inst);
-    if (!rt::LoadStringResource(mod, id, s)) { if (buf && cap > 0) WriteText(buf, u"", 1, unicode); return Ret(0); }
-    if (unicode && cap == 0) { // указатель на строку в ресурсе
-        rt::ResourceData d;
-        rt::FindResource(mod, rt::ResId::Num(rt::RT_STRING), rt::ResId::Num(static_cast<uint16_t>((id >> 4) + 1)), d);
-        const uint8_t* p = rt::ResourcePtr(mod, d);
-        uint32_t off = 0;
-        for (uint32_t i = 0; i < (id & 15); ++i) off += 2 + 2u * (p[off] | (p[off + 1] << 8));
-        m.Write32(buf, mod->base + d.rva + off + 2);
-        return Ret(static_cast<uint32_t>(s.size()));
-    }
-    if (!buf || cap <= 0) return Ret(0);
-    return Ret(WriteText(buf, s, static_cast<uint32_t>(cap), unicode));
-}
-AW(LoadString)
-
 HostCallOutcome WsprintfCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode, uint32_t args) {
     uint32_t out = A(c, m, 0), fmt = A(c, m, 1);
     crt::GuestVaList va{m, args};
@@ -1479,7 +1452,7 @@ const HostFunctionEntry kEntries[] = {
     EAW(GetMessage, 16), EAW(PeekMessage, 20), E(WaitMessage, 0), E(MsgWaitForMultipleObjects, 20),
     E(MsgWaitForMultipleObjectsEx, 20), E(TranslateMessage, 4), EAW(DispatchMessage, 4), E(GetMessagePos, 0),
     E(GetMessageTime, 0), E(GetQueueStatus, 4), E(GetInputState, 0), E(InSendMessage, 0), E(InSendMessageEx, 4), E(ReplyMessage, 4),
-    EAW(RegisterWindowMessage, 4), E(SetTimer, 16), E(KillTimer, 8),
+    E(SetTimer, 16), E(KillTimer, 8),
     E(BeginPaint, 8), E(EndPaint, 8), E(GetDC, 4), E(GetDCEx, 12), E(GetWindowDC, 4), E(ReleaseDC, 8),
     E(InvalidateRect, 12), E(InvalidateRgn, 12), E(ValidateRect, 8), E(ValidateRgn, 8), E(UpdateWindow, 4),
     E(RedrawWindow, 16), E(GetUpdateRect, 12), E(GetUpdateRgn, 12), E(ScrollWindow, 20), E(ScrollWindowEx, 32),
@@ -1493,7 +1466,6 @@ const HostFunctionEntry kEntries[] = {
     E(GetDoubleClickTime, 0), E(MessageBeep, 4),
     E(SetRect, 20), E(SetRectEmpty, 4), E(CopyRect, 8), E(IsRectEmpty, 4), E(EqualRect, 8), E(InflateRect, 12),
     E(OffsetRect, 12), E(IntersectRect, 12), E(UnionRect, 12), E(SubtractRect, 12), E(PtInRect, 12),
-    EAW(LoadString, 16),
     {"USER32.dll", "wsprintfA", 0, CallConv::Cdecl, &wsprintfA}, {"USER32.dll", "wsprintfW", 0, CallConv::Cdecl, &wsprintfW},
     E(wvsprintfA, 12), E(wvsprintfW, 12),
     E(CharUpperA, 4), E(CharUpperW, 4), E(CharLowerA, 4), E(CharLowerW, 4), E(CharUpperBuffA, 8), E(CharUpperBuffW, 8),

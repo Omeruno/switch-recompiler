@@ -363,6 +363,7 @@ FN(RestoreDC) { ENTER; return Ret(g_gdi.RestoreDc(A(c, m, 0), SA(c, m, 1)) ? 1 :
 FN(GetDeviceCaps) {
     ENTER;
     ui::DcObj* dc = g_gdi.Dc(A(c, m, 0));
+    if(!dc){SetLastError(m,6);return Ret(0);}
     int W = user::S().screenW, H = user::S().screenH;
     int bpp = 32;
     if (dc && dc->kind == ui::DcKind::Memory) if (ui::BitmapObj* b = g_gdi.Bitmap(dc->st.bitmap)) if (b->view.bpp == 1) bpp = 1;
@@ -388,7 +389,7 @@ FN(GetDeviceCaps) {
     case 44: return Ret(51);
     case 88: case 90: return Ret(96); // LOGPIXELSX/Y
     case 104: return Ret(0);       // SIZEPALETTE
-    case 106: return Ret(20);
+    case 106: return Ret(0); // no reserved system entries on TrueColor display
     case 108: return Ret(24);
     case 116: return Ret(60);      // VREFRESH
     case 119: return Ret(1);       // BLTALIGNMENT
@@ -1054,19 +1055,6 @@ FN(SetPaletteEntries) {
     for (; k < n && start + k < p->entries.size(); ++k) p->entries[start + k] = m.Read32(in + k * 4);
     return Ret(k);
 }
-FN(GetSystemPaletteEntries) {
-    ENTER;
-    ui::PaletteObj* p = g_gdi.Palette(g_gdi.StockObject(15));
-    uint32_t start = A(c, m, 1), n = A(c, m, 2), out = A(c, m, 3);
-    if (!out) return Ret(256);
-    for (uint32_t k = 0; k < n; ++k) {
-        uint32_t i = start + k, v = 0;
-        if (i < 10) v = p->entries[i];
-        else if (i >= 246 && i - 236 < p->entries.size()) v = p->entries[i - 236];
-        m.Write32(out + k * 4, v & 0xFFFFFF);
-    }
-    return Ret(n);
-}
 FN(GetNearestColor) { ENTER; return Ret(A(c, m, 1) & 0xFFFFFF); }
 FN(GetNearestPaletteIndex) {
     ENTER;
@@ -1357,7 +1345,7 @@ const HostFunctionEntry kEntries[] = {
     E(IntersectClipRect, 20), E(ExcludeClipRect, 20), E(OffsetClipRgn, 12), E(GetClipBox, 8), E(GetClipRgn, 8),
     E(PtVisible, 12), E(RectVisible, 8),
     E(CreatePalette, 4), E(SelectPalette, 12), E(RealizePalette, 4), E(UnrealizeObject, 4), E(GetPaletteEntries, 16),
-    E(SetPaletteEntries, 16), E(GetSystemPaletteEntries, 16), E(GetNearestColor, 8), E(GetNearestPaletteIndex, 8),
+    E(SetPaletteEntries, 16), E(GetNearestColor, 8), E(GetNearestPaletteIndex, 8),
     E(AnimatePalette, 16), E(ResizePalette, 8),
     {"USER32.dll", "SelectPalette", 12, CallConv::Stdcall, &SelectPalette},
     {"USER32.dll", "RealizePalette", 4, CallConv::Stdcall, &RealizePalette},

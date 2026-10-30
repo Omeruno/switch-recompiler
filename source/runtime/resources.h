@@ -31,6 +31,9 @@ bool FindResource(const Module* m, const ResId& type, const ResId& name, Resourc
 // Указатель на данные ресурса в разложенном образе (nullptr, если вне образа)
 const uint8_t* ResourcePtr(const Module* m, const ResourceData& d);
 
+// Checked string span in the module snapshot; zero-length entries are valid.
+bool FindStringResourceSpan(const Module*,uint32_t id,ResourceData&,uint32_t& offset,uint16_t& chars);
+
 // Строка из таблицы строк (RT_STRING): false, если нет
 bool LoadStringResource(const Module* m, uint32_t id, std::u16string& out);
 

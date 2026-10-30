@@ -2,8 +2,8 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `534ad7254d3434da7684d43bc3abacb1f58b1c1b`,
-[CI 41013450644 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41013450644).
+Актуально на 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `e83d416375c69ecba931b34f02dc32ae3110662e`,
+[CI 41017357857 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
@@ -17,6 +17,8 @@
 [D4e](D4E_AUDIO_MIXER.md): реализовано ядро микшера на8 источников, реальные стереосуммы/громкость/позиции и независимые пауза/сброс/закрытие. Проверено через production audout с host-моделью IPC. D4f уже подключает waveOut/WAVE_MAPPER; MCI/плеер/PlaySound ещё эксклюзивны и составляют следующий пакет.
 
 [D4f mixed waveOut](D4F_WAVE_MIXER.md): до8 потоков через настоящий WinMM и mixed WAVE_MAPPER, независимые параметры и реальные callback’и. Прямой device0/fallback сохранён; MCI/плеер/PlaySound ещё не смешиваются вместе с waveOut.
+
+[D6](D6_PALETTE_STRINGS.md): общие ресурсы LoadString A/W, registered messages, timeGetTime и честный TrueColor palette contract. В новом UI host-прогон Pinball впервые отрисовал игровое поле/логотип/панели. Это первый кадр главного окна; игра, ввод, звук, FPS и Switch ещё не приняты. Legacy дошёл до FindWindowA.
 
 ## К чему идём
 

@@ -656,4 +656,7 @@ bool Utf8PathToAnsi(const std::string& path,std::string& out) {
         const int value=WideToCp1252(c);if(value<0){out.clear();return false;}out.push_back(char(value));
     }return true;
 }
+std::string WideToGuestAnsi(const std::u16string& text) {
+    bool usedDefault=false;return EncodeMb(1252,text,usedDefault);
+}
 } // namespace win32

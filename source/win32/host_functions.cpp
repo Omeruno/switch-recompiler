@@ -1930,45 +1930,6 @@ HostCallOutcome Impl_GetProcAddress(cpu::CpuState& cpu, cpu::IGuestMemory& mem) 
     return result;
 }
 
-// int LoadStringW(HINSTANCE hInstance, UINT uID, LPWSTR lpBuffer, int cchBufferMax) —
-// НАСТОЯЩАЯ реализация: реально парсим дерево ресурсов .rsrc (см.
-// resource_parser.h) и копируем найденную строку в гостевую память.
-// hInstance игнорируем — у нас пока концептуально один "модуль" (сама игра).
-HostCallOutcome Impl_LoadStringW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) {
-    uint32_t uId = ReadArg(cpu, mem, 1);
-    uint32_t lpBuffer = ReadArg(cpu, mem, 2);
-    int32_t cchBufferMax = static_cast<int32_t>(ReadArg(cpu, mem, 3));
-
-    HostCallOutcome result;
-
-    if (!g_imageBuffer || g_resourceDirRva == 0 || lpBuffer == 0 || cchBufferMax <= 0) {
-        result.returnValue = 0;
-        return result;
-    }
-
-    std::vector<uint16_t> str = pe::FindStringResource(
-        g_imageBuffer, g_imageBufferSize, g_resourceDirRva, static_cast<uint16_t>(uId));
-
-    if (str.empty()) {
-        result.returnValue = 0;
-        return result;
-    }
-
-    // Копируем не больше cchBufferMax-1 символов + null-терминатор — как и
-    // положено настоящей LoadStringW при переполнении буфера
-    int32_t toCopy = static_cast<int32_t>(str.size());
-    if (toCopy > cchBufferMax - 1) toCopy = cchBufferMax - 1;
-    if (toCopy < 0) toCopy = 0;
-
-    for (int32_t i = 0; i < toCopy; i++) {
-        mem.Write16(lpBuffer + static_cast<uint32_t>(i) * 2, str[static_cast<size_t>(i)]);
-    }
-    mem.Write16(lpBuffer + static_cast<uint32_t>(toCopy) * 2, 0); // null-терминатор
-
-    result.returnValue = static_cast<uint32_t>(toCopy);
-    return result;
-}
-
 // Registry creation/open/value/close contracts live in registry_module.cpp.
 // Enumeration/deletion remain explicitly unsupported, never successful stubs.
 HostCallOutcome Impl_RegEnumKeyW(cpu::CpuState&,cpu::IGuestMemory&) {HostCallOutcome r;r.returnValue=120;return r;}
@@ -4396,7 +4357,6 @@ const HostFunctionEntry g_hostFunctionTable[] = {
     { "KERNEL32.dll", "GetStartupInfoA",    4,  CallConv::Stdcall, &Impl_GetStartupInfoA },
     { "KERNEL32.dll", "GetStartupInfoW",    4,  CallConv::Stdcall, &Impl_GetStartupInfoA }, // раскладка структуры идентична A/W — переиспользуем
     { "KERNEL32.dll", "GetProcAddress",     8,  CallConv::Stdcall, &Impl_GetProcAddress },
-    { "USER32.dll",   "LoadStringW",        16, CallConv::Stdcall, &Impl_LoadStringW },
     { "USER32.dll",   "GetSystemMetrics",   4,  CallConv::Stdcall, &Impl_GetSystemMetrics },
     { "ADVAPI32.dll", "RegEnumKeyW",        16, CallConv::Stdcall, &Impl_RegEnumKeyW },
     { "ADVAPI32.dll", "RegEnumKeyExW",      32, CallConv::Stdcall, &Impl_RegEnumKeyW },

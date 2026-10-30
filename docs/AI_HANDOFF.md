@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`534ad7254d3434da7684d43bc3abacb1f58b1c1b` (2026-10-30).
-[CI 41013450644](https://github.com/Omeruno/switch-recompiler/actions/runs/41013450644)
+`e83d416375c69ecba931b34f02dc32ae3110662e` (2026-10-30).
+[CI 41017357857](https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4f mixed waveOut/mapper implemented; shared MCI/MediaPlayer/PlaySound sources next (2026-10-30)
+## Current position: D6 palette/string/message/time implemented; first private host Pinball table frame, not gameplay acceptance (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -61,6 +61,8 @@ follows; its old future-tense queues do not supersede this current position.
 [D4e native mixer core](D4E_AUDIO_MIXER.md):8 bounded sources,actual PCM/gain/clipping/played-span position,independent pause/reset/close through real audout revocation/replay. Production adapter transport test passes; WinMM/MCI/MediaPlayer are not migrated yet and stay exclusive. Next is real waveOut source integration with public simultaneous x86 streams, then MCI/MediaPlayer/PlaySound. No hardware/game audio acceptance.
 
 [D4f](D4F_WAVE_MIXER.md) activates actual waveOut mixer sources and WAVE_MAPPER on counter-capable devices; device0/direct fallback and strict old physical descriptor oracles remain.9 normal x86 sessions +2 parked main/function-callback aborts check actual multi-format samples,positions,stereo gain,pause/reset/peer completion,8 sources/5-second header feeding and faults. MCI/MediaPlayer/PlaySound still exclusive.
+
+[D6](D6_PALETTE_STRINGS.md) implements actual TrueColor system-palette refusal,shared checked LoadString A/W,RegisterWindowMessage A/W and timeGetTime. Public EXE/DLL/native tests cover new+legacy. Private new-UI host run renders the table/logo/score-panel area; input/ball/sound/FPS/Switch remain unverified. Legacy next import FindWindowA. Private images/traces remain outside public git/artifacts/site.
 
 ## User's long-term product target
 
@@ -3667,3 +3669,77 @@ Next audio package: shared owner bus/source lifetime for MCI/MediaPlayer/PlaySou
 with waveOut, retaining decoder/previews/seek/callback/errors/direct fallback;
 then DirectSound target-version audit/MIDI. Physical sound/underruns/timing/Paint/
 GPU/fallback/input/relaunch deferred. SD recovery remains closed.
+
+## 2026-10-30 — D6 TrueColor palette, shared strings/messages and timeGetTime
+
+Started clean e83d416375c69ecba931b34f02dc32ae3110662e, fetched branch matched;
+CI41017357857 all6 and Pages41017357838 success, D4f/prior NRO/artifacts verified.
+[Contract](D6_PALETTE_STRINGS.md). User asked for next large block after refreshed
+Pinball startup imports. Local Switch SDK absent; host/MinGW/Mesa reused. No reset,
+force push, newer-work overwrite or private game content in public git/artifacts.
+
+Both real displays are TrueColor: shared system-palette APIs validate actual active
+new/legacy DCs, return SYSPAL_ERROR/zero for unsupported indexed system palette,
+reject invalid modes/DCs and never mutate pixels or fabricate256 system entries.
+New GetDeviceCaps invalid-DC handling and NUMRESERVED0 match actual SIZEPALETTE0/
+RC_PALETTE-clear profile. Existing logical palettes/indexed DIB_PAL_COLORS preserve
+actual green/red pixel output; no new mutable indexed display or animation claim.
+Legacy GDI has an actual HasDC lookup, not a guessed handle-range check.
+
+One always-registered LoadString A/W provider replaces old split wrappers. Actual
+live Process EXE/DLL handle/low16-bit resource ID, checked PE directory/name/data/
+string spans, CP1252 through existing ACP table, mapped guest source/copy output,
+truncation/one terminator/embedded NUL/empty/huge cap and W-only cap0 guest pointer.
+Metadata follows immutable Module image; payload reads mapped guest bytes. No
+retained native image/string borrow. Pointer expires on module unload; copies stay.
+No-Process legacy globals are not treated as a fabricated live resource module;
+older MFC resource helpers remain separate. Parser bounds no longer allow invalid
+zero-filled reads/offset overflow to masquerade as a valid directory/data entry.
+
+Private progress after these fixes exposed new timeGetTime and legacy registered
+message imports. Added real common timeGetTime through existing platform tick hook/
+Clock with DWORD wrap,GetTickCount/Sleep/fast-forward coherence. Shared registered
+message A/W provider validates max255 units,mapping,wrap,empty and CP1252 conversion,
+uses existing session-independent native message namespace/ASCII folding. Modern
+clipboard-registration wrapper delegates to this checked path. No delivery/GUI
+queue/device success or multimedia timer-resolution/callback behavior invented.
+
+Public authored resource-bearing EXE+DLL inspector:4 normal new/legacy x86 sessions
++1 parked DLL-pointer abort. Actual TrueColor refusals and unchanged screen/logical
+indexed pixels; EXE/DLL lookup,Unicode/CP1252 Euro/default '?',truncation/canaries/
+embedded NUL,empty/missing,huge/negative/zero capacities,stale module pointer after
+real unload and surviving copy. Registered A/W IDs stable across UI/session changes;
+Sleep37 advances real shared guest clock. Native span oracle checks9 malformed
+bounds/overflow/predecessor cases and unloaded rejection. Native dispatch verifies
+stdcall cleanup,platform hook/wrap/fast-forward and255/256 naming boundaries.
+
+Final full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed new and previous D/audio/
+GUI/C/six E9/22 F/17 GPU/five bound reports. New providers/parser/CP helper passed
+O2 Wall/Wextra/Werror/no-exceptions/no-RTTI; broad existing wrappers use baseline
+Wall checks (pre-existing ScrollCommon unused parameter is not hidden as a new
+strict-clean claim). Focused ASan/UBSan shared providers/parser/CP/GDI/wrappers and
+native/x86 inspectors passed,other runtime objects ordinary,leak scan off/fiber
+caveat. Standalone malformed-parser full ASan/UBSan/leak scan passed. Negative
+ANSI UTF8-for-CP1252 and fake successful palette-mode mutations failed independent
+x86 expectations. Development RC wide UTF8 literals produced wrong code units;
+fixture now uses explicit Unicode escapes,keeping expected actual Euro/é/Cyrillic.
+Removed new unused helper after wrapper consolidation; no assertions weakened.
+
+Private new-UI host trace now reaches window/message loop, bounded -f12 snapshot
+at wait-frame8 visibly shows the table, logo and score-panel area; scripted cleanup
+returns0. This is the first observed main-window/table frame, **not gameplay**,
+ball/flipper input,sound/MIDI,FPS/saving/endurance or physical Switch acceptance.
+Legacy now reaches missing USER32!FindWindowA after actual ANSI resource/message
+success. Main diagnostic traces and screenshot stay outside public git/CI/site.
+Do not republish game assets or mislabel bounded wait frames as FPS/game sessions.
+Next compatibility work: public interaction/message/timer/frame-progress oracle;
+public legacy FindWindow A/W reproducer before common legacy lookup changes.
+
+Map48docs/23cards/3views and desktop/mobile/search/filter/deep-link/keyboard/focus/
+resize browser checks passed; authored audio pins retained. New stage-d-palette-
+strings artifact includes public PE/DLL/C/RC/logs/contract,still6 jobs and all prior
+public gates. Completion requires normal push, exact-SHA all6 CI/Pages/public byte
+identity, actual NRO/new+prior artifact/clean source-manifest audit. Shared MCI/
+MediaPlayer/PlaySound with waveOut,DirectSound/MIDI and other compatibility remain
+open. F6c/Luna/default CPU/L legacy/ZL software retained. Hardware sound/Paint/GPU/
+fallback/input/relaunch deferred; SD recovery remains closed.

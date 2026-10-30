@@ -1,0 +1,14 @@
+#pragma code_page(65001)
+#include <windows.h>
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+STRINGTABLE
+BEGIN
+#ifdef RESOURCE_DLL
+ 1 "MODULE resource"
+#else
+ 1 "MAIN resource"
+#endif
+ 3 ""
+ 9 L"A\000B"
+ 17 L"Caf\x00e9 \x20ac \x0416"
+END

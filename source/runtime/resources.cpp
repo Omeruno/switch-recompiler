@@ -6,6 +6,7 @@ namespace rt {
 
 namespace {
 
+bool Span(const std::vector<uint8_t>& img,uint64_t at,uint64_t count){return at<=img.size() && count<=img.size()-at;}
 uint32_t R32(const std::vector<uint8_t>& img, uint32_t off) {
     if (static_cast<size_t>(off) + 4 > img.size()) return 0;
     return img[off] | (img[off + 1] << 8) | (img[off + 2] << 16) | (static_cast<uint32_t>(img[off + 3]) << 24);
@@ -15,8 +16,10 @@ uint16_t R16(const std::vector<uint8_t>& img, uint32_t off) {
     return static_cast<uint16_t>(img[off] | (img[off + 1] << 8));
 }
 
-bool NameEquals(const std::vector<uint8_t>& img, uint32_t strOff, const std::u16string& name) {
-    uint16_t len = R16(img, strOff);
+bool NameEquals(const std::vector<uint8_t>& img, uint64_t strOff, const std::u16string& name) {
+    if(!Span(img,strOff,2))return false;
+    uint16_t len = R16(img, uint32_t(strOff));
+    if(!Span(img,strOff+2,uint64_t(len)*2))return false;
     if (len != name.size()) return false;
     for (uint16_t i = 0; i < len; ++i) {
         char16_t a = static_cast<char16_t>(R16(img, strOff + 2 + i * 2)), b = name[i];
@@ -30,13 +33,15 @@ bool NameEquals(const std::vector<uint8_t>& img, uint32_t strOff, const std::u16
 // Ищет запись в каталоге dirOff (смещение от начала .rsrc = root).
 // Возвращает OffsetToData записи или 0xFFFFFFFF.
 uint32_t FindEntry(const std::vector<uint8_t>& img, uint32_t root, uint32_t dirOff, const ResId& id) {
-    uint32_t dir = root + dirOff;
+    const uint64_t dir = uint64_t(root) + dirOff;
+    if(!Span(img,dir,16))return 0xFFFFFFFFu;
     uint16_t named = R16(img, dir + 12), ids = R16(img, dir + 14);
+    if(!Span(img,dir+16,uint64_t(uint32_t(named)+ids)*8))return 0xFFFFFFFFu;
     for (uint32_t i = 0; i < static_cast<uint32_t>(named) + ids; ++i) {
         uint32_t e = dir + 16 + i * 8;
         uint32_t nameField = R32(img, e), data = R32(img, e + 4);
         if (nameField & 0x80000000u) {
-            if (!id.name.empty() && NameEquals(img, root + (nameField & 0x7FFFFFFFu), id.name)) return data;
+            if (!id.name.empty() && NameEquals(img, uint64_t(root) + (nameField & 0x7FFFFFFFu), id.name)) return data;
         } else if (id.name.empty() && (nameField & 0xFFFF) == id.id) {
             return data;
         }
@@ -47,7 +52,8 @@ uint32_t FindEntry(const std::vector<uint8_t>& img, uint32_t root, uint32_t dirO
 } // namespace
 
 bool FindResource(const Module* m, const ResId& type, const ResId& name, ResourceData& out, uint16_t lang) {
-    if (!m || !m->resourceRva) return false;
+    out={};
+    if (!m || m->unloaded || !m->resourceRva) return false;
     const std::vector<uint8_t>& img = m->image;
     uint32_t root = m->resourceRva;
     uint32_t t = FindEntry(img, root, 0, type);
@@ -59,42 +65,43 @@ bool FindResource(const Module* m, const ResId& type, const ResId& name, Resourc
     if (lang) l = FindEntry(img, root, langDir, ResId::Num(lang));
     if (l == 0xFFFFFFFFu) l = FindEntry(img, root, langDir, ResId::Num(0));
     if (l == 0xFFFFFFFFu) {
-        uint32_t dir = root + langDir;
+        const uint64_t dir=uint64_t(root)+langDir;
+        if(!Span(img,dir,16) || !Span(img,dir+16,uint64_t(uint32_t(R16(img,dir+12))+R16(img,dir+14))*8))return false;
         if (R16(img, dir + 12) + R16(img, dir + 14) == 0) return false;
         l = R32(img, dir + 16 + 4);
     }
     if (l & 0x80000000u) return false;
-    uint32_t entry = root + l;
-    out.entryRva = entry;
+    const uint64_t entry=uint64_t(root)+l;
+    if(!Span(img,entry,16))return false;
+    out.entryRva = uint32_t(entry);
     out.rva = R32(img, entry);
     out.size = R32(img, entry + 4);
     return static_cast<size_t>(out.rva) + out.size <= img.size();
 }
 
 const uint8_t* ResourcePtr(const Module* m, const ResourceData& d) {
-    if (!m || static_cast<size_t>(d.rva) + d.size > m->image.size()) return nullptr;
+    if (!m || m->unloaded || static_cast<size_t>(d.rva) + d.size > m->image.size()) return nullptr;
     return m->image.data() + d.rva;
 }
 
-bool LoadStringResource(const Module* m, uint32_t id, std::u16string& out) {
-    ResourceData d;
-    if (!FindResource(m, ResId::Num(RT_STRING), ResId::Num(static_cast<uint16_t>((id >> 4) + 1)), d)) return false;
-    const uint8_t* p = ResourcePtr(m, d);
-    if (!p) return false;
-    uint32_t off = 0;
-    for (uint32_t i = 0; i < 16; ++i) {
-        if (off + 2 > d.size) return false;
-        uint16_t len = static_cast<uint16_t>(p[off] | (p[off + 1] << 8));
-        off += 2;
-        if (i == (id & 15)) {
-            if (off + len * 2u > d.size || !len) return false;
-            out.clear();
-            for (uint16_t k = 0; k < len; ++k) out.push_back(static_cast<char16_t>(p[off + k * 2] | (p[off + k * 2 + 1] << 8)));
-            return true;
-        }
-        off += len * 2u;
-    }
-    return false;
+bool FindStringResourceSpan(const Module* m,uint32_t id,ResourceData& data,uint32_t& offset,uint16_t& chars) {
+    id&=0xffff;offset=0;chars=0;
+    if(!FindResource(m,ResId::Num(RT_STRING),ResId::Num(uint16_t((id>>4)+1)),data))return false;
+    const auto* p=ResourcePtr(m,data);if(!p)return false;
+    uint64_t off=0;
+    for(unsigned n=0;n<=unsigned(id&15);++n){
+        if(off+2>data.size)return false;
+        const auto length=uint16_t(p[off]|uint16_t(p[off+1])<<8);off+=2;
+        if(off+uint64_t(length)*2>data.size)return false;
+        if(n==(id&15)){offset=uint32_t(off);chars=length;return true;}off+=uint64_t(length)*2;
+    }return false;
+}
+bool LoadStringResource(const Module* m,uint32_t id,std::u16string& out) {
+    out.clear();ResourceData d;uint32_t off=0;uint16_t chars=0;
+    if(!FindStringResourceSpan(m,id,d,off,chars) || !chars)return false;
+    const auto* p=ResourcePtr(m,d)+off;out.reserve(chars);
+    for(unsigned n=0;n<chars;++n)out.push_back(char16_t(p[n*2]|uint16_t(p[n*2+1])<<8));
+    return true;
 }
 
 } // namespace rt

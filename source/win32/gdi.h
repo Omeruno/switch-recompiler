@@ -146,6 +146,7 @@ public:
 
     const Bitmap* GetBitmapForDC(uint32_t hdc) const;
     bool IsScreenDC(uint32_t hdc) const;
+    bool HasDC(uint32_t hdc) const {return dcs_.find(hdc)!=dcs_.end();}
 
     // Заливает "экранный" DC заданным цветом ARGB — нужно при
     // создании/пересоздании окна (реальная Windows автоматически закрашивает
