@@ -77,6 +77,8 @@ public:
     bool ReassignAssociation(const std::string& extension,const std::string& application);
     bool ForgetAssociation(const std::string& extension);
     bool SavePreferences();
+    const ControllerBindings& KeyBindings() const {return controller_;}
+    bool ApplyKeyBindings(const ControllerBindings&);
     ShellPreferenceStore::Status PreferenceStatus() const {return preferenceStatus_;}
     bool PreferenceWarning() const;
     const char16_t* PreferenceText() const;
@@ -118,6 +120,7 @@ private:
     std::vector<Entry> entries_;
     std::vector<Location> history_;
     std::vector<Association> associations_;
+    ControllerBindings controller_;
     ShellPreferenceStore preferences_;
     ShellPreferenceStore::Status preferenceStatus_=ShellPreferenceStore::Status::Missing;
     size_t selected_=0,errors_=0,scanned_=0,itemLimit_,scanLimit_;

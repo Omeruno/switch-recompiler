@@ -49,7 +49,7 @@ int main(int argc,char** argv) {
     Fault shorts(Fault::Mode::Short);p.sort=2;CHECK(store.Save(v,p,&shorts) && shorts.live==0);
     CHECK(fresh.Load(v,loaded)==Store::Status::Loaded && loaded.sort==2);
     Write(directory/"prefs-1.bin","truncated");CHECK(fresh.Load(v,loaded)==Store::Status::Recovered && loaded.sort==1);
-    Write(directory/"prefs-1.bin","SRPREF02future");CHECK(fresh.Load(v,loaded)==Store::Status::Unsupported);
+    Write(directory/"prefs-1.bin","SRPREF03future");CHECK(fresh.Load(v,loaded)==Store::Status::Unsupported);
     const auto future=Bytes(directory/"prefs-1.bin");CHECK(!fresh.Save(v,p) && Bytes(directory/"prefs-1.bin")==future);
     Write(directory/"prefs-0.bin","corrupt");Write(directory/"prefs-1.bin","corrupt");CHECK(fresh.Load(v,loaded)==Store::Status::Corrupt && loaded.associations.empty());
     CHECK(fresh.Save(v,p));CHECK(fresh.Load(v,loaded)==Store::Status::Recovered && loaded.sort==2);
@@ -86,7 +86,7 @@ int main(int argc,char** argv) {
     Click(shell,Shell::AssociationChange);shell.CompleteTextInput(true,"C:\\missing.exe");CHECK(shell.Browser().ApplicationFor("a.txt")=="C:\\Programs\\other.exe" && shell.Browser().LastError()==ui::ShellBrowser::Error::NotFound);
     Click(shell,Shell::AssociationForget);CHECK(shell.Browser().Associations().empty());
     ui::ShellBrowser removed;CHECK(removed.Configure(root.string(),sd.string(),rom.string(),error));CHECK(removed.ApplicationFor("a.txt").empty());
-    Write(directory/"prefs-1.bin","SRPREF02future");Click(shell,Shell::PreferenceSort);CHECK(shell.Browser().PreferenceStatus()==Store::Status::SaveFailed && shell.Browser().PreferenceWarning());
-    CHECK(Bytes(directory/"prefs-1.bin")=="SRPREF02future");
+    Write(directory/"prefs-1.bin","SRPREF03future");Click(shell,Shell::PreferenceSort);CHECK(shell.Browser().PreferenceStatus()==Store::Status::SaveFailed && shell.Browser().PreferenceWarning());
+    CHECK(Bytes(directory/"prefs-1.bin")=="SRPREF03future");
     puts("PASSED: dual-slot real preferences, corruption/future/I/O recovery, fresh shell restore and association management");
 }

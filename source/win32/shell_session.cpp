@@ -55,21 +55,47 @@ bool ShellSession::QueueGuest(InputEvent e) {
     if(inputCount_==MaxGuestInput) {status_=HostStatus::InputOverflow;return false;}
     guestInput_[(inputFirst_+inputCount_)%MaxGuestInput]=e;++inputCount_;return true;
 }
+bool ShellSession::RouteController(const ui::ControllerKeyboard::Batch& batch,uint64_t stamp) {
+    bool ok=true;
+    for(size_t n=0;n<batch.count;++n){const auto& key=batch.events[n];InputEvent event;
+        event.type=key.down?InputEvent::KeyDown:InputEvent::KeyUp;event.vk=key.key;event.observedNs=stamp;
+        if(!QueueGuest(event))ok=false;
+    }
+    return ok;
+}
+bool ShellSession::SyncController() {
+    ui::ControllerKeyboard::Batch changes;
+    if(!controller_.Configure(shell_.Browser().KeyBindings(),!keyboard_ && status_==HostStatus::Running,changes)){
+        status_=HostStatus::InputOverflow;return false;
+    }
+    return RouteController(changes);
+}
 bool ShellSession::ReadHost(int timeout,bool independent) {
     if(status_!=HostStatus::Running || !previous_.wait)return status_==HostStatus::Running;
     if(reading_)return true;
     struct ReadScope {bool& value;ReadScope(bool& v):value(v){value=true;}~ReadScope(){value=false;}} scope(reading_);
+    if(!SyncController())return false;
     std::vector<InputEvent> events;const bool alive=previous_.wait(timeout,events);
     for(const auto& e:events) {
+        if(e.padButton) {
+            if(e.padButton>ui::PadKeyCount || (e.type!=InputEvent::KeyDown && e.type!=InputEvent::KeyUp)) {status_=HostStatus::InputOverflow;break;}
+            const auto mapped=controller_.Button(e.padButton-1,e.type==InputEvent::KeyDown);
+            if(!RouteController(mapped,e.observedNs))break;
+            if(mapped.native && e.vk)Filter(e);
+            if(!SyncController())break;
+            continue;
+        }
         if(e.type==InputEvent::MouseMove || e.type==InputEvent::MouseDown || e.type==InputEvent::MouseUp || e.type==InputEvent::Wheel) {
             S().cursorX=std::max(0,std::min(e.x,S().screenW-1));
             S().cursorY=std::max(0,std::min(e.y,S().screenH-1));
         }
         if(e.type==InputEvent::Quit && independent) {status_=HostStatus::Quit;break;}
         if(!Filter(e) && !QueueGuest(e))break;
+        if(!SyncController())break;
     }
     if(status_==HostStatus::Running){const bool copy=shell_.ServiceCopy(),media=shell_.ServiceMedia();if(copy || media)Refresh();}
     if(!alive && status_==HostStatus::Running)status_=HostStatus::SourceClosed;
+    SyncController();
     return alive;
 }
 bool ShellSession::WaitGuest(int timeout,std::vector<InputEvent>& out) {
@@ -253,9 +279,10 @@ bool ShellSession::Filter(const InputEvent& e) {
         case 0x25:shell_.Page(-1);break;case 0x27:shell_.Page(1);break;
         case 0x09:shell_.NextFocus();break;case 0x0D:shell_.Accept();break;
         case 0x5D:shell_.OpenContext();break;
-        case 0x1B:shell_.Back();keyboard_=shell_.StartOpen() || shell_.ActivePanel()!=Shell::Panel::Desktop;break;
+        case 0x1B:shell_.Back();break;
         default:break;
         }
+        keyboard_=shell_.StartOpen() || (!shell_.NativeMinimized() && (shell_.ModalActive() || shell_.ActivePanel()!=Shell::Panel::Desktop));
         Refresh();return true;
     }
     const int button=std::max(0,std::min(2,e.button));
@@ -279,7 +306,7 @@ bool ShellSession::Filter(const InputEvent& e) {
             const bool task=shell_.ControlBounds(Shell::GuestTask).Contains(e.x,e.y) && taskPressed_;
             taskPressed_=false;
             if(task)ToggleTask();else shell_.PointerUp(e.x,e.y);
-            if(!shell_.NativeMinimized() && (shell_.ModalActive() || shell_.ActivePanel()!=Shell::Panel::Desktop))keyboard_=true;
+            keyboard_=shell_.StartOpen() || (!shell_.NativeMinimized() && (shell_.ModalActive() || shell_.ActivePanel()!=Shell::Panel::Desktop));
         }
         if(button==1)shell_.SecondaryUp(e.x,e.y);
         Refresh();return true;

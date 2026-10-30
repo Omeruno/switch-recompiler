@@ -191,6 +191,14 @@ Rect DesktopShell::Bounds(int t) {
     case TextDiscard:return {704,504,834,540};
     case Settings:return {6,358,238,410};
     case PreferenceSort:return {416,276,630,310};
+    case ControllerSettings:return {648,276,1006,310};
+    case BindingPrevious:return {416,284,500,318};
+    case BindingNext:return {508,284,592,318};
+    case KeyPrevious:return {416,360,590,396};
+    case KeyNext:return {600,360,774,396};
+    case BindingApply:return {416,444,580,480};
+    case BindingSave:return {588,444,752,480};
+    case BindingReset:return {760,444,1006,480};
     case AssociationPrevious:return {416,392,500,428};
     case AssociationNext:return {508,392,592,428};
     case AssociationChange:return {600,392,790,428};
@@ -322,8 +330,9 @@ bool DesktopShell::ControlEnabled(int t) const {
         if(t==TextInsert || t==TextErase)return true;
         return t>=TextLineBase && t<TextLineBase+int(VisibleTextRows()) && textSelection_/VisibleTextRows()*VisibleTextRows()+size_t(t-TextLineBase)<document_.Lines().size();
     }
+    if(dialog_==Dialog::Bindings)return t==BindingPrevious || t==BindingNext || t==KeyPrevious || t==KeyNext || t==BindingApply || t==BindingSave || t==BindingReset || t==CancelDialog;
     if(dialog_==Dialog::Preferences) {
-        if(t==PreferenceSort || t==PreferenceSave || t==CancelDialog)return true;
+        if(t==ControllerSettings || t==PreferenceSort || t==PreferenceSave || t==CancelDialog)return true;
         if(t==AssociationPrevious || t==AssociationNext)return browser_.Associations().size()>1;
         return (t==AssociationChange || t==AssociationForget) && preferenceSelection_<browser_.Associations().size();
     }
@@ -402,8 +411,9 @@ std::vector<int> DesktopShell::FocusOrder() const {
         for(int t:{TextSave,TextSaveAs,TextDiscard,CancelDialog,DialogMinimize,DialogMaximize,DialogClose,NativeTask})if(Enabled(t))out.push_back(t);
         return out;
     }
+    if(dialog_==Dialog::Bindings)return {BindingPrevious,BindingNext,KeyPrevious,KeyNext,BindingApply,BindingSave,BindingReset,CancelDialog};
     if(dialog_==Dialog::Preferences) {
-        std::vector<int> out;for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Enabled(t))out.push_back(t);
+        std::vector<int> out;for(int t:{PreferenceSort,ControllerSettings,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(Enabled(t))out.push_back(t);
         return out;
     }
     if(dialog_==Dialog::DeleteConfirm)return {CancelDialog,ConfirmDelete};
@@ -505,6 +515,7 @@ void DesktopShell::CloseDialog() {
     if(dialog_==Dialog::MediaPlayer && !media_.Close())return;
     if(dialog_==Dialog::ImageViewer)image_.Clear();
     if(TextDialog())document_.New();
+    if(dialog_==Dialog::Bindings){dialog_=Dialog::Preferences;focus_=ControllerSettings;return;}
     dialog_=Dialog::None;operationPath_.clear();pressed_=hover_=None;focus_=dialogReturnFocus_;
 }
 bool DesktopShell::CaptureSelection() {
@@ -639,7 +650,7 @@ void DesktopShell::SecondaryDown(int x,int y) {
 void DesktopShell::SecondaryUp(int x,int y) {
     const int target=secondaryTarget_;secondaryTarget_=-2;
     if(target==-2 || ModalActive() || startOpen_ || secondaryParent_!=browser_.Path() || target!=SecondaryTarget(x,y))return;
-    if(target>=BrowserRowBase) {
+    if(target>=BrowserRowBase && target<BrowserRowBase+VisibleRows()) {
         const auto index=browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase);
         if(index>=browser_.Entries().size() || browser_.Entries()[index].path!=secondaryPath_)return;
         browser_.Select(index);FocusBrowserSelection();
@@ -677,6 +688,7 @@ void DesktopShell::Move(int delta) {
         }
         return;
     }
+    if(dialog_==Dialog::Bindings){bindingSelection_=size_t((int64_t(bindingSelection_)+delta%int64_t(PadKeyCount)+int64_t(PadKeyCount))%int64_t(PadKeyCount));return;}
     if(dialog_==Dialog::Preferences) {
         const auto count=browser_.Associations().size();
         if(count)preferenceSelection_=size_t((int64_t(preferenceSelection_)+delta%int64_t(count)+int64_t(count))%int64_t(count));
@@ -695,6 +707,12 @@ void DesktopShell::Move(int delta) {
     const int current=it==order.end()?0:int(it-order.begin()),count=int(order.size());
     focus_=order[size_t((current+delta%count+count)%count)];
 }
+void DesktopShell::CycleBindingKey(int delta) {
+    const auto& choices=ControllerKeyChoices();const auto it=std::find(choices.begin(),choices.end(),bindingDraft_.keys[bindingSelection_]);
+    const auto current=it==choices.end()?0:int64_t(it-choices.begin());
+    bindingDraft_.keys[bindingSelection_]=choices[size_t((current+delta%int64_t(choices.size())+int64_t(choices.size()))%int64_t(choices.size()))];
+    bindingNotice_.clear();
+}
 void DesktopShell::Page(int delta) {
     clickIdentity_.clear();
     if(dialog_==Dialog::MediaPlayer){if(media_.Loaded()){const auto p=media_.Position();media_.Seek(delta<0?(p>480000?p-480000:0):std::min(media_.Duration(),p+480000));}return;}
@@ -707,6 +725,7 @@ void DesktopShell::Page(int delta) {
         const auto length=document_.Lines()[textSelection_].text.size();
         textColumn_=size_t(std::max<int64_t>(0,std::min<int64_t>(length,int64_t(textColumn_)+int64_t(delta)*40)));return;
     }
+    if(dialog_==Dialog::Bindings){CycleBindingKey(delta);return;}
     if(ModalActive())return;
     if(panel_==Panel::Explorer && !startOpen_){browser_.Page(delta,VisibleRows());FocusBrowserSelection();return;}
     if(panel_!=Panel::Programs || startOpen_ || files_.empty())return;
@@ -760,8 +779,9 @@ int DesktopShell::HitTest(int x,int y) const {
         if(dialog_==Dialog::TextEditor)for(int i=0;i<int(VisibleTextRows());++i)if(ControlBounds(TextLineBase+i).Contains(x,y))return TextLineBase+i;
         return None;
     }
+    if(dialog_==Dialog::Bindings){for(int t:FocusOrder())if(ControlBounds(t).Contains(x,y))return t;return None;}
     if(dialog_==Dialog::Preferences) {
-        for(int t:{PreferenceSort,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(ControlBounds(t).Contains(x,y))return t;
+        for(int t:{PreferenceSort,ControllerSettings,AssociationPrevious,AssociationNext,AssociationChange,AssociationForget,PreferenceSave,CancelDialog})if(ControlBounds(t).Contains(x,y))return t;
         return None;
     }
     if(dialog_!=Dialog::None) {
@@ -842,12 +862,12 @@ void DesktopShell::PointerUp(int x,int y) {
     if(target>=DesktopLinkBase && target<DesktopLinkBase+24){browser_.OpenPath(desktopLinks_[size_t(target-DesktopLinkBase)],request_);return;}
     if(target>=TreeRowBase && dialog_==Dialog::FolderTree){treeSelection_=treeSelection_/7*7+size_t(target-TreeRowBase);focus_=TreeOpen;return;}
     if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/VisibleTextRows()*VisibleTextRows()+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
-    if(target>=BrowserRowBase) {
+    if(target>=BrowserRowBase && target<BrowserRowBase+VisibleRows()) {
         browser_.Select(browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase));
         if(!browser_.Entries().empty() && DoubleClick(browser_.Path()+"|"+browser_.Entries()[browser_.Selected()].path,x,y))OpenCurrent();
         return;
     }
-    if(target>=RowBase) {
+    if(target>=RowBase && target<RowBase+VisibleRows()) {
         const auto next=First()+size_t(target-RowBase);
         selected_=next;
         if(selected_<files_.size() && DoubleClick("program|"+files_[selected_],x,y))LaunchProgram();
@@ -880,8 +900,8 @@ void DesktopShell::Activate(int target) {
     if(target>=DesktopLinkBase && target<DesktopLinkBase+24){browser_.OpenPath(desktopLinks_[size_t(target-DesktopLinkBase)],request_);return;}
     if(target>=TreeRowBase && dialog_==Dialog::FolderTree){treeSelection_=treeSelection_/7*7+size_t(target-TreeRowBase);focus_=TreeOpen;return;}
     if(target>=TextLineBase && TextDialog()){textSelection_=textSelection_/VisibleTextRows()*VisibleTextRows()+size_t(target-TextLineBase);textColumn_=0;focus_=TextEdit;return;}
-    if(target>=BrowserRowBase) {browser_.Select(browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase));OpenCurrent();return;}
-    if(target>=RowBase) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
+    if(target>=BrowserRowBase && target<BrowserRowBase+VisibleRows()) {browser_.Select(browser_.Selected()/VisibleRows()*VisibleRows()+size_t(target-BrowserRowBase));OpenCurrent();return;}
+    if(target>=RowBase && target<RowBase+VisibleRows()) {selected_=First()+size_t(target-RowBase);LaunchProgram();return;}
     operationNotice_.clear();
     switch(target) {
     case DesktopShortcut:case StartShortcut:
@@ -940,6 +960,18 @@ void DesktopShell::Activate(int target) {
     }
     case TextDiscard:CloseDialog();break;
     case Settings:dialog_=Dialog::Preferences;dialogReturnFocus_=Start;focus_=CancelDialog;preferenceSelection_=0;break;
+    case ControllerSettings:
+        bindingDraft_=browser_.KeyBindings();bindingSelection_=0;bindingNotice_.clear();dialog_=Dialog::Bindings;focus_=KeyNext;break;
+    case BindingPrevious:Move(-1);break;
+    case BindingNext:Move(1);break;
+    case KeyPrevious:CycleBindingKey(-1);break;
+    case KeyNext:CycleBindingKey(1);break;
+    case BindingReset:bindingDraft_={};bindingNotice_=u"Выбран стандартный профиль. Примените или сохраните.";break;
+    case BindingApply:case BindingSave:
+        if(browser_.ApplyKeyBindings(bindingDraft_)) {
+            bindingNotice_=target==BindingSave?(browser_.SavePreferences()?u"Привязки сохранены на SD.":u"Применено в памяти. Ошибка сохранения; повторите попытку."):u"Применено. Сохраните, чтобы настройки остались после выхода.";
+        } else bindingNotice_=u"Не удалось применить привязки.";
+        break;
     case PreferenceSort:browser_.CycleSort();break;
     case PreferenceSave:browser_.SavePreferences();break;
     case AssociationPrevious:case AssociationNext: {
@@ -1278,7 +1310,7 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
                 Text(s,{tx,r.top+(r.Height()-34)/2+18,r.right-4,r.bottom},subtitle,!on?0x9AA6B8:hot?0xDCE8FA:0x6D6D6D,12);
             }
         };
-        item(Settings,xp::IconKind::Computer,32,u"Настройки оболочки",u"Сортировка и ассоциации",true);
+        item(Settings,xp::IconKind::Computer,32,u"Настройки оболочки",u"Кнопки, сортировка и ассоциации",true);
         item(About,xp::IconKind::Application,32,u"О программе",u"Switch Recompiler",true);
         item(MediaApp,xp::IconKind::MusicFile,32,u"Media Player",u"Музыка MP3 и WAV",true);
         xp::DrawMenuSeparator(s,14,232,574);
@@ -1323,11 +1355,11 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
         xp::DrawCaptionButton(s,titleClose,xp::CaptionButton::Close,hover_==DialogClose,pressed_==DialogClose && hover_==DialogClose);
         if(DocumentWindow())for(int target:{DialogMinimize,DialogMaximize})
             xp::DrawCaptionButton(s,ControlBounds(target),target==DialogMinimize?xp::CaptionButton::Minimize:NativeMaximized()?xp::CaptionButton::Restore:xp::CaptionButton::Maximize,hover_==target,pressed_==target && hover_==target);
-        const std::u16string dialogTitle=dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":TextDialog()?u"Текстовый документ":dialog_==Dialog::MediaPlayer?u"Switch Media Player":dialog_==Dialog::ImageViewer?u"Просмотр BMP":dialog_==Dialog::FolderTree?u"Дерево папок":u"Свойства";
+        const std::u16string dialogTitle=dialog_==Dialog::DeleteConfirm?u"Подтверждение удаления":dialog_==Dialog::CopyProgress?u"Копирование":dialog_==Dialog::Preferences?u"Настройки оболочки":dialog_==Dialog::Bindings?u"Кнопки Switch":TextDialog()?u"Текстовый документ":dialog_==Dialog::MediaPlayer?u"Switch Media Player":dialog_==Dialog::ImageViewer?u"Просмотр BMP":dialog_==Dialog::FolderTree?u"Дерево папок":u"Свойства";
         Text(s,{DialogBounds().left+15,DialogBounds().top+8,DialogBounds().right-94,DialogBounds().top+34},dialogTitle,0x0A246A,16,true);Text(s,{DialogBounds().left+14,DialogBounds().top+7,DialogBounds().right-95,DialogBounds().top+33},dialogTitle,0xFFFFFF,16,true);
         const auto slash=operationPath_.find_last_of('\\');
-        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer && dialog_!=Dialog::FolderTree)Text(s,DialogLayout({416,250,1006,278}),Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
-        if(dialog_!=Dialog::Preferences && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer && dialog_!=Dialog::FolderTree)Text(s,DialogLayout({416,282,1006,304}),Wide(operationPath_),0x42576B,13);
+        if(dialog_!=Dialog::Preferences && dialog_!=Dialog::Bindings && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer && dialog_!=Dialog::FolderTree)Text(s,DialogLayout({416,250,1006,278}),Wide(operationPath_.substr(slash==std::string::npos?0:slash+1)),0x123D75,18,true);
+        if(dialog_!=Dialog::Preferences && dialog_!=Dialog::Bindings && !TextDialog() && dialog_!=Dialog::ImageViewer && dialog_!=Dialog::MediaPlayer && dialog_!=Dialog::FolderTree)Text(s,DialogLayout({416,282,1006,304}),Wide(operationPath_),0x42576B,13);
         if(dialog_==Dialog::FolderTree) {
             Text(s,DialogLayout({416,240,1006,264}),tree_.Error()?u"Папка недоступна или достигнут предел.":tree_.Truncated()?u"Показана часть папок: предел дерева/поиска.":u"↑/↓ выбор, → развернуть, ← свернуть, Открыть: перейти",0x42576B,13);
             for(size_t n=0;n<7;++n) {
@@ -1365,7 +1397,18 @@ void DesktopShell::Render(Surface& s,const std::u16string& clock) const {
             Text(s,DialogLayout({416,488,1006,504}),textNotice_.empty()?u"До 64 КиБ; строка ввода до 500 UTF-16. Y/Tab: кнопки.":textNotice_,0x8B3F24,12);
             control(TextSave,u"Сохранить",ControlBounds(TextSave));control(TextSaveAs,u"Как…",ControlBounds(TextSaveAs));
             control(CancelDialog,dialog_==Dialog::TextClose?u"Отмена":u"Закрыть",ControlBounds(CancelDialog));
+        } else if(dialog_==Dialog::Bindings) {
+            Text(s,DialogLayout({416,246,1006,276}),u"Кнопка: "+Wide(ControllerButtonName(bindingSelection_))+u"   (↑/↓ — выбор)",0x24354A,17,true);
+            control(BindingPrevious,u"↑",ControlBounds(BindingPrevious));control(BindingNext,u"↓",ControlBounds(BindingNext));
+            Text(s,DialogLayout({416,326,1006,354}),u"Клавиша: "+Wide(ControllerKeyName(bindingDraft_.keys[bindingSelection_])),0x123D75,18,true);
+            control(KeyPrevious,u"← Предыдущая",ControlBounds(KeyPrevious));control(KeyNext,u"Следующая →",ControlBounds(KeyNext));
+            Text(s,DialogLayout({416,402,1006,436}),!bindingNotice_.empty()?bindingNotice_:bindingDraft_!=browser_.KeyBindings()?u"Есть изменения. Нажмите Применить или Сохранить.":u"←/→ — клавиша. Unbound — без привязки. Y — сменить действие.",0x42576B,13);
+            control(BindingApply,u"Применить",ControlBounds(BindingApply));control(BindingSave,u"Сохранить",ControlBounds(BindingSave));control(BindingReset,u"По умолчанию",ControlBounds(BindingReset));
+            Text(s,DialogLayout({416,484,1006,502}),u"R — Пуск · + — выход · A/ZR — мышь",0x526477,12);
+            Text(s,DialogLayout({416,510,828,538}),u"Старый режим (L при запуске): стандартные кнопки.",0x526477,12);
+            control(CancelDialog,u"Назад",ControlBounds(CancelDialog));
         } else if(dialog_==Dialog::Preferences) {
+            control(ControllerSettings,u"Кнопки Switch…",ControlBounds(ControllerSettings));
             Text(s,DialogLayout({416,246,1006,272}),u"Сортировка проводника",0x24354A,17,true);
             control(PreferenceSort,browser_.Ordering()==ShellBrowser::Sort::Name?u"Имя ↑":browser_.Ordering()==ShellBrowser::Sort::NameDescending?u"Имя ↓":u"Размер ↓",ControlBounds(PreferenceSort));
             const auto& associations=browser_.Associations();char count[64];

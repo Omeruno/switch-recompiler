@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`f0a6a98757414840b51e8c3d839ff450fa376f50` (2026-10-30).
-[CI 41050702319](https://github.com/Omeruno/switch-recompiler/actions/runs/41050702319)
+`c3bcc9feaebfb3ec1e3b8656bfe426e339b991ce` (2026-10-30).
+[CI 41055283401](https://github.com/Omeruno/switch-recompiler/actions/runs/41055283401)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D9 owning class menus; private host Pinball ball/score progress observed, F7 next, physical/game-wide acceptance open (2026-10-30)
+## Current position: F7 controller keyboard settings implemented; D9 host ball/score observation preserved, hardware/full game acceptance open (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -69,6 +69,8 @@ follows; its old future-tense queues do not supersede this current position.
 [D8](D8_GAME_LOOP.md) verifies actual busy PeekMessage/timeGetTime/WM_TIMER,4 key pairs/2 chars,moving and pressed/released pixels via an independent96x64 CPU+production output reference.4 normal real/fast-forward x86 sessions +2 held-key aborts/clean restart/owning redraw. Generic host --key/--real-time scripting is diagnostic only. User-prioritized [F7 native controller bindings](F7_CONTROLLER_BINDINGS_PLAN.md) is next: actual settings/apply/save/reset,ownership and safe releases; not implemented yet. Private scripted keys preserve Pinball's table frame, but ball/flipper/game acceptance remains unverified.
 
 [D9](D9_CLASS_MENUS.md) implements real class-default menu resources and window ownership,checked standard/MENUEX parsing/rollback and public4-session+2 callback-abort evidence. Private same-run later captures show menu/player/mission text,moving ball and score0→2000→2500. Earlier startup snapshots were too early; no general font fix was needed. This is host launch/ball/score observation,not full game/flipper/audio/FPS/Switch acceptance. F7 remains next.
+
+[F7](F7_CONTROLLER_BINDINGS.md) implements the12-button global guest keyboard profile,real native editor/apply/save/reset,version1→2 persistent migration and shared physical-owner routing. Native navigation/reserved Start/quit/mouse stay available;duplicate bindings,modifiers,context/profile changes,held quarantine,disconnect/overflow and fresh sessions have public native+real-x86 evidence. F7 is software implemented; physical Switch acceptance remains deferred. Next shared MCI/MediaPlayer/PlaySound with waveOut sources.
 
 ## User's long-term product target
 
@@ -3889,3 +3891,45 @@ Map52 document links and desktop/mobile/search/deep-link/filter/zoom/focus passe
 Private same-run snapshots2500/2700/2900 show ball positions and score0/2000/2500;
 these are wait-step observations,not measured frames/FPS or physical acceptance.
 Publish normally,then verify exact-SHA all6 CI/Pages/NRO/artifact/source manifest.
+
+## 2026-10-30 F7 — configurable controller keyboard with actual persistent/native route
+
+Incoming c3bcc9feaebfb3ec1e3b8656bfe426e339b991ce passed all6 CI41055283401.
+One global new-USER shell profile covers B/X/Y,L/ZL,Minus,d-pad,stick clicks;R Start,
+Plus quit,A/ZR mouse and pointer/touch stay reserved. Fixed-US key choices include
+sided modifiers,F1–F12 and OEM keys. Native UI retains defaults while guest input
+uses the configured mapping. The same bounded core handles physical-key owner
+refcounts,generic→sided normalization,no synthetic repeat,context/profile releases
+and held quarantine. Main only emits gated physical slot metadata and disconnected
+released snapshots;ShellSession supplies actual guest events/async state/queue pairs.
+Legacy and standalone diagnostics retain their previous input;no per-EXE mapping.
+
+Actual Start→Settings→Controller editor supports draft selection,apply,save,reset,
+back and controller/touch. New control IDs exposed unbounded legacy row dispatch;
+row activation is now limited to actual rows. Nested modal Back and closing the
+last native panel now retain/return correct native/guest keyboard ownership.
+Explicit Applied preference status distinguishes unsaved RAM from a durable save.
+Version2 adds validated12-key values to existing sort/association slots;v1 migration
+preserves old fields/defaults,future versions refuse writes. Existing future-file
+tests use03 because02 is now a real supported version. Partial-write failure retains
+a good previous copy;flush/close errors do not claim durable saving.
+
+Public core/editor/persistence/native-route tests and original D8 x86 loop extended
+with --controller use actual production mapper→USER→GDI/presentation.4 normal real/
+fast-forward x86 sessions+2 held-key aborts validate keys/scans/states/chars/timers/
+independent changed pixels/owned redraw and fresh restart. Native actual routing
+checks rebound B versus native Back,modal ownership,duplicate owners,source closure
+and explicit mapped-input overflow cancellation. Authored native settings capture
+contains no private content. Focused sanitizers/strict/negative controls accompany
+full host/MinGW/Mesa and exact published-SHA six-job CI/NRO/Pages/artifact audits.
+No physical input/storage/FPS or full game/DirectInput/USB/language acceptance.
+Next common mixed audio file/player/PlaySound sources;SD recovery remains closed.
+
+Final F7 local validation: complete COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed,
+including controller core/editor/v1→v2 migration/production routing and public x86
+4 normal sessions+2 held-key aborts, all previous D/audio/C/E/GUI,22 F groups and
+17 GPU groups/five reports. Strict changed modules and focused ASan/UBSan passed;
+negative ignored-profile and early duplicate release fail their independent oracles.
+Visual map53 document links plus desktop/mobile/deep-link/search/filter/zoom/focus
+passed with current stage F. Publish normally,then verify exact-SHA all6 CI,Pages,
+NRO and public artifact/source manifests;local devkitA64/libnx remain unavailable.

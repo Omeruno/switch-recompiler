@@ -23,10 +23,10 @@ public:
     enum Target {None=0,Start=1,Programs=2,Computer=3,Documents=4,
                  MenuPrograms=5,MenuComputer=6,MenuDocuments=7,MenuRun=8,
                  About=9,Exit=10,Close=11,Launch=12,Previous=13,Next=14,NavBack=15,NavUp=16,Refresh=17,Sort=18,Address=19,
-                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,MediaOpen=44,MediaPlay=45,MediaPause=46,MediaStop=47,MediaBack=48,MediaForward=49,MediaVolumeDown=58,MediaVolumeUp=59,MediaApp=77,MediaChoose=78,MediaEffect=79,MediaSeek=600,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,ImageOpen=68,ImageFit=69,ImageActual=70,DesktopShortcut=71,StartShortcut=72,TreeOpen=73,TreeExpand=74,TreeCollapse=75,FolderTreeButton=76,Minimize=80,Maximize=81,NativeTask=82,TitleBar=83,DialogClose=84,DialogMinimize=85,DialogMaximize=86,ResizeBase=90,TextLineBase=300,TreeRowBase=400,DesktopLinkBase=500};
+                 QuickComputer=20,QuickDocuments=21,QuickC=22,QuickS=23,QuickR=24,OpenWith=25,GuestTask=26,NewFolder=27,Rename=28,Delete=29,Properties=30,ConfirmDelete=31,CancelDialog=32,Copy=33,Paste=34,FileActions=35,FolderActions=36,Settings=37,PreferenceSort=38,AssociationPrevious=39,AssociationNext=40,AssociationChange=41,AssociationForget=42,PreferenceSave=43,MediaOpen=44,MediaPlay=45,MediaPause=46,MediaStop=47,MediaBack=48,MediaForward=49,MediaVolumeDown=58,MediaVolumeUp=59,MediaApp=77,MediaChoose=78,MediaEffect=79,MediaSeek=600,ControllerSettings=610,BindingPrevious=611,BindingNext=612,KeyPrevious=613,KeyNext=614,BindingApply=615,BindingSave=616,BindingReset=617,ContextBase=50,TextOpen=60,TextNew=61,TextEdit=62,TextInsert=63,TextErase=64,TextSave=65,TextSaveAs=66,TextDiscard=67,ImageOpen=68,ImageFit=69,ImageActual=70,DesktopShortcut=71,StartShortcut=72,TreeOpen=73,TreeExpand=74,TreeCollapse=75,FolderTreeButton=76,Minimize=80,Maximize=81,NativeTask=82,TitleBar=83,DialogClose=84,DialogMinimize=85,DialogMaximize=86,ResizeBase=90,TextLineBase=300,TreeRowBase=400,DesktopLinkBase=500};
     enum class Panel {Desktop,Programs,About,Explorer};
     enum class TextInput {None,Address,Run,OpenWith,NewFolder,Rename,PasteName,AssociationApplication,TextLine,TextSavePath,ShortcutCommand,MediaPath};
-    enum class Dialog {None,DeleteConfirm,Properties,CopyProgress,Preferences,TextEditor,TextClose,ImageViewer,FolderTree,MediaPlayer};
+    enum class Dialog {None,DeleteConfirm,Properties,CopyProgress,Preferences,Bindings,TextEditor,TextClose,ImageViewer,FolderTree,MediaPlayer};
     const FolderTree& Tree() const {return tree_;}
     const std::vector<std::string>& DesktopLinks() const {return desktopLinks_;}
     const BitmapDocument& Image() const {return image_;}
@@ -157,7 +157,10 @@ private:
     Dialog dialog_=Dialog::None;
     rt::FileProperties properties_;
     std::string operationPath_,operationParent_,clipboardPath_,clipboardName_,pendingAssociation_;
-    size_t preferenceSelection_=0;
+    size_t preferenceSelection_=0,bindingSelection_=0;
+    ControllerBindings bindingDraft_;
+    std::u16string bindingNotice_;
+    void CycleBindingKey(int delta);
     std::u16string operationNotice_;
     int dialogReturnFocus_=Properties;
     size_t First() const {return selected_/VisibleRows()*VisibleRows();}

@@ -31,6 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
+rm -f "$out/controller_api.log" "$out/test_controller_bindings.log" "$out/test_controller_settings.log" "$out/controller-settings.ppm"
 rm -f "$out/class_menus.log"
 rm -f "$out/game_loop.log" "$out/game_loop_cli.log"
 rm -f "$out/window_lookup.log"
@@ -101,8 +102,9 @@ for cpp in $src; do
 done
 src="$objects"
 
+export CONTROLLER_SETTINGS_CAPTURE="$out/controller-settings.ppm"
 export AUDIO_MEDIA_CAPTURE="$out/native-media-player.ppm"
-for t in test_menu_templates test_host_key_script test_resource_spans test_compat_messages test_audio_mixer test_legacy_file test_audio_visualization test_shell_double_click test_audio_media test_audio_output test_ini_profile test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
+for t in test_controller_bindings test_controller_settings test_menu_templates test_host_key_script test_resource_spans test_compat_messages test_audio_mixer test_legacy_file test_audio_visualization test_shell_double_click test_audio_media test_audio_output test_ini_profile test_keyboard_layout test_host_input test_xp_icons test_command_line test_shell_browser test_desktop_shell test_native_windows test_vfs_mounts test_file_operations test_file_save_api test_file_copy test_shell_file_actions test_shell_context test_shell_preferences test_text_document test_bitmap_document test_shell_links_tree test_gpu_gdi_unavailable test_cpu_access test_window_damage_mask test_blit_fast_path test_workload_profile test_registry_x86 test_window_x86 test_wndproc test_wndproc2 test_gdi_x86 test_handle_objects test_guest_execution test_signal_wait test_waitable_timer test_wait_retry_state test_alertable_revalidation test_execution_stop test_guest_execution_log test_presentation test_presentation_dirty test_presentation_lifecycle test_window_layers test_present_progress test_menu_exposure test_pointer_input test_performance_metrics test_executable_catalog test_launcher_loop; do
     printf '== %s\n' "$t"
     # shellcheck disable=SC2086
     if ! $cxx $flags "$root/tests/$t.cpp" $src -o "$out/$t"; then
@@ -160,6 +162,13 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   D8 PUBLIC GAME LOOP FAILED"
         tail -n 25 "$out/game_loop.log" 2>/dev/null || true
+        failed=1
+    fi
+    if "$out/test_game_loop" "$guestRoot/game_loop.exe" --controller > "$out/controller_api.log" 2>&1; then
+        tail -n 1 "$out/controller_api.log"
+    else
+        echo "   F7 REAL CONTROLLER KEYBOARD FAILED"
+        tail -n 25 "$out/controller_api.log" 2>/dev/null || true
         failed=1
     fi
     if "$out/winrun" --new-ui --real-time -f 200 \

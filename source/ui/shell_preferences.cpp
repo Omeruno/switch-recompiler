@@ -6,7 +6,7 @@
 namespace ui {
 namespace {
 using Bytes=std::vector<uint8_t>;
-constexpr char Magic[]="SRPREF01";
+constexpr char Magic[]="SRPREF02",OldMagic[]="SRPREF01";
 void Put(Bytes& out,uint64_t value,unsigned n=4){for(unsigned i=0;i<n;++i)out.push_back(uint8_t(value>>(8*i)));}
 uint64_t Get(const Bytes& in,size_t& at,unsigned n=4){uint64_t v=0;for(unsigned i=0;i<n;++i)v|=uint64_t(in[at++])<<(8*i);return v;}
 uint32_t Checksum(const Bytes& bytes) {
@@ -28,7 +28,9 @@ bool Application(const std::string& path) {
     return tail==".exe";
 }
 bool Decode(const Bytes& bytes,ShellPreferences& prefs,uint64_t& generation) {
-    if(bytes.size()<32 || std::memcmp(bytes.data(),Magic,8)!=0)return false;
+    if(bytes.size()<32)return false;
+    const bool old=std::memcmp(bytes.data(),OldMagic,8)==0;
+    if(!old && std::memcmp(bytes.data(),Magic,8)!=0)return false;
     size_t at=8;generation=Get(bytes,at,8);const auto size=Get(bytes,at),checksum=Get(bytes,at);
     if(!generation || size!=bytes.size()-24 || checksum!=Checksum(bytes))return false;
     prefs={};prefs.sort=uint32_t(Get(bytes,at));const auto count=Get(bytes,at);
@@ -39,18 +41,23 @@ bool Decode(const Bytes& bytes,ShellPreferences& prefs,uint64_t& generation) {
         out.assign(reinterpret_cast<const char*>(bytes.data()+at),size_t(n));at+=size_t(n);return true;
     };
     for(size_t i=0;i<count;++i) {ShellAssociation a;if(!field(a.extension) || !field(a.application))return false;prefs.associations.push_back(std::move(a));}
+    if(!old) {
+        if(at+4>bytes.size() || Get(bytes,at)!=PadKeyCount || bytes.size()-at!=PadKeyCount*4)return false;
+        for(auto& key:prefs.controller.keys){const auto value=Get(bytes,at);if(value>0xffff)return false;key=uint16_t(value);}
+    }
     return at==bytes.size() && ShellPreferenceStore::Valid(prefs);
 }
 Bytes Encode(const ShellPreferences& prefs,uint64_t generation) {
     Bytes b(Magic,Magic+8);Put(b,generation,8);Put(b,0);Put(b,0);Put(b,prefs.sort);Put(b,prefs.associations.size());
     for(const auto& a:prefs.associations)for(const auto* field:{&a.extension,&a.application}){Put(b,field->size());b.insert(b.end(),field->begin(),field->end());}
+    Put(b,PadKeyCount);for(auto key:prefs.controller.keys)Put(b,key);
     const auto length=b.size()-24;for(unsigned i=0;i<4;++i)b[16+i]=uint8_t(length>>(8*i));
     const auto crc=Checksum(b);for(unsigned i=0;i<4;++i)b[20+i]=uint8_t(crc>>(8*i));return b;
 }
 }
 std::string ShellPreferenceStore::Directory(const rt::Vfs& vfs) {return vfs.ProfileDirectory()+"\\Application Data\\SwitchRecompiler";}
 bool ShellPreferenceStore::Valid(const ShellPreferences& p) {
-    if(p.sort>2 || p.associations.size()>MaxAssociations)return false;
+    if(p.sort>2 || p.associations.size()>MaxAssociations || !ControllerBindings::Valid(p.controller))return false;
     for(size_t i=0;i<p.associations.size();++i) {
         const auto& a=p.associations[i];if(!Extension(a.extension) || !Application(a.application))return false;
         for(size_t j=0;j<i;++j)if(p.associations[j].extension==a.extension)return false;
@@ -74,7 +81,7 @@ ShellPreferenceStore::Status ShellPreferenceStore::Load(const rt::Vfs& vfs,Shell
         }
         if(io.Close(fd)!=0 && !failure)failure=errno?errno:EIO;
         if(failure){ioError=true;continue;}
-        if(bytes.size()>=6 && std::memcmp(bytes.data(),"SRPREF",6)==0 && bytes.size()>=8 && std::memcmp(bytes.data(),Magic,8)!=0){unsupported=true;continue;}
+        if(bytes.size()>=6 && std::memcmp(bytes.data(),"SRPREF",6)==0 && bytes.size()>=8 && std::memcmp(bytes.data(),Magic,8)!=0 && std::memcmp(bytes.data(),OldMagic,8)!=0){unsupported=true;continue;}
         ShellPreferences p;uint64_t gen=0;
         if(!Decode(bytes,p,gen)){corrupt=true;continue;}
         if(gen>generation_){generation_=gen;slot_=slot;out=std::move(p);}

@@ -1,3 +1,5 @@
+> Implemented within the documented software scope: [F7 controller bindings](F7_CONTROLLER_BINDINGS.md). Hardware remains deferred. The original plan below records intent; the implemented contract and current map supersede its future-tense status.
+
 # F7 — user-configurable Switch controller → guest keyboard (planned)
 
 User priority, 2026-10-30: configure the controller on Switch and bind buttons

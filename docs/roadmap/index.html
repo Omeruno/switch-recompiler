@@ -24,7 +24,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <body>
 <header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D9 · меню / динамика игры</span></div><h2>Шар и счёт появились в host-прогоне</h2><p>Исправлены общие меню оконных классов. В одном host-запуске Pinball видны меню, текст миссии, движение шара и счёт 0 → 2000 → 2500. Полная игра, звук, FPS и Switch ещё не приняты. Следом F7: настройка кнопок.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>F7 · настройка кнопок Switch</span></div><h2>Кнопки контроллера можно назначать</h2><p>Пуск → Настройки оболочки → Кнопки Switch. Общий профиль, применение, сохранение и сброс; удержанные клавиши безопасно отпускаются. Старые настройки сохраняются. Аппаратная проверка остаётся отдельным этапом.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -39,9 +39,9 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 {
   "schema": 1,
   "updated": "2026-10-30",
-  "runtimeSha": "f0a6a98757414840b51e8c3d839ff450fa376f50",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41050702319",
-  "current": "D",
+  "runtimeSha": "c3bcc9feaebfb3ec1e3b8656bfe426e339b991ce",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41055283401",
+  "current": "F",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
   "nodes": [
@@ -112,8 +112,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "D",
       "code": "D",
       "title": "Совместимость Windows",
-      "status": "current",
-      "summary": "D9: настоящие меню оконных классов/ресурсы/время жизни. Pinball host: шар в движении,текст миссии,счёт0→2000→2500. Полная игра/звук/FPS/Switch ещё не приняты. Далее F7.",
+      "status": "partial",
+      "summary": "D9: настоящие меню оконных классов/ресурсы/время жизни. Pinball host: шар в движении,текст миссии,счёт0→2000→2500. Полная игра/звук/FPS/Switch ещё не приняты. F7 настройки кнопок реализованы программно.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
         "Существенный Win32/CRT и ограниченный SEH.",
@@ -133,7 +133,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "D9: owning class-default menus before creation callbacks,A/W/numeric/MENUEX/EXE+DLL resources,per-window trees,real menu command dispatch,checked parser/rollback and4 normal x86 sessions+2 callback aborts;private same-run host ball/score progress observed."
       ],
       "todo": [
-        "F7: пользовательские привязки кнопок Switch через native settings/apply/save/reset и безопасное владение клавишами. Legacy LoadIconA resource/lifetime reproducer отдельно; игры пока не приняты.",
+        "F7 профиль/редактор реализован; далее общий MCI/MediaPlayer/PlaySound bus со смешанным waveOut. Legacy LoadIconA resource/lifetime reproducer отдельно; полная игра/Switch пока не приняты.",
         "Общий bus/sources для MCI/MediaPlayer/PlaySound вместе с waveOut,public x86 music+PCM/lifetime/error fixtures; затем DirectSound/MIDI и физический звук.",
         "Защита страниц, полный unwind/SEH и COM.",
         "API и зависимости конкретных программ.",
@@ -159,7 +159,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/F7_CONTROLLER_BINDINGS_PLAN.md",
         "docs/D9_CLASS_MENUS.md"
       ],
-      "limit": "Pinball: ограниченное host-наблюдение запуска/движения шара,счёта и текста; полная игра,причинное влияние флипперов,звук,FPS и Switch ещё не приняты. Legacy LoadIconA открыт. F7 настройки кнопок запланированы; MCI/плеер/PlaySound эксклюзивны,DirectSound/MIDI открыты.",
+      "limit": "Pinball: ограниченное host-наблюдение запуска/движения шара,счёта и текста; полная игра,причинное влияние флипперов,звук,FPS и Switch ещё не приняты. Legacy LoadIconA открыт. F7 настройки кнопок реализованы программно; MCI/плеер/PlaySound эксклюзивны,DirectSound/MIDI открыты.",
       "kind": "Этап"
     },
     {
@@ -188,8 +188,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "id": "F",
       "code": "F",
       "title": "Оболочка и файлы",
-      "status": "partial",
-      "summary": "F6c: XP-era Media Player, actual PCM effects/music icons and Explorer double-click; bounded native shell, physical acceptance/multiple tools remain open.",
+      "status": "current",
+      "summary": "F7: настоящий профиль12 кнопок Switch→клавиши,редактор/применить/сохранить/сброс,владение клавишами и миграция настроек. Аппаратная проверка открыта.",
       "done": [
         "Постоянные C/S/R, Пуск, проводник, дерево и реальные .lnk.",
         "Папки, свойства, Copy/Paste, контекстные меню и настройки.",
@@ -198,10 +198,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "F6a: гостевые caption move, все восемь resize, min/max/restore/close, ограничения/отказ/захват/отмена.",
         "F6b: native геометрия/reflow, move/resize/min/max/task restore, безопасное закрытие TXT/BMP и точный input/composition.",
         "Native Media Player: MP3/PCM WAV,open/play/pause/stop/seek/volume,real min/max/resize/close; existing one native tool group.",
-        "F6c: authored XP-era Media Player, hardware-cursor PCM spectrum/stereo wave/circles/VU, music icons, real seek rail and timed/path-safe folder/file double-click."
+        "F6c: authored XP-era Media Player, hardware-cursor PCM spectrum/stereo wave/circles/VU, music icons, real seek rail and timed/path-safe folder/file double-click.",
+        "F7: shared12-button keyboard mapping/physical owners,duplicate+sided modifiers,held context/profile quarantine;native editor/apply/save/reset,v1→v2 preferences migration;4 normal actual mapped x86 sessions+2 held-key aborts,real USER states/chars/timers/pixels,source-close/overflow gates."
       ],
       "todo": [
-        "F7 следующий приоритет: экран назначения кнопок Switch→клавиши,применение/сохранение на SD/сброс,duplicate bindings и корректное отпускание/карантин held controls. Пока запланировано; не host key script и не смена языка.",
+        "Физическая проверка назначений/тача/перезапуска и сохранения на Switch. Языки/USB/DirectInput/профили EXE и переназначение мыши — отдельные будущие блоки.",
         "Аппаратная приёмка F.",
         "Полное поведение окон XP и дальнейшее расширение среды."
       ],
@@ -213,7 +214,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/LUNA_INTEGRATION_REVIEW.md",
         "docs/D4D_AUDIO_MEDIA.md",
         "docs/F6C_MEDIA_VISUALS.md",
-        "docs/F7_CONTROLLER_BINDINGS_PLAN.md"
+        "docs/F7_CONTROLLER_BINDINGS_PLAN.md",
+        "docs/F7_CONTROLLER_BINDINGS.md"
       ],
       "limit": "Один активный EXE с несколькими его окнами. Одна native-группа; произвольная native-многооконность, несколько одновременных EXE и полная среда XP не готовы.",
       "kind": "Этап"

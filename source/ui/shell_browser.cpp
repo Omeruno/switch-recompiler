@@ -30,7 +30,7 @@ bool ShellBrowser::Configure(const std::string& system,const std::string& sd,con
     ready_=true;path_.clear();history_.clear();entries_.clear();selected_=0;
     associations_.clear();unassociatedDocument_.clear();
     ShellPreferences restored;preferenceStatus_=preferences_.Load(vfs_,restored);
-    sort_=Sort(restored.sort);associations_=std::move(restored.associations);
+    sort_=Sort(restored.sort);associations_=std::move(restored.associations);controller_=restored.controller;
     return Refresh();
 }
 bool ShellBrowser::Mounted(char drive) const {
@@ -284,9 +284,14 @@ bool ShellBrowser::OpenSelected(ShellLaunchRequest& out) {
     return OpenPath(entries_[selected_].path,out);
 }
 
+bool ShellBrowser::ApplyKeyBindings(const ControllerBindings& profile) {
+    if(!ready_)return Fail(Error::NotReady);
+    if(!ControllerBindings::Valid(profile))return Fail(Error::InvalidCommand);
+    controller_=profile;error_=Error::None;preferenceStatus_=ShellPreferenceStore::Status::Applied;return true;
+}
 bool ShellBrowser::SavePreferences() {
     if(!ready_)return Fail(Error::NotReady);
-    ShellPreferences p;p.sort=uint32_t(sort_);p.associations=associations_;
+    ShellPreferences p;p.sort=uint32_t(sort_);p.associations=associations_;p.controller=controller_;
     const bool saved=preferences_.Save(vfs_,p);
     preferenceStatus_=saved?ShellPreferenceStore::Status::Saved:ShellPreferenceStore::Status::SaveFailed;return saved;
 }
@@ -297,6 +302,7 @@ bool ShellBrowser::PreferenceWarning() const {
 const char16_t* ShellBrowser::PreferenceText() const {
     using S=ShellPreferenceStore::Status;
     switch(preferenceStatus_) {
+    case S::Applied:return u"Изменения применены, но ещё не сохранены.";
     case S::Missing:return u"Настройки ещё не сохранены.";
     case S::Loaded:case S::Saved:return u"Настройки сохранены в профиле.";
     case S::Recovered:return u"Восстановлена доступная копия настроек.";

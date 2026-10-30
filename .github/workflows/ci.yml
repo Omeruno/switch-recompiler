@@ -96,6 +96,23 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-controller-bindings
+          if-no-files-found: error
+          path: |
+            build-host/controller_api.log
+            build-host/test_controller_bindings.log
+            build-host/test_controller_settings.log
+            build-host/controller-settings.ppm
+            build-host/guest-run.*/game_loop.exe
+            tests/guest/game_loop.c
+            tests/test_game_loop.cpp
+            tests/test_controller_bindings.cpp
+            tests/test_controller_settings.cpp
+            source/ui/controller_bindings.h
+            source/ui/controller_bindings.cpp
+            docs/F7_CONTROLLER_BINDINGS.md
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-d-class-menus
           if-no-files-found: error
           path: |

@@ -2106,7 +2106,7 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         padUpdate(&g_pad);
         HidTouchScreenState ts = {0};
         const bool rawTouching=hidGetTouchScreenStates(&ts,1) && ts.count>0;
-        const auto edges=g_pointerInputGate.Update(padGetButtons(&g_pad),rawTouching);
+        const auto edges=g_pointerInputGate.Update(padIsConnected(&g_pad)?padGetButtons(&g_pad):0,rawTouching);
         const u64 down=edges.down,up=edges.up;
         const int sw=g_presentation.SourceWidth()?g_presentation.SourceWidth():win32::user::S().screenW;
         const int sh=g_presentation.SourceHeight()?g_presentation.SourceHeight():win32::user::S().screenH;
@@ -2137,14 +2137,22 @@ bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
         if (up & HidNpadButton_A) Mouse(out, IE::MouseUp, 0,observedNs);
         if (down & HidNpadButton_ZR) Mouse(out, IE::MouseDown, 1,observedNs);
         if (up & HidNpadButton_ZR) Mouse(out, IE::MouseUp, 1,observedNs);
-        struct { u64 button; uint32_t vk; } keys[] = {
-            {HidNpadButton_Left, 0x25}, {HidNpadButton_Up, 0x26}, {HidNpadButton_Right, 0x27}, {HidNpadButton_Down, 0x28},
-            {HidNpadButton_B, 0x1B}, {HidNpadButton_X, 0x0D}, {HidNpadButton_Y, 0x09}, {HidNpadButton_L, 0x12},
-            {HidNpadButton_R, g_shellSession?0x5Bu:0x71u}};
-        for (auto& k : keys) {
-            if (down & k.button) Key(out, true, k.vk,observedNs);
-            if (up & k.button) Key(out, false, k.vk,observedNs);
+        struct PadKey {u64 physical;ui::PadKeyButton slot;uint32_t native;};
+        const PadKey keys[]={
+            {HidNpadButton_B,ui::PadKeyButton::B,0x1b},{HidNpadButton_X,ui::PadKeyButton::X,0x0d},
+            {HidNpadButton_Y,ui::PadKeyButton::Y,0x09},{HidNpadButton_L,ui::PadKeyButton::L,0x12},
+            {HidNpadButton_ZL,ui::PadKeyButton::ZL,0},{HidNpadButton_Minus,ui::PadKeyButton::Minus,0},
+            {HidNpadButton_Left,ui::PadKeyButton::Left,0x25},{HidNpadButton_Up,ui::PadKeyButton::Up,0x26},
+            {HidNpadButton_Right,ui::PadKeyButton::Right,0x27},{HidNpadButton_Down,ui::PadKeyButton::Down,0x28},
+            {HidNpadButton_StickL,ui::PadKeyButton::StickL,0},{HidNpadButton_StickR,ui::PadKeyButton::StickR,0}};
+        for(const auto& key:keys)for(bool pressed:{true,false}) {
+            if(!((pressed?down:up)&key.physical))continue;
+            if(!g_shellSession && !key.native)continue;
+            Key(out,pressed,key.native,observedNs);
+            if(g_shellSession)out.back().padButton=uint8_t(key.slot)+1;
         }
+        if(down&HidNpadButton_R)Key(out,true,g_shellSession?0x5b:0x71,observedNs);
+        if(up&HidNpadButton_R)Key(out,false,g_shellSession?0x5b:0x71,observedNs);
         if (down & HidNpadButton_Plus) { IE q; q.type = IE::Quit; out.push_back(q); }
         if (moved && out.size() == 1) {
             // Deliver drag input to the guest before presenting its old pixels.

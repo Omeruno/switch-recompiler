@@ -35,6 +35,8 @@ private:
     bool ReadHost(int timeoutMs,bool independent=false);
     bool WaitGuest(int timeoutMs,std::vector<InputEvent>& out);
     bool QueueGuest(InputEvent event);
+    bool SyncController();
+    bool RouteController(const ui::ControllerKeyboard::Batch&,uint64_t stamp=0);
     bool ObserveTask();
     bool PostTask(const std::vector<uint32_t>& handles,bool minimize);
     bool ShellPoint(int x,int y) const;
@@ -50,6 +52,7 @@ private:
     std::array<InputEvent,MaxGuestInput> guestInput_{};
     size_t inputFirst_=0,inputCount_=0;
     HostStatus status_=HostStatus::Running;
+    ui::ControllerKeyboard controller_;
     bool pendingMinimize_=false,reading_=false;
     bool ready_=false,keyboard_=false,taskPressed_=false;
     bool shellButtons_[3]={},guestButtons_[3]={},shellKeys_[256]={};
