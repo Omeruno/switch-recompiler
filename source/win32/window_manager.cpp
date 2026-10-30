@@ -5,8 +5,10 @@ namespace win32 {
 WindowManager g_windowManager;
 
 uint32_t WindowManager::RegisterClass(const std::string& className, const WindowClassInfo& info) {
-    classes_[className] = info;
-    return nextAtom_++;
+    auto stored = info;
+    stored.atom = uint16_t(nextAtom_++);
+    classes_[className] = stored;
+    return stored.atom;
 }
 
 const WindowClassInfo* WindowManager::FindClass(const std::string& className) const {
@@ -16,18 +18,34 @@ const WindowClassInfo* WindowManager::FindClass(const std::string& className) co
 }
 
 uint32_t WindowManager::CreateWindow(const std::string& className, int x, int y, int w, int h,
-                                      uint32_t hInstance, uint32_t parentHwnd) {
+                                      uint32_t hInstance, uint32_t parentHwnd, const std::u16string& title) {
     if (!FindClass(className)) return 0; // класс не зарегистрирован — реальная Windows тоже откажет
 
     uint32_t handle = nextHandle_++;
     WindowInfo info;
     info.className = className;
+    info.title = title;
     info.x = x; info.y = y; info.width = w; info.height = h;
     info.hInstance = hInstance;
     info.parentHwnd = parentHwnd;
     windows_[handle] = info;
+    zOrder_.insert(zOrder_.begin(), handle);
     lastCreatedWindow_ = handle;
     return handle;
+}
+
+std::string WindowManager::ClassNameFromAtom(uint16_t atom) const {
+    for (const auto& entry : classes_) if (entry.second.atom == atom) return entry.first;
+    return {};
+}
+
+std::vector<uint32_t> WindowManager::Children(uint32_t parent) const {
+    std::vector<uint32_t> result;
+    for (auto h : zOrder_) {
+        const auto* w = GetWindow(h);
+        if (w && w->parentHwnd == parent) result.push_back(h);
+    }
+    return result;
 }
 
 const WindowInfo* WindowManager::GetWindow(uint32_t hwnd) const {

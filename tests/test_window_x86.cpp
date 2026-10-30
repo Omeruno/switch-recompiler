@@ -6,30 +6,37 @@
 #include "source/win32/window_manager.h"
 
 #include <cstdio>
-#include <fstream>
+#include <initializer_list>
 #include <vector>
-
-std::vector<uint8_t> ReadFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    std::streamsize size = f.tellg();
-    f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char*>(data.data()), size);
-    return data;
-}
 
 int main() {
     constexpr uint32_t CODE_BASE = 0x1000;
-    cpu::FlatGuestMemory mem(CODE_BASE, 0x8000);
+    cpu::FlatGuestMemory mem(CODE_BASE, 0x18000);
 
-    auto code = ReadFile("test13.bin");
-    mem.LoadBytes(CODE_BASE, code.data(), code.size());
-
-    // Строка className "MineClass" (UTF-16) в 0x6000 — пишем сами, раз в asm
-    // мы этого не делали (только вручную собрали "Wrong" через mov word)
+    // Win32 class arguments below 64 KiB are MAKEINTATOM, not text pointers.
+    // The old opaque test13.bin put its class text at 0x6000. Emit the same
+    // stdcall/return/geometry test readably, with actual string pointers above
+    // that reserved range. Keep all original success/failure/stack assertions.
+    constexpr uint32_t goodClass=0x16000, title=0x16100, wc=0x16200, badClass=0x16300;
     const char* className = "MineClass";
-    for (size_t i = 0; className[i]; i++) mem.Write16(0x6000 + static_cast<uint32_t>(i) * 2, className[i]);
-    mem.Write16(0x6000 + 9 * 2, 0);
+    for (size_t i=0;className[i];++i) mem.Write16(goodClass+uint32_t(i)*2,className[i]);
+    const char* wrongName = "Wrong";
+    for (size_t i=0;wrongName[i];++i) mem.Write16(badClass+uint32_t(i)*2,wrongName[i]);
+    mem.Write32(wc+4,0x2000); // actual WNDCLASS WndProc
+    mem.Write32(wc+36,goodClass);
+    std::vector<uint8_t> code;
+    auto dword=[&](uint32_t v){for(unsigned i=0;i<4;++i)code.push_back(uint8_t(v>>(8*i)));};
+    auto push=[&](uint32_t v){code.push_back(0x68);dword(v);};
+    auto call=[&](uint32_t slot){code.push_back(0xff);code.push_back(0x15);dword(slot);};
+    push(wc);call(0x5000);code.push_back(0x89);code.push_back(0xc3); // mov ebx,eax
+    for (auto cls : {goodClass,badClass}) {
+        for (unsigned i=0;i<4;++i)push(0); // lpParam,instance,menu,parent
+        for (unsigned i=0;i<4;++i)push(0x80000000); // height,width,y,x
+        push(0);push(title);push(cls);push(0); // style,title,class,exStyle
+        call(0x5004);code.push_back(0x89);code.push_back(cls==goodClass?0xc1:0xc2);
+    }
+    code.push_back(0xf4);
+    mem.LoadBytes(CODE_BASE,code.data(),code.size());
 
     int idxRegister = win32::FindHostFunction("USER32.dll", "RegisterClassW");
     int idxCreate = win32::FindHostFunction("USER32.dll", "CreateWindowExW");

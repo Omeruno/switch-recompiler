@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`e83d416375c69ecba931b34f02dc32ae3110662e` (2026-10-30).
-[CI 41017357857](https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857)
+`cca3b693407d515790282814b68453513d53b8ec` (2026-10-30).
+[CI 41025932121](https://github.com/Omeruno/switch-recompiler/actions/runs/41025932121)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D6 palette/string/message/time implemented; first private host Pinball table frame, not gameplay acceptance (2026-10-30)
+## Current position: D7 shared real-window lookup implemented; first private new-UI host Pinball table frame, not gameplay acceptance (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -63,6 +63,8 @@ follows; its old future-tense queues do not supersede this current position.
 [D4f](D4F_WAVE_MIXER.md) activates actual waveOut mixer sources and WAVE_MAPPER on counter-capable devices; device0/direct fallback and strict old physical descriptor oracles remain.9 normal x86 sessions +2 parked main/function-callback aborts check actual multi-format samples,positions,stereo gain,pause/reset/peer completion,8 sources/5-second header feeding and faults. MCI/MediaPlayer/PlaySound still exclusive.
 
 [D6](D6_PALETTE_STRINGS.md) implements actual TrueColor system-palette refusal,shared checked LoadString A/W,RegisterWindowMessage A/W and timeGetTime. Public EXE/DLL/native tests cover new+legacy. Private new-UI host run renders the table/logo/score-panel area; input/ball/sound/FPS/Switch remain unverified. Legacy next import FindWindowA. Private images/traces remain outside public git/artifacts/site.
+
+[D7](D7_WINDOW_LOOKUP.md) adds shared FindWindow/FindWindowEx A/W over actual new/legacy windows,checked CP1252/UTF16/class atoms/title/direct-child/after semantics and session lifetime. Four normal x86 sessions + parked abort; modern rename/destruction and strict bounds/ABI checked. Legacy diagnostic passes FindWindowA and reaches LoadIconA. Next public interaction/message/timer/frame-progress oracle; no gameplay/hardware acceptance.
 
 ## User's long-term product target
 
@@ -3672,8 +3674,8 @@ GPU/fallback/input/relaunch deferred. SD recovery remains closed.
 
 ## 2026-10-30 — D6 TrueColor palette, shared strings/messages and timeGetTime
 
-Started clean e83d416375c69ecba931b34f02dc32ae3110662e, fetched branch matched;
-CI41017357857 all6 and Pages41017357838 success, D4f/prior NRO/artifacts verified.
+Started clean cca3b693407d515790282814b68453513d53b8ec, fetched branch matched;
+CI41025932121 all6 and Pages41017357838 success, D4f/prior NRO/artifacts verified.
 [Contract](D6_PALETTE_STRINGS.md). User asked for next large block after refreshed
 Pinball startup imports. Local Switch SDK absent; host/MinGW/Mesa reused. No reset,
 force push, newer-work overwrite or private game content in public git/artifacts.
@@ -3743,3 +3745,54 @@ identity, actual NRO/new+prior artifact/clean source-manifest audit. Shared MCI/
 MediaPlayer/PlaySound with waveOut,DirectSound/MIDI and other compatibility remain
 open. F6c/Luna/default CPU/L legacy/ZL software retained. Hardware sound/Paint/GPU/
 fallback/input/relaunch deferred; SD recovery remains closed.
+
+## 2026-10-30 D7 — shared real-window lookup
+
+Incoming cca3b693407d515790282814b68453513d53b8ec passed all6 CI41025932121.
+Shared always-registered FindWindowA/W and FindWindowExA/W replace modern-only
+wrappers. Actual new USER front-to-back children or legacy newest-first creation
+order supply candidates. NULL/empty, real class atoms, CP1252/UTF16, ASCII-insensitive
+class/title comparison, direct children/after, LastError preservation and checked
+32768-unit read bounds are explicit. Full Unicode folding, message-only windows,
+cross-process lookup and legacy activation/Z-order completeness are outside scope.
+Legacy W creation now owns Unicode title/class/atom and records only WS_CHILD as
+parent; session exchange owns the expanded metadata/order. Legacy rename/destroy
+are not added; new USER's existing real rename/destruction is checked.
+
+Public window_lookup.exe/native inspector:4 alternating new/legacy normal exits,
+then live-window parked abort and fresh empty session; atoms/title/hidden/owned/
+direct-child/after/rename/destruction/pointer/error/ABI assertions. During focused
+work an initial inspector linked an old legacy_session.o after the owning manager
+layout changed; rebuilding that dependent object fixed the native ABI mismatch.
+Full required runner rebuilds every runtime object, so no stale mixed-layout output
+counts as acceptance. An initial guest assertion tried to destroy an owned popup
+already destroyed with its owner; corrected to independently assert its absence.
+No runtime success behavior was weakened for either test-development correction.
+
+The first full runner caught the old test_window_x86 binary's text addresses below
+64KiB, which correctly denote MAKEINTATOM after the creation fix. Its harness now
+emits the same readable x86 stdcall/register/geometry/unknown-class/stack test with
+strings above64KiB, preserving every original result assertion. No mapped-memory
+heuristic was added to reinterpret real class atoms as pointers.
+
+Private legacy diagnostic passes FindWindowA and stops at missing LoadIconA.
+Private new UI first table frame remains a bounded rendering boundary, not gameplay,
+input, audio, sustained frames/FPS or physical Switch acceptance. Private payloads,
+images/traces stay outside git/artifacts/Pages. Next main-loop/input/message/timer/
+frame-progress public oracle; legacy icon/resources need their own public contract.
+Shared MCI/MediaPlayer/PlaySound sources remain next audio queue. SDK is absent
+locally; exact published SHA six-job CI builds NRO. Hardware remains deferred.
+
+Final D7 local validation: full COMPOSITION_GL_TEST=1 host/MinGW/Mesa runner
+passed, including corrected original x86 window assertions, the new4-session+
+parked-abort fixture, all prior D/audio/C/E gates,22 F software groups and17 GPU
+software groups/five reports. Strict O2/Wall/Wextra/Werror/no-exceptions/no-RTTI
+provider/manager and both inspectors passed. Focused ASan/UBSan covered the lookup,
+manager, legacy session, host table, USER API and inspector (other runtime ordinary,
+leak scan off and native ucontext caveat). Constant-miss negative failed the actual
+x86 positive title assertion. Real new-UI host -f12/-s8 run exited0 and its actual
+private table/logo/score-panel snapshot was inspected; no gameplay claim. Local
+roadmap data/49 document links and desktop/mobile browser interaction passed.
+After normal publication verify all6 CI and Pages for exact SHA, then audit NRO,
+public D/audio/F6c artifacts and clean GPU source/fixture manifest. Incoming SHA at
+the top remains the already verified baseline, not a claim of CI for unpushed code.

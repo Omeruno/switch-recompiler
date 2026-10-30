@@ -31,6 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
+rm -f "$out/window_lookup.log"
 rm -f "$out/palette_strings.log"
 rm -f "$out/wave_mixer.log"
 rm -f "$out/legacy_file_api.log"
@@ -141,6 +142,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_window_lookup.cpp" $src -o "$out/test_window_lookup" &&
+       "$out/test_window_lookup" "$guestRoot/window_lookup.exe" > "$out/window_lookup.log" 2>&1; then
+        tail -n 1 "$out/window_lookup.log"
+    else
+        echo "   D7 WINDOW LOOKUP FAILED"
+        tail -n 25 "$out/window_lookup.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_palette_strings.cpp" $src -o "$out/test_palette_strings" &&
@@ -604,6 +613,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "gpu_gdi_warm.exe" ] && continue
         [ "$(basename "$exe")" = "registry_keys.exe" ] && continue
         [ "$(basename "$exe")" = "keyboard_layout.exe" ] && continue
+        [ "$(basename "$exe")" = "window_lookup.exe" ] && continue
         [ "$(basename "$exe")" = "palette_strings.exe" ] && continue
         [ "$(basename "$exe")" = "wave_mixer.exe" ] && continue
         [ "$(basename "$exe")" = "legacy_file.exe" ] && continue

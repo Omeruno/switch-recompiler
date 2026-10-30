@@ -10,6 +10,7 @@
 #include "../runtime/guest_execution.h"
 #include "seh_dispatch.h"
 #include "user32.h"
+#include "window_lookup.h"
 #include "menu_parser.h"
 #include <algorithm>
 #include <cstdio>
@@ -3011,7 +3012,9 @@ HostCallOutcome Impl_RegisterClassW(cpu::CpuState& cpu, cpu::IGuestMemory& mem) 
     info.hbrBackground = mem.Read32(lpwc + 28);
 
     uint32_t classNamePtr = mem.Read32(lpwc + 36);
-    std::string className = ReadWideCStringNarrow(mem, classNamePtr);
+    std::u16string wideClass;
+    if (!ReadWindowLookupText(mem, classNamePtr, true, wideClass)) return hle::Ret(0);
+    std::string className = hle::WideToUtf8(wideClass);
 
     HostCallOutcome result;
     result.returnValue = win32::g_windowManager.RegisterClass(className, info);
@@ -3029,7 +3032,19 @@ HostCallOutcome Impl_CreateWindowExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem)
     uint32_t h      = ReadArg(cpu, mem, 7);
     uint32_t hInstance = ReadArg(cpu, mem, 10);
 
-    std::string className = ReadWideCStringNarrow(mem, classNamePtr);
+    std::u16string wideClass, title;
+    std::string className;
+    if (classNamePtr && classNamePtr < 0x10000) {
+        className = g_windowManager.ClassNameFromAtom(uint16_t(classNamePtr));
+    } else {
+        if (!ReadWindowLookupText(mem, classNamePtr, true, wideClass)) return hle::Ret(0);
+        className = hle::WideToUtf8(wideClass);
+    }
+    if (!ReadWindowLookupText(mem, ReadArg(cpu, mem, 2), true, title)) return hle::Ret(0);
+    const auto style = ReadArg(cpu, mem, 3), parent = ReadArg(cpu, mem, 8);
+    if ((style & user::WS_CHILD) && !g_windowManager.GetWindow(parent)) {
+        hle::SetLastError(mem, 1400); return hle::Ret(0);
+    }
 
     // CW_USEDEFAULT = 0x80000000 — "пусть система выберет сама". У нас вся
     // "система" это один полноэкранный виртуальный рабочий стол 640x360
@@ -3040,7 +3055,8 @@ HostCallOutcome Impl_CreateWindowExW(cpu::CpuState& cpu, cpu::IGuestMemory& mem)
     int32_t ih = (h == CW_USEDEFAULT) ? 360  : static_cast<int32_t>(h);
 
     HostCallOutcome result;
-    result.returnValue = win32::g_windowManager.CreateWindow(className, ix, iy, iw, ih, hInstance);
+    result.returnValue = win32::g_windowManager.CreateWindow(className, ix, iy, iw, ih, hInstance,
+        (style & user::WS_CHILD) ? parent : 0, title);
 
     // Реальная Windows автоматически закрашивает фон окна кистью
     // hbrBackground ПЕРЕД тем, как приложение рисует поверх — у нас такого

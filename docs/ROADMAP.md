@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Дата обновления: 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player.
-Проверенный код `e83d416375c69ecba931b34f02dc32ae3110662e`:
-[CI41017357857, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857).
+Дата обновления: 2026-10-30, после G4b.2o, D4f mixed waveOut, D6 ресурсов/времени и D7 поиска окон.
+Проверенный код `cca3b693407d515790282814b68453513d53b8ec`:
+[CI41025932121, 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41025932121).
 [Сводка для пользователя](PROJECT_STATUS_RU.md), [активная очередь](ACTIVE_ROADMAP.md),
 [технический handoff](AI_HANDOFF.md). История расследований — в handoff и
 [аудите 2026-10-23](PROJECT_AUDIT_2026_10_23.md); старые очереди не являются текущим планом.
@@ -15,7 +15,9 @@
 
 [D4f mixed waveOut](D4F_WAVE_MIXER.md): до8 потоков через настоящий WinMM и mixed WAVE_MAPPER, независимые параметры и реальные callback’и. Прямой device0/fallback сохранён; MCI/плеер/PlaySound ещё не смешиваются вместе с waveOut.
 
-[D6](D6_PALETTE_STRINGS.md): общие ресурсы LoadString A/W, registered messages, timeGetTime и честный TrueColor palette contract. В новом UI host-прогон Pinball впервые отрисовал игровое поле/логотип/панели. Это первый кадр главного окна; игра, ввод, звук, FPS и Switch ещё не приняты. Legacy дошёл до FindWindowA.
+[D6](D6_PALETTE_STRINGS.md): общие ресурсы LoadString A/W, registered messages, timeGetTime и честный TrueColor palette contract. В новом UI host-прогон Pinball впервые отрисовал игровое поле/логотип/панели. Это первый кадр главного окна; игра, ввод, звук, FPS и Switch ещё не приняты. Legacy дошёл до FindWindowA (историческая граница D6; D7 ниже проходит её).
+
+[D7](D7_WINDOW_LOOKUP.md): общий проверяемый FindWindow/FindWindowEx A/W по настоящим окнам, атомам и заголовкам нового/legacy UI. Публичные4 x86-сеанса + parked abort; legacy Pinball проходит поиск и доходит до LoadIconA. Игра/ввод/звук/FPS/Switch пока не приняты.
 
 ## Цель и границы
 
@@ -83,7 +85,7 @@ Process, AttachThreadInput и другие расширения остаются
 зависимости реальных программ. Работать по воспроизводимым несовместимостям.
 D1 реализует11 A/W registry API с реальными значениями/правами/закрытием HKEY.
 [D2](D2_KEYBOARD_LAYOUT.md): MapVirtualKeyA/W, GetKeyNameTextA/W и реальные WM_KEY scancode/side states, public4-session/19-event tests.
-Pinball x86 прошёл registry/key names/GetPrivateProfileIntA; MCI file-audio реализовано в D4d; следующий измеренный host-барьер — KERNEL32!OpenFile. MIDI/Pinball не приняты;
+Pinball x86 прошёл registry/key names/GetPrivateProfileIntA; MCI file-audio реализовано в D4d; D5–D7 прошли OpenFile/ресурсы/палитру/время/FindWindow; новый UI показал первый host-кадр поля, legacy диагностически доходит до LoadIconA. MIDI/Pinball не приняты;
 игровой процесс/аппаратная совместимость не подтверждены.
 Критерий: реальное поведение API/ошибок, не successful stub или имя EXE.
 

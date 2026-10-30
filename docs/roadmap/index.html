@@ -24,7 +24,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 <body>
 <header class="topbar"><div class="top-inner"><a class="brand" href="#view=overview" aria-label="Switch Recompiler: вся карта"><span class="mark" aria-hidden="true">SR</span><span><strong>Switch Recompiler</strong><small>Карта разработки</small></span></a><nav class="top-links" aria-label="Ссылки проекта"><a class="repo-link" href="https://github.com/Omeruno/switch-recompiler" target="_blank" rel="noopener">Репозиторий →</a><a class="ci" id="ci-link" href="https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661" target="_blank" rel="noopener"><span class="ci-dot" aria-hidden="true"></span>Проверенная база · CI 6/6 →</a></nav></div></header>
 <main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D6 · ресурсы / палитра / время</span></div><h2>Первый кадр поля Pinball на host</h2><p>Общие LoadString A/W, registered messages, timeGetTime и TrueColor palette contract. Host новый UI отрисовал поле и панели; это ещё не приёмка игры, ввода, звука, FPS или Switch. Далее публичная проверка взаимодействия/кадров и общие аудиоисточники.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
+<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Проект целиком · <span id="updated"></span></p><h1 id="page-title">PC-игры и приложения на Switch</h1><p class="intro">Цель — слой совместимости для PC-игр. Spore, Mirror’s Edge, The Sims 3 и Lineage 2 Classic / Asterios — будущие ориентиры. На карте — что уже есть и какие системные рубежи ещё предстоят.</p></div><div class="current-box"><div class="current-top"><span class="current-tag">МЫ ЗДЕСЬ</span><span>D7 · поиск настоящих окон</span></div><h2>Окна: реальные имена и поиск</h2><p>Общие FindWindow A/W и FindWindowEx A/W: классы, заголовки, дочерние окна и очистка сеансов. Первый host-кадр Pinball сохранён как граница D6; дальше публичная проверка взаимодействия и кадров. Игра и Switch пока не приняты.</p><button class="text-button" id="jump-current">Открыть текущий рубеж →</button></div></section>
 <section class="facts" aria-label="Главные границы проекта"><button class="fact" data-open="F"><small>Функциональная среда</small><strong>База F0–F5 готова</strong><span>Программно, в обозначенных границах</span></button><button class="fact" data-open="g4b2"><small>GPU-GDI</small><strong>Проверенный native-режим</strong><span>Общее подключение впереди</span></button><button class="fact" data-open="D"><small>Windows API</small><strong>Совместимость частичная</strong><span>Новые EXE ещё встречают пробелы</span></button><button class="fact" data-open="hardware"><small>Физический Switch</small><strong>Проверки отложены</strong><span>Сейчас ничего тестировать не нужно</span></button></section>
 <section class="board" aria-label="Интерактивная дорожная карта"><div class="toolbar"><div class="tabs" role="tablist" aria-label="Вид карты"><button class="tab" role="tab" data-view="overview" aria-selected="true" aria-controls="map-pane">Вся карта</button><button class="tab" role="tab" data-view="gpu" aria-selected="false" aria-controls="map-pane">Ускорение</button><button class="tab" role="tab" data-view="next" aria-selected="false" aria-controls="map-pane">Что дальше</button></div><div class="filters"><div class="search-wrap"><span class="search-icon" aria-hidden="true">⌕</span><input id="search" class="search" type="search" placeholder="Найти этап или функцию" aria-label="Поиск по всей карте" autocomplete="off"><button id="clear-search" class="clear-search" aria-label="Очистить поиск" hidden>×</button></div><select id="status-filter" class="filter-select" aria-label="Фильтр по состоянию"><option value="all">Все состояния</option><option value="ready">Работает / база готова</option><option value="partial">Частично</option><option value="prototype">Прототип</option><option value="current">Следующий рубеж</option><option value="planned">В плане</option><option value="deferred">Отложено</option><option value="ongoing">Постоянная работа</option></select></div></div>
 <div class="board-info"><p class="board-caption" id="board-caption"></p><div class="zoom-controls" aria-label="Масштаб карты"><button id="zoom-out" aria-label="Уменьшить карту">−</button><span id="zoom-value" class="zoom-value">100%</span><button id="zoom-in" aria-label="Увеличить карту">+</button><button id="fit" class="fit">По ширине</button></div></div>
@@ -39,8 +39,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
 {
   "schema": 1,
   "updated": "2026-10-30",
-  "runtimeSha": "e83d416375c69ecba931b34f02dc32ae3110662e",
-  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857",
+  "runtimeSha": "cca3b693407d515790282814b68453513d53b8ec",
+  "ciUrl": "https://github.com/Omeruno/switch-recompiler/actions/runs/41025932121",
   "current": "D",
   "repo": "https://github.com/Omeruno/switch-recompiler",
   "branch": "claude/wonderful-hawking-10mpr0",
@@ -113,7 +113,7 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
       "code": "D",
       "title": "Совместимость Windows",
       "status": "current",
-      "summary": "D6: ресурсы/registered messages/clock/TrueColor; Pinball впервые отрисовал поле в host новом UI. D4f mixed waveOut сохранён; взаимодействие/звук/Switch ещё не приняты.",
+      "summary": "D7: настоящий поиск окон A/W в новом/legacy UI,4 x86-сеанса + abort. Pinball: первый new-UI host-кадр; legacy доходит до LoadIconA. Игра/Switch ещё не приняты.",
       "done": [
         "PE EXE/DLL, импорты, TLS, выгрузка и rollback.",
         "Существенный Win32/CRT и ограниченный SEH.",
@@ -127,10 +127,11 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "D5:9 real legacy file APIs,checked OFSTRUCT/reopen/search,shared bounded transfers/EOF/truncate,CP1252 and public x86 sessions.",
         "D4e: bounded8-source native PCM mixer,stereo sum/clipping/gain,actual played-span positions,independent pause/reset/close/replay and production audout host-model evidence.",
         "D4f: real mixed waveOut handles/mapper,owning5-second header feeding,per-source formats/position/gain/pause/reset/close and actual x86 function/event/thread/window/fault/abort tests.",
-        "D6: shared checked LoadString A/W EXE+DLL/CP1252/pointer lifetimes,TrueColor system palette contract,registered-message A/W and shared timeGetTime;first private host table frame only."
+        "D6: shared checked LoadString A/W EXE+DLL/CP1252/pointer lifetimes,TrueColor system palette contract,registered-message A/W and shared timeGetTime;first private host table frame only.",
+        "D7: shared FindWindow/FindWindowEx A/W,actual titles/classes/atoms/direct children/after,CP1252/checked bounds,new USER rename/destroy and session isolation;public4 normal x86 sessions + parked abort."
       ],
       "todo": [
-        "Публичный main-loop/input/timer/frame-progress oracle и legacy FindWindowA/W reproducer; частный первый кадр не принимает игру.",
+        "Публичный main-loop/input/timer/frame-progress oracle; legacy LoadIconA resource/lifetime reproducer. Первый кадр не принимает игру.",
         "Общий bus/sources для MCI/MediaPlayer/PlaySound вместе с waveOut,public x86 music+PCM/lifetime/error fixtures; затем DirectSound/MIDI и физический звук.",
         "Защита страниц, полный unwind/SEH и COM.",
         "API и зависимости конкретных программ.",
@@ -150,9 +151,10 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "docs/D5_LEGACY_FILE.md",
         "docs/D4E_AUDIO_MIXER.md",
         "docs/D4F_WAVE_MIXER.md",
-        "docs/D6_PALETTE_STRINGS.md"
+        "docs/D6_PALETTE_STRINGS.md",
+        "docs/D7_WINDOW_LOOKUP.md"
       ],
-      "limit": "Pinball: первый host-кадр поля в новом UI; legacy FindWindowA остаётся. Нет приёмки игры/ввода/звука/FPS/Switch. D4f до8 waveOut sources; MCI/плеер/PlaySound пока эксклюзивны, DirectSound/MIDI/video открыты.",
+      "limit": "Pinball: первый host-кадр поля в новом UI; legacy diagnostic проходит FindWindowA и доходит до LoadIconA. Нет приёмки игры/ввода/звука/FPS/Switch. D4f до8 waveOut sources; MCI/плеер/PlaySound пока эксклюзивны, DirectSound/MIDI/video открыты.",
       "kind": "Этап"
     },
     {

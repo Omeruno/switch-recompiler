@@ -10,12 +10,14 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace win32 {
 
 constexpr uint32_t HWND_BASE = 0xB0000000u;
 
 struct WindowClassInfo {
+    uint16_t atom = 0;
     uint32_t wndProc = 0;       // адрес WndProc в гостевом коде — ключевое поле
     uint32_t hIcon = 0;
     uint32_t hCursor = 0;
@@ -23,7 +25,8 @@ struct WindowClassInfo {
 };
 
 struct WindowInfo {
-    std::string className;
+    std::string className; // UTF-8
+    std::u16string title;
     int x = 0, y = 0, width = 0, height = 0;
     uint32_t hInstance = 0;
     uint32_t parentHwnd = 0; // 0 = нет родителя (top-level окно)
@@ -34,12 +37,14 @@ public:
     // Возвращает ненулевой "атом" при успехе (реальный контракт RegisterClassW)
     uint32_t RegisterClass(const std::string& className, const WindowClassInfo& info);
     const WindowClassInfo* FindClass(const std::string& className) const;
+    std::string ClassNameFromAtom(uint16_t atom) const;
+    std::vector<uint32_t> Children(uint32_t parent) const;
 
-    // Возвращает фейковый HWND, либо 0 — если класс с таким именем не зарегистрирован.
+    // Возвращает HWND из реального legacy store, либо 0 для неизвестного класса.
     // parentHwnd=0 — top-level окно (как раньше), ненулевой — child-окно
     // (добавлено при доводке связки CFrameWnd::OnCreateClient/CreateView).
     uint32_t CreateWindow(const std::string& className, int x, int y, int w, int h,
-                           uint32_t hInstance, uint32_t parentHwnd = 0);
+                           uint32_t hInstance, uint32_t parentHwnd = 0, const std::u16string& title = {});
 
     const WindowInfo* GetWindow(uint32_t hwnd) const;
     const WindowClassInfo* GetWindowClass(uint32_t hwnd) const; // удобный шорткат для DispatchMessage
@@ -55,6 +60,7 @@ public:
 private:
     std::unordered_map<std::string, WindowClassInfo> classes_;
     std::unordered_map<uint32_t, WindowInfo> windows_;
+    std::vector<uint32_t> zOrder_; // front = newest; legacy has no activation reorder
     uint32_t nextHandle_ = HWND_BASE;
     uint32_t nextAtom_ = 0xC001; // произвольный, но правдоподобный диапазон ATOM
     uint32_t lastCreatedWindow_ = 0;

@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/window_lookup.c" \
+    -o "$out/window_lookup.exe" -lkernel32 -luser32
 i686-w64-mingw32-windres "$here/palette_strings.rc" "$out/strings_main_resource.o"
 i686-w64-mingw32-windres -DRESOURCE_DLL "$here/palette_strings.rc" "$out/strings_dll_resource.o"
 $cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 "$here/resource_strings_dll.c" \

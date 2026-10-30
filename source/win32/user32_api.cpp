@@ -518,33 +518,6 @@ FN(ChildWindowFromPointEx) {
     return Ret(w->hwnd);
 }
 
-HostCallOutcome FindWindowCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode, bool ex) {
-    int o = ex ? 2 : 0;
-    std::u16string cls, title;
-    uint16_t atom = 0;
-    bool anyClass = !A(c, m, o), anyTitle = !A(c, m, o + 1);
-    if (!anyClass) ReadNameOrAtom(A(c, m, o), unicode, cls, atom);
-    if (!anyTitle) title = ReadText(A(c, m, o + 1), unicode);
-    Window* parent = ex && A(c, m, 0) ? Win(A(c, m, 0)) : Desktop();
-    if (!parent) return Ret(0);
-    bool started = !ex || !A(c, m, 1);
-    for (uint32_t h : parent->children) {
-        if (!started) { if (h == A(c, m, 1)) started = true; continue; }
-        Window* w = Win(h);
-        if (!w || !w->cls) continue;
-        if (!anyClass && !(atom ? w->cls->atom == atom : (w->cls->name.size() == cls.size() && [&] {
-                for (size_t i = 0; i < cls.size(); ++i) if (std::tolower(cls[i]) != std::tolower(w->cls->name[i])) return false;
-                return true; }())))
-            continue;
-        if (!anyTitle && w->text != title) continue;
-        return Ret(h);
-    }
-    return Ret(0);
-}
-HostCallOutcome FindWindowImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool u) { return FindWindowCommon(c, m, u, false); }
-HostCallOutcome FindWindowExImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool u) { return FindWindowCommon(c, m, u, true); }
-AW(FindWindow)
-AW(FindWindowEx)
 
 FN(EnumWindows) {
     ENTER;
@@ -1444,7 +1417,7 @@ const HostFunctionEntry kEntries[] = {
     E(EnableWindow, 8), E(IsChild, 8), E(IsIconic, 4), E(IsZoomed, 4), E(GetFocus, 0), E(SetFocus, 4),
     E(GetActiveWindow, 0), E(SetActiveWindow, 4), E(GetForegroundWindow, 0), E(SetForegroundWindow, 4),
     E(GetGUIThreadInfo, 8), E(AttachThreadInput, 12), E(GetCapture, 0), E(SetCapture, 4), E(ReleaseCapture, 0), E(WindowFromPoint, 8), E(ChildWindowFromPoint, 12),
-    E(ChildWindowFromPointEx, 16), EAW(FindWindow, 8), EAW(FindWindowEx, 16), E(EnumWindows, 8), E(EnumChildWindows, 12),
+    E(ChildWindowFromPointEx, 16), E(EnumWindows, 8), E(EnumChildWindows, 12),
     E(GetWindowThreadProcessId, 8), EAW(SetProp, 12), EAW(GetProp, 8), EAW(RemoveProp, 8),
     E(GetWindowPlacement, 8), E(SetWindowPlacement, 8),
     EAW(DefWindowProc, 16), EAW(CallWindowProc, 20), EAW(SendMessage, 16), EAW(SendMessageTimeout, 28),

@@ -2,8 +2,8 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `e83d416375c69ecba931b34f02dc32ae3110662e`,
-[CI 41017357857 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41017357857).
+Актуально на 2026-10-30, после G4b.2o, D4f mixed waveOut, D6 ресурсов/времени и D7 поиска окон. Проверенный код: `cca3b693407d515790282814b68453513d53b8ec`,
+[CI 41025932121 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/41025932121).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
@@ -18,7 +18,9 @@
 
 [D4f mixed waveOut](D4F_WAVE_MIXER.md): до8 потоков через настоящий WinMM и mixed WAVE_MAPPER, независимые параметры и реальные callback’и. Прямой device0/fallback сохранён; MCI/плеер/PlaySound ещё не смешиваются вместе с waveOut.
 
-[D6](D6_PALETTE_STRINGS.md): общие ресурсы LoadString A/W, registered messages, timeGetTime и честный TrueColor palette contract. В новом UI host-прогон Pinball впервые отрисовал игровое поле/логотип/панели. Это первый кадр главного окна; игра, ввод, звук, FPS и Switch ещё не приняты. Legacy дошёл до FindWindowA.
+[D6](D6_PALETTE_STRINGS.md): общие ресурсы LoadString A/W, registered messages, timeGetTime и честный TrueColor palette contract. В новом UI host-прогон Pinball впервые отрисовал игровое поле/логотип/панели. Это первый кадр главного окна; игра, ввод, звук, FPS и Switch ещё не приняты. Legacy дошёл до FindWindowA (историческая граница D6; D7 ниже проходит её).
+
+[D7](D7_WINDOW_LOOKUP.md): общий проверяемый FindWindow/FindWindowEx A/W по настоящим окнам, атомам и заголовкам нового/legacy UI. Публичные4 x86-сеанса + parked abort; legacy Pinball проходит поиск и доходит до LoadIconA. Игра/ввод/звук/FPS/Switch пока не приняты.
 
 ## К чему идём
 
@@ -118,7 +120,7 @@ Host EGL/Mesa проверяет пиксели, порядок, лимиты и
 3. Измерения реальных приложений на Switch и объединённая аппаратная приёмка
    E/F — когда пользователь вернётся к проверкам. Сейчас они отложены.
 4. Параллельная очередь D: конкретные воспроизводимые несовместимости. У Pinball
-   x86 прошёл прежний RegCreateKeyExA; MCI file-audio реализовано в D4d; следующий измеренный host-барьер — KERNEL32!OpenFile. MIDI/Pinball не приняты;
+   x86 прошёл прежний RegCreateKeyExA; MCI file-audio реализовано в D4d; D5–D7 прошли OpenFile/ресурсы/палитру/время/FindWindow; новый UI показал первый host-кадр поля, legacy диагностически доходит до LoadIconA. MIDI/Pinball не приняты;
    совместимость игры не объявлена. Версия x64 не поддерживается архитектурно.
 
 ## Установщики, архивы и дальнейшая среда
