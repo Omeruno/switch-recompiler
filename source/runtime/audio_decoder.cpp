@@ -15,6 +15,7 @@ uint32_t U32(const std::vector<uint8_t>& b,size_t n){return uint32_t(U16(b,n))|u
 struct AudioDecoder::Impl {
     std::vector<uint8_t> bytes;
     drmp3 mp3{};bool initialized=false,ended=false;
+    std::vector<drmp3_seek_point> seekPoints; // decoder borrows stable Impl-owned storage
     PcmFormat format{};PcmStream converter;
     size_t data=0,length=0,cursor=0;
     uint64_t frames=0;
@@ -65,6 +66,16 @@ bool AudioDecoder::OpenBytes(std::vector<uint8_t> bytes) {
         if(!next->format.Valid()){error_="Unsupported MP3 format";return false;}
         next->frames=drmp3_get_pcm_frame_count(&next->mp3);
         if(!next->frames || !drmp3_seek_to_pcm_frame(&next->mp3,0)){error_="Invalid MP3 duration";return false;}
+        if(next->frames>uint64_t(next->format.rate)*7200){error_="Audio duration exceeds two hours";return false;}
+        // Without a table dr_mp3 decodes from the beginning on backward seeks.
+        // Build once at open, with roughly half-second spacing (at most 14400
+        // points / 338 KiB). Never move this storage while the decoder uses it.
+        drmp3_uint32 count=drmp3_uint32((next->frames*2+next->format.rate-1)/next->format.rate);
+        next->seekPoints.resize(count);
+        if(!drmp3_calculate_seek_points(&next->mp3,&count,next->seekPoints.data()) ||
+           !count || !drmp3_bind_seek_table(&next->mp3,count,next->seekPoints.data())){
+            error_="MP3 seek index failed";return false;
+        }
     }
     if(next->frames>uint64_t(next->format.rate)*7200){error_="Audio duration exceeds two hours";return false;}
     next->converter=PcmStream(next->format);impl_=std::move(next);error_="";return true;

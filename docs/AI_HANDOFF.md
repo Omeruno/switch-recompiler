@@ -1,15 +1,25 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`c3bcc9feaebfb3ec1e3b8656bfe426e339b991ce` (2026-10-30).
-[CI 41055283401](https://github.com/Omeruno/switch-recompiler/actions/runs/41055283401)
+`7055480a49ed6e0bc573fead55d7934391c2b97c` (2026-10-31).
+[CI 41062014304](https://github.com/Omeruno/switch-recompiler/actions/runs/41062014304)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F7 controller keyboard settings implemented; D9 host ball/score observation preserved, hardware/full game acceptance open (2026-10-30)
+## Current position: D10 audout reset/MP3 seek recovery and sound-enabled MMIO startup; physical recovery/game acceptance open (2026-10-31)
+
+[D10 audio recovery](D10_AUDIO_RECOVERY.md): production audout drains released tags
+before Contains; corrected transport exposes the old refusal. MP3 has an owning
+bounded half-second seek index and no redundant rewind. sndPlaySound A/W uses
+real stdcall8/common memory-WAV/stop; read-only process-owned MMIO A/W/RIFF/LIST/
+read/ascend passes public4 normal x86 sessions+2 owning aborts. Private sound-enabled
+1280x720 ShellSession now passes the previously missing sound imports and renders
+ball/table/text. Earlier no-device host runs bypassed that branch. Actual Switch
+black-screen and seek recovery require fresh exact-version evidence; no physical
+acceptance inferred. Full legacy/DirectSound/MIDI and source-bus mixing remain open.
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -66,9 +76,9 @@ follows; its old future-tense queues do not supersede this current position.
 
 [D7](D7_WINDOW_LOOKUP.md) adds shared FindWindow/FindWindowEx A/W over actual new/legacy windows,checked CP1252/UTF16/class atoms/title/direct-child/after semantics and session lifetime. Four normal x86 sessions + parked abort; modern rename/destruction and strict bounds/ABI checked. Legacy diagnostic passes FindWindowA and reaches LoadIconA. Next public interaction/message/timer/frame-progress oracle; no gameplay/hardware acceptance.
 
-[D8](D8_GAME_LOOP.md) verifies actual busy PeekMessage/timeGetTime/WM_TIMER,4 key pairs/2 chars,moving and pressed/released pixels via an independent96x64 CPU+production output reference.4 normal real/fast-forward x86 sessions +2 held-key aborts/clean restart/owning redraw. Generic host --key/--real-time scripting is diagnostic only. User-prioritized [F7 native controller bindings](F7_CONTROLLER_BINDINGS_PLAN.md) is next: actual settings/apply/save/reset,ownership and safe releases; not implemented yet. Private scripted keys preserve Pinball's table frame, but ball/flipper/game acceptance remains unverified.
+[D8](D8_GAME_LOOP.md) verifies actual busy PeekMessage/timeGetTime/WM_TIMER,4 key pairs/2 chars,moving and pressed/released pixels via an independent96x64 CPU+production output reference.4 normal real/fast-forward x86 sessions +2 held-key aborts/clean restart/owning redraw. Generic host --key/--real-time scripting is diagnostic only. [F7 native controller bindings](F7_CONTROLLER_BINDINGS.md) is now implemented; see its bounded scope below. Private scripted keys preserve Pinball's table frame, but ball/flipper/game acceptance remains unverified.
 
-[D9](D9_CLASS_MENUS.md) implements real class-default menu resources and window ownership,checked standard/MENUEX parsing/rollback and public4-session+2 callback-abort evidence. Private same-run later captures show menu/player/mission text,moving ball and score0→2000→2500. Earlier startup snapshots were too early; no general font fix was needed. This is host launch/ball/score observation,not full game/flipper/audio/FPS/Switch acceptance. F7 remains next.
+[D9](D9_CLASS_MENUS.md) implements real class-default menu resources and window ownership,checked standard/MENUEX parsing/rollback and public4-session+2 callback-abort evidence. Private same-run later captures show menu/player/mission text,moving ball and score0→2000→2500. Earlier startup snapshots were too early; no general font fix was needed. This is host launch/ball/score observation,not full game/flipper/audio/FPS/Switch acceptance. F7 is now implemented; D10 addresses real sound-enabled startup blockers.
 
 [F7](F7_CONTROLLER_BINDINGS.md) implements the12-button global guest keyboard profile,real native editor/apply/save/reset,version1→2 persistent migration and shared physical-owner routing. Native navigation/reserved Start/quit/mouse stay available;duplicate bindings,modifiers,context/profile changes,held quarantine,disconnect/overflow and fresh sessions have public native+real-x86 evidence. F7 is software implemented; physical Switch acceptance remains deferred. Next shared MCI/MediaPlayer/PlaySound with waveOut sources.
 
@@ -3933,3 +3943,40 @@ negative ignored-profile and early duplicate release fail their independent orac
 Visual map53 document links plus desktop/mobile/deep-link/search/filter/zoom/focus
 passed with current stage F. Publish normally,then verify exact-SHA all6 CI,Pages,
 NRO and public artifact/source manifests;local devkitA64/libnx remain unavailable.
+
+## 2026-10-31 D10 — real audio reset ordering and sound-enabled file startup
+
+Incoming7055480a49ed6e0bc573fead55d7934391c2b97c passed all6 CI41062014304.
+Corrected audout model includes released tags in Contains; old adapter fails it.
+Production Reset now bounded-drains/validates returned descriptors before checking
+absence,retains every PCM/descriptor on failure,then releases and restarts. MP3
+builds stable owning half-second dr_mp3 index on open (14400 points maximum),and
+Seek revokes without redundant rewind. Source-linear signal comparisons and repeated
+real rail forward/back/paused/EOF/replay/reset-failure gates extend public tests.
+
+A fresh private1280x720 ShellSession diagnostic with available capture audio found
+sndPlaySoundA then mmioOpenA missing; no-device host startup had bypassed them.
+Implemented actual sndPlaySoundA/W stdcall8 over common memory/stop path; full
+filename/sync/loop still explicit unsupported. New read-only MMIO regular-file
+snapshots are Process-owned,max8MiB each/16 handles/32MiB aggregate. Real A/W opens,
+Read/Close/Descend/Ascend validate RIFF/LIST/header/parent/odd pad/bounds/stale IDs;
+unsupported custom/memory/write/buffer/callback operations refuse. Public authored
+nested-WAV x86 fixture runs4 normal new/legacy sessions+2 owning-handle aborts.
+Sound-enabled private host now renders table/ball/text; private payloads/captures
+remain outside git. Switch black-screen recovery still needs exact-build evidence.
+
+Run full host/MinGW/Mesa,strict/focused ASan/UBSan and reset/RIFF-bound negatives;
+normal push then exact-SHA six-job CI/Pages/NRO/public artifacts/source manifest.
+Local devkitA64/libnx absent;CI builds actual NRO. Next common audio-source bus;
+physical seek/game/audio/input/renderer/relaunch acceptance remains separate.
+
+Final D10 local validation: full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed,
+including actual sndPlaySound PCM/ABI,4 new/legacy MMIO exits+2 owning aborts,
+indexed signal/rail/reset tests,all previous D/audio/C/E/F7/GUI and22 F groups plus
+17 GPU groups/five bound reports. Strict decoder/player/WinMM/MMIO/inspectors and
+focused ASan/UBSan passed (native leak scans on;x86 ucontext leak scan off;other
+runtime ordinary). Whole production audout/output/mixer model sanitizers passed.
+Old reset and removed RIFF bound fail independent oracles.54 document links and
+desktop/mobile/search/deep-link/filter/zoom/focus passed. Private sound-enabled
+1280x720 ShellSession table/ball/text observed;console recovery remains unverified.
+Publish normally,verify exact-SHA all6 CI/Pages/NRO/public source artifacts.

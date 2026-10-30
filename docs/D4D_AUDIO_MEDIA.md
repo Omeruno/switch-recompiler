@@ -170,3 +170,8 @@ describe this document’s original package scope. Historical wave fixtures now
 explicitly select device0 to retain strict direct-buffer/count oracles; the new
 public x86 fixture independently certifies multi-stream mapper behavior. MCI/
 MediaPlayer/PlaySound remain exclusive until their shared-source integration.
+
+[D10 recovery](D10_AUDIO_RECOVERY.md) corrects audout reset ordering after released
+queue retrieval,adds an owning MP3 seek index and removes the redundant seek rewind.
+Its actual PCM/rail/transport tests extend this package;physical seek recovery
+remains a fresh-build gate. D10 also adds real bounded sndPlaySound/MMIO startup.

@@ -32,6 +32,15 @@ int main(int argc,char**argv){
             for(size_t n=0;n<all.size();n+=2)assert(all[n]==all[n+1]);
         }else{assert(decoder.Duration()==49536 && Tone(all,0,330)>4000 && Tone(all,1,990)>4000);}
         assert(decoder.Seek(0));std::vector<int16_t> again;assert(decoder.Read(again) && again==first);
+        // Arbitrary indexed forward/backward seeks must produce the actual
+        // linear-decoded signal, not merely report the requested position.
+        // Half-second positions align exactly at all three fixture rates.
+        for(uint64_t at:{(decoder.Duration()/24000-1)*24000,uint64_t(24000),uint64_t(0)}){
+            assert(decoder.Seek(at));assert(decoder.Read(again) && again.size()>=512);
+            for(size_t n=0;n<512;++n)assert(std::abs(int(again[n])-int(all[size_t(at)*2+n]))<=2);
+        }
+        assert(decoder.Seek(decoder.Duration()) && decoder.Read(again) && again.empty());
+        assert(decoder.Seek(0) && decoder.Read(again) && again==first);
         const auto old=decoder.Duration();assert(!decoder.OpenBytes({1,2,3,4}) && decoder.Duration()==old);
     }
     { // Real PCM WAV decoding and malformed-container refusal preserve old media.
@@ -70,7 +79,8 @@ int main(int argc,char**argv){
         assert(player.Seek(48000) && device.paused && device.active.empty() && player.Position()==48000);
         assert(player.Play() && !device.paused);player.Tick();assert(device.active.size()==4);
         assert(player.SetVolume(25) && player.Volume()==25 && device.volume==16383);
-        device.resetFails=true;assert(!player.Stop() && device.active.size()==4 && rt::Audio().Client());device.resetFails=false;assert(player.Stop() && device.active.empty() && !rt::Audio().Client());
+        device.resetFails=true;assert(!player.Seek(96000) && device.active.size()==4 && rt::Audio().Client());
+        assert(!player.Stop() && device.active.size()==4 && rt::Audio().Client());device.resetFails=false;assert(player.Stop() && device.active.empty() && !rt::Audio().Client());
         assert(player.Play());for(unsigned n=0;n<1000 && player.Status()!=rt::MediaPlayer::State::Finished;++n){Release(device);player.Tick();}
         assert(player.Status()==rt::MediaPlayer::State::Finished && player.Position()==384000 && device.active.empty() && !rt::Audio().Client());
         assert(player.Play() && device.active.size()==4);const auto client=rt::Audio().Client();
@@ -85,6 +95,24 @@ int main(int argc,char**argv){
         const auto previewTokens=device.active.size();Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==1 && device.active.size()==previewTokens);
         Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==2);{ui::OwnedSurface frame;frame.Allocate(1280,720);shell.Render(frame.s,u"12:34");}Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==3);{ui::OwnedSurface frame;frame.Allocate(1280,720);shell.Render(frame.s,u"12:34");}Click(shell,ui::DesktopShell::MediaEffect);assert(shell.MediaEffectMode()==0);
         Click(shell,ui::DesktopShell::MediaSeek);assert(shell.Media().Position()>180000 && shell.Media().Position()<200000);
+        // Repeated rail seeks across pending buffers, paused playback, EOF and
+        // replay. A position-only decoder mock cannot pass the PCM oracle above.
+        for(bool paused:{false,true}){
+            if(paused)Click(shell,ui::DesktopShell::MediaPause);
+            for(unsigned part:{9u,1u,7u,0u,10u,2u}){
+                const auto rail=shell.ControlBounds(ui::DesktopShell::MediaSeek);
+                const int x=rail.left+(rail.Width()-1)*int(part)/10,y=(rail.top+rail.bottom)/2;
+                shell.PointerDown(x,y);shell.PointerUp(x,y);shell.ServiceMedia();
+                assert(shell.Media().Error().empty());
+                const auto expected=uint64_t(x-rail.left)*shell.Media().Duration()/uint64_t(rail.Width()-1);
+                assert(shell.Media().Position()==expected);
+                assert(shell.Media().Status()==(paused?rt::MediaPlayer::State::Paused:rt::MediaPlayer::State::Playing) || part==10);
+                assert(device.active.size()<=4);
+                if(part!=10){assert(shell.Media().Visualization(visual)==!paused);}
+                else if(!paused){assert(shell.Media().Status()==rt::MediaPlayer::State::Finished);Click(shell,ui::DesktopShell::MediaPlay);}
+            }
+            if(paused)Click(shell,ui::DesktopShell::MediaPlay);
+        }
         Click(shell,ui::DesktopShell::MediaPause);assert(device.paused);Click(shell,ui::DesktopShell::MediaForward);assert(device.paused && shell.Media().Position()==384000);
         Click(shell,ui::DesktopShell::MediaStop);Click(shell,ui::DesktopShell::MediaPlay);assert(!device.paused && device.active.size()==4);
         Click(shell,ui::DesktopShell::DialogMinimize);assert(shell.NativeMinimized());Release(device);shell.ServiceMedia();assert(device.active.size()==4);
@@ -98,7 +126,8 @@ int main(int argc,char**argv){
         Click(shell,ui::DesktopShell::DialogMaximize);
         if(const auto* capture=std::getenv("AUDIO_MEDIA_CAPTURE")){
             Click(shell,ui::DesktopShell::MediaEffect);shell.Render(surface.s,u"12:34");const auto path=std::string(capture)+"-wave.ppm";FILE* file=std::fopen(path.c_str(),"wb");assert(file);std::fprintf(file,"P6\n1280 720\n255\n");
-            for(int y=0;y<720;++y)for(int x=0;x<1280;++x){const auto pixel=surface.s.Get(x,y);const uint8_t rgb[]={uint8_t(pixel>>16),uint8_t(pixel>>8),uint8_t(pixel)};assert(std::fwrite(rgb,1,3,file)==3);}assert(!std::fclose(file));Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);
+            for(int y=0;y<720;++y)for(int x=0;x<1280;++x){const auto pixel=surface.s.Get(x,y);const uint8_t rgb[]={uint8_t(pixel>>16),uint8_t(pixel>>8),uint8_t(pixel)};assert(std::fwrite(rgb,1,3,file)==3);}
+            assert(!std::fclose(file));Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);Click(shell,ui::DesktopShell::MediaEffect);
         }
         const auto bounds=shell.DialogBounds();shell.PointerDown(bounds.right-2,bounds.bottom-2);assert(shell.DraggingWindow());shell.PointerMove(bounds.right+90,bounds.bottom+50);shell.PointerUp(bounds.right+90,bounds.bottom+50);assert(shell.DialogBounds().Width()>bounds.Width());
         Click(shell,ui::DesktopShell::DialogClose);assert(shell.ActiveDialog()==ui::DesktopShell::Dialog::None && !shell.Media().Loaded() && device.active.empty() && !rt::Audio().Client());

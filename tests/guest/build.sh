@@ -5,6 +5,8 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/mmio_read.c" \
+    -o "$out/mmio_read.exe" -lkernel32 -lwinmm
 i686-w64-mingw32-windres "$here/class_menus.rc" "$out/class_menus_res.o"
 i686-w64-mingw32-windres -DMENU_DLL "$here/class_menus.rc" "$out/class_menus_dll_res.o"
 $cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 "$here/resource_strings_dll.c" \

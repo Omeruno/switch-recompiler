@@ -1,4 +1,5 @@
 #include "audio_audout.h"
+#include <algorithm>
 #ifdef __SWITCH__
 namespace rt {
 bool AudoutDevice::Initialize() {
@@ -50,17 +51,23 @@ bool AudoutDevice::Reset() {
     ready_=false;
     if(R_FAILED(audoutStopAudioOut()))return false;
     bool flushed=false;if(R_FAILED(audoutFlushAudioOutBuffers(&flushed)))return false;
-    for(auto& slot:slots_)if(slot.token) {
-        bool contains=true;
-        if(R_FAILED(audoutContainsAudioOutBuffer(&slot.native,&contains)) || contains)return false;
-    }
+    // Contains may include buffers in the released queue until they are
+    // retrieved. Drain first, retaining every descriptor/PCM owner throughout.
     bool drained=false;
+    std::array<bool,AudioOutput::Slots> seen{};
     for(size_t n=0;n<=slots_.size();++n) {
         AudioOutBuffer* released=nullptr;u32 count=0;
         if(R_FAILED(audoutGetReleasedAudioOutBuffer(&released,&count)))return false;
         if(!count){drained=true;break;}
+        const auto found=std::find_if(slots_.begin(),slots_.end(),[&](const auto& slot){return slot.token && released==&slot.native;});
+        if(count!=1 || found==slots_.end())return false;
+        const auto index=size_t(found-slots_.begin());if(seen[index])return false;seen[index]=true;
     }
     if(!drained)return false;
+    for(auto& slot:slots_)if(slot.token) {
+        bool contains=true;
+        if(R_FAILED(audoutContainsAudioOutBuffer(&slot.native,&contains)) || contains)return false;
+    }
     for(auto& slot:slots_)slot={};
     ready_=R_SUCCEEDED(audoutStartAudioOut());paused_=false;lastRaw_=positionOffset_=0;
     return true; // revoked, even when restart failed (Available remains FALSE)

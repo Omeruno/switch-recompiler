@@ -38,7 +38,8 @@ bool MediaPlayer::Pause() {
     if(!Audio().Pause(owner_,client_,true)){state_=State::Error;return Fail("Audio pause failed; Stop to recover");}
     state_=State::Paused;error_.clear();return true;
 }
-bool MediaPlayer::Stop() {
+bool MediaPlayer::Stop() {return Halt(true);}
+bool MediaPlayer::Halt(bool rewind) {
     // A newer owner may still restore this outer claim. Keep its lease until
     // the caller returns; clearing it here would strand a restored client.
     if(client_ && !Owns() && Audio().Owner()>owner_)return Fail("Stop after the audio session returns");
@@ -47,13 +48,13 @@ bool MediaPlayer::Stop() {
         Audio().ReleaseClient(owner_,client_);
     }
     client_=owner_=0;retirement_.reset();previews_.clear();eof_=false;submitted_=offset_=lastPosition_=0;
-    if(decoder_ && !decoder_->Seek(0)){state_=State::Error;return Fail(decoder_->Error());}
+    if(rewind && decoder_ && !decoder_->Seek(0)){state_=State::Error;return Fail(decoder_->Error());}
     state_=decoder_?State::Ready:State::Empty;error_.clear();return true;
 }
 bool MediaPlayer::Close(){if(!Stop())return false;decoder_.reset();path_.clear();state_=State::Empty;return true;}
 bool MediaPlayer::Seek(uint64_t frame) {
     if(!decoder_ || frame>Duration())return Fail("Invalid playback position");
-    const auto previous=state_;if(!Stop())return false;
+    const auto previous=state_;if(!Halt(false))return false;
     if(!decoder_->Seek(frame)){state_=State::Error;return Fail(decoder_->Error());}
     offset_=lastPosition_=frame;
     if(previous==State::Playing || previous==State::Paused)return Play(previous==State::Paused);

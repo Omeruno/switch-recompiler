@@ -33,6 +33,7 @@ private:
     std::deque<std::shared_ptr<Preview>> previews_;
     struct Retirement {uint64_t completed=0,cancelled=0;};
     bool Fail(const char* text);
+    bool Halt(bool rewind);
     bool Owns() const;
     std::unique_ptr<AudioDecoder> decoder_;
     std::shared_ptr<Retirement> retirement_;

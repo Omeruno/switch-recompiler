@@ -8,8 +8,7 @@ namespace win32 {namespace {
 using namespace hle;
 bool Range(cpu::IGuestMemory& m,uint32_t p,size_t n){return p && uint64_t(p)+n<=0x100000000ull && m.IsRangeMapped(p,n);}
 HostCallOutcome Failure(cpu::IGuestMemory& m,uint32_t error){SetLastError(m,error);return Ret(0);}
-HostCallOutcome Play(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
-    const auto sound=Arg(c,m,0),module=Arg(c,m,1),flags=Arg(c,m,2);
+HostCallOutcome Play(cpu::IGuestMemory& m,bool wide,uint32_t sound,uint32_t module,uint32_t flags) {
     if(!rt::g_process)return Failure(m,6);
     if(rt::Audio().Client())return Failure(m,170);
     if(!sound)return rt::Audio().Reset()?Ret(1):Failure(m,1117);
@@ -64,10 +63,15 @@ HostCallOutcome Caps(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
     return Ret(0);
 }
 #define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
-FN(PlaySoundW){return Play(c,m,true);} FN(PlaySoundA){return Play(c,m,false);}
+FN(PlaySoundW){return Play(m,true,Arg(c,m,0),Arg(c,m,1),Arg(c,m,2));}
+FN(PlaySoundA){return Play(m,false,Arg(c,m,0),Arg(c,m,1),Arg(c,m,2));}
+// The two-argument legacy entry points share real stop/memory ownership and
+// errors. Resource identifiers are specific to PlaySound's module argument.
+FN(sndPlaySoundW){const auto flags=Arg(c,m,1);if(flags&0x40000)return Failure(m,50);return Play(m,true,Arg(c,m,0),0,flags);}
+FN(sndPlaySoundA){const auto flags=Arg(c,m,1);if(flags&0x40000)return Failure(m,50);return Play(m,false,Arg(c,m,0),0,flags);}
 FN(waveOutGetNumDevs){(void)c;(void)m;rt::Audio().Poll();return Ret(rt::Audio().Available()?(MixedWaveSupported()?2:1):0);}
 FN(waveOutGetDevCapsA){return Caps(c,m,false);} FN(waveOutGetDevCapsW){return Caps(c,m,true);}
 #define E(name,bytes) {"WINMM.dll",#name,bytes,CallConv::Stdcall,&name}
-const HostFunctionEntry entries[]={E(PlaySoundW,12),E(PlaySoundA,12),E(waveOutGetNumDevs,0),E(waveOutGetDevCapsA,12),E(waveOutGetDevCapsW,12)};
+const HostFunctionEntry entries[]={E(PlaySoundW,12),E(PlaySoundA,12),E(sndPlaySoundW,8),E(sndPlaySoundA,8),E(waveOutGetNumDevs,0),E(waveOutGetDevCapsA,12),E(waveOutGetDevCapsW,12)};
 const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
 }}

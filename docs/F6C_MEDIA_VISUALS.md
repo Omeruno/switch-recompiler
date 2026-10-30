@@ -93,3 +93,8 @@ identity audits remain publication gates. Local devkitA64/libnx is absent; actua
 console sound, input/graphics/fallback/relaunch stay deferred. SD recovery closed.
 Mixing/DirectSound/MIDI and the observed legacy Pinball OpenFile blocker remain
 separate common system work; visual polish does not accept them or complete XP.
+
+[D10 recovery](D10_AUDIO_RECOVERY.md) corrects audout reset ordering after released
+queue retrieval,adds an owning MP3 seek index and removes the redundant seek rewind.
+Its actual PCM/rail/transport tests extend this package;physical seek recovery
+remains a fresh-build gate. D10 also adds real bounded sndPlaySound/MMIO startup.

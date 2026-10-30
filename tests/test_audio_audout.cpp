@@ -4,6 +4,7 @@
 #include <deque>
 #include <set>
 #include <cstdio>
+#include <algorithm>
 namespace {
 struct Transport {
     bool initFail=false,startFail=false,stopFail=false,flushFail=false,containsFail=false,appendFail=false,pollFail=false;
@@ -23,7 +24,7 @@ Result audoutSetAudioOutVolume(float v){if(t.volumeFail)return 1;t.volume=v;retu
 Result audoutGetAudioOutVolume(float* v){if(t.volumeFail)return 1;*v=t.volume;return 0;}
 Result audoutAppendAudioOutBuffer(AudioOutBuffer* b){assert(b && b->buffer && !(reinterpret_cast<uintptr_t>(b->buffer)&4095) && !(b->buffer_size&4095));t.queued.insert(b);++t.appends;return t.appendFail?1:0;}
 Result audoutGetReleasedAudioOutBuffer(AudioOutBuffer** p,u32* n){if(t.pollFail)return 1;*n=0;*p=nullptr;if(!t.released.empty()){*p=t.released.front();t.released.pop_front();*n=1;}return 0;}
-Result audoutContainsAudioOutBuffer(AudioOutBuffer* p,bool* contains){if(t.containsFail)return 1;*contains=t.queued.count(p)!=0;return 0;}
+Result audoutContainsAudioOutBuffer(AudioOutBuffer* p,bool* contains){if(t.containsFail)return 1;*contains=t.queued.count(p)!=0 || std::find(t.released.begin(),t.released.end(),p)!=t.released.end();return 0;}
 Result audoutFlushAudioOutBuffers(bool* flushed){if(t.flushFail)return 1;*flushed=!t.queued.empty();for(auto* p:t.queued)t.released.push_back(p);t.queued.clear();return 0;}
 int main(){
     rt::AudoutDevice device;t.initFail=true;assert(!device.Initialize() && !device.Available());t.initFail=false;

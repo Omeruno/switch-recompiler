@@ -35,7 +35,7 @@ rm -f "$out/controller_api.log" "$out/test_controller_bindings.log" "$out/test_c
 rm -f "$out/class_menus.log"
 rm -f "$out/game_loop.log" "$out/game_loop_cli.log"
 rm -f "$out/window_lookup.log"
-rm -f "$out/palette_strings.log"
+rm -f "$out/palette_strings.log" "$out/mmio_read.log"
 rm -f "$out/wave_mixer.log"
 rm -f "$out/legacy_file_api.log"
 rm -f "$out/audio_media_api.log"
@@ -146,6 +146,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   G2 GDI COMPARISON FAILED"
         tail -n 25 "$out/stage-g-blit.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_mmio_read.cpp" $src -o "$out/test_mmio_read" &&
+       "$out/test_mmio_read" "$guestRoot/mmio_read.exe" > "$out/mmio_read.log" 2>&1; then
+        tail -n 1 "$out/mmio_read.log"
+    else
+        echo "   MMIO PUBLIC FILE READER FAILED"
+        tail -n 25 "$out/mmio_read.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_class_menus.cpp" $src -o "$out/test_class_menus" &&
@@ -658,6 +666,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "wave_mixer.exe" ] && continue
         [ "$(basename "$exe")" = "legacy_file.exe" ] && continue
         [ "$(basename "$exe")" = "ini_profile.exe" ] && continue
+        [ "$(basename "$exe")" = "mmio_read.exe" ] && continue
         [ "$(basename "$exe")" = "audio_output.exe" ] && continue
         [ "$(basename "$exe")" = "audio_media.exe" ] && continue
         [ "$(basename "$exe")" = "wave_stream.exe" ] && continue
