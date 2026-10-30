@@ -1,8 +1,9 @@
 #include "source/runtime/command_line.h"
+#include "host_key_script.h"
 // winrun.cpp — запуск Windows-программы на хосте через наш рантайм.
 //
 //   winrun [-v] [-L каталог] [-f кадров] [-c кадр:x:y]... [-d снимок.ppm] [-s кадр снимок.ppm]
-//          программа.exe [аргументы...]
+//          [--real-time] [--key wait_tick:vk:down|up]... программа.exe [аргументы...]
 //
 // Для оконных программ: -f — сколько кадров цикла сообщений прокрутить до
 // выхода, -c — клик левой кнопкой в окно (виртуальный экран 640x360) на
@@ -43,6 +44,7 @@ int g_frameLimit = -1, g_frame = 0, g_snapFrame = -1;
 const char* g_snapPath = nullptr;
 void DumpScreen(const char* path);
 std::vector<Click> g_clicks;
+HostKeyScript g_keys;
 
 win32::HostFrameResult PumpFrame() {
     win32::HostFrameResult r;
@@ -63,6 +65,7 @@ bool g_newUi = false;
 bool UiWait(int timeoutMs, std::vector<win32::user::InputEvent>& out) {
     using win32::user::InputEvent;
     ++g_frame;
+    g_keys.Feed(uint32_t(g_frame),out);
     if (g_frame == g_snapFrame && g_snapPath) DumpScreen(g_snapPath);
     for (const Click& c : g_clicks) {
         if (c.frame != g_frame) continue;
@@ -125,7 +128,7 @@ void DumpScreen(const char* path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    bool verbose = false, profileEnabled = false;
+    bool verbose = false, profileEnabled = false, realTime=false;
     std::vector<std::string> libDirs;
     std::string systemRoot,sdRoot,romRoot;
     const char* dumpPath = nullptr;
@@ -133,6 +136,10 @@ int main(int argc, char** argv) {
     int i = 1;
     for (; i < argc; ++i) {
         if (std::strcmp(argv[i], "-v") == 0) verbose = true;
+        else if (std::strcmp(argv[i], "--real-time") == 0) realTime=true;
+        else if (std::strcmp(argv[i], "--key") == 0) {
+            if(i+1>=argc || !g_keys.Add(argv[++i])){std::fprintf(stderr,"winrun: invalid --key tick:vk:down|up (ordered,1..254,maximum256 events)\n");return 2;}
+        }
         else if (std::strcmp(argv[i], "--profile-workload") == 0) profileEnabled = true;
         else if (std::strcmp(argv[i], "--system-root") == 0 && i+1<argc) systemRoot=argv[++i];
         else if (std::strcmp(argv[i], "--sd-root") == 0 && i+1<argc) sdRoot=argv[++i];
@@ -164,15 +171,18 @@ int main(int argc, char** argv) {
     std::string cmd = exe;
     for(int k=i+1;k<argc;++k){cmd+=" ";cmd+=rt::QuoteCommandArgument(argv[k]);}
 
-    // Оконная подсистема: Сапёр и Paint пока работают на прежнем HLE окон
-    // (он подогнан под них), остальные программы — на новом USER32/GDI32.
+    // Historical host defaults retained; explicit --new-ui/--legacy-ui select
+    // the diagnostic profile. Switch selects its UI independently.
     {
         std::string base = exe.substr(exe.find_last_of("/\\") == std::string::npos ? 0 : exe.find_last_of("/\\") + 1);
         for (char& ch : base) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         bool legacy = base == "winmine.exe" || base == "paint.exe";
         g_newUi = forceNew || (!legacy && !forceLegacy);
     }
-    rt::Clock::SetFastForward(true);
+    if(g_keys.Size() && (!g_newUi || g_frameLimit<0 || !g_keys.Valid(uint32_t(g_frameLimit)) || listMissing || probeThreads || probeX86Threads)) {
+        std::fprintf(stderr,"winrun: --key requires new UI,a finite -f limit and balanced down/up events within that limit\n");return 2;
+    }
+    rt::Clock::SetFastForward(!realTime);
     if (g_newUi) {
         std::string self = argv[0];
         size_t slash = self.find_last_of('/');
@@ -395,6 +405,7 @@ int main(int argc, char** argv) {
             if(execution.InitializationFailed())
                 std::fprintf(stderr,"winrun: DLL initialization failed: %s\n",execution.InitializationError().c_str());
             if(dumpPath) DumpScreen(dumpPath);
+            if(!g_keys.Complete()){std::fprintf(stderr,"winrun: guest stopped before all scripted keys were delivered\n");return 4;}
             return win32::g_guestExitRequested ? win32::g_guestExitCode :
                    static_cast<int>(running ? running->exitCode : 3);
         }

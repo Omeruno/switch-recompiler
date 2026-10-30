@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`cca3b693407d515790282814b68453513d53b8ec` (2026-10-30).
-[CI 41025932121](https://github.com/Omeruno/switch-recompiler/actions/runs/41025932121)
+`78074f034d01c049968a92171015820d0ed5aed9` (2026-10-30).
+[CI 41046455582](https://github.com/Omeruno/switch-recompiler/actions/runs/41046455582)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D7 shared real-window lookup implemented; first private new-UI host Pinball table frame, not gameplay acceptance (2026-10-30)
+## Current position: D8 public x86 game-loop/input/timer/presentation oracle; F7 user controller bindings next, no game/hardware acceptance (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -65,6 +65,8 @@ follows; its old future-tense queues do not supersede this current position.
 [D6](D6_PALETTE_STRINGS.md) implements actual TrueColor system-palette refusal,shared checked LoadString A/W,RegisterWindowMessage A/W and timeGetTime. Public EXE/DLL/native tests cover new+legacy. Private new-UI host run renders the table/logo/score-panel area; input/ball/sound/FPS/Switch remain unverified. Legacy next import FindWindowA. Private images/traces remain outside public git/artifacts/site.
 
 [D7](D7_WINDOW_LOOKUP.md) adds shared FindWindow/FindWindowEx A/W over actual new/legacy windows,checked CP1252/UTF16/class atoms/title/direct-child/after semantics and session lifetime. Four normal x86 sessions + parked abort; modern rename/destruction and strict bounds/ABI checked. Legacy diagnostic passes FindWindowA and reaches LoadIconA. Next public interaction/message/timer/frame-progress oracle; no gameplay/hardware acceptance.
+
+[D8](D8_GAME_LOOP.md) verifies actual busy PeekMessage/timeGetTime/WM_TIMER,4 key pairs/2 chars,moving and pressed/released pixels via an independent96x64 CPU+production output reference.4 normal real/fast-forward x86 sessions +2 held-key aborts/clean restart/owning redraw. Generic host --key/--real-time scripting is diagnostic only. User-prioritized [F7 native controller bindings](F7_CONTROLLER_BINDINGS_PLAN.md) is next: actual settings/apply/save/reset,ownership and safe releases; not implemented yet. Private scripted keys preserve Pinball's table frame, but ball/flipper/game acceptance remains unverified.
 
 ## User's long-term product target
 
@@ -3796,3 +3798,48 @@ roadmap data/49 document links and desktop/mobile browser interaction passed.
 After normal publication verify all6 CI and Pages for exact SHA, then audit NRO,
 public D/audio/F6c artifacts and clean GPU source/fixture manifest. Incoming SHA at
 the top remains the already verified baseline, not a claim of CI for unpushed code.
+
+## 2026-10-30 D8 — public busy game-loop and generic host keyboard scripts
+
+Incoming78074f034d01c049968a92171015820d0ed5aed9 passed all6 CI41046455582.
+Added public authored CRT-free PE32 game-like loop and actual x86/native inspector:
+4 normal800/1280 real/fast-forward sessions and2 held-Right host aborts,followed by
+fresh initially released sessions. Four key pairs,two real TranslateMessage chars,
+WM_TIMER and timeGetTime drive actual guest paint/movement/color/reset. Independent
+96x64 pixel reference checks canonical CPU and production software output,then a
+forced owning redraw after guest/window/memory destruction. No new per-game/runtime
+successful stub is added. Existing native present-progress and C input tests remain.
+
+Host winrun adds checked bounded --key wait_tick:vk:down|up and --real-time. Explicit
+balanced sequences/strict numbers/stable ordering/256-event cap/finite new-UI run;
+early stop with undelivered events is an error. Wait steps are not game frames/FPS.
+A public CLI run exercises the same actual x86 loop with eight scripted transitions.
+
+Fixture development initially waited for a USER presentation acknowledgement in
+kernel Sleep,which correctly does not pump USER; changed the final instrumented
+ack loop to PeekMessage. A transient stage7 can legitimately coalesce before
+presentation;required visible stages1–6/8 plus the actual final Space reset are
+checked instead of inventing a submitted transient frame. Reattaching the native
+output backend after explicit Detach is required between independent inspector
+sessions. These were test-harness corrections,not runtime success workarounds.
+
+Private new-UI real-clock scripted F2/Space/Z/OEM_2 run exits0 and retains the table
+snapshot; this does not certify key handling by the application,ball/flippers,
+gameplay,audio/MIDI,FPS or Switch. No private payload/trace/image is published.
+User requested editable Switch button→key bindings. [F7](F7_CONTROLLER_BINDINGS_PLAN.md)
+is explicitly planned next: real native settings/apply/save/reset,existing-default
+migration,atomic paired key ownership,duplicate bindings,held-control quarantine,
+new-session/disconnect cleanup and real persistence errors. Host scripting is not
+that feature; keyboard language/IME/USB input is separate. Hardware remains deferred.
+
+Final D8 local checks: complete host/MinGW/Mesa passed on the final tool/test tree,
+including the public CLI script,all prior D/audio/C/E tests,22 F software groups
+and17 GPU groups/five reports. Strict O2/Wall/Wextra/Werror/no-exceptions/no-RTTI
+inspectors/helper/winrun passed. Focused USER API/message/window,GDI,presentation
+and inspector ASan/UBSan passed (remaining runtime ordinary,leak scan off/ucontext
+caveat); standalone parser ASan/UBSan/leak scan passed. Dropped-release and corrupt-
+output negatives fail their independent public assertions. Actual CLI rejects
+malformed/held/legacy/probe scripts before loading. Visual map51 linked documents
+and desktop/mobile/deep-link/search/filter/focus/zoom checks passed. Normal-push,
+then verify exact published-SHA all6 CI/Pages/NRO/public artifact/source manifest;
+the header records the already verified incoming baseline,not unpushed CI.
