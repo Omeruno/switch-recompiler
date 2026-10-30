@@ -2,8 +2,8 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-Актуально на 2026-10-29, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b`,
-[CI 40773201160 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160).
+Актуально на 2026-10-30, после G4b.2o, D1–D4c и D4d PCM/MP3/MCI/native Media Player. Проверенный код: `b0f5a674035c59444f44c2e252c50375e445cada`,
+[CI 40957595661 — 6/6](https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661).
 [Глобальный план A–I](ROADMAP.md), [ближайшая очередь](ACTIVE_ROADMAP.md), [handoff](AI_HANDOFF.md).
 
 **База исполнения и ограниченная функциональная оболочка уже есть. В G4b.2h
@@ -11,6 +11,8 @@
 сохраняя настоящее чтение. G4b.2j сохраняет snapshot при допустимых обновлениях; G4b.2k добавляет adaptive exact damage; G4b.2l добавляет bounded capacity replay; G4b.2m сокращает DIB upload bytes655360→66112 при тех же CPU/read boundaries; G4b.2n сводит software acceptance и CPU/native cycles; G4b.2o реализует explicit CPU routing; D1 реализует11 A/W registry API; [D2](D2_KEYBOARD_LAYOUT.md) реализует key names/VK-scancode; [D3](D3_INI_PROFILES.md) реализует16 INI/profile A/W API; [D4a](D4A_AUDIO_OWNERSHIP.md) реализует PCM ownership/device queries; [D4b](D4B_WAVE_STREAMING.md) реализует bounded streaming/window-thread callbacks; [D4c](D4C_WAVE_CALLBACKS.md) добавляет scheduled guest function/event callbacks; [D4d](D4D_AUDIO_MEDIA.md) добавляет реальные position/pause/volume, PCM formats, MP3/MCI и native Media Player; далее mixing/DirectSound/MIDI; default CPU.**
 Это среда для поддержанных 32-битных x86 Win32-приложений на Switch. Полного
 ядра Windows, поддержки x64 и универсальной совместимости EXE пока нет.
+
+[D5](D5_LEGACY_FILE.md): добавлены9 настоящих legacy file API — OpenFile, _lopen/_lcreat/_lclose, _l/_h read/write и _llseek. Общая VFS, реальные байты, усечение/расширение и публичный x86-тест. Это работа над совместимостью, не подтверждение запуска Pinball.
 
 ## К чему идём
 

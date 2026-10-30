@@ -135,17 +135,16 @@ bool FileBuffer(cpu::IGuestMemory& m,uint32_t buffer,uint32_t count,uint32_t res
     if(count && (!buffer || uint64_t(buffer)+count>0x100000000ull || !m.IsRangeMapped(buffer,count))){SetLastError(m,998);return false;}
     return true;
 }
-HostCallOutcome K32_ReadFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const uint32_t h=Arg(c,m,0),buf=Arg(c,m,1),n=Arg(c,m,2),out=Arg(c,m,3);
-    if(!FileBuffer(m,buf,n,out,Arg(c,m,4)))return Ret(0);
+bool ReadBytes(cpu::IGuestMemory& m,uint32_t h,uint32_t buf,uint32_t n,uint32_t& total) {
+    total=0;
     auto f=rt::Files().Get(h);
-    if(!f){SetLastError(m,ERROR_INVALID_HANDLE);return Ret(0);}
-    if(!HandleAccess(m,h,1) || !f->canRead){SetLastError(m,ERROR_ACCESS_DENIED);return Ret(0);}
-    if(f->kind==rt::OpenFile::Null)return Ret(1);
-    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleIn){SetLastError(m,6);return Ret(0);}
+    if(!f){SetLastError(m,ERROR_INVALID_HANDLE);return false;}
+    if(!HandleAccess(m,h,1) || !f->canRead){SetLastError(m,ERROR_ACCESS_DENIED);return false;}
+    if(f->kind==rt::OpenFile::Null)return true;
+    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleIn){SetLastError(m,6);return false;}
     FILE* stream=f->kind==rt::OpenFile::ConsoleIn?(cpu::g_consoleAvailable?stdin:nullptr):f->f;
-    if(!stream){if(f->kind==rt::OpenFile::ConsoleIn)return Ret(1);SetLastError(m,6);return Ret(0);}
-    std::clearerr(stream);std::array<uint8_t,8192> bytes;uint32_t total=0;int error=0;
+    if(!stream){if(f->kind==rt::OpenFile::ConsoleIn)return true;SetLastError(m,6);return false;}
+    std::clearerr(stream);std::array<uint8_t,8192> bytes;int error=0;
     while(total<n) {
         const size_t want=std::min<size_t>(bytes.size(),n-total);size_t got=0;errno=0;
         if(f->kind==rt::OpenFile::Disk)got=std::fread(bytes.data(),1,want,stream);
@@ -157,24 +156,22 @@ HostCallOutcome K32_ReadFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
         if(std::ferror(stream)){error=errno?errno:EIO;break;}
         if(got<want || f->kind==rt::OpenFile::ConsoleIn)break;
     }
-    if(out)m.Write32(out,total);
-    if(error){errno=error;SetLastError(m,ErrnoToWin());return Ret(0);}
-    return Ret(1);
+    if(error){errno=error;SetLastError(m,ErrnoToWin());return false;}
+    return true;
 }
-HostCallOutcome K32_WriteFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const uint32_t h=Arg(c,m,0),buf=Arg(c,m,1),n=Arg(c,m,2),out=Arg(c,m,3);
-    if(!FileBuffer(m,buf,n,out,Arg(c,m,4)))return Ret(0);
+bool WriteBytes(cpu::IGuestMemory& m,uint32_t h,uint32_t buf,uint32_t n,uint32_t& total) {
+    total=0;
     const auto* entry=rt::Handles().Entry(h);auto f=rt::Files().Get(h);
-    if(!entry || !f){SetLastError(m,6);return Ret(0);}
-    if(!(entry->access&6) || !f->canWrite){SetLastError(m,5);return Ret(0);}
-    if(f->kind==rt::OpenFile::Null){if(out)m.Write32(out,n);return Ret(1);}
-    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleOut && f->kind!=rt::OpenFile::ConsoleErr){SetLastError(m,6);return Ret(0);}
+    if(!entry || !f){SetLastError(m,6);return false;}
+    if(!(entry->access&6) || !f->canWrite){SetLastError(m,5);return false;}
+    if(f->kind==rt::OpenFile::Null){total=n;return true;}
+    if(f->kind!=rt::OpenFile::Disk && f->kind!=rt::OpenFile::ConsoleOut && f->kind!=rt::OpenFile::ConsoleErr){SetLastError(m,6);return false;}
     if(f->kind==rt::OpenFile::Disk) {
-        if(!f->f){SetLastError(m,6);return Ret(0);}
-        if((f->append || !(entry->access&2)) && fseeko(f->f,0,SEEK_END)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+        if(!f->f){SetLastError(m,6);return false;}
+        if((f->append || !(entry->access&2)) && fseeko(f->f,0,SEEK_END)!=0){SetLastError(m,ErrnoToWin());return false;}
         std::clearerr(f->f);
     }
-    std::array<char,8192> bytes;uint32_t total=0;int error=0;
+    std::array<char,8192> bytes;int error=0;
     while(total<n) {
         const size_t want=std::min<size_t>(bytes.size(),n-total);m.ReadBytes(buf+total,reinterpret_cast<uint8_t*>(bytes.data()),want);errno=0;
         size_t put=0;
@@ -184,10 +181,20 @@ HostCallOutcome K32_WriteFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
         else {error=EBADF;break;}
         total+=uint32_t(put);if(put!=want){error=errno?errno:EIO;break;}
     }
-    if(out)m.Write32(out,total);
-    if(error){errno=error;SetLastError(m,ErrnoToWin());return Ret(0);}
-    return Ret(1);
+    if(error){errno=error;SetLastError(m,ErrnoToWin());return false;}
+    return true;
 }
+
+HostCallOutcome Transfer(cpu::CpuState& c,cpu::IGuestMemory& m,bool write,bool legacy=false,bool signedCount=false) {
+    const auto h=Arg(c,m,0),buf=Arg(c,m,1),n=Arg(c,m,2),out=legacy?0:Arg(c,m,3);
+    if(signedCount && int32_t(n)<0){SetLastError(m,87);return Ret(INVALID_HANDLE);}
+    if(!FileBuffer(m,buf,n,out,legacy?0:Arg(c,m,4)))return Ret(legacy?INVALID_HANDLE:0);
+    uint32_t total=0;const bool ok=write?WriteBytes(m,h,buf,n,total):ReadBytes(m,h,buf,n,total);
+    if(out)m.Write32(out,total);
+    return Ret(legacy?(ok?total:INVALID_HANDLE):uint32_t(ok));
+}
+HostCallOutcome K32_ReadFile(cpu::CpuState& c,cpu::IGuestMemory& m){return Transfer(c,m,false);}
+HostCallOutcome K32_WriteFile(cpu::CpuState& c,cpu::IGuestMemory& m){return Transfer(c,m,true);}
 
 // DWORD SetFilePointer(HANDLE, LONG lo, PLONG hi, DWORD method)
 HostCallOutcome K32_SetFilePointer(cpu::CpuState& c, cpu::IGuestMemory& m) {
@@ -235,15 +242,15 @@ HostCallOutcome K32_GetFileSizeEx(cpu::CpuState& c, cpu::IGuestMemory& m) {
     int64_t size=0;if(!FileSize(*f,size)){SetLastError(m,errno==EBADF?6:ErrnoToWin());return Ret(0);}
     Write64(m,out,uint64_t(size));return Ret(1);
 }
-HostCallOutcome K32_SetEndOfFile(cpu::CpuState& c, cpu::IGuestMemory& m) {
-    const auto h=Arg(c,m,0);auto f=rt::Files().Get(h);
-    if(!f || f->kind!=rt::OpenFile::Disk || !f->f){SetLastError(m,6);return Ret(0);}
-    if(!HandleAccess(m,h,2) || !f->canWrite){SetLastError(m,5);return Ret(0);}
-    if(std::fflush(f->f)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
+bool TruncateFile(cpu::IGuestMemory& m,uint32_t h) {auto f=rt::Files().Get(h);
+    if(!f || f->kind!=rt::OpenFile::Disk || !f->f){SetLastError(m,6);return false;}
+    if(!HandleAccess(m,h,2) || !f->canWrite){SetLastError(m,5);return false;}
+    if(std::fflush(f->f)!=0){SetLastError(m,ErrnoToWin());return false;}
     const auto position=ftello(f->f);
-    if(position<0 || ftruncate(fileno(f->f),position)!=0){SetLastError(m,ErrnoToWin());return Ret(0);}
-    return Ret(1);
+    if(position<0 || ftruncate(fileno(f->f),position)!=0){SetLastError(m,ErrnoToWin());return false;}
+    return true;
 }
+HostCallOutcome K32_SetEndOfFile(cpu::CpuState& c,cpu::IGuestMemory& m){return Ret(TruncateFile(m,Arg(c,m,0)));}
 HostCallOutcome K32_FlushFileBuffers(cpu::CpuState& c, cpu::IGuestMemory& m) {
     const auto h=Arg(c,m,0);auto f=rt::Files().Get(h);
     if(!f){SetLastError(m,6);return Ret(0);}
@@ -268,6 +275,129 @@ HostCallOutcome K32_CloseHandle(cpu::CpuState& c, cpu::IGuestMemory& m) {
     if (rt::CloseGuestHandle(Arg(c,m,0))) return Ret(1);
     SetLastError(m,ERROR_INVALID_HANDLE);
     return Ret(0);
+}
+
+// Legacy Win32 file I/O uses the same live HANDLE objects and checked transfers.
+// OFSTRUCT is exactly 136 bytes, with an ANSI path of at most 127 + NUL.
+bool LegacyName(cpu::IGuestMemory& m,uint32_t p,std::string& name,size_t limit=4096) {
+    name.clear();
+    if(!p){SetLastError(m,998);return false;}
+    for(size_t n=0;n<limit;++n){
+        const uint64_t at=uint64_t(p)+n;
+        if(at>0xffffffffu || !m.IsRangeMapped(uint32_t(at),1)){SetLastError(m,998);return false;}
+        const auto ch=m.Read8(uint32_t(at));if(!ch)return true;
+        name.push_back(char(ch));
+    }
+    SetLastError(m,206);return false;
+}
+bool LegacyStyle(cpu::IGuestMemory& m,uint32_t style,bool openFile) {
+    const uint32_t allowed=openFile?0xdb73u:0x73u; // CANCEL ignored; VERIFY/SEARCH/PROMPT unsupported
+    if(style&~allowed){SetLastError(m,50);return false;}
+    if((style&3)==3 || (style&0x70)>0x40){SetLastError(m,87);return false;}
+    // Denying another opener requires shared CreateFile/CRT lock enforcement.
+    // Until that common mechanism exists, never pretend these locks succeeded.
+    if((style&0x70)!=0 && (style&0x70)!=0x40){SetLastError(m,50);return false;}
+    if((style&0x300)==0x300 || ((style&0x100) && (style&0x5000)) || ((style&0x200) && (style&0x1000))){SetLastError(m,87);return false;}
+    return true;
+}
+bool LegacyPath(cpu::IGuestMemory& m,const std::string& ansi,std::string& path) {
+    if(ansi.empty() || ansi.find_first_of("*?\"<>|")!=std::string::npos){SetLastError(m,123);return false;}
+    for(unsigned char c:ansi)if(c<32){SetLastError(m,123);return false;}
+    path=rt::FileSystem().FullGuestPath(AnsiPathToUtf8(ansi));
+    if(path.empty()){SetLastError(m,ErrnoToWin());return false;}return true;
+}
+uint32_t LegacyOpen(cpu::IGuestMemory& m,const std::string& path,uint32_t access,bool create) {
+    const bool write=create || access!=0;const auto host=rt::FileSystem().ToHost(path,write);
+    if(host.empty()){SetLastError(m,ErrnoToWin());return INVALID_HANDLE;}
+    struct stat st{};const bool exists=stat(host.c_str(),&st)==0;
+    if(exists && !S_ISREG(st.st_mode)){SetLastError(m,5);return INVALID_HANDLE;}
+    // CREATE may only truncate regular files; no device, pipe or directory opens.
+    if(!exists && errno!=ENOENT){SetLastError(m,ErrnoToWin());return INVALID_HANDLE;}
+    if(!exists && !create){SetLastError(m,2);return INVALID_HANDLE;}
+    auto file=std::make_shared<rt::OpenFile>();
+    file->f=std::fopen(host.c_str(),create?"w+b":write?"r+b":"rb");
+    if(!file->f){SetLastError(m,ErrnoToWin());return INVALID_HANDLE;}
+    file->hostPath=host;file->canRead=create || access!=1;file->canWrite=write;
+    const uint32_t rights=(file->canRead?GENERIC_READ:0)|(write?GENERIC_WRITE:0);
+    const auto h=rt::Handles().Add(file,rights);
+    if(!h){SetLastError(m,4);return INVALID_HANDLE;}
+    return h;
+}
+HostCallOutcome K32_OpenFile(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const auto ofs=Arg(c,m,1),style=Arg(c,m,2);
+    if(!ofs || uint64_t(ofs)+136>0x100000000ull || !m.IsRangeMapped(ofs,136)){SetLastError(m,998);return Ret(INVALID_HANDLE);}
+    // Read the input first: OF_REOPEN uses szPathName in this same output buffer.
+    std::string name;const bool read=LegacyName(m,(style&0x8000)?ofs+8:Arg(c,m,0),name,(style&0x8000)?128:4096);
+    const auto readError=GetLastError(m);
+    m.Write8(ofs,136);m.Write16(ofs+2,0);
+    auto fail=[&](uint32_t error){SetLastError(m,error);m.Write16(ofs+2,uint16_t(error));return Ret(INVALID_HANDLE);};
+    if(!read)return fail(readError);
+    if(!LegacyStyle(m,style,true))return fail(GetLastError(m));
+    std::string path;if(!LegacyPath(m,name,path))return fail(GetLastError(m));
+    const bool create=(style&0x1000)!=0,parse=(style&0x100)!=0;
+    if(!create && !parse && name.find_first_of("\\/:")==std::string::npos && !(style&0x8000)){
+        std::vector<std::string> directories;
+        if(rt::g_process && rt::g_process->MainModule()){
+            auto app=rt::FileSystem().ToGuest(rt::g_process->MainModule()->path);
+            const auto slash=app.find_last_of('\\');if(slash!=std::string::npos)directories.push_back(app.substr(0,slash));
+        }
+        directories.push_back(rt::FileSystem().CurrentDirectory());
+        directories.insert(directories.end(),{"C:\\WINDOWS\\system32","C:\\WINDOWS\\system","C:\\WINDOWS"});
+        const auto env=AnsiPathToUtf8(GuestEnvironmentValue("PATH"));
+        if(env.size()>32768)return fail(206);
+        for(size_t start=0;start<env.size();){const auto end=env.find(';',start);directories.push_back(env.substr(start,end==std::string::npos?end:end-start));if(end==std::string::npos)break;start=end+1;}
+        for(const auto& directory:directories){
+            const auto candidate=rt::FileSystem().FullGuestPath(directory+"\\"+AnsiPathToUtf8(name));
+            rt::FileProperties properties;
+            if(!candidate.empty() && rt::FileSystem().QueryProperties(candidate,properties) && properties.kind==rt::FileProperties::Kind::File){path=candidate;break;}
+        }
+    }
+    std::string encoded;if(!Utf8PathToAnsi(path,encoded))return fail(1113);
+    if(encoded.size()>=128)return fail(206);
+    m.Write8(ofs+1,rt::FileSystem().DriveType(path)!=2);m.Write32(ofs+4,0);
+    WriteAnsi(m,ofs+8,encoded,128);
+    if(parse)return Ret(0);
+    if(style&0x200){if(!rt::FileSystem().DeleteFile(path))return fail(ErrnoToWin());return Ret(1);}
+    const auto h=LegacyOpen(m,path,style&3,create);if(h==INVALID_HANDLE)return fail(GetLastError(m));
+    if(style&0x4000){rt::CloseGuestHandle(h);return Ret(1);}
+    return Ret(h);
+}
+HostCallOutcome K32_lopen(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const auto style=Arg(c,m,1);if(!LegacyStyle(m,style,false))return Ret(INVALID_HANDLE);
+    std::string name,path;if(!LegacyName(m,Arg(c,m,0),name) || !LegacyPath(m,name,path))return Ret(INVALID_HANDLE);
+    return Ret(LegacyOpen(m,path,style&3,false));
+}
+HostCallOutcome K32_lcreat(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    if(Arg(c,m,1)){SetLastError(m,50);return Ret(INVALID_HANDLE);}
+    std::string name,path;if(!LegacyName(m,Arg(c,m,0),name) || !LegacyPath(m,name,path))return Ret(INVALID_HANDLE);
+    return Ret(LegacyOpen(m,path,2,true));
+}
+HostCallOutcome K32_lclose(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const auto h=Arg(c,m,0);
+    if(!rt::Files().Get(h)){SetLastError(m,6);return Ret(INVALID_HANDLE);}
+    if(!rt::CloseGuestHandle(h)){SetLastError(m,5);return Ret(INVALID_HANDLE);}return Ret(0);
+}
+HostCallOutcome K32_lread(cpu::CpuState& c,cpu::IGuestMemory& m){return Transfer(c,m,false,true);}
+HostCallOutcome K32_hread(cpu::CpuState& c,cpu::IGuestMemory& m){return Transfer(c,m,false,true,true);}
+HostCallOutcome LegacyWrite(cpu::CpuState& c,cpu::IGuestMemory& m,bool signedCount) {
+    // Historical zero-byte writes set EOF at the current cursor, unlike WriteFile.
+    if(!Arg(c,m,2))return Ret(TruncateFile(m,Arg(c,m,0))?0:INVALID_HANDLE);
+    return Transfer(c,m,true,true,signedCount);
+}
+HostCallOutcome K32_lwrite(cpu::CpuState& c,cpu::IGuestMemory& m){return LegacyWrite(c,m,false);}
+HostCallOutcome K32_hwrite(cpu::CpuState& c,cpu::IGuestMemory& m){return LegacyWrite(c,m,true);}
+HostCallOutcome K32_llseek(cpu::CpuState& c,cpu::IGuestMemory& m) {
+    const auto h=Arg(c,m,0),method=Arg(c,m,2);auto file=rt::Files().Get(h);
+    if(!file || !file->f || file->kind!=rt::OpenFile::Disk){SetLastError(m,6);return Ret(INVALID_HANDLE);}
+    if(method>2){SetLastError(m,87);return Ret(INVALID_HANDLE);}
+    int64_t base=0;
+    if(method==1){base=ftello(file->f);if(base<0){SetLastError(m,ErrnoToWin());return Ret(INVALID_HANDLE);}}
+    if(method==2 && !FileSize(*file,base)){SetLastError(m,ErrnoToWin());return Ret(INVALID_HANDLE);}
+    const int64_t delta=int32_t(Arg(c,m,1));
+    if(base<0 || base>0x7fffffff-delta || base+delta<0){SetLastError(m,131);return Ret(INVALID_HANDLE);}
+    const int64_t target=base+delta;
+    if(fseeko(file->f,off_t(target),SEEK_SET)!=0){SetLastError(m,ErrnoToWin());return Ret(INVALID_HANDLE);}
+    return Ret(uint32_t(target));
 }
 // Current-process duplication; the object survives until its last reference.
 // Token/DACL checks and cross-process handles remain unsupported.
@@ -541,6 +671,15 @@ HostCallOutcome SamePathW(cpu::CpuState& c, cpu::IGuestMemory& m) {
 HostCallOutcome K32_SetHandleCount(cpu::CpuState& c, cpu::IGuestMemory& m) { return Ret(Arg(c, m, 0)); }
 
 const HostFunctionEntry kEntries[] = {
+    {"KERNEL32.dll", "OpenFile", 12, CallConv::Stdcall, &K32_OpenFile},
+    {"KERNEL32.dll", "_lopen", 8, CallConv::Stdcall, &K32_lopen},
+    {"KERNEL32.dll", "_lcreat", 8, CallConv::Stdcall, &K32_lcreat},
+    {"KERNEL32.dll", "_lclose", 4, CallConv::Stdcall, &K32_lclose},
+    {"KERNEL32.dll", "_lread", 12, CallConv::Stdcall, &K32_lread},
+    {"KERNEL32.dll", "_lwrite", 12, CallConv::Stdcall, &K32_lwrite},
+    {"KERNEL32.dll", "_hread", 12, CallConv::Stdcall, &K32_hread},
+    {"KERNEL32.dll", "_hwrite", 12, CallConv::Stdcall, &K32_hwrite},
+    {"KERNEL32.dll", "_llseek", 12, CallConv::Stdcall, &K32_llseek},
     {"KERNEL32.dll", "CreateFileA", 28, CallConv::Stdcall, &K32_CreateFileA},
     {"KERNEL32.dll", "CreateFileW", 28, CallConv::Stdcall, &K32_CreateFileW},
     {"KERNEL32.dll", "ReadFile", 20, CallConv::Stdcall, &K32_ReadFile},

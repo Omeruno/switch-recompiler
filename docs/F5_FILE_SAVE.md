@@ -44,3 +44,8 @@ checks and exact new-SHA six-job CI are required on publication. Local Switch SD
 is absent; physical Paint/GPU/fallback/input/relaunch remain deferred; SD closed.
 Remaining baseline F: directory tree, persisted Desktop/Start shortcuts, retained
 workspace planes/oracle and integrated F acceptance. See F_ACCEPTANCE.md.
+
+[D5 legacy file I/O](D5_LEGACY_FILE.md) now shares the same checked transfer and
+truncate implementation for OpenFile/_l/_h APIs; zero-byte legacy writes set EOF,
+while zero-byte WriteFile keeps its ordinary transfer semantics. Existing F5
+regressions remain mandatory; this does not expand durable/hardware acceptance.

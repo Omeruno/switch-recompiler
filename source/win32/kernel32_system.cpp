@@ -644,4 +644,16 @@ const HostFunctionEntry kEntries[] = {
 const bool kRegistered = RegisterHostFunctions(kEntries, sizeof(kEntries) / sizeof(kEntries[0]));
 
 } // namespace
+std::string GuestEnvironmentValue(const std::string& name) {
+    const auto& env=Env();const auto it=env.find(UpperKey(name));return it==env.end()?std::string{}:it->second;
+}
+std::string AnsiPathToUtf8(const std::string& path) {
+    std::u16string wide;for(unsigned char c:path)wide.push_back(char16_t(Cp1252ToWide(c)));
+    return hle::WideToUtf8(wide);
+}
+bool Utf8PathToAnsi(const std::string& path,std::string& out) {
+    out.clear();for(auto c:hle::Utf8PathToWide(path)){
+        const int value=WideToCp1252(c);if(value<0){out.clear();return false;}out.push_back(char(value));
+    }return true;
+}
 } // namespace win32

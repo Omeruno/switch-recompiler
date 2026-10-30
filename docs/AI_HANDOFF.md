@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`c6b27b5e555ab4a3e87b6c05f31bcce8f7524f2b` (2026-10-29).
-[CI 40773201160](https://github.com/Omeruno/switch-recompiler/actions/runs/40773201160)
+`b0f5a674035c59444f44c2e252c50375e445cada` (2026-10-30).
+[CI 40957595661](https://github.com/Omeruno/switch-recompiler/actions/runs/40957595661)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D4d audio + F6c XP-style player/PCM effects/music icons/double-click implemented; next mixing/DirectSound/MIDI (2026-10-29)
+## Current position: D5 legacy file I/O implemented; D4d/F6c preserved; mixing/DirectSound/MIDI open (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -55,6 +55,8 @@ broader native window/Z-order/Luna polish, multi-Process and H DirectDraw/D3D ar
 separate incomplete work; minimal JIT probe42 is not a dynarec acceptance.
 Keep all no-stub/correctness/lifetime rules below. Detailed package history
 follows; its old future-tense queues do not supersede this current position.
+
+[D5 legacy file I/O](D5_LEGACY_FILE.md) implements the observed OpenFile entry blocker through9 real stdcall APIs/shared VFS, with public native+x86 evidence. Unsupported share locks/VERIFY/PROMPT/attributes remain explicit errors; Pinball is not accepted.
 
 ## User's long-term product target
 
@@ -3437,3 +3439,68 @@ and new/prior artifact/source identity audits. Local devkitA64/libnx absent;
 console sound/timing/input/Paint/GPU/fallback/relaunch remain deferred, SD closed.
 Next common-system scope: real source mixing/DirectSound audit/MIDI or public
 legacy OpenFile reproducer, according to the active map; no game/full XP closure.
+
+## 2026-10-30 — D5 real legacy Win32 file I/O
+
+Started clean b0f5a674035c59444f44c2e252c50375e445cada; fetched branch matched,
+CI40957595661 all6 and Pages40957595679 green. Existing F6c player/effects/icons/
+double-click preserved. No reset/rollback/force push. Local Switch SDK absent;
+prepared host/MinGW/Mesa reused. [Contract](D5_LEGACY_FILE.md).
+
+Selected the concrete earlier OpenFile import observation as a common D blocker,
+independently of audio mixing/DirectSound/MIDI. Nine real stdcall exports cover
+OpenFile/_lopen/_lcreat/_lclose/_lread/_lwrite/_hread/_hwrite/_llseek. Process-owned
+File HANDLE objects interoperate with modern file APIs/duplication/protected-close;
+no separate persistent native descriptor map. Legacy and modern APIs now share
+existing checked8KiB transfers/truncate while preserving modern WriteFile zero
+semantics. Legacy zero writes actually truncate/extend, signed _h lengths reject
+negative values; seek supports signed32 positions with validated origin/overflow.
+
+OpenFile validates full136-byte OFSTRUCT before side effects, reads aliased input
+before output, returns checked127-byte CP1252 reopen path/cBytes/drive/error fields.
+Real parse/exist/delete/create/reopen behavior and application/CWD/system/PATH bare
+search. Legacy _lopen is CWD-only. CP1252 uses existing actual conversion table;
+Process environment is queried through an owning string, not guest pointer.
+Readonly/unmounted/linked/wildcard/invalid/range/length failures are real errors.
+Share deny/exclusive, VERIFY/PROMPT/unknown flags and nonzero _lcreat attributes
+refuse, rather than pretending to implement cross-API locks/attributes/UI. Regular
+files only, no full Win16/UNC/device/large legacy seek/Windows file acceptance.
+
+Public CRT-free legacy_file.exe runs4 normal exit0 x86 sessions +1 parked infinite
+Sleep abort. Independent native bytes check >8KiB patterned data, EOF, real zero
+fill/truncate/extend, OFSTRUCT/search/reopen/exist/delete/parse, CP1252 café,
+readonly/errors, live alias cursor and fresh-session reads. Weak object references
+expire after owning GuestSession teardown, including intentionally unclosed read/
+deleted-file descriptors and drained abort continuation. No claim that normal
+GuestExecution exit alone destroys the Process's HANDLE table.
+Native dispatcher test adds stdcall cleanup, complete/short OFSTRUCT guards,
+127/128-byte limits, unterminated reopen/overflow/no-side-effect checks, CP1252 Euro,
+symlink rejection, wrong type/protected close and actual /dev/full failure.
+
+Final full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed all new/previous gates,
+including existing modern F5 save provider,C/six E9/22 F/17 GPU/five bound reports.
+Changed modules O2 Wall/Wextra/Werror/no-exceptions/no-RTTI passed. Focused ASan/
+UBSan on changed file/environment modules plus native/x86/F5 harnesses passed;
+other common objects ordinary, leak scan disabled, known native-fiber caveat.
+Negative zero-write-without-truncate and false early EOF mutations failed actual
+public x86 count/byte assertions. Development fixture setup corrected missing
+Win16 OF_SEARCH macro (now explicit unknown flag), CRT-free stack probe (static
+buffer), nonexistent RequestStop method (actual destructor drain), and handle
+lifetime assertion timing. Failed development checks are not validation results.
+No production assertion/error gate was weakened.
+
+Fresh private observations are profile-sensitive: new UI -v currently stops at
+GDI32!SetSystemPaletteUse, legacy UI at USER32!LoadStringA. Earlier OpenFile trace
+is not proof it is the next blocker in every profile; do not infer game progress,
+main frame, sound or playable acceptance from D5's public file contract. Private
+payloads/traces remain outside git. Future API work needs public reproducers.
+
+Maps/current card now D;23cards/3views/45docs, desktop/mobile/deep-link/search/
+filter/keyboard/focus/resize browser gates and pinned audio checks passed. New
+stage-d-legacy-file artifact includes public PE/source/native+x86 logs/contract;
+six core CI jobs and prior audio/UI/GPU artifacts retained. Publication completion
+requires normal push, all6 exact-SHA CI, Pages/public bytes, actual NRO and new/
+prior artifacts/clean source-manifest audit. Next: real bounded multi-source audio
+mixer/per-source state before DirectSound/MIDI, preserving device/header/callback/
+MP3 lifetimes. CPU default,L legacy,ZL software and Luna stay. Hardware sound/
+Paint/GPU/fallback/input/relaunch deferred; SD recovery closed.

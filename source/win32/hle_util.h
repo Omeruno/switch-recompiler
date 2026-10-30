@@ -16,6 +16,10 @@
 #include "../runtime/process.h"
 
 namespace win32 {
+// Process-owned environment and actual CP1252 path conversion for legacy APIs.
+std::string GuestEnvironmentValue(const std::string& name);
+std::string AnsiPathToUtf8(const std::string& path);
+bool Utf8PathToAnsi(const std::string& path,std::string& out);
 namespace hle {
 
 // i-й аргумент на стеке (сразу после адреса возврата).
