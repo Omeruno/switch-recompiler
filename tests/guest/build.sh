@@ -5,6 +5,12 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+i686-w64-mingw32-windres "$here/class_menus.rc" "$out/class_menus_res.o"
+i686-w64-mingw32-windres -DMENU_DLL "$here/class_menus.rc" "$out/class_menus_dll_res.o"
+$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 "$here/resource_strings_dll.c" \
+    "$out/class_menus_dll_res.o" -o "$out/class_menus.dll" -lkernel32
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/class_menus.c" "$out/class_menus_res.o" \
+    -o "$out/class_menus.exe" -lkernel32 -luser32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/game_loop.c" \
     -o "$out/game_loop.exe" -lkernel32 -luser32 -lgdi32 -lwinmm
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/window_lookup.c" \

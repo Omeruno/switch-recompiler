@@ -1,0 +1,34 @@
+#include <windows.h>
+LANGUAGE LANG_ENGLISH,SUBLANG_ENGLISH_US
+#ifdef MENU_DLL
+DllMenu MENU
+BEGIN
+ POPUP "Module"
+ BEGIN
+  MENUITEM "DLL command",303
+ END
+END
+#else
+NamedMenu MENU
+BEGIN
+ POPUP "Game"
+ BEGIN
+  MENUITEM "Launch",201
+  MENUITEM "Disabled",205,GRAYED
+ END
+END
+101 MENU
+BEGIN
+ POPUP "Tools"
+ BEGIN
+  MENUITEM "Numeric",202
+ END
+END
+102 MENUEX
+BEGIN
+ POPUP "Extended",0,0,0
+ BEGIN
+  MENUITEM "Extended command",204,0,0
+ END
+END
+#endif

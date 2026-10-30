@@ -94,66 +94,51 @@ MenuItem* FindItem(uint32_t hmenu, uint32_t item, bool byPos, uint32_t* ownerMen
 
 struct Reader {
     const uint8_t* p;
-    size_t size, off = 0;
-    uint16_t U16() { if (off + 2 > size) { off = size; return 0; } uint16_t v = static_cast<uint16_t>(p[off] | (p[off + 1] << 8)); off += 2; return v; }
-    uint32_t U32() { uint32_t lo = U16(); return lo | (static_cast<uint32_t>(U16()) << 16); }
-    std::u16string Str() { std::u16string s; while (off < size) { char16_t c = static_cast<char16_t>(U16()); if (!c) break; s.push_back(c); } return s; }
-    void Align4(size_t base) { while ((off - base) % 4) ++off; }
+    size_t size,off=0,items=0;bool valid=true;
+    uint16_t U16() {
+        if(off>size || size-off<2){valid=false;return 0;}
+        const auto value=uint16_t(p[off]|uint16_t(p[off+1])<<8);off+=2;return value;
+    }
+    uint32_t U32(){const auto lo=U16();return lo|uint32_t(U16())<<16;}
+    std::u16string Str() {
+        std::u16string text;
+        for(unsigned n=0;n<32768 && valid;++n){const auto ch=U16();if(!ch)return text;text.push_back(char16_t(ch));}
+        valid=false;return text;
+    }
+    void Align4(){if(off>size || ((4-off%4)%4)>size-off)valid=false;else off+=(4-off%4)%4;}
 };
 
-void ParseMenu(Reader& r, uint32_t hmenu) {
-    for (;;) {
-        if (r.off >= r.size) return;
-        uint16_t flags = r.U16();
-        MenuItem it;
-        it.flags = flags & ~0x80u;
-        if (!(flags & MF_POPUP)) it.id = r.U16();
-        it.text = r.Str();
-        if (!(flags & MF_POPUP) && it.id == 0 && it.text.empty()) it.flags |= MF_SEPARATOR;
-        if (flags & MF_POPUP) {
-            it.subMenu = NewMenu(true);
-            ParseMenu(r, it.subMenu);
+bool ParseMenu(Reader& r,uint32_t menu,unsigned depth,bool extended) {
+    if(depth>16)return false;
+    for(;;) {
+        if(!r.valid || ++r.items>4096)return false;
+        MenuItem item;uint16_t flags=0;bool popup=false,last=false;
+        if(extended) {
+            r.Align4();const auto type=r.U32(),state=r.U32();item.id=r.U32();flags=r.U16();
+            item.text=r.Str();r.Align4();popup=(flags&1)!=0;last=(flags&0x80)!=0;
+            item.flags=(type&(MF_BITMAP|MF_MENUBARBREAK|MF_MENUBREAK|MF_OWNERDRAW|MF_RADIOCHECK|MF_SEPARATOR|MF_RIGHTJUSTIFY))|
+                (state&(MF_GRAYED|MF_DISABLED|MF_CHECKED|MF_HILITE|MF_DEFAULT));
+            if(popup){r.U32();item.flags|=MF_POPUP;}
+        } else {
+            flags=r.U16();popup=(flags&MF_POPUP)!=0;last=(flags&0x80)!=0;
+            item.flags=flags&~0x80u;if(!popup)item.id=r.U16();item.text=r.Str();
+            if(!popup && !item.id && item.text.empty())item.flags|=MF_SEPARATOR;
         }
-        M(hmenu)->items.push_back(it);
-        if (flags & 0x80) return; // MF_END
+        if(!r.valid)return false;
+        if(popup)item.subMenu=NewMenu(true);
+        const auto sub=item.subMenu;M(menu)->items.push_back(std::move(item));
+        if(popup && !ParseMenu(r,sub,depth+1,extended))return false;
+        if(last)return true;
     }
 }
 
-void ParseMenuEx(Reader& r, uint32_t hmenu, size_t base) {
-    for (;;) {
-        if (r.off >= r.size) return;
-        r.Align4(base);
-        MenuItem it;
-        uint32_t type = r.U32(), state = r.U32();
-        it.id = r.U32();
-        uint16_t resInfo = r.U16();
-        it.text = r.Str();
-        r.Align4(base);
-        it.flags = (type & (MF_BITMAP | MF_MENUBARBREAK | MF_MENUBREAK | MF_OWNERDRAW | MF_RADIOCHECK | MF_SEPARATOR | MF_RIGHTJUSTIFY)) |
-                   (state & (MF_GRAYED | MF_DISABLED | MF_CHECKED | MF_HILITE | MF_DEFAULT));
-        if (resInfo & 0x01) {
-            r.U32(); // dwHelpId
-            it.flags |= MF_POPUP;
-            it.subMenu = NewMenu(true);
-            ParseMenuEx(r, it.subMenu, base);
-        }
-        M(hmenu)->items.push_back(it);
-        if (resInfo & 0x80) return;
-    }
-}
-
-uint32_t LoadMenuTemplate(const uint8_t* p, size_t size) {
-    Reader r{p, size};
-    uint16_t version = r.U16(), offset = r.U16();
-    uint32_t h = NewMenu(false);
-    if (version == 1) {
-        r.off = 4 + offset;
-        ParseMenuEx(r, h, 0);
-    } else {
-        r.off = 4 + offset;
-        ParseMenu(r, h);
-    }
-    return h;
+uint32_t LoadMenuTemplate(const uint8_t* p,size_t size) {
+    if(!p || size<4 || size>1024*1024)return 0;
+    Reader r{p,size};const auto version=r.U16(),offset=r.U16();
+    if(version>1 || (version==1 && offset<4) || size_t(offset)>size-4)return 0;
+    r.off=4+offset;const auto menu=NewMenu(false);
+    if(!ParseMenu(r,menu,0,version==1)){DestroyMenuTree(menu);return 0;}
+    return menu;
 }
 
 // --- Отрисовка ---
@@ -639,6 +624,29 @@ void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar) {
 }
 
 uint32_t LoadMenuFromMemory(const uint8_t* p, size_t size) { return p ? LoadMenuTemplate(p, size) : 0; }
+size_t MenuObjectCount(){return Menus().size();}
+uint32_t LoadWindowMenuResource(uint32_t instance,const std::u16string& name,uint16_t id) {
+    auto* module=rt::g_process?(instance?rt::g_process->FindByHandle(instance):rt::g_process->MainModule()):nullptr;
+    const auto fail=[](uint32_t error){if(G().m)SetLastError(*G().m,error);return 0u;};
+    if(!module)return fail(6);
+    rt::ResourceData data;
+    if(!rt::FindResource(module,rt::ResId::Num(rt::RT_MENU),id?rt::ResId::Num(id):rt::ResId::Str(name),data))return fail(1814);
+    const auto menu=LoadMenuTemplate(rt::ResourcePtr(module,data),data.size);
+    return menu?menu:fail(13);
+}
+bool AttachWindowMenu(uint32_t hwnd,uint32_t menu) {
+    auto* window=Win(hwnd);if(!window)return false;
+    auto* next=M(menu);
+    if(menu && (!next || (next->owner && next->owner!=hwnd))){if(G().m)SetLastError(*G().m,1401);return false;}
+    if(auto* previous=M(window->menu))if(previous->owner==hwnd)previous->owner=0;
+    window->menu=menu;if(next)next->owner=hwnd;return true;
+}
+void RetireWindowMenu(uint32_t hwnd) {
+    auto* window=Win(hwnd);if(!window || (window->style&WS_CHILD))return;
+    if(auto* menu=M(window->menu))if(menu->owner==hwnd)DestroyMenuTree(window->menu);
+    window->menu=0;
+}
+
 
 // Вызывается из DefWindowProc: щелчок по полосе меню / Alt / F10
 void StartMenuBar(uint32_t hwnd, int screenX, int screenY, bool keyboard) {
@@ -688,10 +696,8 @@ FN(DestroyMenu) { ENTER; bool ok = M(A(c, m, 0)) != nullptr; DestroyMenuTree(A(c
 FN(IsMenu) { ENTER; return Ret(M(A(c, m, 0)) ? 1 : 0); }
 
 HostCallOutcome LoadMenuImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool unicode) {
-    rt::Module* mod = ModuleOf(A(c, m, 0));
-    rt::ResourceData d;
-    if (!rt::FindResource(mod, rt::ResId::Num(rt::RT_MENU), ResName(A(c, m, 1), unicode), d)) { SetLastError(m, 1814); return Ret(0); }
-    return Ret(LoadMenuTemplate(rt::ResourcePtr(mod, d), d.size));
+    const auto name=ResName(A(c,m,1),unicode);
+    return Ret(LoadWindowMenuResource(A(c,m,0),name.name,name.id));
 }
 AW(LoadMenu)
 HostCallOutcome LoadMenuIndirectImpl(cpu::CpuState& c, cpu::IGuestMemory& m, bool) {
@@ -708,8 +714,7 @@ FN(SetMenu) {
     uint32_t hwnd = A(c, m, 0);
     Window* w = Win(hwnd);
     if (!w || (w->style & WS_CHILD)) return Ret(0);
-    w->menu = A(c, m, 1);
-    if (Menu* mm = M(w->menu)) mm->owner = hwnd;
+    if(!AttachWindowMenu(hwnd,A(c,m,1)))return Ret(0);
     // клиентская область меняется
     SetWindowPosInternal(hwnd, 0, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20);
     return Ret(1);

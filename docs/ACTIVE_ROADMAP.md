@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: D8 public real-x86 game-loop/input/timer/frame-progress oracle; F7 user-configurable Switch button bindings next. Pinball table frame only; no gameplay/hardware acceptance.
-G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `78074f034d01c049968a92171015820d0ed5aed9`
-passed [CI41046455582, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41046455582).
+**Current position: D9 owning class-default menus; private host Pinball shows ball movement/score/mission text. F7 user-configurable Switch button bindings next; full game/hardware acceptance open.
+G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `f0a6a98757414840b51e8c3d839ff450fa376f50`
+passed [CI41050702319, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41050702319).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -111,6 +111,7 @@ double-click; single selection/controller Open remain. One native tool group.
 | D6 | [TrueColor palette/string/message/clock contracts](D6_PALETTE_STRINGS.md):shared A/W resources/registered messages,timeGetTime,checked PE spans and actual new/legacy x86 evidence | First private new-UI host table frame only; legacy FindWindowA was the D6 boundary; D7 reaches LoadIconA; interaction/sound/performance/physical acceptance open |
 | D7 | [Shared real-window lookup](D7_WINDOW_LOOKUP.md):FindWindow/FindWindowEx A/W,actual new/legacy title/class/atom/direct-child/after and4 x86 sessions + parked abort | ASCII case-fold profile; legacy LoadIconA,game interaction/audio/performance/physical acceptance open |
 | D8 | [Public game-loop oracle and host key scripts](D8_GAME_LOOP.md):4 normal x86 sessions +2 held-key aborts,actual keys/chars/timers/moving/held/released pixels and owning output | Bounded public loop,not Pinball/game/FPS/physical acceptance; host scripting is not Switch rebinding |
+| D9 | [Owning class menus](D9_CLASS_MENUS.md):actual resource loading before callbacks,per-window trees,checked templates/lifetime,4 x86 sessions+2 callback aborts | Private host ball launch/movement/score observed; full game/flipper/audio/FPS/Switch remain open |
 | F7 next priority | [Controller keyboard binding settings](F7_CONTROLLER_BINDINGS_PLAN.md):native editor/apply/save/reset,shared mapping/ownership/persistence | Planned; no settings/remapping implementation yet |
 | Next independent block | F7 user-configurable controller→keyboard settings; shared MCI/MediaPlayer/PlaySound + waveOut bus/sources | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
 

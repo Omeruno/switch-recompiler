@@ -580,6 +580,12 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
         else { cx = S().screenW * 3 / 4; cy = S().screenH * 3 / 4; }
     }
 
+    // A top-level window owns its own loaded class menu before creation hooks
+    // and WM_NCCREATE/WM_CREATE. Child hMenu is an integer control ID.
+    if(!(style&WS_CHILD) && !menu && cls->menuName) {
+        menu=LoadWindowMenuResource(cls->hInstance,cls->menuResourceName,cls->menuResourceId);
+        if(!menu)return 0;
+    }
     std::unique_ptr<Window> win(new Window);
     Window* w = win.get();
     w->rasterIdentity=ui::detail::NextRasterIdentity();
@@ -605,6 +611,7 @@ uint32_t CreateWindowInternal(uint32_t exStyle, const std::u16string& className,
     w->hInstance = hInstance;
     uint32_t hwnd = w->hwnd;
     S().windows[hwnd] = std::move(win);
+    if(!(style&WS_CHILD) && !AttachWindowMenu(hwnd,menu)){RetireWindow(hwnd);return 0;}
     InitializeDialogWindow(hwnd);
     // как в Windows: дочернее окно — в конец z-порядка (он же порядок Tab
     // в диалогах и обхода GetWindow), окно верхнего уровня — наверх

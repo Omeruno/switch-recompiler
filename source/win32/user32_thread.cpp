@@ -134,6 +134,7 @@ void RetireWindow(uint32_t hwnd) {
         };
         remove(queue.posted);remove(queue.input);
     }
+    RetireWindowMenu(hwnd);
     ForgetWindowInput(hwnd);
     ForgetDialogWindow(hwnd);
     S().retiredWindows.push_back(std::move(it->second));

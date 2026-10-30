@@ -90,6 +90,8 @@ struct WndClass {
     bool unicode = false;       // зарегистрирован через *W
     int cbClsExtra = 0, cbWndExtra = 0;
     uint32_t hInstance = 0, hIcon = 0, hIconSm = 0, hCursor = 0, hbrBackground = 0;
+    std::u16string menuResourceName; // owned registration snapshot, not a guest borrow
+    uint16_t menuResourceId = 0;
     uint32_t menuName = 0;      // указатель или ID ресурса (как в WNDCLASS)
     std::vector<uint8_t> clsExtra;
     bool system = false;        // системный класс: доступен любому hInstance
@@ -298,6 +300,10 @@ void TrackWindowScrollBar(uint32_t hwnd, bool vertical, int screenX, int screenY
 void DrawMenuBarInto(Window* w, uint32_t hdc, const Rect& bar);
 // Меню из шаблона в памяти; меню диалога из ресурса
 uint32_t LoadMenuFromMemory(const uint8_t* p, size_t size);
+uint32_t LoadWindowMenuResource(uint32_t,const std::u16string&,uint16_t);
+bool AttachWindowMenu(uint32_t hwnd,uint32_t menu);
+void RetireWindowMenu(uint32_t hwnd);
+size_t MenuObjectCount(); // native diagnostic, never a guest export
 uint32_t LoadMenuForDialog(uint32_t hInst, const std::u16string& name, uint16_t ord);
 // Диалоги
 uint32_t DefDlgProc(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp, bool unicode);

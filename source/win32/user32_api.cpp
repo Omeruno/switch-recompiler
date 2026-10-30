@@ -14,6 +14,7 @@
 #include "msvcrt_format.h"
 #include "user32.h"
 #include "keyboard_layout.h"
+#include "window_lookup.h"
 
 namespace win32 {
 namespace user {
@@ -50,6 +51,13 @@ void ReadNameOrAtom(uint32_t p, bool unicode, std::u16string& name, uint16_t& at
 
 // --- Классы ---
 
+bool CaptureClassMenu(cpu::IGuestMemory& m,uint32_t pointer,bool wide,std::u16string& name,uint16_t& id) {
+    name.clear();id=0;
+    if(!pointer)return true;
+    if(pointer<0x10000){id=uint16_t(pointer);return true;}
+    return ReadWindowLookupText(m,pointer,wide,name);
+}
+
 HostCallOutcome RegisterClassImplCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool ex, bool unicode) {
     uint32_t p = A(c, m, 0);
     WndClass wc;
@@ -63,6 +71,7 @@ HostCallOutcome RegisterClassImplCommon(cpu::CpuState& c, cpu::IGuestMemory& m, 
     wc.hCursor = m.Read32(p + o + 24);
     wc.hbrBackground = m.Read32(p + o + 28);
     wc.menuName = m.Read32(p + o + 32);
+    if(!CaptureClassMenu(m,wc.menuName,unicode,wc.menuResourceName,wc.menuResourceId))return Ret(0);
     uint32_t namePtr = m.Read32(p + o + 36);
     if (ex) wc.hIconSm = m.Read32(p + 44);
     wc.unicode = unicode;
@@ -154,12 +163,18 @@ uint32_t ClassLong(WndClass* cls, int idx, uint32_t* set, uint32_t value) {
     return 0;
 }
 FN(GetClassLongA) { ENTER; Window* w = Win(A(c, m, 0)); return Ret(w && w->cls ? ClassLong(w->cls, SA(c, m, 1), nullptr, 0) : 0); }
-FN(SetClassLongA) {
-    ENTER;
-    Window* w = Win(A(c, m, 0));
-    uint32_t dummy = 0;
-    return Ret(w && w->cls ? ClassLong(w->cls, SA(c, m, 1), &dummy, A(c, m, 2)) : 0);
+HostCallOutcome SetClassLongImpl(cpu::CpuState& c,cpu::IGuestMemory& m,bool unicode) {
+    Window* w=Win(A(c,m,0));if(!w || !w->cls)return Ret(0);
+    const auto value=A(c,m,2);const auto index=SA(c,m,1);
+    if(index==-8) {
+        std::u16string name;uint16_t id=0;
+        if(!CaptureClassMenu(m,value,unicode,name,id))return Ret(0);
+        const auto old=w->cls->menuName;w->cls->menuName=value;
+        w->cls->menuResourceName=std::move(name);w->cls->menuResourceId=id;return Ret(old);
+    }
+    uint32_t dummy=0;return Ret(ClassLong(w->cls,index,&dummy,value));
 }
+AW(SetClassLong)
 
 // --- Окна ---
 
@@ -1405,7 +1420,7 @@ const HostFunctionEntry kEntries[] = {
     EAW(RegisterClass, 4), EAW(RegisterClassEx, 4), EAW(UnregisterClass, 8), EAW(GetClassInfo, 12), EAW(GetClassInfoEx, 12),
     EAW(GetClassName, 12),
     {"USER32.dll", "GetClassLongA", 8, CallConv::Stdcall, &GetClassLongA}, {"USER32.dll", "GetClassLongW", 8, CallConv::Stdcall, &GetClassLongA},
-    {"USER32.dll", "SetClassLongA", 12, CallConv::Stdcall, &SetClassLongA}, {"USER32.dll", "SetClassLongW", 12, CallConv::Stdcall, &SetClassLongA},
+    {"USER32.dll", "SetClassLongA", 12, CallConv::Stdcall, &SetClassLongA}, {"USER32.dll", "SetClassLongW", 12, CallConv::Stdcall, &SetClassLongW},
     EAW(CreateWindowEx, 48), E(DestroyWindow, 4), E(ShowWindow, 8), E(SetWindowPos, 28), E(MoveWindow, 24),
     E(BeginDeferWindowPos, 4), E(DeferWindowPos, 32), E(EndDeferWindowPos, 4),
     E(BringWindowToTop, 4), E(GetWindowRect, 8), E(GetClientRect, 8), E(AdjustWindowRect, 12), E(AdjustWindowRectEx, 16),

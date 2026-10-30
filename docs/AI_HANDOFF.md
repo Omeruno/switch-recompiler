@@ -1,15 +1,15 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`78074f034d01c049968a92171015820d0ed5aed9` (2026-10-30).
-[CI 41046455582](https://github.com/Omeruno/switch-recompiler/actions/runs/41046455582)
+`f0a6a98757414840b51e8c3d839ff450fa376f50` (2026-10-30).
+[CI 41050702319](https://github.com/Omeruno/switch-recompiler/actions/runs/41050702319)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D8 public x86 game-loop/input/timer/presentation oracle; F7 user controller bindings next, no game/hardware acceptance (2026-10-30)
+## Current position: D9 owning class menus; private host Pinball ball/score progress observed, F7 next, physical/game-wide acceptance open (2026-10-30)
 
 Bounded F0–F5 software acceptance is complete; physical E/F remains deferred.
 G2 CPU SRCCOPY is active. Claude's five Luna updates and shared PanelArea fix
@@ -67,6 +67,8 @@ follows; its old future-tense queues do not supersede this current position.
 [D7](D7_WINDOW_LOOKUP.md) adds shared FindWindow/FindWindowEx A/W over actual new/legacy windows,checked CP1252/UTF16/class atoms/title/direct-child/after semantics and session lifetime. Four normal x86 sessions + parked abort; modern rename/destruction and strict bounds/ABI checked. Legacy diagnostic passes FindWindowA and reaches LoadIconA. Next public interaction/message/timer/frame-progress oracle; no gameplay/hardware acceptance.
 
 [D8](D8_GAME_LOOP.md) verifies actual busy PeekMessage/timeGetTime/WM_TIMER,4 key pairs/2 chars,moving and pressed/released pixels via an independent96x64 CPU+production output reference.4 normal real/fast-forward x86 sessions +2 held-key aborts/clean restart/owning redraw. Generic host --key/--real-time scripting is diagnostic only. User-prioritized [F7 native controller bindings](F7_CONTROLLER_BINDINGS_PLAN.md) is next: actual settings/apply/save/reset,ownership and safe releases; not implemented yet. Private scripted keys preserve Pinball's table frame, but ball/flipper/game acceptance remains unverified.
+
+[D9](D9_CLASS_MENUS.md) implements real class-default menu resources and window ownership,checked standard/MENUEX parsing/rollback and public4-session+2 callback-abort evidence. Private same-run later captures show menu/player/mission text,moving ball and score0→2000→2500. Earlier startup snapshots were too early; no general font fix was needed. This is host launch/ball/score observation,not full game/flipper/audio/FPS/Switch acceptance. F7 remains next.
 
 ## User's long-term product target
 
@@ -3843,3 +3845,47 @@ malformed/held/legacy/probe scripts before loading. Visual map51 linked document
 and desktop/mobile/deep-link/search/filter/focus/zoom checks passed. Normal-push,
 then verify exact published-SHA all6 CI/Pages/NRO/public artifact/source manifest;
 the header records the already verified incoming baseline,not unpushed CI.
+
+## 2026-10-30 D9 — owning class menus and actual host Pinball dynamic observation
+
+Incoming f0a6a98757414840b51e8c3d839ff450fa376f50 passed all6 CI41050702319.
+Longer incoming host runs show digits/lamps absent from early-f12/f60 snapshots;
+wait-adapter ticks are not application readiness or rendered game frames. Private
+read-only observation confirms F2/Space messages reach the real focused main HWND.
+Missing Game/Options/Help exposes a common USER gap:class menuName was stored but
+never loaded by CreateWindow. Public class_menus.exe reproduces GetMenu==NULL in
+WM_NCCREATE at source line7. No private code/address/name switch is implemented.
+
+D9 captures owned checked A/W/numeric class-menu names and GCL_MENUNAME updates,
+loads fresh trees from the registering module before creation callbacks,handles
+explicit overrides/child IDs,and tracks actual attachment/detach/destruction in
+RetireWindow. Checked version0/1 parsing refuses malformed partial trees with
+1MiB/4096-item/16-level/32767-character bounds and complete rollback. Existing raw
+class-info pointer queries,full menu policies/system-menu and arbitrary resource
+mutation/encoding remain outside this package. DLL menu copies survive unload;
+new resource creation from an unloaded module refuses without pinning callbacks.
+
+Public4 normal real-x86 sessions+WM_CREATE/popup callback parked aborts,EXE/DLL/
+named/numeric/MENUEX,real keyboard popup→WM_COMMAND,detach/destroy/failure/restart
+and native malformed/budget/rollback tests pass. Full runtime objects were rebuilt
+after the WndClass layout changed; do not link against old mixed-layout objects.
+Private later new-UI real-time frames now show menu,player/mission text,a metallic
+launch-channel ball,and same-run ball movement/score0→2000→2500 after late input.
+This observes host launch/movement/score only:flipper causal effect,full gameplay,
+sound/MIDI,persistence/endurance,FPS/Switch remain unaccepted. Private captures and
+observer scripts stay outside git/artifacts/Pages. MIT public Release_1.0 reference
+was consulted for bitmap-score/init facts;no code/assets imported. F7 user editable
+Switch button→key settings remains next; legacy LoadIconA is a separate reproducer.
+
+Final D9 local validation: complete COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed,
+including new menu/parser/real keyboard command tests,all prior D/audio/C/E/GUI,
+22 F software groups and17 GPU groups/five reports. Strict changed USER modules
+and inspectors passed O2/Wall/Wextra/Werror/no-exceptions/no-RTTI with existing
+unused parameters excluded. Focused ASan/UBSan passed4 normal+2 callback-abort
+sessions and native parser;remaining runtime ordinary,guest ucontext caveat/leak
+scan off,non-fiber parser leak scan on. Negative default-loading removal fails the
+public creation assertion;negative rollback removal fails exact live-object counts.
+Map52 document links and desktop/mobile/search/deep-link/filter/zoom/focus passed.
+Private same-run snapshots2500/2700/2900 show ball positions and score0/2000/2500;
+these are wait-step observations,not measured frames/FPS or physical acceptance.
+Publish normally,then verify exact-SHA all6 CI/Pages/NRO/artifact/source manifest.
