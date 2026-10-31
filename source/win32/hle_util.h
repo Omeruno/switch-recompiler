@@ -22,6 +22,8 @@ std::string AnsiPathToUtf8(const std::string& path);
 bool Utf8PathToAnsi(const std::string& path,std::string& out);
 std::string WideToGuestAnsi(const std::u16string& text);
 HostCallOutcome RegisteredMessageCall(cpu::CpuState&,cpu::IGuestMemory&,bool wide);
+// One virtual guest account; independent of mutable environment variables.
+inline constexpr char kGuestUserName[] = "Player";
 namespace hle {
 
 // i-й аргумент на стеке (сразу после адреса возврата).

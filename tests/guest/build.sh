@@ -5,6 +5,9 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+i686-w64-mingw32-dlltool --kill-at -d "$here/launcher_dplay.def" -l "$out/launcher_dplay.a"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/launcher_contract.c" \
+    "$out/launcher_dplay.a" -o "$out/launcher_contract.exe" -lkernel32 -ladvapi32
 $cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 -Wl,--image-base,0x400000 \
     -Wl,--out-implib,"$out/old_pe_api.a" "$here/old_pe_api.c" "$here/old_pe_api.def" \
     -o "$out/old_pe_api.base" -lkernel32

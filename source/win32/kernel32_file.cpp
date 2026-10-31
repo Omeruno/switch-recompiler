@@ -488,21 +488,49 @@ HostCallOutcome K32_CreateDirectoryW(cpu::CpuState& c,cpu::IGuestMemory& m){retu
 HostCallOutcome K32_RemoveDirectoryA(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,false,PathMutation::Rmdir);}
 HostCallOutcome K32_RemoveDirectoryW(cpu::CpuState& c,cpu::IGuestMemory& m){return MutatePath(c,m,true,PathMutation::Rmdir);}
 
+// Attribute queries require a nonempty, terminated guest path. In particular,
+// an empty name must never be normalized into the VFS current directory.
+bool AttributeName(cpu::IGuestMemory& m,uint32_t p,bool wide,std::string& name) {
+    if(!p){SetLastError(m,87);return false;}
+    std::string ansi;std::u16string utf16;
+    const uint32_t unit=wide?2:1;
+    for(uint32_t n=0;n<32768;++n) {
+        const uint64_t at=uint64_t(p)+uint64_t(n)*unit;
+        if(at+unit>0x100000000ull || !m.IsRangeMapped(uint32_t(at),unit)) {
+            SetLastError(m,998);return false;
+        }
+        const uint16_t ch=wide?m.Read16(uint32_t(at)):m.Read8(uint32_t(at));
+        if(!ch) {
+            if(!n){SetLastError(m,ERROR_PATH_NOT_FOUND);return false;}
+            name=wide?WideToUtf8(utf16):AnsiPathToUtf8(ansi);return true;
+        }
+        if(wide)utf16.push_back(char16_t(ch));else ansi.push_back(char(ch));
+    }
+    SetLastError(m,206);return false;
+}
+bool AttributeStat(cpu::IGuestMemory& m,uint32_t p,bool wide,struct stat& st) {
+    std::string name;
+    if(!AttributeName(m,p,wide,name))return false;
+    const auto host=rt::FileSystem().ToHost(name);
+    if(host.empty() || !StatHost(host,st)){SetLastError(m,ErrnoToWin());return false;}
+    return true;
+}
 HostCallOutcome AttrCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
     struct stat st;
-    if (!StatHost(rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide)), st)) {
-        SetLastError(m, ERROR_FILE_NOT_FOUND);
-        return Ret(0xFFFFFFFFu); // INVALID_FILE_ATTRIBUTES
-    }
+    if(!AttributeStat(m,Arg(c,m,0),wide,st))return Ret(0xFFFFFFFFu);
     return Ret(AttributesOf(st));
 }
 HostCallOutcome K32_GetFileAttributesA(cpu::CpuState& c, cpu::IGuestMemory& m) { return AttrCommon(c, m, false); }
 HostCallOutcome K32_GetFileAttributesW(cpu::CpuState& c, cpu::IGuestMemory& m) { return AttrCommon(c, m, true); }
 // BOOL GetFileAttributesEx(name, level, WIN32_FILE_ATTRIBUTE_DATA*)
 HostCallOutcome AttrExCommon(cpu::CpuState& c, cpu::IGuestMemory& m, bool wide) {
+    if(Arg(c,m,1)!=0){SetLastError(m,87);return Ret(0);}
+    const uint32_t p=Arg(c,m,2);
+    if(!p || uint64_t(p)+36>0x100000000ull || !m.IsRangeMapped(p,36)) {
+        SetLastError(m,998);return Ret(0);
+    }
     struct stat st;
-    if (!StatHost(rt::FileSystem().ToHost(ReadPath(m, Arg(c, m, 0), wide)), st)) { SetLastError(m, ERROR_FILE_NOT_FOUND); return Ret(0); }
-    uint32_t p = Arg(c, m, 2);
+    if(!AttributeStat(m,Arg(c,m,0),wide,st))return Ret(0);
     m.Write32(p, AttributesOf(st));
     Write64(m, p + 4, ToFileTime(st.st_mtime));
     Write64(m, p + 12, ToFileTime(st.st_atime));

@@ -173,7 +173,7 @@ struct SystemState {
     std::map<std::string,std::string> env={
         {"PATH","C:\\WINDOWS\\system32;C:\\WINDOWS"},{"SYSTEMROOT","C:\\WINDOWS"},
         {"WINDIR","C:\\WINDOWS"},{"TEMP","C:\\TEMP"},{"TMP","C:\\TEMP"},
-        {"USERNAME","Player"},{"COMPUTERNAME","SWITCH"},{"OS","Windows_NT"},
+        {"USERNAME",kGuestUserName},{"COMPUTERNAME","SWITCH"},{"OS","Windows_NT"},
         {"NUMBER_OF_PROCESSORS","1"},{"PROCESSOR_ARCHITECTURE","x86"}
     };
 };

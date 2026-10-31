@@ -1,15 +1,28 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`1ff01c9084c8f9a1f93e3bdf71080343fbbbd40e` (2026-10-31).
-[CI 41136440421](https://github.com/Omeruno/switch-recompiler/actions/runs/41136440421)
+`431787a96726b2686517018a14e98e9dc3e879aa` (2026-10-31).
+[CI 41174190664](https://github.com/Omeruno/switch-recompiler/actions/runs/41174190664)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D11 old PE import/raw/header compatibility; Doom95 splash/launcher reached, gameplay/DirectX open (2026-10-31)
+## Current position: D12 launcher paths/virtual identity/DirectPlay refusal; Doom95 dialog processing reached, composed host launcher visible,game/DirectX open (2026-10-31)
+
+[D12 launcher contract](D12_LAUNCHER_CONTRACT.md): empty attribute paths no longer
+become the current directory; checked A/W+Ex spans/CP1252/errors/output are covered.
+GetUserName A/W returns the existing virtual Player account with real size/buffer
+semantics,independent of mutable USERNAME. DPLAY names/ordinals1/2/3 explicitly
+return unsupported with correct stdcall ABI and no provider/object. Four normal
+new/legacy x86 sessions+two parked aborts and native bounds/guards pass. Private
+Doom95 now searches real data,loads configuration and reaches launcher dialog/
+message processing;production composed output shows original New Game/Cancel.
+A genuine New Game mouse click stops at missing RegCreateKeyA;next is legacy
+RegCreateKey A/W over real registry keys,then actual launch/DirectDraw tracing.
+The raw-screen final capture still shows splash;game/DirectX/physical acceptance
+remain open;Common Controls ordinal17 still fallback.
 
 [D11 old PE / Doom95](D11_OLD_PE_AND_DOOM95.md): initialized sections with
 VirtualSize0 now resolve actual raw bytes,header imports work,virtual/BSS tails
@@ -4095,3 +4108,20 @@ and desktop/mobile/search/deep-link/filter/zoom/focus passed. Private ordinary
 Doom95 launcher exit was confirmed before the host poll limit;not playable/menu
 or physical acceptance. Publish normally,verify exact-SHA all6 CI/Pages/NRO/public
 fixture/source manifests;no proprietary asset/trace/report publication.
+
+## 2026-10-31 D12 — shared launcher contracts
+
+[D12 launcher contract](D12_LAUNCHER_CONTRACT.md): empty attribute paths no longer
+become the current directory; checked A/W+Ex spans/CP1252/errors/output are covered.
+GetUserName A/W returns the existing virtual Player account with real size/buffer
+semantics,independent of mutable USERNAME. DPLAY names/ordinals1/2/3 explicitly
+return unsupported with correct stdcall ABI and no provider/object. Four normal
+new/legacy x86 sessions+two parked aborts and native bounds/guards pass. Private
+Doom95 now searches real data,loads configuration and reaches launcher dialog/
+message processing;production composed output shows original New Game/Cancel.
+A genuine New Game mouse click stops at missing RegCreateKeyA;next is legacy
+RegCreateKey A/W over real registry keys,then actual launch/DirectDraw tracing.
+The raw-screen final capture still shows splash;game/DirectX/physical acceptance
+remain open;Common Controls ordinal17 still fallback.
+
+Incoming431787a passed CI41174190664 all6. See D12 for evidence and next block. No physical acceptance.

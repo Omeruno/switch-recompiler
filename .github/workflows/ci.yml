@@ -96,6 +96,23 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-d-launcher-contract
+          if-no-files-found: error
+          path: |
+            build-host/launcher_contract.log
+            build-host/guest-run.*/launcher_contract.exe
+            tests/guest/launcher_contract.c
+            tests/guest/launcher_dplay.def
+            tests/test_launcher_contract.cpp
+            source/win32/kernel32_file.cpp
+            source/win32/guest_identity.cpp
+            source/win32/directplay_boundary.cpp
+            source/win32/hle_util.h
+            source/win32/kernel32_system.cpp
+            docs/D12_LAUNCHER_CONTRACT.md
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-d-old-pe
           if-no-files-found: error
           path: |

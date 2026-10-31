@@ -2,9 +2,9 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: D11 old PE raw/header/import compatibility implemented. Supplied Doom95 reaches host splash/launcher;menu/game/DirectX remain open. F8 controls/view/indexed copies retained;physical acceptance remains separate.
-G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `1ff01c9084c8f9a1f93e3bdf71080343fbbbd40e`
-passed [CI41136440421, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41136440421).
+**Current position: D12 checked attribute paths,virtual user and explicit DirectPlay refusal implemented. Doom95 composed host launcher is visible;New Game reaches missing RegCreateKeyA;game/DirectX remain open. F8 controls/view/indexed copies retained;physical acceptance remains separate.
+G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `431787a96726b2686517018a14e98e9dc3e879aa`
+passed [CI41174190664, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41174190664).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -116,7 +116,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | D10 | [Audio recovery/MMIO](D10_AUDIO_RECOVERY.md):correct audout release ordering,indexed MP3 seeks,real sndPlaySound A/W/read-only file MMIO/RIFF and4 x86 exits+2 owning aborts | Physical seek/black-screen recovery remains unverified; no full MMIO/game acceptance |
 | F8/G2 indexed | [Live window view/preset/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md):real Start/R mode,absolute input/offset cursor,touch,preset Apply/Save,4 x86 exits+2 aborts;2800 raster cases/paired native measurements | Physical FPS/view/input open;view is presentation,not virtual display-mode/maximize support |
 | D11 | [Old PE/Doom95 audit](D11_OLD_PE_AND_DOOM95.md):raw-backed VirtualSize0/header imports,bounded records/strings,IAT/BSS/map guards;8 x86 exits+2 aborts with relocated ordinal DLL | Doom95 splash/launcher only;actual launcher boundary and DirectDraw/DirectSound/DirectPlay remain open |
-| Next independent block | Actual Doom95 launcher/API reproducer,then real bounded DirectDraw/DirectSound;retain F8 performance/virtual display/audio-bus queues | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
+| D12 | [Launcher contract](D12_LAUNCHER_CONTRACT.md):checked empty A/W+Ex paths,virtual UserName,unsupported DirectPlay names/ordinals with correct ABI;4 normal x86 sessions+2 aborts | Composed launcher visible;New Game stops at RegCreateKeyA;configuration/Common Controls/game/DirectX remain open |
+| Next independent block | Legacy RegCreateKey A/W over real registry keys;trace New Game again,then bounded DirectDraw/DirectSound and supported Common Controls;retain F8 performance/virtual display/audio-bus queues | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
