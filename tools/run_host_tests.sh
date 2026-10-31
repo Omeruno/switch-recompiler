@@ -31,6 +31,7 @@ rm -f "$out/gpu_gdi_dispatch.log" "$out/gpu_gdi_dispatch.json"
 rm -f "$out/gpu_window_bindings.log" "$out/gpu_window_coherence.log"
 rm -f "$out/gpu_gdi_targets.log" "$out/gpu_gdi_shared_context.log"
 rm -f "$out/gpu_gdi_batches.json" "$out/gpu_gdi_batches.log"
+rm -f "$out/old_pe.log"
 rm -f "$out/game_view.log" "$out/focused-view.ppm" "$out/benchmark_indexed_blit.log"
 rm -f "$out/controller_api.log" "$out/test_controller_bindings.log" "$out/test_controller_settings.log" "$out/controller-settings.ppm"
 rm -f "$out/class_menus.log"
@@ -157,6 +158,14 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
     else
         echo "   FOCUSED GAME VIEW FAILED"
         tail -n 25 "$out/game_view.log" 2>/dev/null || true
+        failed=1
+    fi
+    if $cxx $flags "$root/tests/test_old_pe.cpp" $src -o "$out/test_old_pe" &&
+       "$out/test_old_pe" "$guestRoot/old_pe_imports.exe" > "$out/old_pe.log" 2>&1; then
+        tail -n 1 "$out/old_pe.log"
+    else
+        echo "   OLD PE IMPORT/RVA COMPATIBILITY FAILED"
+        tail -n 25 "$out/old_pe.log" 2>/dev/null || true
         failed=1
     fi
     if $cxx $flags "$root/tests/test_mmio_read.cpp" $src -o "$out/test_mmio_read" &&
@@ -677,6 +686,7 @@ if command -v i686-w64-mingw32-gcc >/dev/null 2>&1; then
         [ "$(basename "$exe")" = "wave_mixer.exe" ] && continue
         [ "$(basename "$exe")" = "legacy_file.exe" ] && continue
         [ "$(basename "$exe")" = "ini_profile.exe" ] && continue
+        [ "$(basename "$exe")" = "old_pe_imports.exe" ] && continue
         [ "$(basename "$exe")" = "mmio_read.exe" ] && continue
         [ "$(basename "$exe")" = "audio_output.exe" ] && continue
         [ "$(basename "$exe")" = "audio_media.exe" ] && continue

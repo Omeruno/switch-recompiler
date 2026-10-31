@@ -5,6 +5,13 @@ here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 out="${1:-$here/../../build-host/guest}"
 cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
+$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 -Wl,--image-base,0x400000 \
+    -Wl,--out-implib,"$out/old_pe_api.a" "$here/old_pe_api.c" "$here/old_pe_api.def" \
+    -o "$out/old_pe_api.base" -lkernel32
+python3 "$here/../../tools/make_old_pe_fixture.py" "$out/old_pe_api.base" "$out/old_pe_api.dll"
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/old_pe_imports.c" "$out/old_pe_api.a" \
+    -o "$out/old_pe_imports.base" -lkernel32 -luser32
+python3 "$here/../../tools/make_old_pe_fixture.py" "$out/old_pe_imports.base" "$out/old_pe_imports.exe"
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/mmio_read.c" \
     -o "$out/mmio_read.exe" -lkernel32 -lwinmm
 i686-w64-mingw32-windres "$here/class_menus.rc" "$out/class_menus_res.o"

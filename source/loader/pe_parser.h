@@ -194,8 +194,9 @@ public:
 
     // Переводит RVA (относительный виртуальный адрес, как в заголовках PE)
     // в реальное смещение внутри файла на диске (raw file offset).
-    // Возвращает -1, если RVA не попадает ни в одну секцию.
-    int64_t RvaToFileOffset(uint32_t rva) const;
+    // Проверяет весь диапазон: заголовки или raw-байты секции, включая VirtualSize=0.
+    // Виртуальный хвост/BSS без файловых данных возвращает -1.
+    int64_t RvaToFileOffset(uint32_t rva, size_t bytes=1) const;
 
     // Копирует весь образ в подготовленный буфер `dest` так,
     // как это должно выглядеть в памяти процесса при исполнении
@@ -211,10 +212,10 @@ private:
     std::vector<Section> sections_;
     std::vector<ImportedModule> imports_;
 
-    // Читает нуль-терминированную ASCII-строку по файловому смещению
-    std::string ReadCStringAtFileOffset(uint32_t fileOffset) const;
+    // Читает ограниченную нуль-терминированную строку по файловым RVA
+    bool ReadCStringAtRva(uint32_t rva, std::string& out) const;
 
-    void ParseImportTable();
+    bool ParseImportTable();
 };
 
 } // namespace pe

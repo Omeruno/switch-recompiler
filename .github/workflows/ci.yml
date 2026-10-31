@@ -96,6 +96,23 @@ jobs:
             docs/G3_GPU_GDI_PROTOTYPE.md
       - uses: actions/upload-artifact@v4
         with:
+          name: stage-d-old-pe
+          if-no-files-found: error
+          path: |
+            build-host/old_pe.log
+            build-host/guest-run.*/old_pe_imports.exe
+            build-host/guest-run.*/old_pe_api.dll
+            tests/guest/old_pe_imports.c
+            tests/guest/old_pe_api.c
+            tests/guest/old_pe_api.def
+            tests/test_old_pe.cpp
+            tools/make_old_pe_fixture.py
+            source/loader/pe_parser.h
+            source/loader/pe_parser.cpp
+            docs/D11_OLD_PE_AND_DOOM95.md
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: stage-game-view
           if-no-files-found: error
           path: |

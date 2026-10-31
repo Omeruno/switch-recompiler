@@ -2,6 +2,8 @@
 
 #include <fstream>
 #include <cstring>
+#include <algorithm>
+#include <cstddef>
 
 namespace pe {
 
@@ -18,12 +20,16 @@ const char* ToString(LoadResult result) {
 }
 
 LoadResult PEParser::LoadFromFile(const std::string& path) {
+    fileBuffer_.clear();sections_.clear();imports_.clear();
+    dosHeader_={};fileHeader_={};optionalHeader_={};
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         return LoadResult::FileNotFound;
     }
 
     std::streamsize size = file.tellg();
+    if(size<0)return LoadResult::FileNotFound;
+    if(uint64_t(size)>UINT32_MAX)return LoadResult::NotAValidPeHeader;
     file.seekg(0, std::ios::beg);
 
     fileBuffer_.resize(static_cast<size_t>(size));
@@ -43,7 +49,7 @@ LoadResult PEParser::LoadFromFile(const std::string& path) {
 
     // --- NT-заголовок ("PE\0\0" + FileHeader) ---
     uint32_t ntHeaderOffset = static_cast<uint32_t>(dosHeader_.e_lfanew);
-    if (ntHeaderOffset + 4 + sizeof(FileHeader) > fileBuffer_.size()) {
+    if (uint64_t(ntHeaderOffset) + 4 + sizeof(FileHeader) > fileBuffer_.size()) {
         return LoadResult::NotAValidPeHeader;
     }
 
@@ -62,7 +68,8 @@ LoadResult PEParser::LoadFromFile(const std::string& path) {
 
     // --- Optional Header ---
     uint32_t optionalHeaderOffset = fileHeaderOffset + sizeof(FileHeader);
-    if (optionalHeaderOffset + sizeof(OptionalHeader32) > fileBuffer_.size()) {
+    constexpr size_t prefix=offsetof(OptionalHeader32,dataDirectory);
+    if (fileHeader_.sizeOfOptionalHeader<2 || uint64_t(optionalHeaderOffset)+fileHeader_.sizeOfOptionalHeader>fileBuffer_.size()) {
         return LoadResult::NotAValidPeHeader;
     }
 
@@ -75,11 +82,16 @@ LoadResult PEParser::LoadFromFile(const std::string& path) {
         return LoadResult::NotAValidPeHeader;
     }
 
-    std::memcpy(&optionalHeader_, fileBuffer_.data() + optionalHeaderOffset, sizeof(OptionalHeader32));
+    if(fileHeader_.sizeOfOptionalHeader<prefix)return LoadResult::NotAValidPeHeader;
+    std::memcpy(&optionalHeader_, fileBuffer_.data() + optionalHeaderOffset,
+                std::min(size_t(fileHeader_.sizeOfOptionalHeader),sizeof(OptionalHeader32)));
+    const auto directories=std::min(optionalHeader_.numberOfRvaAndSizes,16u);
+    if(prefix+uint64_t(directories)*sizeof(DataDirectory)>fileHeader_.sizeOfOptionalHeader)return LoadResult::NotAValidPeHeader;
 
     // --- Секции ---
     uint32_t sectionHeaderOffset = optionalHeaderOffset + fileHeader_.sizeOfOptionalHeader;
 
+    if(uint64_t(sectionHeaderOffset)+uint64_t(fileHeader_.numberOfSections)*sizeof(SectionHeader)>fileBuffer_.size())return LoadResult::NotAValidPeHeader;
     sections_.clear();
     sections_.reserve(fileHeader_.numberOfSections);
 
@@ -104,106 +116,76 @@ LoadResult PEParser::LoadFromFile(const std::string& path) {
         sections_.push_back(s);
     }
 
-    ParseImportTable();
-
+    if(!ParseImportTable()){imports_.clear();return LoadResult::NotAValidPeHeader;}
     return LoadResult::Ok;
 }
 
-int64_t PEParser::RvaToFileOffset(uint32_t rva) const {
-    for (const auto& s : sections_) {
-        // Секция покрывает диапазон [virtualAddress, virtualAddress + virtualSize)
-        if (rva >= s.virtualAddress && rva < s.virtualAddress + s.virtualSize) {
-            uint32_t deltaIntoSection = rva - s.virtualAddress;
-            return static_cast<int64_t>(s.rawDataPointer) + deltaIntoSection;
-        }
+int64_t PEParser::RvaToFileOffset(uint32_t rva,size_t bytes) const {
+    if(!bytes || rva>=optionalHeader_.sizeOfImage || bytes>uint64_t(optionalHeader_.sizeOfImage)-rva)return -1;
+    if(rva<optionalHeader_.sizeOfHeaders){
+        if(bytes>uint64_t(optionalHeader_.sizeOfHeaders)-rva || uint64_t(rva)+bytes>fileBuffer_.size())return -1;
+        return rva;
+    }
+    for(const auto& section:sections_){
+        if(rva<section.virtualAddress)continue;
+        const uint64_t delta=uint64_t(rva)-section.virtualAddress;
+        const uint64_t extent=std::max(section.virtualSize,section.rawDataSize);
+        if(delta>=extent || bytes>extent-delta)continue;
+        // Old linkers can set VirtualSize=0. Raw bytes still back the section,
+        // but a virtual-only tail or uninitialized zero-pointer section has no file bytes.
+        if((!section.rawDataPointer && (section.characteristics&0x80)) || delta>=section.rawDataSize || bytes>uint64_t(section.rawDataSize)-delta)return -1;
+        const uint64_t offset=uint64_t(section.rawDataPointer)+delta;
+        if(offset>fileBuffer_.size() || bytes>fileBuffer_.size()-offset)return -1;
+        return int64_t(offset);
     }
     return -1;
 }
 
-std::string PEParser::ReadCStringAtFileOffset(uint32_t fileOffset) const {
-    std::string result;
-    if (fileOffset >= fileBuffer_.size()) return result;
-
-    size_t i = fileOffset;
-    while (i < fileBuffer_.size() && fileBuffer_[i] != 0) {
-        result.push_back(static_cast<char>(fileBuffer_[i]));
-        ++i;
+bool PEParser::ReadCStringAtRva(uint32_t rva,std::string& out) const {
+    out.clear();
+    for(unsigned n=0;n<4096;++n){
+        const uint64_t at=uint64_t(rva)+n;if(at>UINT32_MAX)return false;
+        const auto offset=RvaToFileOffset(uint32_t(at));if(offset<0)return false;
+        const auto ch=fileBuffer_[size_t(offset)];if(!ch)return true;out.push_back(char(ch));
     }
-    return result;
+    return false;
 }
 
-void PEParser::ParseImportTable() {
+bool PEParser::ParseImportTable() {
     imports_.clear();
-
-    // DataDirectory[1] — Import Table
-    if (optionalHeader_.numberOfRvaAndSizes < 2) return;
-    const DataDirectory& importDir = optionalHeader_.dataDirectory[1];
-    if (importDir.virtualAddress == 0 || importDir.size == 0) return;
-
-    int64_t descriptorFileOffset = RvaToFileOffset(importDir.virtualAddress);
-    if (descriptorFileOffset < 0) return;
-
-    size_t idx = 0;
-    while (true) {
-        uint32_t off = static_cast<uint32_t>(descriptorFileOffset) + idx * sizeof(ImportDescriptor);
-        if (off + sizeof(ImportDescriptor) > fileBuffer_.size()) break;
-
-        ImportDescriptor desc{};
-        std::memcpy(&desc, fileBuffer_.data() + off, sizeof(ImportDescriptor));
-
-        // Массив дескрипторов заканчивается нулевой записью
-        if (desc.name == 0 && desc.originalFirstThunk == 0 && desc.firstThunk == 0) {
-            break;
-        }
-
-        ImportedModule module;
-
-        int64_t nameOffset = RvaToFileOffset(desc.name);
-        if (nameOffset >= 0) {
-            module.dllName = ReadCStringAtFileOffset(static_cast<uint32_t>(nameOffset));
-        }
-
-        // Читаем thunk-таблицу. Предпочитаем originalFirstThunk (ILT),
-        // но некоторые старые линкеры кладут 0 туда — тогда fallback на firstThunk (IAT).
-        uint32_t thunkRva = desc.originalFirstThunk != 0 ? desc.originalFirstThunk : desc.firstThunk;
-        int64_t thunkFileOffset = RvaToFileOffset(thunkRva);
-
-        if (thunkFileOffset >= 0) {
-            size_t thunkIdx = 0;
-            while (true) {
-                uint32_t thunkOff = static_cast<uint32_t>(thunkFileOffset) + thunkIdx * sizeof(uint32_t);
-                if (thunkOff + sizeof(uint32_t) > fileBuffer_.size()) break;
-
-                uint32_t thunkValue = 0;
-                std::memcpy(&thunkValue, fileBuffer_.data() + thunkOff, sizeof(uint32_t));
-                if (thunkValue == 0) break; // конец списка функций этой DLL
-
-                ImportedFunction func;
-                // Старший бит = 1 значит импорт по ординалу, а не по имени
-                constexpr uint32_t ORDINAL_FLAG = 0x80000000;
-                if (thunkValue & ORDINAL_FLAG) {
-                    func.name = "";
-                    func.ordinal = static_cast<uint16_t>(thunkValue & 0xFFFF);
-                } else {
-                    // thunkValue — это RVA на IMAGE_IMPORT_BY_NAME:
-                    // структура {uint16_t Hint; char Name[];}
-                    int64_t byNameOffset = RvaToFileOffset(thunkValue);
-                    if (byNameOffset >= 0) {
-                        // Пропускаем 2 байта Hint, дальше сама строка имени
-                        func.name = ReadCStringAtFileOffset(static_cast<uint32_t>(byNameOffset) + 2);
-                    }
-                    func.ordinal = 0;
-                }
-                func.iatRva = desc.firstThunk + static_cast<uint32_t>(thunkIdx * sizeof(uint32_t));
-
-                module.functions.push_back(func);
-                ++thunkIdx;
+    if(optionalHeader_.numberOfRvaAndSizes<2)return true;
+    const auto dir=optionalHeader_.dataDirectory[1];
+    if(!dir.virtualAddress && !dir.size)return true;
+    if(!dir.virtualAddress || dir.size<sizeof(ImportDescriptor) || uint64_t(dir.virtualAddress)+dir.size>optionalHeader_.sizeOfImage)return false;
+    size_t symbols=0,nameBytes=0;
+    for(size_t index=0;index<=1024;++index){
+        const uint64_t delta=index*sizeof(ImportDescriptor),rva=uint64_t(dir.virtualAddress)+delta;
+        if(delta+sizeof(ImportDescriptor)>dir.size || rva>UINT32_MAX)return false;
+        const auto offset=RvaToFileOffset(uint32_t(rva),sizeof(ImportDescriptor));if(offset<0)return false;
+        ImportDescriptor desc{};std::memcpy(&desc,fileBuffer_.data()+offset,sizeof(desc));
+        if(!desc.originalFirstThunk && !desc.timeDateStamp && !desc.forwarderChain && !desc.name && !desc.firstThunk)return true;
+        if(index==1024 || !desc.name || !desc.firstThunk)return false;
+        ImportedModule module;if(!ReadCStringAtRva(desc.name,module.dllName) || module.dllName.empty())return false;
+        nameBytes+=module.dllName.size();if(nameBytes>1024*1024)return false;
+        const auto thunk=desc.originalFirstThunk?desc.originalFirstThunk:desc.firstThunk;
+        for(size_t item=0;;++item){
+            const uint64_t at=uint64_t(thunk)+item*4,iat=uint64_t(desc.firstThunk)+item*4;
+            if(at>UINT32_MAX || iat+4>optionalHeader_.sizeOfImage)return false;
+            const auto off=RvaToFileOffset(uint32_t(at),4);if(off<0)return false;
+            uint32_t value=0;std::memcpy(&value,fileBuffer_.data()+off,4);if(!value)break;
+            if(symbols++>=65536)return false;
+            ImportedFunction function;function.iatRva=uint32_t(iat);
+            if(value&0x80000000u){if(value&0x7fff0000u)return false;function.ordinal=uint16_t(value);}
+            else {
+                if(value>UINT32_MAX-2 || RvaToFileOffset(value,2)<0 ||
+                   !ReadCStringAtRva(value+2,function.name) || function.name.empty())return false;
             }
+            nameBytes+=function.name.size();if(nameBytes>1024*1024)return false;
+            module.functions.push_back(std::move(function));
         }
-
-        imports_.push_back(module);
-        ++idx;
+        imports_.push_back(std::move(module));
     }
+    return false;
 }
 
 void PEParser::MapImageToMemory(uint8_t* dest, size_t destSize) const {
@@ -217,9 +199,9 @@ void PEParser::MapImageToMemory(uint8_t* dest, size_t destSize) const {
     }
 
     for (const auto& s : sections_) {
-        if (s.rawDataSize == 0) continue; // например .bss-подобные секции без данных на диске
-        if (s.rawDataPointer + s.rawDataSize > fileBuffer_.size()) continue;
-        if (s.virtualAddress + s.rawDataSize > destSize) continue;
+        if (s.rawDataSize == 0 || (!s.rawDataPointer && (s.characteristics&0x80))) continue; // например .bss-подобные секции без данных на диске
+        if (uint64_t(s.rawDataPointer) + s.rawDataSize > fileBuffer_.size()) continue;
+        if (uint64_t(s.virtualAddress) + s.rawDataSize > std::min(uint64_t(destSize),uint64_t(optionalHeader_.sizeOfImage))) continue;
 
         std::memcpy(dest + s.virtualAddress,
                     fileBuffer_.data() + s.rawDataPointer,

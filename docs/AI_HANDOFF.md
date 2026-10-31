@@ -1,15 +1,28 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`c978514d4fec4e803435218f9ce88bc4bbf2c2b5` (2026-10-31).
-[CI 41131710506](https://github.com/Omeruno/switch-recompiler/actions/runs/41131710506)
+`1ff01c9084c8f9a1f93e3bdf71080343fbbbd40e` (2026-10-31).
+[CI 41136440421](https://github.com/Omeruno/switch-recompiler/actions/runs/41136440421)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: F8 enlarged window view/arcade preset and measured indexed CPU copies; physical control/view/FPS acceptance open (2026-10-31)
+## Current position: D11 old PE import/raw/header compatibility; Doom95 splash/launcher reached, gameplay/DirectX open (2026-10-31)
+
+[D11 old PE / Doom95](D11_OLD_PE_AND_DOOM95.md): initialized sections with
+VirtualSize0 now resolve actual raw bytes,header imports work,virtual/BSS tails
+cannot masquerade as file data,and import records/names/IATs have checked spans
+and bounded termination. Map skips uninitialized zero-pointer raw data and uses
+64-bit source/destination checks. Authored PE32 EXE+ordinal DLL,forced relocation,
+header/OFT0 variants:8 normal new/legacy sessions+2 parked aborts,actual APIs/file
+bytes/BSS and malformed bounds. Private supplied Doom95 is Win32,not DOS;the old
+loader skipped imports and jumped into an unmapped old IAT address. With the fix,
+startup splash/original launcher DLL are reached;ordinary launch exits before menu/
+game. Existing Common Controls fallback/launcher/configuration remain open. Static
+DirectDraw/DirectSound/DirectPlay/WinMM requirements are not implemented by this
+package. No private assets/logs/images are published;no Switch/game acceptance.
 
 [F8 enlarged view/indexed copies](F8_GAME_VIEW_AND_INDEXED_BLITS.md): actual Start
 command crops the live foreground root window for aspect-fit output;R returns
@@ -4042,3 +4055,43 @@ deep-link/filter/zoom/focus passed. Public focused renderer capture inspected.
 Private diagnostic observed actual indexed admissions;no private content committed.
 Publish normally,then exact-SHA all6 CI/Pages/NRO/public artifact/source audits.
 Physical control/view/FPS and virtual display semantics remain open.
+
+## 2026-10-31 D11 — old-linker raw-backed imports and Doom95 dependency audit
+
+Incoming1ff01c9084c8f9a1f93e3bdf71080343fbbbd40e passed CI41136440421 all6.
+Doom95 supplied PE32/i386 has VirtualSize0 initialized sections. Previous parser
+reported empty imports and left historical IAT addresses unbound. Shared RVA spans
+now cover headers/raw-size envelope,refuse virtual-only/BSS/file/wrap violations.
+Import descriptors/thunks/hints/names/slots are checked and terminated within bounds;
+1024 modules/65536 symbols/4096-byte names/1MiB aggregate metadata cap. Declared
+header/table spans and reuse state are validated. Map's raw/source/destination
+arithmetic is64-bit;zero-pointer uninitialized raw data stays zero. No EXE name rule.
+
+Authored MinGW EXE+ordinal7 DLL are transformed only as public fixtures,including
+stale IAT/zero VS/uninitialized nonzero raw size and preferred-base collision.
+Inspector checks BSS/guarded map/raw+header spans,OFT0/header directory+name variants,
+actual IAT-bound calls/relocated DLL init/file bytes,8 normal new/legacy sessions+2
+parked aborts and malformed/96 mutation probes. Focused parser/inspector sanitizers,
+strict compilation and removed-raw-fallback negative pass;remaining runtime ordinary,
+native leak scan on,x86 ucontext scan off. Full suite and exact-SHA publication gates
+remain required. No game payload/asset/report/screenshot committed or published.
+
+Private host now draws original startup splash and loads launcher DLL;ordinary
+entry exits before playable menu/game. Existing COMCTL32 ordinal fallback observed;
+launcher/configuration/API tracing is next. Static DDRAW!DirectDrawCreate,
+DSOUND!DirectSoundCreate,DPLAY#1,WinMM joystick/MIDI and other imports remain missing;
+these were not all reached call failures. Real DirectDraw/DirectSound/DirectPlay,
+virtual display,input/FPS/game/physical acceptance remain open. Host archive
+inspection is not product RAR support. Preserve F8/preset/indexed copies,CPU default,
+Luna/L/ZL/SD status and audio/dynarec/D3D9 queues. Local Switch SDK absent;CI NRO.
+
+Final D11 local validation: full COMPOSITION_GL_TEST=1 host/MinGW/Mesa passed,
+including public old-PE8 normal sessions+2 aborts,all existing loader/TLS/rollback/
+CPU/Win32/audio/F7/F8/GUI,22 F software groups and17 GPU groups/five reports.
+Strict parser/inspector and focused ASan/UBSan passed,native parse leak scans on,
+x86 ucontext leak scans off,remaining runtime ordinary. Removed raw fallback and
+zero-pointer BSS-copy mutations each fail independent assertions.56 document links
+and desktop/mobile/search/deep-link/filter/zoom/focus passed. Private ordinary
+Doom95 launcher exit was confirmed before the host poll limit;not playable/menu
+or physical acceptance. Publish normally,verify exact-SHA all6 CI/Pages/NRO/public
+fixture/source manifests;no proprietary asset/trace/report publication.
