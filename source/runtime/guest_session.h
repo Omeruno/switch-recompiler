@@ -1,6 +1,7 @@
 #pragma once
 #include "process.h"
 #include "audio_output.h"
+#include "../cpu/code_storage.h"
 
 namespace win32 {class LegacySession;namespace user {class GuiSession;}}
 
@@ -15,6 +16,7 @@ public:
     GuestSession(const GuestSession&)=delete;
     GuestSession& operator=(const GuestSession&)=delete;
     cpu::PagedGuestMemory& Memory() {return memory_;}
+    cpu::CodeStore& Code() {return code_;}
     Process& ProcessObject() {return process_;}
 private:
     struct Context {
@@ -30,6 +32,7 @@ private:
     // Capture before Process's compatibility constructor changes import binding.
     Context previous_;
     cpu::PagedGuestMemory memory_;
+    cpu::CodeStore code_; // closed after continuations drain,before backing memory
     Process process_;
     AudioScope audio_;
     std::unique_ptr<win32::user::GuiSession> gui_;

@@ -1,15 +1,27 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`fe29b2493f4bb1a99895e93f5df4d11be48c151f` (2026-11-01).
-[CI 41243997654](https://github.com/Omeruno/switch-recompiler/actions/runs/41243997654)
+`fb72a7a0db205ee826671c8c30ddbe01b36eab81` (2026-11-01).
+[CI 41250836221](https://github.com/Omeruno/switch-recompiler/actions/runs/41250836221)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G6 owned block IR/portable oracle;production G5 retained,ARM64 storage/emission next (2026-11-01)
+## Current position: G7 executable storage;production G5 retained,ARM64 emitter next (2026-11-01)
+
+[G7 storage](G7_EXECUTABLE_STORAGE.md): lazy GuestSession-owned immutable native
+images,owner/serial tokens,pinned cooperative invocations and retirement,hard
+per-image/store/global backing quotas. Linux RW→RX and libnx JIT/cache protocol;
+libnx may retain separate RW/RX aliases,so no physical W^X claim. Ambiguous/failed
+release is retained once in a bounded process vault,never retried or reported free.
+8192 real native arithmetic calls;real generated return frame parks inside C++,
+survives store destruction and resumes;ARM64/QEMU,strict and focused ASan/UBSan
+(no-fiber with leak detection),full runtime nested/sequential session tests.
+Production remains G5;no normal FPS gain expected. Next:actual bounded ARM64
+emitter with G6 differential/reference oracles,then guarded dispatch/invalidation/
+scheduler integration. Local SDK absent;Switch build in CI,hardware deferred.
 
 [G6 block IR](G6_CPU_BLOCK_IR.md): bounded32-node/192-byte owned register/ALU/
 branch frontend with read/write masks,portable semantic executor,exact budgets/
@@ -19,8 +31,7 @@ focused strict/sanitizer gates. Hardware oracle adds IR/reference to fast/refere
 for3×50000 native-x86 cases. Authored old PE+ordinal DLL:4 normal new/legacy sessions
 with exact opcode/HLE/instruction/quantum and real file bytes +2 genuine parked
 SleepEx HLE aborts. Production stays G5;no native emission,code cache,batched
-scheduler or new FPS acceptance. Next:session-owned executable storage/W^X/icache/
-leases/retirement,then ARM64 emitter using IR+reference oracles. Hardware deferred.
+scheduler or new FPS acceptance. Storage is now G7;next ARM64 emitter using IR+reference oracles. Hardware deferred.
 
 [G5 common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md): default bounded
 unprefixed32-bit register and in-page mapped ALU/MOV/LEA/stack execution reuses
