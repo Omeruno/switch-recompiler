@@ -63,6 +63,14 @@ public:
     PagedGuestMemory(const PagedGuestMemory&) = delete;
     PagedGuestMemory& operator=(const PagedGuestMemory&) = delete;
 
+    // Per-address-space policy/counters; no static cache or borrowed code bytes.
+    struct IntegerExecutionStats {uint64_t fast=0,reference=0,mapped=0;};
+    void EnableIntegerFastPath(bool enabled){integerFast_=enabled;}
+    bool IntegerFastPathEnabled() const {return integerFast_;}
+    void TrackIntegerExecution(bool enabled){integerTrack_=enabled;integerStats_={};}
+    void RecordIntegerExecution(bool fast,bool mapped=false){if(integerTrack_){if(fast)++integerStats_.fast;else ++integerStats_.reference;if(mapped)++integerStats_.mapped;}}
+    const IntegerExecutionStats& IntegerStats() const {return integerStats_;}
+
     // Для кода, написанного под плоскую память.
     uint32_t BaseAddress() const { return flatBase_; }
     uint32_t EndAddress() const { return flatEnd_; }
@@ -355,6 +363,8 @@ private:
     std::vector<PageInfo> info_;
     std::vector<Block> blocks_;
     std::vector<uint32_t> freeBlocks_;
+    bool integerFast_=true,integerTrack_=false;
+    IntegerExecutionStats integerStats_;
     mutable MemoryFault fault_;
     uint32_t flatBase_ = 0, flatEnd_ = 0;
     mutable uint8_t fetchScratch_[16] = {};

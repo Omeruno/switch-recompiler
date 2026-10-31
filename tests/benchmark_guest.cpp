@@ -15,12 +15,14 @@
 
 #define CHECK(x) do{if(!(x)){std::fprintf(stderr,"benchmark %d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(int argc,char** argv) {
-    CHECK(argc==4 || argc==5);
+    CHECK(argc>=4 && argc<=6);
     const std::string workload=argv[2],instrument=argv[3];
     CHECK(workload=="cpu" || workload=="tiles" || workload=="strokes");
     CHECK(instrument=="baseline" || instrument=="census" || instrument=="raster" || instrument=="both" || instrument=="phase");
     const bool fast=argc==4 || std::strcmp(argv[4],"fast")==0;
     CHECK(argc==4 || fast || std::strcmp(argv[4],"reference")==0);
+    const bool integerFast=argc<6 || std::strcmp(argv[5],"fast")==0;
+    CHECK(integerFast || std::strcmp(argv[5],"reference")==0);
     const bool census=instrument=="census" || instrument=="both";
     const bool raster=instrument=="raster" || instrument=="both";
     rt::Clock::SetFastForward(true);cpu::g_consoleAvailable=false;
@@ -29,6 +31,7 @@ int main(int argc,char** argv) {
     const auto begin=ui::PerformanceNowNs();
     auto session=std::make_unique<rt::GuestSession>();
     auto& p=session->ProcessObject();auto& m=session->Memory();std::string error;
+    m.EnableIntegerFastPath(integerFast);m.TrackIntegerExecution(true);
     win32::user::EnableUi(800,600);ui::g_rasterMetrics.Reset(raster);
     ui::g_gdi.EnableBlitFastPath(fast);
     ui::ExecutionPhaseMetrics phases;phases.Reset(instrument=="phase");
@@ -82,6 +85,7 @@ int main(int argc,char** argv) {
         }
         for(unsigned shift=0;shift<24;shift+=8){pixelHash^=(pixel>>shift)&255;pixelHash*=1099511628211ull;}
     }
+    const auto integerStats=m.IntegerStats();
     const auto rasterSnapshot=ui::g_rasterMetrics;
     ui::g_rasterMetrics.Reset(false);
     const auto teardownBegin=ui::PerformanceNowNs();session.reset();
@@ -111,5 +115,6 @@ int main(int argc,char** argv) {
         // Numeric IDs refer only to this exact executable/build, not a stable ABI.
         std::printf("%s{\"id\":%zu,\"count\":%llu}",comma?",":"",i,(unsigned long long)profile.hosts[i]);comma=true;
     }
-    std::puts("]}");
+    std::printf("],\"cpu_path\":\"%s\",\"integer_fast\":%llu,\"integer_reference\":%llu,\"integer_mapped\":%llu}\n",integerFast?"fast":"reference",
+        (unsigned long long)integerStats.fast,(unsigned long long)integerStats.reference,(unsigned long long)integerStats.mapped);
 }

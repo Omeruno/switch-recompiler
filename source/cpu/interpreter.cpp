@@ -188,7 +188,121 @@ uint32_t DoubleShift(CpuState& c, bool left, uint32_t dst, uint32_t src, uint32_
 
 } // namespace
 
+// Complete, unprefixed register-only instructions cannot fault on data memory.
+// Read the current bytes on every execution: no cache invalidation assumptions.
+// Every admission/length check precedes the first architectural state change.
+static bool FastInteger(CpuState& c,const uint8_t* code,uint32_t available,uint8_t& length,size_t& profile) {
+    if(!available)return false;
+    const uint8_t op=code[0];profile=op;length=1;
+    auto imm=[&](unsigned at){uint32_t v;std::memcpy(&v,code+at,4);return v;};
+    if(op>=0x40 && op<=0x4f) {
+        const auto r=op&7;const auto a=c.regs[r];const bool dec=op>=0x48;
+        const auto value=dec?a-1:a+1;c.SetLazy(dec?LazyOp::Dec:LazyOp::Inc,32,a,1,value);c.regs[r]=value;
+    } else if(op>=0x90 && op<=0x97) {
+        const auto value=c.regs[0];c.regs[0]=c.regs[op&7];c.regs[op&7]=value;
+    } else if(op>=0xb8 && op<=0xbf) {
+        if(available<5)return false;
+        length=5;c.regs[op&7]=imm(1);
+    } else if(op<0x40 && (op&7)==5) {
+        if(available<5)return false;
+        length=5;const auto kind=op>>3;
+        const auto value=Alu(c,kind,c.regs[0],imm(1),32);if(kind!=7)c.regs[0]=value;
+    } else if(op==0xa9) {
+        if(available<5)return false;
+        length=5;c.SetLazy(LazyOp::Logic,32,0,0,c.regs[0]&imm(1));
+    } else {
+        if(available<2)return false;
+        unsigned at=1;
+        if(op==0x0f){if(available<3 || code[1]!=0xaf)return false;at=2;profile=256+0xaf;}
+        const uint8_t modrm=code[at];if((modrm&0xc0)!=0xc0)return false;
+        const auto reg=(modrm>>3)&7,rm=modrm&7;length=uint8_t(at+1);
+        if(op<0x40 && ((op&7)==1 || (op&7)==3)) {
+            const auto kind=op>>3;const auto dst=(op&2)?reg:rm,src=(op&2)?rm:reg;
+            const auto value=Alu(c,kind,c.regs[dst],c.regs[src],32);if(kind!=7)c.regs[dst]=value;
+        } else if(op==0x89 || op==0x8b) {
+            if(op==0x89)c.regs[rm]=c.regs[reg];else c.regs[reg]=c.regs[rm];
+        } else if(op==0x85)c.SetLazy(LazyOp::Logic,32,0,0,c.regs[rm]&c.regs[reg]);
+        else if(op==0x87){const auto value=c.regs[rm];c.regs[rm]=c.regs[reg];c.regs[reg]=value;}
+        else if(op==0x81 || op==0x83) {
+            length=op==0x81?6:3;if(available<length)return false;
+            const uint32_t value=op==0x81?imm(2):uint32_t(int32_t(int8_t(code[2])));
+            const auto result=Alu(c,reg,c.regs[rm],value,32);if(reg!=7)c.regs[rm]=result;
+        } else if(op==0xc7 && reg==0) {
+            if(available<6)return false;
+            length=6;c.regs[rm]=imm(2);
+        } else if(op==0xc1 || op==0xd1 || op==0xd3) {
+            if(op==0xc1 && available<3)return false;
+            const auto count=op==0xc1?code[2]:op==0xd1?1:c.regs[1]&255;
+            length=op==0xc1?3:2;c.regs[rm]=Shift(c,reg,c.regs[rm],count,32);
+        } else if(op==0x69 || op==0x6b || op==0x0f) {
+            length=op==0x69?6:3;if(available<length)return false;
+            const int64_t a=int32_t(c.regs[op==0x0f?reg:rm]);
+            const int64_t b=op==0x0f?int32_t(c.regs[rm]):op==0x6b?int32_t(int8_t(code[2])):int32_t(imm(2));
+            const auto product=a*b;const auto value=uint32_t(product);const bool overflow=int64_t(int32_t(value))!=product;
+            c.regs[reg]=value;SetResultFlags(c,value,32,overflow,overflow);
+        } else return false;
+    }
+    c.eip+=length;return true;
+}
+
+// Admit only complete ordinary 32-bit accesses wholly inside one mapped page.
+// Every refused address/encoding is executed by the reference fault/rollback path.
+static bool FastMapped(CpuState& c,IGuestMemory& m,const uint8_t* code,uint32_t available,uint8_t& length) {
+    if(!available)return false;
+    const uint8_t op=code[0];
+    const bool alu=op<0x40 && ((op&7)==1 || (op&7)==3);
+    if(!(alu || op==0x89 || op==0x8b || op==0x8d || op==0xc7 || op==0x85 || op==0x81 || op==0x83 ||
+        (op>=0x50 && op<=0x5f) || op==0x68 || op==0x6a))return false;
+    detail::ExecContext x(c,m,0,0);x.start=c.eip;x.code=code;x.fetchLimit=available;x.pos=1;
+    auto inPage=[&](uint32_t address){return (address&IGuestMemory::kPageMask)<=IGuestMemory::kPageSize-4 && m.IsMapped(address);};
+    if((op>=0x50 && op<=0x57) || op==0x68 || op==0x6a) {
+        const auto value=op==0x68?x.Fetch32():op==0x6a?uint32_t(x.FetchSimm8()):c.regs[op&7];
+        const auto sp=c.ESP()-4;const auto address=sp+c.segBase[SEG_SS];
+        if(x.fetchFault || !inPage(address))return false;
+        m.Write32(address,value);c.ESP()=sp;
+    } else if(op>=0x58 && op<=0x5f) {
+        const auto address=c.ESP()+c.segBase[SEG_SS];if(!inPage(address))return false;
+        const auto value=m.Read32(address);c.ESP()+=4;c.regs[op&7]=value;
+    } else {
+        const auto r=x.DecodeModRM();
+        uint32_t value=0;
+        if(op==0xc7 || op==0x81)value=x.Fetch32();else if(op==0x83)value=uint32_t(x.FetchSimm8());
+        if(x.fetchFault || r.isReg || (op==0xc7 && r.reg!=0))return false;
+        if(op==0x8d)c.regs[r.reg]=r.ea;
+        else {
+            if(!inPage(r.addr))return false;
+            if(op==0x89 || op==0xc7)m.Write32(r.addr,op==0x89?c.regs[r.reg]:value);
+            else if(op==0x8b)c.regs[r.reg]=m.Read32(r.addr);
+            else if(op==0x85)c.SetLazy(LazyOp::Logic,32,0,0,m.Read32(r.addr)&c.regs[r.reg]);
+            else {
+                const unsigned kind=alu?op>>3:r.reg;const bool dstReg=alu && (op&2);
+                const uint32_t a=dstReg?c.regs[r.reg]:m.Read32(r.addr);
+                const uint32_t b=alu?(dstReg?m.Read32(r.addr):c.regs[r.reg]):value;
+                const auto result=Alu(c,kind,a,b,32);
+                if(kind!=7){if(dstReg)c.regs[r.reg]=result;else m.Write32(r.addr,result);}
+            }
+        }
+    }
+    length=uint8_t(x.pos);c.eip+=length;return true;
+}
+
 StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
+    memory_.ClearFault();
+    const uint8_t* bytes=memory_.RawPointer(cpu.eip);
+    const uint32_t available=memory_.FetchLimit(cpu.eip);
+    g_lastKnownEip=cpu.eip;++g_timeStampCounter;
+    uint8_t fastLength=0;size_t fastOpcode=0;
+    const uint8_t firstOpcode=available?bytes[0]:0;
+    bool mapped=false;
+    if(memory_.IntegerFastPathEnabled() && (FastInteger(cpu,bytes,available,fastLength,fastOpcode) ||
+        (mapped=FastMapped(cpu,memory_,bytes,available,fastLength)))) {
+        memory_.RecordIntegerExecution(true,mapped);
+        if(mapped)fastOpcode=firstOpcode;
+        if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(fastOpcode);
+        if(outInstr){outInstr->length=fastLength;outInstr->rawOpcodeForDebug=firstOpcode;outInstr->mnemonic=Mnemonic::Unknown;}
+        return StepResult::Continue;
+    }
+    memory_.RecordIntegerExecution(false);
     // Снимок для отката при исключении (память не откатывается: сбойная
     // инструкция в x86 не успевает ничего записать, кроме REP-циклов,
     // которые ведут учёт сами).
@@ -200,13 +314,10 @@ StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
     const uint8_t savedW = cpu.lazyWidth, savedCin = cpu.lazyCarryIn;
     const uint32_t savedA = cpu.lazyA, savedB = cpu.lazyB, savedRes = cpu.lazyRes;
 
-    memory_.ClearFault();
     ExecContext x(cpu, memory_, fsBase_, gsBase_);
     x.start = cpu.eip;
-    x.code = memory_.RawPointer(cpu.eip);
-    x.fetchLimit = memory_.FetchLimit(cpu.eip);
-    g_lastKnownEip = cpu.eip;
-    ++g_timeStampCounter;
+    x.code = bytes;
+    x.fetchLimit = available;
 
     StepResult result = StepResult::Continue;
     CpuState& c = cpu;

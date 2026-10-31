@@ -1,15 +1,31 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`79331d8f71f5a04f4ef4c599d512684ca7c64dca` (2026-10-31).
-[CI 41178225409](https://github.com/Omeruno/switch-recompiler/actions/runs/41178225409)
+`12c678a2bc38af5c96857d8f59fafc07715e3c0a` (2026-11-01).
+[CI 41241023826](https://github.com/Omeruno/switch-recompiler/actions/runs/41241023826)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D13 legacy registry creation; Doom95 New Game reaches MIDI device enumeration,game/DirectX open (2026-10-31)
+## Current position: G5 shared CPU fast execution/measurements/console diagnostics; full dynarec/GPU/physical speed remain open (2026-11-01)
+
+[G5 common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md): default bounded
+unprefixed32-bit register and in-page mapped ALU/MOV/LEA/stack execution reuses
+reference flags/fault semantics and current code bytes.214323 differential cases,
+ARM64/QEMU and focused ASan/UBSan/strict gates pass. Native x86 oracle now checks
+fast/reference for each of3×50000 cases before real-CPU comparison. Public PE
+CPU/copies/strokes have rotating paired measurements and exact checksum/pixel/
+quanta/opcode/HLE parity,source/fixture-bound reports. Local broader-path medians
+about1.21×/1.10×/1.06× are host-only,no Switch FPS or universal gain claim.
+Switch cpu-reference.flag selects the full reference;profile-execution.flag
+controls detailed clocks+bounded opcode/HLE census. End-of-session owning CPU
+report and modern renderer counters are emitted after draining;normal detailed
+raster clocks are off. Full dynarec/code cache and GPU-GDI/DirectX remain open.
+User priority2026-11-01 is performance before Doom95 MIDI/import coverage;next
+software block is bounded block/IR frontend+oracle and safe ARM64 code storage,
+with existing CPU/GPU correctness/fallback retained. Physical tests deferred.
 
 [D13 legacy registry creation](D13_LEGACY_REGISTRY_CREATE.md): RegCreateKey A/W
 uses real D1 keys/grants with stdcall12 and no reads of Ex-only stack arguments.
@@ -4143,3 +4159,21 @@ close actual keys;native independent store bytes/error/output/ABI checks pass.
 Private Doom95 New Game passes this barrier and reaches missing midiOutGetNumDevs.
 Next is truthful MIDI-device enumeration,then real startup/DirectDraw tracing.
 No game/DirectX/physical acceptance;D1 encoding/security/persistence limits remain.
+
+## 2026-11-01 G5 — performance priority
+
+[G5 common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md): default bounded
+unprefixed32-bit register and in-page mapped ALU/MOV/LEA/stack execution reuses
+reference flags/fault semantics and current code bytes.214323 differential cases,
+ARM64/QEMU and focused ASan/UBSan/strict gates pass. Native x86 oracle now checks
+fast/reference for each of3×50000 cases before real-CPU comparison. Public PE
+CPU/copies/strokes have rotating paired measurements and exact checksum/pixel/
+quanta/opcode/HLE parity,source/fixture-bound reports. Local broader-path medians
+about1.21×/1.10×/1.06× are host-only,no Switch FPS or universal gain claim.
+Switch cpu-reference.flag selects the full reference;profile-execution.flag
+controls detailed clocks+bounded opcode/HLE census. End-of-session owning CPU
+report and modern renderer counters are emitted after draining;normal detailed
+raster clocks are off. Full dynarec/code cache and GPU-GDI/DirectX remain open.
+User priority2026-11-01 is performance before Doom95 MIDI/import coverage;next
+software block is bounded block/IR frontend+oracle and safe ARM64 code storage,
+with existing CPU/GPU correctness/fallback retained. Physical tests deferred.

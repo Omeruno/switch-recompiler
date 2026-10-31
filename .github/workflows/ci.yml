@@ -31,6 +31,24 @@ jobs:
           aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -static -fno-exceptions -fno-rtti -I. tests/test_blit_fast_path.cpp source/ui/ui_gdi.cpp source/ui/font.cpp -o /tmp/test_blit_arm64
           qemu-aarch64 /tmp/test_blit_arm64
 
+      - name: Compare actual ARM64 integer fast execution with reference
+        run: |
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -fno-exceptions -fno-rtti -I. tests/test_integer_fast.cpp source/cpu/interpreter.cpp source/cpu/fpu.cpp source/cpu/sse.cpp -o /tmp/test_integer_arm64
+          mkdir -p build-host
+          qemu-aarch64 /tmp/test_integer_arm64 > build-host/integer-arm64.log
+          cat build-host/integer-arm64.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-integer-arm64
+          if-no-files-found: error
+          path: |
+            build-host/integer-arm64.log
+            tests/test_integer_fast.cpp
+            source/cpu/interpreter.cpp
+            source/cpu/paged_memory.h
+            source/runtime/integer_execution_report.h
+            docs/G5_CPU_INTEGER_PERFORMANCE.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -94,6 +112,34 @@ jobs:
           path: |
             build-host/gpu_gdi_prototype.log
             docs/G3_GPU_GDI_PROTOTYPE.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-integer-performance
+          if-no-files-found: error
+          path: |
+            build-host/test_integer_fast.log
+            build-host/integer_measurement.log
+            build-host/integer_measurement.json
+            build-host/guest-run.*/graphics_workload.exe
+            tests/test_integer_fast.cpp
+            tests/benchmark_guest.cpp
+            tests/guest/graphics_workload.c
+            tests/cpu_oracle/cpu_fuzz.cpp
+            tools/benchmark_integer.py
+            source/cpu/interpreter.cpp
+            source/cpu/interpreter.h
+            source/cpu/paged_memory.h
+            source/cpu/cpu_state.h
+            source/cpu/exec_context.h
+            source/cpu/guest_memory.h
+            source/cpu/fpu.cpp
+            source/cpu/sse.cpp
+            source/runtime/workload_profile.h
+            source/runtime/workload_report.h
+            source/runtime/integer_execution_report.h
+            source/main.cpp
+            docs/G5_CPU_INTEGER_PERFORMANCE.md
+
       - uses: actions/upload-artifact@v4
         with:
           name: stage-d-launcher-contract
@@ -509,6 +555,21 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-multilib g++-multilib
       - name: Сверка (int, x87, SSE)
         run: sh tools/run_cpu_oracle.sh 50000 all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-hardware-oracle
+          if-no-files-found: error
+          path: |
+            build-host/cpu_fuzz_*.log
+            tests/cpu_oracle/cpu_fuzz.cpp
+            tests/cpu_oracle/oracle.c
+            tests/cpu_oracle/oracle_common.h
+            tests/cpu_oracle/oracle_entry.S
+            tools/run_cpu_oracle.sh
+            source/cpu/interpreter.cpp
+            source/cpu/paged_memory.h
+            docs/G5_CPU_INTEGER_PERFORMANCE.md
+
 
   switch-build:
     name: Сборка для Switch (devkitA64)

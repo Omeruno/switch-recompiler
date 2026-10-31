@@ -1,10 +1,13 @@
-# Active implementation map — 2026-10-31
+# Active implementation map — 2026-11-01
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: D13 RegCreateKey A/W implemented over real D1 keys/grants. Doom95 New Game passes registry creation and reaches missing midiOutGetNumDevs;game/DirectX remain open. F8 controls/view/indexed copies retained;physical acceptance remains separate.
-G4b.2o routing, D1–D4d file audio and F6c XP-style media visuals/real PCM effects/music icons/double-click implemented; MCI/MediaPlayer/PlaySound mixer integration,DirectSound/MIDI and physical sound remain open.** Runtime baseline `79331d8f71f5a04f4ef4c599d512684ca7c64dca`
-passed [CI41178225409, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41178225409).
+**Current position: G5 common interpreter fast execution and console/paired measurement
+implemented; user priority is performance before more Doom95 imports.214323
+fast/reference cases,ARM64/QEMU and bounded public PE measurements;no physical
+FPS or full dynarec acceptance. D13/MIDI,DirectX and media-bus queues remain open.**
+Incoming verified runtime `12c678a2bc38af5c96857d8f59fafc07715e3c0a`
+passed [CI41241023826, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41241023826).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -31,7 +34,7 @@ choose subsequent CPU/H/D work by measured bottlenecks and actual dependencies.
 | D | PE/DLL/TLS/unload/rollback, bounded SEH, substantial Win32/CRT | Page-right enforcement, full unwind/COM/API compatibility; D1–D4d bounded playback controls/PCM/MP3/MCI implemented; mixing/DirectSound/MIDI and game audio remain open |
 | E | CPU GDI reference, production Switch GL composition/fallback, retained windows/ownership/revisions, E8/E9 metrics/public oracles | Current physical Paint/GPU/fallback/Lite/input/relaunch and real workload evidence |
 | F | Bounded software F0–F5 passes; Luna updates and active-panel integration retained | Physical acceptance; complete XP window behavior and planned extensions |
-| G | G0/G1 measurement, G2 CPU SRCCOPY enabled; G3/G4a/G4b.1 actual-GL semantic prototypes/count and timing controls | Bounded G4b.2 native software acceptance; default/physical/broader GDI and dynarec/code-cache remain open |
+| G | [G5](G5_CPU_INTEGER_PERFORMANCE.md) bounded common CPU execution,reference/console diagnostics,paired PE measurements;G0/G1 measurement, G2 CPU SRCCOPY enabled; G3/G4a/G4b.1 actual-GL semantic prototypes/count and timing controls | Bounded G4b.2 native software acceptance; default/physical/broader GDI and dynarec/code-cache remain open |
 | H | No completed DirectDraw/D3D translation | Real supported graphics APIs, application/game fixtures and GPU translation |
 | I | CI NROs, diagnostics and public artifacts | Product compatibility matrix/configuration/delivery/stability/acceptance |
 
@@ -118,7 +121,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | D11 | [Old PE/Doom95 audit](D11_OLD_PE_AND_DOOM95.md):raw-backed VirtualSize0/header imports,bounded records/strings,IAT/BSS/map guards;8 x86 exits+2 aborts with relocated ordinal DLL | Doom95 splash/launcher only;actual launcher boundary and DirectDraw/DirectSound/DirectPlay remain open |
 | D12 | [Launcher contract](D12_LAUNCHER_CONTRACT.md):checked empty A/W+Ex paths,virtual UserName,unsupported DirectPlay names/ordinals with correct ABI;4 normal x86 sessions+2 aborts | Composed launcher visible;New Game stops at RegCreateKeyA;configuration/Common Controls/game/DirectX remain open |
 | D13 | [Legacy registry create](D13_LEGACY_REGISTRY_CREATE.md):real RegCreateKey A/W,stdcall12,checked outputs,no Ex-only stack reads;4 normal x86 sessions+2 aborts and independent store bytes | New Game reaches missing MIDI device enumeration;game/DirectX remain open |
-| Next independent block | Truthful MIDI-device enumeration;trace New Game again,then bounded DirectDraw/DirectSound and supported Common Controls;retain F8 performance/virtual display/audio-bus queues | Preserve device/header/callback/decoder lifetimes; DirectSound/MIDI and physical sound/latency/underruns remain pending |
+| G5 | [Common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md):register/mapped/stack path,214323 differential cases,ARM64/QEMU,native CPU dual-path oracle;paired PE reports and Switch reference/census flags | Host-only ratios;full dynarec/physical performance/GPU game APIs remain open |
+| Next independent block | Bounded CPU block/IR frontend and differential oracle,then safe session-owned ARM64 executable storage/emission/invalidation;hardware profiles when available | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -127,31 +131,29 @@ repeat it as a prerequisite or treat it as an accepted full dynarec.
 
 ## Next package and activation gates
 
-1. **Implemented native entry:** [live HWND ownership → mixed frame](G4B2D4_LIVE_WINDOW_FRAMES.md).
-   Real x86/EGL pixels, CPU-window occlusion, original read/ROP/DIB counts and actual-loss fallback stay gates.
-2. **Implemented native entry:** [ShellSession overlay + USER selection](G4B2E_MIXED_WORKSPACE.md).
-   Dynamic native chrome/Start/dialogs, GPU-only epochs, no selection checkpoint and failure acknowledgement are checked.
-3. **Implemented opt-in adapter:** [persistent Switch device/swap/cursor](G4B2F_SWITCH_MIXED_OUTPUT.md).
-   Real host x86/EGL/recovery/order checks and Switch CI compilation; default off, not physical acceptance or ordinary GPU GDI.
-4. **Implemented registered-path audit:** [host pixel/fault boundaries](G4B2G_HOST_PIXEL_AUDIT.md).
-   Guarded CPU views, expired/reentrant/sticky faults, checked compose, lifecycle and suspended-session isolation are tested.
-5. **Implemented bounded experiment:** [ordinary solid FillRect/PATCOPY dispatch](G4B2H_ORDINARY_GDI_DISPATCH.md), public real-x86 CPU/EGL/read/ROP/DIB/layout/lifecycle/budget and actual-loss recovery gates. Default off.
-6. **Implemented paired first-frame and warm measurements:** [persistent-resource CPU/reference-GPU/retired-GPU experiment](G4B2I_WARM_GDI_JOURNAL.md), capacity readbacks8→0, real final read retained. [G4b.2j](G4B2J_RETAINED_WORKSPACE.md) measures native snapshot reuse and partial/DIB boundaries. [G4b.2k](G4B2K_EXACT_DAMAGE.md) implements adaptive exact damage and atomic masked CPU/capture exchange. [G4b.2l](G4B2L_CAPACITY_REPLAY.md) bounds private capacity replay and preserves actual application reads. [G4b.2m](G4B2M_DIFFERENTIAL_IMPORT.md) measures seeds and bounds changed-rectangle uploads. [G4b.2n](G4B2N_SOFTWARE_ACCEPTANCE.md) consolidates software gates and compares actual CPU/native routes. [G4b.2o](G4B2O_CPU_ROUTING.md) implements the explicit route alternative. **Next:** shared MCI/MediaPlayer/PlaySound + D4f waveOut sources and DirectSound/MIDI after [D1 registry](D1_REGISTRY_KEYS.md), [D2 keyboard](D2_KEYBOARD_LAYOUT.md) and [D3 INI/profile](D3_INI_PROFILES.md); retain USER/GL/CPU/alias/read/ROP/DIB/fault contracts. Default/physical acceptance remain open.
-7. [D6 palette/string/message/time](D6_PALETTE_STRINGS.md) removes observed startup imports and reaches a private host table frame. [D7 shared lookup](D7_WINDOW_LOOKUP.md) passes legacy FindWindowA; [D8 public interaction/frame progress](D8_GAME_LOOP.md) verifies the common loop; [F7 controller settings](F7_CONTROLLER_BINDINGS.md) is implemented; next common audio-source integration and separate legacy LoadIconA resource reproducer; no game acceptance. [D5 legacy file I/O](D5_LEGACY_FILE.md) implements the observed OpenFile entry blocker with a public reproducer. Continue D compatibility with public reproducers of actual API/memory/unwind
-   blockers; Pinball x86 remains a separate unsupported application target.
-8. Develop the measured x86→ARM64 dynarec path: real block execution, code-cache
-   invalidation/lifetime, instruction/cache correctness and interpreter fallback.
-9. Audit H/D3D9 for target games, then actual supported resources/shaders/commands
-   and public graphics fixtures. No Direct3D/game acceptance exists today.
+Performance is the user's current priority(2026-11-01). [G5's implementation queue](G5_CPU_INTEGER_PERFORMANCE.md)
+supersedes the previous next-MIDI and immediate GPU-sequence wording.
 
-Steps2–6 are the immediate GPU integration sequence. Steps7–9 are larger follow-on
-queues; measurements and dependencies may change their order. Every implementation
-package carries its own tests, handoff/map update and exact-SHA six-job CI; testing
-is not postponed until the end. Physical workload evidence remains deferred.
+1. **Implemented G5:** current-byte register/in-page mapped interpreter paths,
+   reference mode,paired public PE measurement and opt-in console diagnostics.
+2. **Next independent software block:** bounded block/IR frontend,exact instruction
+   accounting and differential oracle;explicit host/fault/branch/callback exits.
+3. Session-owned Horizon/libnx executable code storage,W^X/icache publication,
+   bounded retirement and real fallback. Existing successful JIT42 need not repeat.
+4. Actual ARM64 emission for useful x86 blocks,with flags/memory/TEB/SEH semantics.
+5. Invalidation for guest writes,raw host aliases,DLL unload/remap;page generations
+   alone cannot observe all aliases. Keep scheduler quantum/stop/callback gates.
+6. Actual Switch profile/overhead comparison when physical testing resumes;use
+   phase/census scopes honestly. Hardware is not a prerequisite for steps2–5.
+7. Extend resident GPU GDI/batches by measured workload needs and existing
+   CPU/ROP/readback/DIB/alias/context-loss/ownership/fallback oracles;default CPU.
+8. Real DirectDraw/D3D resources/shaders/commands for the selected target versions.
+9. Retained compatibility queues: Doom95 MIDI discovery,media-bus/DirectSound/MIDI,
+   legacy icon/resources,virtual display,installers/archives and broader system APIs.
 
-D compatibility is a separate queue: page protection/unwind/COM/API contracts
-and concrete public reproducers. Pinball x86 is not certified by graphics work.
-G4b.2 is not full x86→ARM64 dynarec or DirectDraw/D3D.
+Each package updates handoff/map and passes full host/MinGW/Mesa,exact-SHA six-job
+CI,public artifacts and source identity. Software timings are not Switch FPS;
+full hardware/application input/audio/stability acceptance remains deferred.
 
 ## Installer/archive extension and later product work
 

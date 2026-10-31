@@ -35,6 +35,8 @@
 #include "runtime/audio_audout.h"
 #include "runtime/files.h"
 #include "runtime/guest_execution_log.h"
+#include "runtime/workload_report.h"
+#include "runtime/integer_execution_report.h"
 #include "ui/presentation.h"
 #include "ui/pointer_input.h"
 #include "ui/launcher_loop.h"
@@ -96,7 +98,7 @@ namespace newui {
 extern win32::user::ShellSession* g_shellSession;
 bool Wait(int timeoutMs, std::vector<win32::user::InputEvent>& out);
 void Present(const ui::Surface& s);
-void BeginPresentation(const char* guestPath);
+void BeginPresentation(const char* guestPath,bool profiling);
 extern bool g_gpuActive;
 void EndPresentation();
 bool BeginMixedPresentation(win32::user::ShellSession&);
@@ -332,6 +334,23 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     rt::GuestExecutionLog executionLog("sdmc:/switch-recompiler-execution.txt",path,g_useNewUi?"new":"legacy",SR_BUILD_REVISION);
     rt::GuestSession guestSession;
     auto& mem=guestSession.Memory();auto& proc=guestSession.ProcessObject();
+    auto flag=[](const char* file){FILE* f=fopen(file,"rb");const bool on=f && fgetc(f)=='1';if(f)fclose(f);return on;};
+    const bool profileExecution=flag("sdmc:/switch-recompiler/profile-execution.flag");
+    mem.EnableIntegerFastPath(!flag("sdmc:/switch-recompiler/cpu-reference.flag"));
+    mem.TrackIntegerExecution(profileExecution);
+    struct PerformanceReport {
+        cpu::IGuestMemory& memory;const char* executable;bool tracked;
+        std::unique_ptr<rt::WorkloadProfile> census;
+        ~PerformanceReport(){
+            FILE* out=fopen("sdmc:/switch-recompiler-performance.txt","w");if(!out)return;
+            fprintf(out,"Execution performance v1\nBuild: %s\nExecutable: %s\n",SR_BUILD_REVISION,executable);
+            rt::WriteIntegerExecutionReport(out,memory,tracked);
+            if(census)rt::WriteWorkloadReport(out,*census);
+            else fprintf(out,"Opcode/HLE census: %s\n",tracked?"allocation unavailable":"disabled");
+            fclose(out);
+        }
+    } performanceReport{mem,path,profileExecution,profileExecution?std::unique_ptr<rt::WorkloadProfile>(new(std::nothrow) rt::WorkloadProfile()):nullptr};
+    rt::WorkloadProfileScope workloadScope(performanceReport.census.get());
     win32::EnableHostLayer(win32::kUiLayer,g_useNewUi);
     struct FrontendCleanup {bool legacy;~FrontendCleanup(){if(legacy)ResetLegacyFrontend();}} frontendCleanup{!g_useNewUi};
     if(!g_useNewUi) {
@@ -351,7 +370,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         win32::user::g_platform.present = &newui::Present;
         win32::user::g_platform.textInput = &newui::TextInput;
         win32::user::EnableUi(ui::kHandheldWidth,ui::kHandheldHeight);
-        newui::BeginPresentation(path);
+        newui::BeginPresentation(path,profileExecution);
         win32::user::EnableWindowLayers(newui::g_gpuActive);
     }
 
@@ -1836,18 +1855,15 @@ bool FallBackToSoftware(const char* error) {
     if(g_mixedBindings)g_mixedBindings->ContextLost();
     return CreateSoftwareOutput();
 }
-void BeginPresentation(const char* guestPath) {
+void BeginPresentation(const char* guestPath,bool profiling) {
     // The device/context and the last owned frame remain alive across guests.
     g_cursorVisible=true;g_guestPresentation=true;g_presentation.ResetStats();g_gpu.ResetStats();
     g_nativeMixedOutput.Reset();g_mixedDispatch={};g_mixedCoherence={};g_mixedCoherenceFault="none";g_mixedRequested=g_mixedEnabled=g_cpuRoutingRequested=false;g_mixedCpuFrames=g_mixedCpuSubmissions=0;g_mixedSubmissions=g_mixedRedraws=g_mixedReused=g_mixedSnapshotBytes=0;
     g_scopeFallbackStart=g_gpuFallbacks;
     g_presentationGuest=guestPath;g_framebufferStats={};
-    ui::g_rasterMetrics.Reset(true);win32::user::S().inputFrames.Reset(true);
-    // Explicit opt-in; no per-instruction clocks or SD writes. Read once/session.
-    FILE* executionFlag=fopen("sdmc:/switch-recompiler/profile-execution.flag","rb");
-    const bool executionTiming=executionFlag && fgetc(executionFlag)=='1';
-    if(executionFlag)fclose(executionFlag);
-    ui::g_executionPhases.Reset(executionTiming);
+    // Detailed clocks and instruction census are opt-in; ordinary output counters remain.
+    ui::g_rasterMetrics.Reset(profiling);win32::user::S().inputFrames.Reset(profiling);
+    ui::g_executionPhases.Reset(profiling);
     g_havePresented=false;
     g_touching=false;
     win32::user::S().cursorX=static_cast<int>(g_cx);win32::user::S().cursorY=static_cast<int>(g_cy);
@@ -1913,6 +1929,8 @@ void EndPresentation() {
             fprintf(log,"%s samples: %llu\n%s total ns: %llu\n%s max ns: %llu\n",name,(unsigned long long)d.count,
                 name,(unsigned long long)d.totalNs,name,(unsigned long long)d.maxNs);
         };
+        if(rt::g_process)rt::WriteIntegerExecutionReport(log,rt::g_process->Memory(),ui::g_executionPhases.Enabled());
+        fprintf(log,"Detailed raster timing enabled: %u\n",unsigned(ui::g_rasterMetrics.Enabled()));
         fprintf(log,"Execution phase timing enabled: %u\n",unsigned(ui::g_executionPhases.Enabled()));
         duration("Executor quantum wall",ui::g_executionPhases.Phase(ui::ExecutionPhase::Quantum));
         duration("Native service wall",ui::g_executionPhases.Phase(ui::ExecutionPhase::NativeService));

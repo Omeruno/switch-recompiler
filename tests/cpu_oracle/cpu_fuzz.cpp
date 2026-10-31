@@ -576,7 +576,12 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < cases.size(); ++i) {
         const Built& b = cases[i];
         const OracleResult& want = results[i];
-        RunOurs(mem, b.t, ours);
+        mem.EnableIntegerFastPath(true);RunOurs(mem, b.t, ours);
+        OurRun reference;mem.EnableIntegerFastPath(false);RunOurs(mem,b.t,reference);
+        if(std::memcmp(&ours.r,&reference.r,sizeof(OracleResult)) || std::memcmp(ours.data,reference.data,sizeof(ours.data))) {
+            std::fprintf(stderr,"fast/reference differential failure case %zu\n",i);return 3;
+        }
+
         byName[b.name]++;
         std::string why;
         if (ours.r.status != want.status) {
@@ -655,5 +660,6 @@ int main(int argc, char** argv) {
         int fails = failByName.count(kv.first) ? failByName[kv.first] : 0;
         std::printf("  %-12s %6d%s\n", kv.first.c_str(), kv.second, fails ? (" FAIL " + std::to_string(fails)).c_str() : "");
     }
+    std::printf("fast/reference parity: %zu cases\n",cases.size());
     return mismatches ? 1 : 0;
 }
