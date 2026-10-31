@@ -13,6 +13,7 @@ void WINAPI start(void){
     file=CreateFileA("old-pe-public.txt",GENERIC_WRITE,0,NULL,CREATE_ALWAYS,0,NULL);CHECK(file!=INVALID_HANDLE_VALUE);
     CHECK(WriteFile(file,payload,sizeof(payload)-1,&n,NULL) && n==sizeof(payload)-1);
     CHECK(FlushFileBuffers(file) && CloseHandle(file));OldPeProbe[1]=1;
+    if(OldPeProbe[0]==2){SleepEx(INFINITE,TRUE);ExitProcess(201);}
     if(OldPeProbe[0])for(;;)Sleep(0);
     ExitProcess(0);
 }

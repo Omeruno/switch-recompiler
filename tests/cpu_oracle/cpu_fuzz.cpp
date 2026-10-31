@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "source/cpu/interpreter.h"
+#include "source/cpu/block_ir.h"
 
 extern "C" {
 #include "oracle_common.h"
@@ -451,7 +452,7 @@ struct OurRun {
     uint8_t data[ORACLE_DATA_SIZE];
 };
 
-void RunOurs(cpu::PagedGuestMemory& mem, const OracleCase& t, OurRun& out) {
+void RunOurs(cpu::PagedGuestMemory& mem, const OracleCase& t, OurRun& out,bool portableIr=false) {
     uint8_t data[ORACLE_DATA_SIZE];
     OracleFillData(data, &t);
     mem.LoadBytes(ORACLE_DATA_BASE, data, ORACLE_DATA_SIZE);
@@ -474,6 +475,10 @@ void RunOurs(cpu::PagedGuestMemory& mem, const OracleCase& t, OurRun& out) {
     out.r.status = ORACLE_OK;
     for (int steps = 0; c.eip != end; ++steps) {
         if (steps > 64) { out.r.status = ORACLE_OTHER; break; }
+        if(portableIr){
+            const auto block=cpu::ir::Build(mem,c.eip);const auto result=cpu::ir::Execute(block,mem,c,1);
+            if(result.executed)continue;
+        }
         cpu::StepResult res = interp.Step(c);
         if (res == cpu::StepResult::Continue) continue;
         if (res == cpu::StepResult::Halted) { out.r.status = ORACLE_OTHER; break; }
@@ -570,6 +575,7 @@ int main(int argc, char** argv) {
     mem.Map(ORACLE_DATA_BASE, ORACLE_DATA_SIZE);
     mem.Map(ORACLE_CODE_BASE, 0x1000, cpu::kProtRWX);
 
+    mem.TrackIntegerExecution(true);
     int mismatches = 0, shown = 0;
     std::map<std::string, int> byName, failByName;
     OurRun ours;
@@ -582,6 +588,10 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,"fast/reference differential failure case %zu\n",i);return 3;
         }
 
+        OurRun portable;RunOurs(mem,b.t,portable,true);
+        if(std::memcmp(&portable.r,&reference.r,sizeof(OracleResult)) || std::memcmp(portable.data,reference.data,sizeof(portable.data))){
+            std::fprintf(stderr,"IR/reference differential failure case %zu\n",i);return 4;
+        }
         byName[b.name]++;
         std::string why;
         if (ours.r.status != want.status) {
@@ -661,5 +671,6 @@ int main(int argc, char** argv) {
         std::printf("  %-12s %6d%s\n", kv.first.c_str(), kv.second, fails ? (" FAIL " + std::to_string(fails)).c_str() : "");
     }
     std::printf("fast/reference parity: %zu cases\n",cases.size());
+    std::printf("IR/reference parity: %zu cases; accepted=%llu\n",cases.size(),(unsigned long long)mem.IntegerStats().ir);
     return mismatches ? 1 : 0;
 }

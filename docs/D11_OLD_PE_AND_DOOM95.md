@@ -111,3 +111,5 @@ See [target games](TARGET_GAMES_RU.md),[F8](F8_GAME_VIEW_AND_INDEXED_BLITS.md),
 [D10](D10_AUDIO_RECOVERY.md),[active map](ACTIVE_ROADMAP.md).
 
 Successor [D12](D12_LAUNCHER_CONTRACT.md) traces and fixes the real empty-path/UserName/DirectPlay-ABI boundaries. It reaches dialog message processing,not gameplay. The earlier D11-only observation above is retained as historical evidence.
+
+G6 adds an authored fixture mode2 alertable SleepEx wait for genuine HLE-frame abort evidence. Existing D11 normal/mode1 payload and oracle contracts remain;see [G6](G6_CPU_BLOCK_IR.md).

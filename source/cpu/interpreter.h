@@ -51,6 +51,9 @@ struct CpuException {
     uint8_t vector = 0;        // для INT n
 };
 
+// Shared successful-instruction accounting for the experimental portable IR.
+void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode);
+
 class Interpreter {
 public:
     // fsBase/gsBase — адрес нашего "фейкового" TEB (Thread Environment Block).

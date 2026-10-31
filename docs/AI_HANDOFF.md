@@ -1,15 +1,26 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`12c678a2bc38af5c96857d8f59fafc07715e3c0a` (2026-11-01).
-[CI 41241023826](https://github.com/Omeruno/switch-recompiler/actions/runs/41241023826)
+`fe29b2493f4bb1a99895e93f5df4d11be48c151f` (2026-11-01).
+[CI 41243997654](https://github.com/Omeruno/switch-recompiler/actions/runs/41243997654)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G5 shared CPU fast execution/measurements/console diagnostics; full dynarec/GPU/physical speed remain open (2026-11-01)
+## Current position: G6 owned block IR/portable oracle;production G5 retained,ARM64 storage/emission next (2026-11-01)
+
+[G6 block IR](G6_CPU_BLOCK_IR.md): bounded32-node/192-byte owned register/ALU/
+branch frontend with read/write masks,portable semantic executor,exact budgets/
+checkpoint exits,checked source bytes and unique memory-owner identity including
+C++-address ABA.68865 differential cases/147069 compared nodes;ARM64/QEMU and
+focused strict/sanitizer gates. Hardware oracle adds IR/reference to fast/reference
+for3×50000 native-x86 cases. Authored old PE+ordinal DLL:4 normal new/legacy sessions
+with exact opcode/HLE/instruction/quantum and real file bytes +2 genuine parked
+SleepEx HLE aborts. Production stays G5;no native emission,code cache,batched
+scheduler or new FPS acceptance. Next:session-owned executable storage/W^X/icache/
+leases/retirement,then ARM64 emitter using IR+reference oracles. Hardware deferred.
 
 [G5 common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md): default bounded
 unprefixed32-bit register and in-page mapped ALU/MOV/LEA/stack execution reuses
@@ -4177,3 +4188,16 @@ raster clocks are off. Full dynarec/code cache and GPU-GDI/DirectX remain open.
 User priority2026-11-01 is performance before Doom95 MIDI/import coverage;next
 software block is bounded block/IR frontend+oracle and safe ARM64 code storage,
 with existing CPU/GPU correctness/fallback retained. Physical tests deferred.
+
+## 2026-11-01 G6 — block frontend/oracle
+
+[G6 block IR](G6_CPU_BLOCK_IR.md): bounded32-node/192-byte owned register/ALU/
+branch frontend with read/write masks,portable semantic executor,exact budgets/
+checkpoint exits,checked source bytes and unique memory-owner identity including
+C++-address ABA.68865 differential cases/147069 compared nodes;ARM64/QEMU and
+focused strict/sanitizer gates. Hardware oracle adds IR/reference to fast/reference
+for3×50000 native-x86 cases. Authored old PE+ordinal DLL:4 normal new/legacy sessions
+with exact opcode/HLE/instruction/quantum and real file bytes +2 genuine parked
+SleepEx HLE aborts. Production stays G5;no native emission,code cache,batched
+scheduler or new FPS acceptance. Next:session-owned executable storage/W^X/icache/
+leases/retirement,then ARM64 emitter using IR+reference oracles. Hardware deferred.

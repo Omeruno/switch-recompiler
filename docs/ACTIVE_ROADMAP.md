@@ -2,12 +2,11 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: G5 common interpreter fast execution and console/paired measurement
-implemented; user priority is performance before more Doom95 imports.214323
-fast/reference cases,ARM64/QEMU and bounded public PE measurements;no physical
-FPS or full dynarec acceptance. D13/MIDI,DirectX and media-bus queues remain open.**
-Incoming verified runtime `12c678a2bc38af5c96857d8f59fafc07715e3c0a`
-passed [CI41241023826, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41241023826).
+**Current position: G6 owned block IR/portable oracle implemented;production remains
+G5.68865 differential cases,ARM64/QEMU,real PE reference/IR sessions+parked HLE
+aborts;no ARM64 emission/code-cache/batched scheduler or new physical FPS claim.**
+Incoming verified runtime `fe29b2493f4bb1a99895e93f5df4d11be48c151f`
+passed [CI41243997654, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41243997654).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -122,7 +121,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | D12 | [Launcher contract](D12_LAUNCHER_CONTRACT.md):checked empty A/W+Ex paths,virtual UserName,unsupported DirectPlay names/ordinals with correct ABI;4 normal x86 sessions+2 aborts | Composed launcher visible;New Game stops at RegCreateKeyA;configuration/Common Controls/game/DirectX remain open |
 | D13 | [Legacy registry create](D13_LEGACY_REGISTRY_CREATE.md):real RegCreateKey A/W,stdcall12,checked outputs,no Ex-only stack reads;4 normal x86 sessions+2 aborts and independent store bytes | New Game reaches missing MIDI device enumeration;game/DirectX remain open |
 | G5 | [Common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md):register/mapped/stack path,214323 differential cases,ARM64/QEMU,native CPU dual-path oracle;paired PE reports and Switch reference/census flags | Host-only ratios;full dynarec/physical performance/GPU game APIs remain open |
-| Next independent block | Bounded CPU block/IR frontend and differential oracle,then safe session-owned ARM64 executable storage/emission/invalidation;hardware profiles when available | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
+| G6 | [Owned block IR](G6_CPU_BLOCK_IR.md):32 nodes/192 bytes,portable semantics/budgets/checkpoints/current-byte validation/owner ABA;68865 cases+4 PE exits/2 HLE aborts | Production G5;native emission/storage/cache/batching and hardware performance remain open |
+| Next independent block | Session-owned executable storage with W^X/icache/publication/leases/retirement;then ARM64 emission against IR and reference oracles | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -136,9 +136,10 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
 
 1. **Implemented G5:** current-byte register/in-page mapped interpreter paths,
    reference mode,paired public PE measurement and opt-in console diagnostics.
-2. **Next independent software block:** bounded block/IR frontend,exact instruction
-   accounting and differential oracle;explicit host/fault/branch/callback exits.
-3. Session-owned Horizon/libnx executable code storage,W^X/icache publication,
+2. **Implemented G6:** bounded block/IR frontend,portable semantic oracle,exact
+   budgets/source/owner/checkpoint exits and test-only one-instruction PE adapter.
+   Production batching/callback integration remains open.
+3. **Next independent software block:** session-owned Horizon/libnx executable code storage,W^X/icache publication,
    bounded retirement and real fallback. Existing successful JIT42 need not repeat.
 4. Actual ARM64 emission for useful x86 blocks,with flags/memory/TEB/SEH semantics.
 5. Invalidation for guest writes,raw host aliases,DLL unload/remap;page generations

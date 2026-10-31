@@ -49,6 +49,23 @@ jobs:
             source/runtime/integer_execution_report.h
             docs/G5_CPU_INTEGER_PERFORMANCE.md
 
+      - name: Validate bounded block IR on ARM64
+        run: |
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -fno-exceptions -fno-rtti -I. tests/test_block_ir.cpp source/cpu/block_ir.cpp source/cpu/interpreter.cpp source/cpu/fpu.cpp source/cpu/sse.cpp -o /tmp/test_block_ir_arm64
+          qemu-aarch64 /tmp/test_block_ir_arm64 > build-host/block-ir-arm64.log
+          cat build-host/block-ir-arm64.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-block-ir-arm64
+          if-no-files-found: error
+          path: |
+            build-host/block-ir-arm64.log
+            tests/test_block_ir.cpp
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
+            source/cpu/paged_memory.h
+            docs/G6_CPU_BLOCK_IR.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -112,6 +129,32 @@ jobs:
           path: |
             build-host/gpu_gdi_prototype.log
             docs/G3_GPU_GDI_PROTOTYPE.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-block-ir
+          if-no-files-found: error
+          path: |
+            build-host/test_block_ir.log
+            build-host/block_ir_pe.log
+            build-host/guest-run.*/old_pe_imports.exe
+            build-host/guest-run.*/old_pe_api.dll
+            tests/test_block_ir.cpp
+            tests/test_block_ir_pe.cpp
+            tests/guest/old_pe_imports.c
+            tests/guest/old_pe_api.c
+            tests/guest/old_pe_api.def
+            tools/make_old_pe_fixture.py
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
+            source/cpu/interpreter.h
+            source/cpu/interpreter.cpp
+            source/cpu/paged_memory.h
+            source/cpu/cpu_state.h
+            source/cpu/guest_memory.h
+            source/runtime/workload_profile.h
+            source/runtime/integer_execution_report.h
+            docs/G6_CPU_BLOCK_IR.md
+
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-integer-performance
@@ -566,9 +609,12 @@ jobs:
             tests/cpu_oracle/oracle_common.h
             tests/cpu_oracle/oracle_entry.S
             tools/run_cpu_oracle.sh
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
             source/cpu/interpreter.cpp
             source/cpu/paged_memory.h
             docs/G5_CPU_INTEGER_PERFORMANCE.md
+            docs/G6_CPU_BLOCK_IR.md
 
 
   switch-build:

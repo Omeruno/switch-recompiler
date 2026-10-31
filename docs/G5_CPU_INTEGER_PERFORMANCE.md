@@ -143,3 +143,5 @@ stage-cpu-hardware-oracle. No private game binaries/assets/traces are published.
 D13's next MIDI discovery/Doom95 compatibility queue remains open but is no longer
 above this performance direction. Preserve Luna, F7/F8 controls/view, L/ZL overrides,
 current audio and the closed SD recovery diagnosis.
+
+Successor [G6](G6_CPU_BLOCK_IR.md) implements the bounded owned IR/portable oracle and public PE path. Next is executable storage/publication and actual ARM64 emission;production remains G5.
