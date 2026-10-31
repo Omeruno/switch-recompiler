@@ -35,6 +35,17 @@ void WINAPI start(void){
     CHECK(DirectPlayEnumerateA(provider,NULL)==DPERR_UNSUPPORTED);
     CHECK(DirectPlayEnumerateW(providerW,NULL)==DPERR_UNSUPPORTED);
     CHECK(DirectPlayCreate(NULL,&object,NULL)==DPERR_UNSUPPORTED && object==NULL);
+    {HKEY key,alias;DWORD value=0x19374652,type=0,bytes=4,read=0;
+        CHECK(RegCreateKeyA(HKEY_CURRENT_USER,"Software\\PublicLegacyCreate\\Nested",&key)==ERROR_SUCCESS);
+        CHECK(RegSetValueExA(key,"Value",0,REG_DWORD,(const BYTE*)&value,4)==ERROR_SUCCESS);
+        CHECK(RegCreateKeyW(HKEY_CURRENT_USER,L"software\\publiclegacycreate\\nested",&alias)==ERROR_SUCCESS);
+        CHECK(RegQueryValueExW(alias,L"Value",NULL,&type,(BYTE*)&read,&bytes)==ERROR_SUCCESS && type==REG_DWORD && bytes==4 && read==value);
+        CHECK(RegCloseKey(key)==ERROR_SUCCESS);
+        CHECK(RegSetValueExA(key,"Value",0,REG_DWORD,(const BYTE*)&value,4)==ERROR_INVALID_HANDLE);
+        CHECK(RegCloseKey(alias)==ERROR_SUCCESS);
+        CHECK(RegCreateKeyA(HKEY_CURRENT_USER,"",&alias)==ERROR_SUCCESS && alias==HKEY_CURRENT_USER);
+        CHECK(RegCreateKeyW(HKEY_CURRENT_USER,NULL,&alias)==ERROR_SUCCESS && alias==HKEY_CURRENT_USER);
+    }
     LauncherProbe[1]=1;
     if(LauncherProbe[0]){Sleep(INFINITE);ExitProcess(222);}
     ExitProcess(0);

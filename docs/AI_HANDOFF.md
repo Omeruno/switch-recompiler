@@ -1,15 +1,23 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`431787a96726b2686517018a14e98e9dc3e879aa` (2026-10-31).
-[CI 41174190664](https://github.com/Omeruno/switch-recompiler/actions/runs/41174190664)
+`79331d8f71f5a04f4ef4c599d512684ca7c64dca` (2026-10-31).
+[CI 41178225409](https://github.com/Omeruno/switch-recompiler/actions/runs/41178225409)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: D12 launcher paths/virtual identity/DirectPlay refusal; Doom95 dialog processing reached, composed host launcher visible,game/DirectX open (2026-10-31)
+## Current position: D13 legacy registry creation; Doom95 New Game reaches MIDI device enumeration,game/DirectX open (2026-10-31)
+
+[D13 legacy registry creation](D13_LEGACY_REGISTRY_CREATE.md): RegCreateKey A/W
+uses real D1 keys/grants with stdcall12 and no reads of Ex-only stack arguments.
+Public4 normal new/legacy x86 sessions+2 parked aborts create/reopen/write/query/
+close actual keys;native independent store bytes/error/output/ABI checks pass.
+Private Doom95 New Game passes this barrier and reaches missing midiOutGetNumDevs.
+Next is truthful MIDI-device enumeration,then real startup/DirectDraw tracing.
+No game/DirectX/physical acceptance;D1 encoding/security/persistence limits remain.
 
 [D12 launcher contract](D12_LAUNCHER_CONTRACT.md): empty attribute paths no longer
 become the current directory; checked A/W+Ex spans/CP1252/errors/output are covered.
@@ -4125,3 +4133,13 @@ The raw-screen final capture still shows splash;game/DirectX/physical acceptance
 remain open;Common Controls ordinal17 still fallback.
 
 Incoming431787a passed CI41174190664 all6. See D12 for evidence and next block. No physical acceptance.
+
+## 2026-10-31 D13 — legacy registry creation
+
+[D13 legacy registry creation](D13_LEGACY_REGISTRY_CREATE.md): RegCreateKey A/W
+uses real D1 keys/grants with stdcall12 and no reads of Ex-only stack arguments.
+Public4 normal new/legacy x86 sessions+2 parked aborts create/reopen/write/query/
+close actual keys;native independent store bytes/error/output/ABI checks pass.
+Private Doom95 New Game passes this barrier and reaches missing midiOutGetNumDevs.
+Next is truthful MIDI-device enumeration,then real startup/DirectDraw tracing.
+No game/DirectX/physical acceptance;D1 encoding/security/persistence limits remain.

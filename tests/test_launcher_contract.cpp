@@ -4,6 +4,7 @@
 #include "source/cpu/interpreter.h"
 #include "source/win32/host_functions.h"
 #include "source/win32/user32.h"
+#include "source/win32/virtual_registry.h"
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
@@ -48,6 +49,16 @@ static void Native(const fs::path& root){
         m.Write32(size,100);assert(!call("ADVAPI32.dll",name,0,{0xfffffff9,size}) && error()==998 && m.Read32(size)==100);
         assert(!call("ADVAPI32.dll",name,0,{result,0xfffffffe}) && error()==998);
     }
+    for(const char* name:{"RegCreateKeyA","RegCreateKeyW"}){
+        m.Write16(text,'X');m.Write16(text+2,0);m.Write32(result,0x12345678);
+        assert(call("ADVAPI32.dll",name,0,{0xabcdef,text,result})==6 && m.Read32(result)==0x12345678);
+        assert(call("ADVAPI32.dll",name,0,{0x80000001,text,0xfffffffe})==998);
+        assert(call("ADVAPI32.dll",name,0,{0x80000001,0xffffffff,result})==998 && m.Read32(result)==0x12345678);
+        m.Write32(t.teb+0x34,0x76543210);
+        assert(call("ADVAPI32.dll",name,0,{0x80000001,0,result})==0 && m.Read32(result)==0x80000001);
+        assert(error()==0x76543210);
+    }
+
     for(unsigned ordinal=0;ordinal<4;++ordinal){
         if(ordinal==1)continue;
         const char* name=ordinal==3?"DirectPlayEnumerateW":"DirectPlayEnumerateA";
@@ -85,7 +96,12 @@ int main(int argc,char** argv){
         if(mode>=4){assert(parked && !stopped);++aborted;}
         else {if(p.MainThread().exitCode)fprintf(stderr,"Launcher mode%u failed guest line%u\n",mode,p.MainThread().exitCode);assert(stopped && !p.MainThread().exitCode);++normal;}
         assert(m.Read32(probe+4)==1);
+        bool exists=false;
+        const auto key=win32::g_registry.OpenExistingKey(0x80000001,"Software\\PublicLegacyCreate\\Nested",exists);
+        assert(key && exists);win32::RegValue value;
+        assert(win32::g_registry.GetValue(key,"Value",value) && value.type==4 && value.data==std::vector<uint8_t>({0x52,0x46,0x37,0x19}));
+        assert(win32::g_registry.CloseKey(key));
     }
     assert(normal==4 && aborted==2);
-    puts("Launcher contract PASS (4 normal new/legacy x86 sessions+2 parked aborts;empty-path refusal/real candidate bytes,ANSI+UTF16 attributes,virtual user size/guards/fresh environment,DirectPlay named+ordinal unsupported HRESULT/ABI/no objects;not DirectX/game acceptance)");
+    puts("Launcher contract PASS (4 normal new/legacy x86 sessions+2 parked aborts;empty-path refusal/real candidate bytes,ANSI+UTF16 attributes,virtual user size/guards/fresh environment,DirectPlay named+ordinal unsupported HRESULT/ABI/no objects;legacy RegCreateKey A/W real keys/values/close/guards;not DirectX/game acceptance)");
 }

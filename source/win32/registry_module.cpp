@@ -46,16 +46,16 @@ uint32_t Access(uint32_t& access) {
 }
 HostCallOutcome Open(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide,bool create,bool old=false) {
     const auto parent=Arg(c,m,0),sub=Arg(c,m,1),result=Arg(c,m,old?2:create?7:4);
-    const auto disposition=create?Arg(c,m,8):0;
+    const auto disposition=create && !old?Arg(c,m,8):0;
     if(!g_registry.ValidKey(parent))return Ret(InvalidHandle);
     if(!result)return Ret(Invalid);
     if(!Range(m,result,4) || (disposition && !Range(m,disposition,4)))return Ret(NoAccess);
     uint32_t access=old?VirtualRegistry::AllAccess:Arg(c,m,create?5:3);
     const auto denied=Access(access);if(denied)return Ret(denied);
     if(!old && Arg(c,m,2))return Ret(Invalid);
-    if(create && (Arg(c,m,4) || Arg(c,m,6)))return Ret(NotSupported);
+    if(create && !old && (Arg(c,m,4) || Arg(c,m,6)))return Ret(NotSupported);
     std::string name;const auto error=Path(m,sub,wide,name);if(error)return Ret(error);
-    if(create && Arg(c,m,3)) {
+    if(create && !old && Arg(c,m,3)) {
         std::string cls;const auto e=Name(m,Arg(c,m,3),wide,cls);if(e)return Ret(e);if(!cls.empty())return Ret(NotSupported);
     }
     if(!g_registry.PathFits(parent,name))return Ret(206);
@@ -113,6 +113,7 @@ HostCallOutcome Query(cpu::CpuState& c,cpu::IGuestMemory& m,bool wide) {
     return Ret(0);
 }
 #define FN(name) HostCallOutcome name(cpu::CpuState& c,cpu::IGuestMemory& m)
+FN(RegCreateKeyA){return Open(c,m,false,true,true);} FN(RegCreateKeyW){return Open(c,m,true,true,true);}
 FN(RegCreateKeyExA){return Open(c,m,false,true);} FN(RegCreateKeyExW){return Open(c,m,true,true);}
 FN(RegOpenKeyExA){return Open(c,m,false,false);} FN(RegOpenKeyExW){return Open(c,m,true,false);}
 FN(RegOpenKeyA){return Open(c,m,false,false,true);}
@@ -121,7 +122,7 @@ FN(RegSetValueExA){return Set(c,m,false);} FN(RegSetValueExW){return Set(c,m,tru
 FN(RegQueryValueExA){return Query(c,m,false);} FN(RegQueryValueExW){return Query(c,m,true);}
 FN(RegCloseKey){return Ret(g_registry.CloseKey(Arg(c,m,0))?0:InvalidHandle);}
 #define E(name,bytes) {"ADVAPI32.dll",#name,bytes,CallConv::Stdcall,&name}
-const HostFunctionEntry entries[]={E(RegCreateKeyExA,36),E(RegCreateKeyExW,36),E(RegOpenKeyExA,20),E(RegOpenKeyExW,20),E(RegOpenKeyW,12),E(RegOpenKeyA,12),
+const HostFunctionEntry entries[]={E(RegCreateKeyA,12),E(RegCreateKeyW,12),E(RegCreateKeyExA,36),E(RegCreateKeyExW,36),E(RegOpenKeyExA,20),E(RegOpenKeyExW,20),E(RegOpenKeyW,12),E(RegOpenKeyA,12),
     E(RegSetValueExA,24),E(RegSetValueExW,24),E(RegQueryValueExA,24),E(RegQueryValueExW,24),E(RegCloseKey,4)};
 const bool registered=RegisterHostFunctions(entries,sizeof(entries)/sizeof(entries[0]));
 }}

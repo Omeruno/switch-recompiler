@@ -109,7 +109,9 @@ jobs:
             source/win32/directplay_boundary.cpp
             source/win32/hle_util.h
             source/win32/kernel32_system.cpp
+            source/win32/registry_module.cpp
             docs/D12_LAUNCHER_CONTRACT.md
+            docs/D13_LEGACY_REGISTRY_CREATE.md
 
       - uses: actions/upload-artifact@v4
         with:
