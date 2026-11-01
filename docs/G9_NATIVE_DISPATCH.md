@@ -1,5 +1,9 @@
 # G9 — guarded session cache and experimental common native step dispatch
 
+Successor: [G10 budgeted batches](G10_NATIVE_BATCHES.md) implements guarded outer
+execution and separate [Switch CPU validation](G10_SWITCH_CPU_TEST.md). Historical
+one-step timing below remains valid for G9,not a measurement of G10.
+
 2026-11-01. Incoming verified runtime
 `b110fccd3304dafee82f447ef5cd5b3e1a6f02c8` passed
 [CI41344237545,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41344237545).

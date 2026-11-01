@@ -2,13 +2,13 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: [G9 common native step cache](G9_NATIVE_DISPATCH.md) implemented:
-actual ARM64 full-runtime PE/DLL/loader/WndProc/APC/worker execution,6 normal+4
-parked aborts,exact CPU/HLE/quanta. Explicit opt-in,single instruction per Step;
-G5 default. Local QEMU path is slower;next exact-budget native batches and paired
-measurements before default activation. No physical FPS claim.**
-Incoming verified runtime `b110fccd3304dafee82f447ef5cd5b3e1a6f02c8`
-passed [CI41344237545,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41344237545).
+**Current position: [G10 budgeted native batches](G10_NATIVE_BATCHES.md):up to32
+pure instructions,exact scheduler debt/stop/callback boundaries;8 normal+6 abort
+PE sessions,80 scheduling traces,19 shared-validator samples. G5 default;
+local QEMU total1.227×/hot1.656×,not physical FPS. Separate
+[Switch CPU package](G10_SWITCH_CPU_TEST.md) PENDING_USER_SWITCH_RUN.**
+Incoming verified runtime `4051a5c135cd5708ef8e0b0403a8bfb83ba69f35`
+passed [CI41352427766,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41352427766).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -123,10 +123,10 @@ double-click; single selection/controller Open remain. One native tool group.
 | D12 | [Launcher contract](D12_LAUNCHER_CONTRACT.md):checked empty A/W+Ex paths,virtual UserName,unsupported DirectPlay names/ordinals with correct ABI;4 normal x86 sessions+2 aborts | Composed launcher visible;New Game stops at RegCreateKeyA;configuration/Common Controls/game/DirectX remain open |
 | D13 | [Legacy registry create](D13_LEGACY_REGISTRY_CREATE.md):real RegCreateKey A/W,stdcall12,checked outputs,no Ex-only stack reads;4 normal x86 sessions+2 aborts and independent store bytes | New Game reaches missing MIDI device enumeration;game/DirectX remain open |
 | G5 | [Common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md):register/mapped/stack path,214323 differential cases,ARM64/QEMU,native CPU dual-path oracle;paired PE reports and Switch reference/census flags | Host-only ratios;full dynarec/physical performance/GPU game APIs remain open |
-| G6 | [Owned block IR](G6_CPU_BLOCK_IR.md):32 nodes/192 bytes,portable semantics/budgets/checkpoints/current-byte validation/owner ABA;68865 cases+4 PE exits/2 HLE aborts | Production G5;G7 storage/G8 emission implemented;production cache/batching and hardware performance remain open |
+| G6 | [Owned block IR](G6_CPU_BLOCK_IR.md):32 nodes/192 bytes,portable semantics/budgets/checkpoints/current-byte validation/owner ABA;68865 cases+4 PE exits/2 HLE aborts | Production G5;G7 storage/G8 emission implemented;G9 cache/G10 batching now implemented;hardware performance remains open |
 | G7 | [Executable storage](G7_EXECUTABLE_STORAGE.md):session ownership,immutable publication/cache protocol,8192 native calls,pinned suspension/retirement,bounded failed-release vault;ARM64/QEMU and full-runtime session tests | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
-| G8 | [Actual ARM64 emitter](G8_ARM64_EMITTER.md):52437 native/reference/IR cases,198371 translated nodes,ABI/budgets/raw flags and parked checkpoint lifetime | G9 supplies experimental one-step cache;batching/default activation and physical performance remain open |
-| G9 | [Common native step cache](G9_NATIVE_DISPATCH.md):session-scoped16-slot/8-visit cache,current source validation,one-step integration,real ARM64 PE/DLL/callback/thread parity and7 paired samples | Experimental cpu-native.flag only;local QEMU slower,G5 default;batching/activation/physical performance remain open |
+| G8 | [Actual ARM64 emitter](G8_ARM64_EMITTER.md):52437 native/reference/IR cases,198371 translated nodes,ABI/budgets/raw flags and parked checkpoint lifetime | G9 cache/G10 batching implemented;default activation and physical performance remain open |
+| G9 | [Common native step cache](G9_NATIVE_DISPATCH.md):session-scoped16-slot/8-visit cache,current source validation,one-step integration,real ARM64 PE/DLL/callback/thread parity and7 paired samples | Experimental cpu-native.flag only;G9 one-step QEMU slower;G10 batching follows,G5 default;activation/physical performance open |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -138,6 +138,8 @@ Reproduced non-relocatable fixture/HLE-base collision;public resource DLL bases
 are now deterministic and failure diagnostics split. Production loader unchanged;
 revised b110fcc passed all six jobs in CI41344237545. See [G8](G8_ARM64_EMITTER.md).
 
+| G10 | [Budgeted native batches](G10_NATIVE_BATCHES.md):exact instruction/quantum/stop accounting,8 normal+6 abort PE sessions,80 traces,19 shared-validator samples | G5 default;actual Switch CPU report pending;broader native/default activation open |
+
 ## Next package and activation gates
 
 Performance is the user's current priority(2026-11-01). [G5's implementation queue](G5_CPU_INTEGER_PERFORMANCE.md)
@@ -147,7 +149,7 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
    reference mode,paired public PE measurement and opt-in console diagnostics.
 2. **Implemented G6:** bounded block/IR frontend,portable semantic oracle,exact
    budgets/source/owner/checkpoint exits and test-only one-instruction PE adapter.
-   Production batching/callback integration remains open.
+   G10 now supplies guarded outer-thread batching; nested callbacks stay Step1.
 3. **Implemented G7:** session-owned libnx/Linux executable storage,immutable publication/cache protocol,
    bounded pinned retirement and failed-close retention. Libnx alias mode is not physical W^X.
 4. **Implemented G8:** actual bounded ARM64 emitter from G6 IR,exact raw flags/
@@ -156,11 +158,11 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
    reference priority,current bytes/owner validation,one-shot failure fallback,
    real ARM64 PE/callback/worker+abort parity and paired measurements. One step
    remains one instruction. Native is slower in local QEMU;G5 stays default.
-   **Next independent software block:** exact-budget native batching with precise
-   Checkpoint/quantum/TEB/SEH/APC/callback/stop/drain boundaries and paired public
-   PE measurements. Do not simply charge many native instructions as one Step.
-6. Actual Switch profile/overhead comparison when physical testing resumes;use
-   phase/census scopes honestly. Hardware is not a prerequisite for steps2–5.
+   **Implemented G10:** exact-budget native batches,remaining-quantum charge,
+   nested Step1,80 traces and paired public PE measurements.
+6. **Current gate:** separate actual Switch CPU test requested by the user;
+   deliver exact-SHA bundle,collect19-sample report and compare measured costs.
+   Only CPU hardware testing is active;other physical gates remain deferred.
 7. Extend resident GPU GDI/batches by measured workload needs and existing
    CPU/ROP/readback/DIB/alias/context-loss/ownership/fallback oracles;default CPU.
 8. Real DirectDraw/D3D resources/shaders/commands for the selected target versions.
@@ -202,3 +204,10 @@ payload throttling. Test commands and the six core gates are unchanged.
 
 F6b final5f72b67 passed CI40390490786 six jobs, including the GCC13 caption-lifetime
 fix. The earlier eb67ac3 host failure is not acceptance for that earlier SHA.
+
+## G10 next gate
+
+G10 software extends G9 with exact-budget native batches. Deliver the isolated
+CPU test,collect actual Switch report,then select memory/stack/block coverage
+from measured costs;default activation remains a separate acceptance decision.
+All other deferred hardware checks stay deferred;do not infer full game/GPU FPS.

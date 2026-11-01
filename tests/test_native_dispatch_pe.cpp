@@ -24,7 +24,7 @@ struct Sample {
 Sample Run(const fs::path& executable,unsigned kind,bool legacy,unsigned abort){
     const auto totalStart=Clock::now();Sample s;
     {rt::GuestSession session;auto& p=session.ProcessObject();auto& m=session.Memory();std::string error;
-    m.EnableIntegerFastPath(kind!=0);m.EnableNativeExecution(kind==2);m.TrackIntegerExecution(true);
+    m.EnableIntegerFastPath(kind!=0);m.EnableNativeExecution(kind>=2);m.EnableNativeBatching(kind==3);m.TrackIntegerExecution(true);
     if(!legacy)win32::user::EnableUi(800,600);else win32::EnableHostLayer(win32::kUiLayer,false);
     assert(p.LoadMainExe(executable.string(),error) && p.PrepareMainThread(p.MainThread().cpu,error));
     const auto probe=p.GetProcAddress(p.MainModule(),"NativeDispatchProbe");assert(probe);m.Write32(probe+31*4,abort);
@@ -45,7 +45,8 @@ Sample Run(const fs::path& executable,unsigned kind,bool legacy,unsigned abort){
                 if(address==sleep)s.apcNative+=delta;
                 return !call.requestExit;
             }
-            cpu::Interpreter interpreter(m,t.teb,t.teb);const auto result=interpreter.Step(t.cpu);
+            cpu::Interpreter interpreter(m,t.teb,t.teb);const auto run=rt::GuestExecution::ExecuteCpu(interpreter,t.cpu);const auto result=run.status;
+            assert(run.executed>0);
             if(&t!=&p.MainThread())s.workerNative+=m.IntegerStats().native-before;
             if(result!=cpu::StepResult::Continue && result!=cpu::StepResult::Halted)std::fprintf(stderr,"native PE fault EIP=%08x code=%08x\n",t.cpu.eip,interpreter.LastException().code);
             assert(result==cpu::StepResult::Continue || result==cpu::StepResult::Halted);return true;
@@ -81,9 +82,10 @@ Sample Run(const fs::path& executable,unsigned kind,bool legacy,unsigned abort){
     s.instructions=m.IntegerStats();s.cache=m.NativeStats();
     assert(!s.profile.instructionsTruncated && !s.profile.hostsTruncated && !s.instructions.ir);
     assert(s.profile.instructionCount==s.instructions.fast+s.instructions.reference+s.instructions.native);
-    if(kind==2 && m.NativeArchitectureAvailable()){
+    if(kind>=2 && m.NativeArchitectureAvailable()){
         assert(s.instructions.native>0 && s.cache.compiles>0 && s.dllNative>0 && s.windowNative>0);
         if(!abort || abort==1)assert(s.apcNative>0 && s.workerNative>0);
+        if(kind==3 && !abort)assert(s.cache.batchCalls>0 && s.cache.maxBatch>1 && s.cache.maxBatch<=32);
     }else assert(!s.instructions.native && !s.cache.compiles);
     } // Include complete session/code-cache teardown in the total interval.
     assert(!cpu::GlobalCodeStats().images);
@@ -100,17 +102,17 @@ int main(int argc,char** argv){
         // One excluded warmup pair +seven rotating pairs. Every arm verifies
         // independent output and full CPU/HLE/quantum parity before publication.
         for(unsigned pair=0;pair<8;++pair){Sample fast,native;
-            if(pair&1){native=Run(root/"native_dispatch.exe",2,false,0);fast=Run(root/"native_dispatch.exe",1,false,0);}
-            else{fast=Run(root/"native_dispatch.exe",1,false,0);native=Run(root/"native_dispatch.exe",2,false,0);}
+            if(pair&1){native=Run(root/"native_dispatch.exe",3,false,0);fast=Run(root/"native_dispatch.exe",1,false,0);}
+            else{fast=Run(root/"native_dispatch.exe",1,false,0);native=Run(root/"native_dispatch.exe",3,false,0);}
             Parity(fast,native);
-            std::printf("{\"pair\":%u,\"warmup\":%s,\"native_architecture\":%s,\"fast_total_ns\":%llu,\"native_total_ns\":%llu,\"fast_first_loop_ns\":%llu,\"native_first_loop_ns\":%llu,\"fast_hot_loop_ns\":%llu,\"native_hot_loop_ns\":%llu,\"instructions\":%llu,\"native_steps\":%llu,\"hits\":%llu,\"compiles\":%llu,\"quanta\":%llu}\n",pair,pair?"false":"true",cpu::PagedGuestMemory::NativeArchitectureAvailable()?"true":"false",(unsigned long long)fast.totalNs,(unsigned long long)native.totalNs,(unsigned long long)fast.warmNs,(unsigned long long)native.warmNs,(unsigned long long)fast.hotNs,(unsigned long long)native.hotNs,(unsigned long long)native.profile.instructionCount,(unsigned long long)native.instructions.native,(unsigned long long)native.cache.hits,(unsigned long long)native.cache.compiles,(unsigned long long)native.quanta);
+            std::printf("{\"pair\":%u,\"warmup\":%s,\"native_architecture\":%s,\"fast_total_ns\":%llu,\"native_total_ns\":%llu,\"fast_first_loop_ns\":%llu,\"native_first_loop_ns\":%llu,\"fast_hot_loop_ns\":%llu,\"native_hot_loop_ns\":%llu,\"instructions\":%llu,\"native_steps\":%llu,\"hits\":%llu,\"compiles\":%llu,\"batch_calls\":%llu,\"batch_instructions\":%llu,\"max_batch\":%llu,\"quanta\":%llu}\n",pair,pair?"false":"true",cpu::PagedGuestMemory::NativeArchitectureAvailable()?"true":"false",(unsigned long long)fast.totalNs,(unsigned long long)native.totalNs,(unsigned long long)fast.warmNs,(unsigned long long)native.warmNs,(unsigned long long)fast.hotNs,(unsigned long long)native.hotNs,(unsigned long long)native.profile.instructionCount,(unsigned long long)native.instructions.native,(unsigned long long)native.cache.hits,(unsigned long long)native.cache.compiles,(unsigned long long)native.cache.batchCalls,(unsigned long long)native.cache.batchInstructions,(unsigned long long)native.cache.maxBatch,(unsigned long long)native.quanta);
         }
     }else{
-        Sample baseline[2];for(unsigned kind=0;kind<3;++kind)for(unsigned legacy=0;legacy<2;++legacy){auto sample=Run(root/"native_dispatch.exe",kind,legacy,0);
+        Sample baseline[2];for(unsigned kind=0;kind<4;++kind)for(unsigned legacy=0;legacy<2;++legacy){auto sample=Run(root/"native_dispatch.exe",kind,legacy,0);
             if(!kind)baseline[legacy]=sample;else Parity(baseline[legacy],sample);
             std::printf("Native PE evidence kind=%u legacy=%u instructions=%llu quanta=%llu native=%llu hits=%llu compiles=%llu DLL=%llu WndProc=%llu APC=%llu worker=%llu\n",kind,legacy,(unsigned long long)sample.profile.instructionCount,(unsigned long long)sample.quanta,(unsigned long long)sample.instructions.native,(unsigned long long)sample.cache.hits,(unsigned long long)sample.cache.compiles,(unsigned long long)sample.dllNative,(unsigned long long)sample.windowNative,(unsigned long long)sample.apcNative,(unsigned long long)sample.workerNative);}
-        for(unsigned kind:{0u,2u})for(unsigned abort:{1u,2u})Run(root/"native_dispatch.exe",kind,false,abort);
-        std::printf("Native dispatch PE PASS (6 normal reference/G5/native new/legacy sessions+4 genuine main-HLE/nested-WndProc aborts;independent kernel/DLL/APC/worker/file bytes,exact opcode/HLE/instruction/quanta parity,TEB identity and cleanup;native architecture %s;not batching/physical FPS)\n",cpu::PagedGuestMemory::NativeArchitectureAvailable()?"ARM64 executed including loader/WndProc/APC":"unavailable (reference fallback only)");
+        for(unsigned kind:{0u,2u,3u})for(unsigned abort:{1u,2u})Run(root/"native_dispatch.exe",kind,false,abort);
+        std::printf("Native dispatch PE PASS (8 normal reference/G5/native-step/native-batch new/legacy sessions+6 genuine main-HLE/nested-WndProc aborts;independent kernel/DLL/APC/worker/file bytes,exact opcode/HLE/instruction/quanta parity,TEB identity and cleanup;native architecture %s;exact budgeted batches;not physical FPS)\n",cpu::PagedGuestMemory::NativeArchitectureAvailable()?"ARM64 executed including loader/WndProc/APC":"unavailable (reference fallback only)");
     }
     assert(!cpu::GlobalCodeStats().images);rt::Clock::SetFastForward(false);
 }

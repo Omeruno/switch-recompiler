@@ -36,8 +36,9 @@ void NativeCache::Disable(){
     memory_.NativeStats().disabled=true;++memory_.NativeStats().failures;
     if(state_)for(size_t i=0;i<Entries;++i)Retire(i);
 }
-bool NativeCache::Dispatch(void* self,CpuState& cpu,uint8_t& length,uint8_t& opcode){return static_cast<NativeCache*>(self)->Step(cpu,length,opcode);}
-bool NativeCache::Step(CpuState& cpu,uint8_t& length,uint8_t& opcode){
+bool NativeCache::Dispatch(void* self,CpuState& cpu,uint32_t budget,uint32_t& count,uint8_t& length,uint8_t& opcode){return static_cast<NativeCache*>(self)->Step(cpu,budget,count,length,opcode);}
+bool NativeCache::Step(CpuState& cpu,uint32_t budget,uint32_t& count,uint8_t& length,uint8_t& opcode){
+    count=0;if(!budget)return false;
     // Allocation/JIT syscalls are implementation work,not guest CRT errno.
     struct ErrnoScope {int saved=errno;~ErrnoScope(){errno=saved;}} savedErrno;
     auto& stats=memory_.NativeStats();++stats.requests;
@@ -50,9 +51,12 @@ bool NativeCache::Step(CpuState& cpu,uint8_t& length,uint8_t& opcode){
     auto run=[&](State::Entry& entry,size_t node,bool hit){
         const auto& n=entry.translated.Source().At(node);const uint8_t len=n.length;
         const uint8_t op=n.profileOpcode>=256?0x0f:uint8_t(n.profileOpcode);
-        const auto result=arm64::Execute(entry.translated,storage_,memory_,cpu,1);
-        if(result.status==arm64::Status::Complete && result.execution.executed==1){
-            entry.age=++state.clock;if(hit)++stats.hits;length=len;opcode=op;return true;
+        const auto result=arm64::Execute(entry.translated,storage_,memory_,cpu,budget);
+        if(result.status==arm64::Status::Complete && result.execution.executed>0){
+            entry.age=++state.clock;if(hit)++stats.hits;length=len;opcode=op;count=result.execution.executed;
+            if(count>1){++stats.batchCalls;stats.batchInstructions+=count;}
+            if(count>stats.maxBatch)stats.maxBatch=count;
+            return true;
         }
         if(result.status==arm64::Status::Complete && result.execution.reason==ir::Exit::CodeChanged){
             ++stats.invalidations;const auto i=size_t(&entry-state.entries.data());Retire(i);

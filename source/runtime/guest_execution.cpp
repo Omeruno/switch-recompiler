@@ -6,6 +6,7 @@
 #include "../win32/mci_media.h"
 #include <cerrno>
 #include <new>
+#include <algorithm>
 
 namespace rt {
 namespace { thread_local GuestExecution* active=nullptr; }
@@ -36,6 +37,22 @@ GuestExecution::~GuestExecution() {
 }
 bool GuestExecution::Active() { return active && active->running_; }
 bool GuestExecution::Checkpoint() { return !Active() || active->CheckCurrent(); }
+cpu::RunResult GuestExecution::ExecuteCpu(cpu::Interpreter& interpreter,cpu::CpuState& cpu,uint32_t limit,cpu::Instruction* debug){
+    if(!limit)return {};
+    auto* executor=active;
+    if(!Active())return interpreter.Run(cpu,1,debug);
+    auto& continuation=*executor->running_;auto& thread=*continuation.thread;
+    if(executor->stopped_ || win32::g_guestExitRequested || thread.ShouldUnwind())return {};
+    const bool approved=continuation.outerStep && !thread.callbackDepth && &cpu==&thread.cpu &&
+        interpreter.AddressSpaceIdentity()==executor->process_.Memory().Identity() &&
+        thread.IsRunnable() && !thread.yieldRequested && executor->operations_<256;
+    // CheckCurrent already accounted the first instruction (or resumed it at
+    // operations0). Keep the next >=256 suspension at exactly the same point.
+    const uint32_t budget=approved?std::min(limit,256-executor->operations_):1;
+    auto result=interpreter.Run(cpu,budget,debug);
+    if(approved && result.executed>1)executor->operations_+=result.executed-1;
+    return result;
+}
 void GuestExecution::Yield() {
     if (Active() && !active->stopped_ && !win32::g_guestExitRequested)
         active->SuspendCurrent();
@@ -89,8 +106,10 @@ void GuestExecution::Run(void* arg) {
     }
     // APCs queued before a suspended thread starts precede its user entry.
     if (start) win32::DispatchUserApcs(thread.cpu,executor.process_.Memory());
-    if (start) while (executor.CheckCurrent())
+    if (start) while (executor.CheckCurrent()) {
+        struct Outer {Continuation& c;Outer(Continuation& c):c(c){c.outerStep=true;}~Outer(){c.outerStep=false;}} outer(continuation);
         if (!executor.step_(thread)) { executor.stopped_=true; break; }
+    }
     // ExitThread first unwinds native WndProc/SEH frames. Run detach on a
     // clean native frame while guest stack/TEB/TLS and HANDLE are still live.
     if (thread.exitRequested && thread.status!=GuestThreadStatus::Exited &&

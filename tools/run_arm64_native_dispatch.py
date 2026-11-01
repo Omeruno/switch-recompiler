@@ -38,4 +38,12 @@ log=out/'native-dispatch-pe-arm64.log'
 with log.open('w') as stream:
     subprocess.run([runner,str(binary),str(guest/'native_dispatch.exe')],cwd=root,stdout=stream,stderr=subprocess.STDOUT,check=True)
 print(log.read_text().splitlines()[-1],flush=True)
+for name in ['test_native_batches','test_cpu_validation']:
+    target=out/name
+    subprocess.run([cxx,*flags,'-static',str(root/'tests'/(name+'.cpp')),*map(str,built),'-o',str(target)],cwd=root,check=True)
+    args=[runner,str(target)]
+    if name=='test_cpu_validation':args +=[str(guest/'native_dispatch.exe'),str(out/'cpu-validation-arm64.txt')]
+    with (out/(name+'.log')).open('w') as stream:
+        subprocess.run(args,cwd=root,stdout=stream,stderr=subprocess.STDOUT,check=True)
+    print((out/(name+'.log')).read_text().splitlines()[-1],flush=True)
 subprocess.run([sys.executable,str(root/'tools/measure_native_dispatch.py'),'--runner',runner,'--binary',str(binary),'--guest',str(guest/'native_dispatch.exe'),'--output',str(out/'native-dispatch-measurement.json')],cwd=root,check=True)

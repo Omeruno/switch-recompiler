@@ -29,6 +29,8 @@ enum class StepResult {
     Exception,     // см. Interpreter::LastException()
 };
 
+struct RunResult {StepResult status=StepResult::Continue;uint32_t executed=0;};
+
 // Коды исключений Windows (NTSTATUS)
 constexpr uint32_t EXC_ACCESS_VIOLATION      = 0xC0000005u;
 constexpr uint32_t EXC_ILLEGAL_INSTRUCTION   = 0xC000001Du;
@@ -64,6 +66,13 @@ public:
     // Выполняет одну инструкцию по адресу cpu.eip.
     StepResult Step(CpuState& cpu, Instruction* outInstr = nullptr);
 
+    // At most one synchronous native prefix;otherwise one ordinary Step. Budget
+    // includes attempted faulting instructions. Debug requests force one Step.
+    // Caller owns checkpoint/quantum accounting;this does not schedule or yield.
+    RunResult Run(CpuState&,uint32_t budget,Instruction* debug=nullptr);
+
+    uint64_t AddressSpaceIdentity()const{return memory_.Identity();}
+
     const CpuException& LastException() const { return exception_; }
 
     // Совместимость со старым поведением: деление на ноль не бросает
@@ -72,6 +81,7 @@ public:
     bool lenientDivide = true;
 
 private:
+    StepResult StepOne(CpuState&,Instruction*,bool native);
     IGuestMemory& memory_;
     uint32_t fsBase_ = 0;
     uint32_t gsBase_ = 0;

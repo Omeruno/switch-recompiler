@@ -6,6 +6,7 @@
 #include <memory>
 #include "host_fiber.h"
 #include "process.h"
+#include "../cpu/interpreter.h"
 
 namespace rt {
 class GuestExecution {
@@ -25,12 +26,17 @@ public:
     // false means unwind native callbacks normally without more guest code.
     static bool Checkpoint();
     static bool Active();
+    // Only the already-approved outer step on its actual thread CPU may batch.
+    // Nested/copy CPUs remain Step1. Charges every extra native instruction to
+    // the current continuation's existing checkpoint budget,without yielding.
+    static cpu::RunResult ExecuteCpu(cpu::Interpreter&,cpu::CpuState&,uint32_t limit=UINT32_MAX,cpu::Instruction* debug=nullptr);
     static void Yield();
 private:
     struct Continuation {
         GuestExecution* owner=nullptr;
         GuestThread* thread=nullptr;
         HostFiber fiber;
+        bool outerStep=false;
     };
     static void Run(void* arg);
     static void RunProcessExit(void* arg);

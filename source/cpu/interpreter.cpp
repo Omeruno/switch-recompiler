@@ -296,9 +296,18 @@ void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
     if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode);
 }
 
-StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
+StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {return StepOne(cpu,outInstr,true);}
+RunResult Interpreter::Run(CpuState& cpu,uint32_t budget,Instruction* debug){
+    if(!budget)return {};
+    if(debug || !memory_.NativeBatchingRequested())return {Step(cpu,debug),1};
+    uint32_t count=0;
+    if(memory_.TryNativeBatch(cpu,budget,count))return {StepResult::Continue,count};
+    // Admission/failure is not an instruction. Do not visit the cache twice.
+    return {StepOne(cpu,nullptr,false),1};
+}
+StepResult Interpreter::StepOne(CpuState& cpu, Instruction* outInstr,bool native) {
     uint8_t nativeLength=0,nativeOpcode=0;
-    if(memory_.TryNativeStep(cpu,nativeLength,nativeOpcode)){
+    if(native && memory_.TryNativeStep(cpu,nativeLength,nativeOpcode)){
         if(outInstr){outInstr->length=nativeLength;outInstr->rawOpcodeForDebug=nativeOpcode;outInstr->mnemonic=Mnemonic::Unknown;}
         return StepResult::Continue;
     }

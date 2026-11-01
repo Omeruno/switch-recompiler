@@ -32,6 +32,7 @@
 #include "runtime/process.h"
 #include "runtime/guest_execution.h"
 #include "runtime/guest_session.h"
+#include "runtime/cpu_validation.h"
 #include "runtime/audio_audout.h"
 #include "runtime/files.h"
 #include "runtime/guest_execution_log.h"
@@ -338,6 +339,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     const bool profileExecution=flag("sdmc:/switch-recompiler/profile-execution.flag");
     mem.EnableIntegerFastPath(!flag("sdmc:/switch-recompiler/cpu-reference.flag"));
     mem.EnableNativeExecution(flag("sdmc:/switch-recompiler/cpu-native.flag"));
+    mem.EnableNativeBatching(flag("sdmc:/switch-recompiler/cpu-native-batch.flag"));
     mem.TrackIntegerExecution(profileExecution);
     struct PerformanceReport {
         cpu::IGuestMemory& memory;const char* executable;bool tracked;
@@ -444,8 +446,11 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
         cpu::g_lastKnownEip=activeCpu.eip;
         cpu::Instruction instruction;
         uint32_t previous=activeCpu.eip;
-        auto result=interpreter.Step(activeCpu,&instruction);
-        if (shown++<maxLinesToShow) {
+        const bool show=shown++<maxLinesToShow;
+        const auto run=rt::GuestExecution::ExecuteCpu(interpreter,activeCpu,uint32_t(maxSteps-steps+1),show?&instruction:nullptr);
+        if(!run.executed){stopReason="execution stopped before CPU instruction";return false;}
+        steps+=int(run.executed-1);const auto result=run.status;
+        if (show) {
             SafePrint(" %06x: op %02x (len %u)\n",previous,instruction.rawOpcodeForDebug,instruction.length);
             SafeConsoleUpdate();
         }
@@ -2520,6 +2525,26 @@ int main(int argc, char* argv[])
         audioDevice.Shutdown();rt::Audio().Bind(nullptr);
         consoleExit(NULL);
         return 0;
+    }
+
+    // Separate opt-in hardware probe:normal launcher policy/flags are untouched.
+    FILE* validationFlag=fopen("sdmc:/switch-recompiler/cpu-validation.flag","rb");
+    const bool validateCpu=validationFlag && fgetc(validationFlag)=='1';if(validationFlag)fclose(validationFlag);
+    if(validateCpu){
+        // Consume only this test trigger,so the next boot returns to the picker.
+        validationFlag=fopen("sdmc:/switch-recompiler/cpu-validation.flag","wb");
+        if(validationFlag){fputc('0',validationFlag);fclose(validationFlag);}
+        struct Progress {unsigned last=~0u;} progress;
+        auto pump=[](unsigned sample,uint64_t quantum,void* context){auto& p=*static_cast<Progress*>(context);
+            if(p.last!=sample){p.last=sample;consoleClear();printf("CPU batch validation %u/19\nBuild: %s\n\nComparing reference, G5, native-step and native-batch.\nPLUS cancels. No overclock requested.\n",sample+1,SR_BUILD_REVISION);consoleUpdate(NULL);}
+            if((quantum&31)==0){if(!ContinueApplet())return false;padUpdate(&g_pad);if(padGetButtonsDown(&g_pad)&HidNpadButton_Plus)return false;}
+            return true;
+        };
+        char environment[128];snprintf(environment,sizeof(environment),"applet_type=%u operation_mode=%u hos_version=%08x",unsigned(appletGetAppletType()),unsigned(appletGetOperationMode()),unsigned(hosversionGet()));
+        const bool pass=rt::RunCpuValidation("sdmc:/switch-recompiler/cpu-validation/native_dispatch.exe","sdmc:/switch-recompiler-cpu-validation.txt",SR_BUILD_REVISION,pump,&progress,environment);
+        consoleClear();printf("CPU validation: %s\nBuild: %s\n\nReport: sdmc:/switch-recompiler-cpu-validation.txt\nSend this report for hardware acceptance.\n\nPLUS exits.\n",pass?"PASS":"FAIL / UNAVAILABLE / CANCELLED",SR_BUILD_REVISION);consoleUpdate(NULL);
+        while(ContinueApplet()){padUpdate(&g_pad);if(padGetButtonsDown(&g_pad)&HidNpadButton_Plus)break;svcSleepThread(16'000'000);}
+        romfsExit();audioDevice.Shutdown();rt::Audio().Bind(nullptr);consoleExit(NULL);return 0;
     }
 
     printf("=== Switch Recompiler ===\n");

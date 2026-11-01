@@ -42,6 +42,7 @@ struct MemoryFault {
 struct CpuState;
 struct NativeDispatchStats {
     uint64_t requests=0,hits=0,misses=0,compiles=0,invalidations=0,evictions=0,negativeHits=0,fallbacks=0,failures=0;
+    uint64_t batchCalls=0,batchInstructions=0,maxBatch=0;
     bool disabled=false;
 };
 class PagedGuestMemory final {
@@ -84,13 +85,16 @@ public:
     // Private host binding,never a guest pointer. Reference policy wins over
     // the explicit experimental native request. Standalone interpreters have
     // no binding and therefore no new link-time CPU/backend dependency.
-    using NativeStep=bool(*)(void*,CpuState&,uint8_t&,uint8_t&);
+    using NativeStep=bool(*)(void*,CpuState&,uint32_t,uint32_t&,uint8_t&,uint8_t&);
     bool BindNative(void* owner,NativeStep step){if(!owner || !step || nativeOwner_)return false;nativeOwner_=owner;nativeStep_=step;return true;}
     void UnbindNative(void* owner){if(nativeOwner_==owner){nativeOwner_=nullptr;nativeStep_=nullptr;}}
     void EnableNativeExecution(bool enabled){nativeRequested_=enabled;}
     bool NativeExecutionRequested() const{return nativeRequested_;}
     bool NativeExecutionEnabled() const{return nativeRequested_ && integerFast_ && nativeStep_;}
-    bool TryNativeStep(CpuState& state,uint8_t& length,uint8_t& opcode){return NativeExecutionEnabled() && nativeStep_(nativeOwner_,state,length,opcode);}
+    bool TryNativeStep(CpuState& state,uint8_t& length,uint8_t& opcode){uint32_t count=0;return NativeExecutionEnabled() && nativeStep_(nativeOwner_,state,1,count,length,opcode);}
+    void EnableNativeBatching(bool enabled){nativeBatch_=enabled;}
+    bool NativeBatchingRequested()const{return nativeBatch_;}
+    bool TryNativeBatch(CpuState& state,uint32_t budget,uint32_t& count){uint8_t length=0,opcode=0;return budget && nativeBatch_ && NativeExecutionEnabled() && nativeStep_(nativeOwner_,state,budget,count,length,opcode);}
     NativeDispatchStats& NativeStats(){return nativeStats_;}
     const NativeDispatchStats& NativeStats() const{return nativeStats_;}
     static constexpr bool NativeArchitectureAvailable(){
@@ -398,7 +402,7 @@ private:
     bool integerFast_=true,integerTrack_=false;
     IntegerExecutionStats integerStats_;
     NativeDispatchStats nativeStats_;
-    NativeStep nativeStep_=nullptr;void* nativeOwner_=nullptr;bool nativeRequested_=false;
+    NativeStep nativeStep_=nullptr;void* nativeOwner_=nullptr;bool nativeRequested_=false,nativeBatch_=false;
     mutable MemoryFault fault_;
     uint32_t flatBase_ = 0, flatEnd_ = 0;
     mutable uint8_t fetchScratch_[16] = {};

@@ -3,7 +3,8 @@
 namespace cpu {
 // One native owner and cooperative guest threads. Storage/memory outlive cache.
 // Lazy metadata,immutable publications,always validated source. Does not batch
-// scheduler steps or retain CPU/TEB/guest mapping pointers between invocations.
+// scheduler checkpoints itself or retain CPU/TEB/guest mapping pointers.
+// Multi-instruction execution requires an explicit budget from the caller.
 class NativeCache {
 public:
     static constexpr size_t Entries=16;
@@ -15,8 +16,8 @@ public:
     void Close();
 private:
     struct State;
-    static bool Dispatch(void*,CpuState&,uint8_t&,uint8_t&);
-    bool Step(CpuState&,uint8_t&,uint8_t&);
+    static bool Dispatch(void*,CpuState&,uint32_t,uint32_t&,uint8_t&,uint8_t&);
+    bool Step(CpuState&,uint32_t,uint32_t&,uint8_t&,uint8_t&);
     void Retire(size_t);
     void Disable();
     IGuestMemory& memory_;CodeStore& storage_;

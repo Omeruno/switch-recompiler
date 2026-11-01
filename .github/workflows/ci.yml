@@ -123,12 +123,17 @@ jobs:
           if-no-files-found: error
           path: |
             build-host/native-cache-arm64.log
+            build-host/arm64-dispatch/test_native_batches.log
+            build-host/arm64-dispatch/test_cpu_validation.log
+            build-host/arm64-dispatch/cpu-validation-arm64.txt
             build-host/arm64-dispatch/native-dispatch-pe-arm64.log
             build-host/arm64-dispatch/native-dispatch-measurement.json
             build-host/arm64-dispatch/native-dispatch-measurement.log
             build-host/arm64-dispatch/test_native_dispatch_pe
             build-host/arm64-dispatch/guest/native_dispatch.exe
             build-host/arm64-dispatch/guest/native_dispatch.dll
+            tests/test_native_batches.cpp
+            tests/test_cpu_validation.cpp
             tests/test_native_cache.cpp
             tests/test_native_dispatch_pe.cpp
             tests/guest/native_dispatch.c
@@ -153,10 +158,13 @@ jobs:
             source/runtime/guest_session.cpp
             source/runtime/guest_execution.h
             source/runtime/guest_execution.cpp
+            source/runtime/cpu_validation.h
+            source/runtime/cpu_validation.cpp
             source/runtime/workload_profile.h
             source/runtime/integer_execution_report.h
             source/main.cpp
             docs/G9_NATIVE_DISPATCH.md
+            docs/G10_NATIVE_BATCHES.md
 
   host-tests:
     name: Хост-тесты (g++)
@@ -183,10 +191,15 @@ jobs:
           name: stage-cpu-native-dispatch
           if-no-files-found: error
           path: |
+            build-host/test_native_batches.log
+            build-host/cpu_validation_host.log
+            build-host/cpu-validation-host.txt
             build-host/test_native_cache.log
             build-host/native_dispatch_pe.log
             build-host/guest-run.*/native_dispatch.exe
             build-host/guest-run.*/native_dispatch.dll
+            tests/test_native_batches.cpp
+            tests/test_cpu_validation.cpp
             tests/test_native_cache.cpp
             tests/test_native_dispatch_pe.cpp
             tests/guest/native_dispatch.c
@@ -201,9 +214,14 @@ jobs:
             source/cpu/paged_memory.h
             source/runtime/guest_session.h
             source/runtime/guest_session.cpp
+            source/runtime/cpu_validation.h
+            source/runtime/cpu_validation.cpp
+            source/runtime/guest_execution.h
+            source/runtime/guest_execution.cpp
             source/runtime/integer_execution_report.h
             source/main.cpp
             docs/G9_NATIVE_DISPATCH.md
+            docs/G10_NATIVE_BATCHES.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-arm64-emitter
@@ -774,6 +792,7 @@ jobs:
 
 
   switch-build:
+    needs: arm64-fiber
     name: Сборка для Switch (devkitA64)
     runs-on: ubuntu-latest
     container: devkitpro/devkita64:latest
@@ -787,6 +806,20 @@ jobs:
         with:
           name: switch-recompiler-nro
           path: switch-recompiler.nro
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage-cpu-native-dispatch-arm64
+          path: build-host/cpu-validation-input
+      - name: Package isolated real-Switch CPU batch validation
+        run: python3 tools/package_cpu_validation.py --nro switch-recompiler.nro --fixtures build-host/cpu-validation-input/build-host/arm64-dispatch/guest --output build-host/cpu-batch-validation.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-cpu-batch-validation
+          if-no-files-found: error
+          path: |
+            build-host/cpu-batch-validation.zip
+            tools/package_cpu_validation.py
+            docs/G10_SWITCH_CPU_TEST.md
 
   jit-probe-build:
     name: Экспериментальный JIT NRO (отдельная сборка)

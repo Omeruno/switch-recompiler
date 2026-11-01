@@ -1,15 +1,31 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b110fccd3304dafee82f447ef5cd5b3e1a6f02c8` (2026-11-01).
-[CI 41344237545](https://github.com/Omeruno/switch-recompiler/actions/runs/41344237545)
+`4051a5c135cd5708ef8e0b0403a8bfb83ba69f35` (2026-11-01).
+[CI 41352427766](https://github.com/Omeruno/switch-recompiler/actions/runs/41352427766)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G9 common experimental native step cache;G5 default,batching next (2026-11-01)
+## Current position: G10 budgeted native batches;G5 default;physical CPU pending
+
+[G10](G10_NATIVE_BATCHES.md) implements Interpreter::Run and guarded outer-thread
+GuestExecution::ExecuteCpu,exact checkpoint debt/maxSteps,up to32 pure native
+instructions;debug/nested paths retain Step1. Cache/source/owner/errno/lifetime
+contracts preserved.8 normal PE sessions+6 parked aborts,80 per-quantum traces,
+and19 shared-validator sessions execute actual ARM64 under QEMU. Local paired
+G5/batch medians1.227 total/1.656 hot;not Switch FPS. All old graphics/audio
+fallback and session contracts preserved. G5 remains default;native batching
+requires both flags,reference wins. Next:the user explicitly requested separate
+**actual CPU hardware validation**,so deliver exact-SHA switch-cpu-batch-validation
+ZIP and await sd:/switch-recompiler-cpu-validation.txt. Status PENDING_USER_SWITCH_RUN.
+Other Paint/GPU/input/relaunch hardware gates remain deferred. No SD/JIT42 repeat.
+Local SDK absent after403;Switch compilation/NRO comes from CI,not a local build.
+Then choose wider native memory/stack/block work from measured fallback costs.
+
+## Prior G9 milestone
 
 [G9 dispatch](G9_NATIVE_DISPATCH.md): lazy session-owned16-slot/8-visit cache binds
 common Interpreter::Step,including nested loader/USER/APC/worker paths. Current
