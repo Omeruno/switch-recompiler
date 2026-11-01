@@ -24,6 +24,13 @@ current bytes/owner validation and exact scheduler/TEB/SEH/APC/callback/stop gat
 then public real-PE parity/paired measurements before activation. Local SDK absent;
 CI compiles Switch/NRO,physical checks deferred. No SD/JIT42 repeat.
 
+G8 first publication6a49055 passed5/6 in CI41342882076;host D6 compound DLL/string
+assertion failed. Same refusal reproduced for resource-only DLL with no relocations
+at HLE-occupied preferred bases. Exact failed CI DLL was not retained. Fixture-only
+0x62000000/0x63000000 pins remove path-hashed address selection;separate load/string
+errors+flushed diagnostics preserve failure evidence. No production loader change
+or relaxed resource assertion. Fresh revised exact-SHA CI is required;see G8 follow-up.
+
 [G7 storage](G7_EXECUTABLE_STORAGE.md): lazy GuestSession-owned immutable native
 images,owner/serial tokens,pinned cooperative invocations and retirement,hard
 per-image/store/global backing quotas. Linux RW→RX and libnx JIT/cache protocol;

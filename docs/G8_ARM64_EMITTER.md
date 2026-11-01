@@ -127,3 +127,18 @@ Local Switch SDK remains unavailable after the prior devkitPro HTTP403;CI compil
 the actual Switch adapter/NRO. Compilation,QEMU and host checks are software
 acceptance only. Physical Switch native-block execution,FPS,Paint/GPU/fallback/
 input/relaunch checks remain deferred;do not repeat SD diagnosis or JIT42.
+
+## G8 CI fixture follow-up (2026-11-01)
+
+First G8 SHA `6a49055e6c6337de66f11954c17777ae7153b806` passed five CI jobs;
+[CI41342882076](https://github.com/Omeruno/switch-recompiler/actions/runs/41342882076)
+failed the host D6 compound DLL/string assertion at guest source line60. It is
+not accepted as six-job success. Locally,the same failure is reproducible by
+placing the resource-only non-relocatable DLL at0x70000000/0x70010000,occupied by
+HLE modules. MinGW's path-hashed default image base varies with the fresh fixture
+output directory;the original failed DLL was not retained,so its exact base is
+not asserted here. Public class/resource DLL builds now pin noncolliding bases
+0x62000000/0x63000000. Deliberate relocation/collision fixtures are unchanged.
+The D6 inspector records separate load/string errors and flushes loader diagnostics.
+Production loading/failure/relocation and resource assertions are unchanged.
+The revised package must pass fresh full host/MinGW/Mesa and exact-SHA six-job CI.

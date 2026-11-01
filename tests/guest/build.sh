@@ -19,7 +19,10 @@ $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/mmio_read.c" \
     -o "$out/mmio_read.exe" -lkernel32 -lwinmm
 i686-w64-mingw32-windres "$here/class_menus.rc" "$out/class_menus_res.o"
 i686-w64-mingw32-windres -DMENU_DLL "$here/class_menus.rc" "$out/class_menus_dll_res.o"
-$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 "$here/resource_strings_dll.c" \
+# These tiny resource DLLs contain no relocations. MinGW hashes the output path
+# for its default base,which can collide with an HLE module. Pin fixture bases;
+# keep the separate old_pe/testdll relocation tests at their intentional collisions.
+$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 -Wl,--image-base,0x62000000 "$here/resource_strings_dll.c" \
     "$out/class_menus_dll_res.o" -o "$out/class_menus.dll" -lkernel32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/class_menus.c" "$out/class_menus_res.o" \
     -o "$out/class_menus.exe" -lkernel32 -luser32
@@ -29,7 +32,7 @@ $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/window_lookup.c" \
     -o "$out/window_lookup.exe" -lkernel32 -luser32
 i686-w64-mingw32-windres "$here/palette_strings.rc" "$out/strings_main_resource.o"
 i686-w64-mingw32-windres -DRESOURCE_DLL "$here/palette_strings.rc" "$out/strings_dll_resource.o"
-$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 "$here/resource_strings_dll.c" \
+$cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 -Wl,--image-base,0x63000000 "$here/resource_strings_dll.c" \
     "$out/strings_dll_resource.o" -o "$out/resource_strings.dll" -lkernel32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/palette_strings.c" \
     "$out/strings_main_resource.o" -o "$out/palette_strings.exe" -lkernel32 -luser32 -lgdi32 -lwinmm

@@ -34,7 +34,8 @@ int main(int argc,char** argv){
         }
         if(!registered)registered=m.Read32(probe+28);else assert(registered==m.Read32(probe+28));
         if(mode==2)assert(parked && !stopped && !m.Read32(probe+12));
-        else{if(!stopped || p.MainThread().exitCode)fprintf(stderr,"Palette/strings mode%u stopped=%d stage=%u exit/source-line=%u\n",mode,stopped,stage,p.MainThread().exitCode);
+        else{if(!stopped || p.MainThread().exitCode)fprintf(stderr,"Palette/strings mode%u stopped=%d stage=%u exit/source-line=%u dll=%08x loadError=%u stringChars=%u stringError=%u\n",mode,stopped,stage,p.MainThread().exitCode,m.Read32(probe+32),m.Read32(probe+36),m.Read32(probe+40),m.Read32(probe+44));
+            std::fflush(stdout);
             assert(stopped && !p.MainThread().exitCode && m.Read32(probe+12)==1);++normal;}
     }
     assert(normal==4);rt::Clock::SetFastForward(false);

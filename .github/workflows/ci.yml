@@ -370,6 +370,7 @@ jobs:
             tests/guest/class_menus.c
             tests/guest/class_menus.rc
             tests/guest/resource_strings_dll.c
+            tests/guest/build.sh
             tests/test_class_menus.cpp
             tests/test_menu_templates.cpp
             docs/D9_CLASS_MENUS.md
@@ -413,6 +414,8 @@ jobs:
             tests/guest/palette_strings.c
             tests/guest/palette_strings.rc
             tests/guest/resource_strings_dll.c
+            tests/guest/build.sh
+            tests/test_palette_strings.cpp
             docs/D6_PALETTE_STRINGS.md
       - uses: actions/upload-artifact@v4
         with:

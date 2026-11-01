@@ -131,6 +131,11 @@ measurements. Capacity checkpoints and explicit CPU reads still synchronize.
 Minimum ARM64 executable-memory probe previously returned42 on Switch; do not
 repeat it as a prerequisite or treat it as an accepted full dynarec.
 
+G8 follow-up: first6a49055 CI41342882076 was5/6 (D6 host DLL/string assertion).
+Reproduced non-relocatable fixture/HLE-base collision;public resource DLL bases
+are now deterministic and failure diagnostics split. Production loader unchanged;
+revised exact-SHA six-job acceptance is required. See [G8](G8_ARM64_EMITTER.md).
+
 ## Next package and activation gates
 
 Performance is the user's current priority(2026-11-01). [G5's implementation queue](G5_CPU_INTEGER_PERFORMANCE.md)

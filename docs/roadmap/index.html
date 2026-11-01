@@ -249,7 +249,8 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G5: bounded current-byte register/mapped/stack fast execution,exact flags/fault fallback,214323 differential cases,ARM64/QEMU,dual-path native CPU oracle,source-bound rotating PE measurements and console reference/census reports.",
         "G6: bounded32-node/192-byte register/branch IR with precise masks,budgets/checkpoints/source/owner ABA validation;68865 differential cases/147069 nodes,4 real PE exits+2 parked SleepEx HLE aborts.",
         "G7: session-owned immutable native code,8192 actual generated calls,ARM64/QEMU,pinned return frame across suspension/store destruction,global quotas and sticky failed-close retention.",
-        "G8: real ARM64 arithmetic/register/branch emission,52437 three-way comparisons/198371 translated nodes/26013 checkpoint comparisons;exact raw flags/ABI and parked source/store lifetime."
+        "G8: real ARM64 arithmetic/register/branch emission,52437 three-way comparisons/198371 translated nodes/26013 checkpoint comparisons;exact raw flags/ABI and parked source/store lifetime.",
+        "Стабилизирована воспроизводимость ресурсных DLL публичных тестов;правила загрузки приложений и проверки ресурсов сохранены."
       ],
       "todo": [
         "Проверяемое подключение native dispatch/cache/invalidation к планировщику:точные бюджеты,TEB/SEH/APC/callback/stop,реальные PE-сравнения и парные замеры перед включением.",

@@ -120,3 +120,12 @@ References: [SetSystemPaletteUse](https://learn.microsoft.com/en-us/windows/win3
 [LoadStringW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadstringw),
 [LoadStringA](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadstringa),
 [timeGetTime](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timegettime).
+
+## Deterministic public fixture placement (2026-11-01)
+
+The tiny resource DLL has no relocations. Its authored test build now pins base
+0x63000000 instead of MinGW's output-path-hashed default,which can collide
+with HLE images. Real loader collision/refusal and intentional relocation tests
+are unchanged;this is test fixture reproducibility,not a per-application runtime
+branch. D6 additionally records separate DLL/string errors and flushes diagnostics.
+See [G8 follow-up](G8_ARM64_EMITTER.md#g8-ci-fixture-follow-up-2026-11-01).

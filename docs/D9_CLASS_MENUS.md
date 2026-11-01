@@ -110,3 +110,12 @@ References: [CreateWindowExW](https://learn.microsoft.com/en-us/windows/win32/ap
 [WNDCLASSW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassw),
 [SetMenu](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setmenu),
 [public reference](https://github.com/k4zmu2a/SpaceCadetPinball/tree/Release_1.0).
+
+## Deterministic public fixture placement (2026-11-01)
+
+The tiny resource DLL has no relocations. Its authored test build now pins base
+0x62000000 instead of MinGW's output-path-hashed default,which can collide
+with HLE images. Real loader collision/refusal and intentional relocation tests
+are unchanged;this is test fixture reproducibility,not a per-application runtime
+branch. D6 additionally records separate DLL/string errors and flushes diagnostics.
+See [G8 follow-up](G8_ARM64_EMITTER.md#g8-ci-fixture-follow-up-2026-11-01).

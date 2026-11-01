@@ -57,7 +57,8 @@ void WINAPI start(void){
     CHECK(LoadStringA(main,9,text,64)==3 && text[0]=='A' && !text[1] && text[2]=='B' && !text[3]);
     CHECK(!LoadStringW(main,1,(LPWSTR)(ULONG_PTR)0xfffffff0,64) && GetLastError()==ERROR_NOACCESS);
     CHECK(!LoadStringA(main,1,(LPSTR)(ULONG_PTR)0xffffffff,64) && GetLastError()==ERROR_NOACCESS);
-    dll=LoadLibraryA("resource_strings.dll");CHECK(dll && LoadStringA(dll,1,saved,64)==15 && equal(saved,"MODULE resource"));
+    SetLastError(0);dll=LoadLibraryA("resource_strings.dll");P[8]=(DWORD)dll;P[9]=GetLastError();CHECK(dll);
+    SetLastError(0);P[10]=LoadStringA(dll,1,saved,64);P[11]=GetLastError();CHECK(P[10]==15 && equal(saved,"MODULE resource"));
     CHECK(LoadStringW(dll,1,(LPWSTR)&pointer,0)==15 && pointer[0]=='M');P[4]=(DWORD)dll;P[5]=(DWORD)pointer;P[6]=(DWORD)saved;Stage(P[0]==2?9:1);
     if(P[0]==2){Sleep(INFINITE);ExitProcess(200);}
     CHECK(FreeLibrary(dll));Stage(2);CHECK(equal(saved,"MODULE resource"));
