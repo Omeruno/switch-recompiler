@@ -251,11 +251,12 @@ main{max-width:1300px;margin:auto;padding:37px 32px 24px}.hero{display:grid;grid
         "G7: session-owned immutable native code,8192 actual generated calls,ARM64/QEMU,pinned return frame across suspension/store destruction,global quotas and sticky failed-close retention.",
         "G8: real ARM64 arithmetic/register/branch emission,52437 three-way comparisons/198371 translated nodes/26013 checkpoint comparisons;exact raw flags/ABI and parked source/store lifetime.",
         "Стабилизирована воспроизводимость ресурсных DLL публичных тестов;правила загрузки приложений и проверки ресурсов сохранены.",
-        "G9:16-slot/8-visit guarded native cache in common Step;real ARM64 runtime PE/DLL/callback/worker,6 normal+4 parked aborts,exact opcode/HLE/quanta and paired source-bound measurement."
+        "G9:16-slot/8-visit guarded native cache in common Step;real ARM64 runtime PE/DLL/callback/worker,6 normal+4 parked aborts,exact opcode/HLE/quanta and paired source-bound measurement.",
+        "G10: пакетное исполнение до32 инструкций с точным бюджетом;8 обычных сеансов+6 отмен,80 трасс планировщика,19 проб общего CPU-теста."
       ],
       "todo": [
-        "Пакетное native-выполнение с точными бюджетами/checkpoint/TEB/SEH/APC/callback/stop:повторные PE-сравнения и парные замеры перед включением по умолчанию.",
-        "Замеры на Switch при возобновлении аппаратных проверок;GPU-GDI активация по измерениям,потом DirectDraw/D3D.",
+        "Получить аппаратный CPU-отчёт Switch из отдельного G10-пакета; затем по измерениям выбрать расширение native на память/стек/связи блоков.",
+        "Аппаратная CPU-проверка запрошена; остальные проверки отложены. Включение по умолчанию и GPU-GDI — отдельные рубежи, затем DirectDraw/D3D.",
         "Doom95 MIDI,media-bus/DirectSound и прочие совместимостные блоки сохранены в очереди."
       ],
       "gate": "Проверяемое ускорение реального x86-пути с совпадением CPU/пикселей/событий и безопасным fallback;затем аппаратные замеры.",
