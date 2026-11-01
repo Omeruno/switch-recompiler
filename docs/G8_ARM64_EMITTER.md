@@ -142,3 +142,9 @@ not asserted here. Public class/resource DLL builds now pin noncolliding bases
 The D6 inspector records separate load/string errors and flushes loader diagnostics.
 Production loading/failure/relocation and resource assertions are unchanged.
 The revised package must pass fresh full host/MinGW/Mesa and exact-SHA six-job CI.
+
+Successor [G9](G9_NATIVE_DISPATCH.md) now integrates a guarded experimental cache
+through common Interpreter::Step and actually executes full ARM64 PE/DLL/callback/
+worker sessions with exact one-step quantum accounting and paired measurements.
+G5 stays default;native batching remains next. Revised G8 b110fcc passed
+[CI41344237545,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41344237545).

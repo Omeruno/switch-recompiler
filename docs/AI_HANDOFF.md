@@ -1,15 +1,30 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b4e160ab39f29bee07bcf9c452dbc6448c1042e8` (2026-11-01).
-[CI 41253673567](https://github.com/Omeruno/switch-recompiler/actions/runs/41253673567)
+`b110fccd3304dafee82f447ef5cd5b3e1a6f02c8` (2026-11-01).
+[CI 41344237545](https://github.com/Omeruno/switch-recompiler/actions/runs/41344237545)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G8 actual ARM64 emitter;production G5 retained,guarded dispatch/integration next (2026-11-01)
+## Current position: G9 common experimental native step cache;G5 default,batching next (2026-11-01)
+
+[G9 dispatch](G9_NATIVE_DISPATCH.md): lazy session-owned16-slot/8-visit cache binds
+common Interpreter::Step,including nested loader/USER/APC/worker paths. Current
+bytes/owner validation,negative mapping+byte probes,retirement/LRU/one-shot failure
+fallback and reference priority. Explicit cpu-native.flag requests native;reference
+flag wins. Exactly one x86 instruction per Step;no scheduler batching or default
+activation. Full ARM64 runtime actually runs authored PE/DLL:6 normal reference/
+G5/native new+legacy sessions+4 genuine main-HLE/nested-WndProc aborts,positive
+native loader/WndProc/APC/worker deltas,independent outputs/files,exact complete
+opcode/HLE/instruction/quantum parity. Host x86 tests explicitly fallback only.
+Paired real-PE QEMU report includes7 rotating pairs,exact sources/fixture/SHA/counts.
+Local one-step native is slower (G5/native medians~0.36 total/~0.27 loop),not a
+Switch measurement. G5 remains default. Next:bounded native batches with exact
+checkpoint/quantum/stop/TEB/callback semantics and public paired PE measurements
+before activation. Preserve all graphics/audio/session contracts;hardware deferred.
 
 [G8 emitter](G8_ARM64_EMITTER.md): actual bounded ARM64 arithmetic/register/branch
 emission from G6 IR,published through G7.52437 native/reference/IR comparisons,
@@ -19,9 +34,8 @@ RDTSC and reference AV fallback.1483 emitted/published layouts on x86 host;nativ
 execution is explicitly unavailable there. Strict native/ARM64-QEMU and focused
 host ASan/UBSan/leak checks;full host/MinGW/Mesa remains mandatory. Two pure flag
 query helpers,not per-node IR/Step replay. Per-memory native counts/report field.
-Production remains G5;no new Switch FPS claim. Next:guarded dispatch/cache with
-current bytes/owner validation and exact scheduler/TEB/SEH/APC/callback/stop gates,
-then public real-PE parity/paired measurements before activation. Local SDK absent;
+G9 now integrates guarded single-step cache into the common interpreter and real PE flow.
+G5 remains default;next exact-budget batching and measurement before activation. Local SDK absent;
 CI compiles Switch/NRO,physical checks deferred. No SD/JIT42 repeat.
 
 G8 first publication6a49055 passed5/6 in CI41342882076;host D6 compound DLL/string
@@ -29,7 +43,7 @@ assertion failed. Same refusal reproduced for resource-only DLL with no relocati
 at HLE-occupied preferred bases. Exact failed CI DLL was not retained. Fixture-only
 0x62000000/0x63000000 pins remove path-hashed address selection;separate load/string
 errors+flushed diagnostics preserve failure evidence. No production loader change
-or relaxed resource assertion. Fresh revised exact-SHA CI is required;see G8 follow-up.
+or relaxed resource assertion. Revised b110fcc passed all six CI41344237545;see G8 follow-up.
 
 [G7 storage](G7_EXECUTABLE_STORAGE.md): lazy GuestSession-owned immutable native
 images,owner/serial tokens,pinned cooperative invocations and retirement,hard

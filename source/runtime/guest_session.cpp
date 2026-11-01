@@ -15,7 +15,7 @@ GuestSession::Context GuestSession::Capture() {
     c.crt=win32::g_crtGlobalsBase;c.heapBase=win32::g_heapBase;c.heapNext=win32::g_heapNext;
     c.mfc=win32::g_mfcStateBase;c.teb=win32::g_tebAddr;return c;
 }
-GuestSession::GuestSession():previous_(Capture()),code_(memory_.Identity()),process_(memory_) {
+GuestSession::GuestSession():previous_(Capture()),code_(memory_.Identity()),native_(memory_,code_),process_(memory_) {
     g_process=&process_;win32::SetImportBindingMemory(&memory_);
     win32::user::G()={};win32::g_guestExitRequested=false;win32::g_guestExitCode=0;
     win32::g_crtGlobalsBase=win32::g_heapBase=win32::g_heapNext=win32::g_mfcStateBase=win32::g_tebAddr=0;
@@ -25,6 +25,7 @@ GuestSession::GuestSession():previous_(Capture()),code_(memory_.Identity()),proc
 GuestSession::~GuestSession() {
     // GuestExecution has already drained. Host-only state/handles are destroyed
     // with Process, then backing guest memory. No guest callback is run here.
+    native_.Close();
     code_.Close(); // Existing calls must already have drained;retired leases cannot start new calls.
     win32::EndMciMedia();
     win32::EndWaveOutSession();

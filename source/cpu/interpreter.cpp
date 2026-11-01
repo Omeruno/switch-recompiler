@@ -297,6 +297,11 @@ void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
 }
 
 StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {
+    uint8_t nativeLength=0,nativeOpcode=0;
+    if(memory_.TryNativeStep(cpu,nativeLength,nativeOpcode)){
+        if(outInstr){outInstr->length=nativeLength;outInstr->rawOpcodeForDebug=nativeOpcode;outInstr->mnemonic=Mnemonic::Unknown;}
+        return StepResult::Continue;
+    }
     memory_.ClearFault();
     const uint8_t* bytes=memory_.RawPointer(cpu.eip);
     const uint32_t available=memory_.FetchLimit(cpu.eip);

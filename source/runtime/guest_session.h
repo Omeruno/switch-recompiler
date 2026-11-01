@@ -1,7 +1,7 @@
 #pragma once
 #include "process.h"
 #include "audio_output.h"
-#include "../cpu/code_storage.h"
+#include "../cpu/native_cache.h"
 
 namespace win32 {class LegacySession;namespace user {class GuiSession;}}
 
@@ -33,6 +33,7 @@ private:
     Context previous_;
     cpu::PagedGuestMemory memory_;
     cpu::CodeStore code_; // closed after continuations drain,before backing memory
+    cpu::NativeCache native_; // detached/retired before storage and memory
     Process process_;
     AudioScope audio_;
     std::unique_ptr<win32::user::GuiSession> gui_;

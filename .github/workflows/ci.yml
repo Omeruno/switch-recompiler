@@ -21,7 +21,7 @@ jobs:
             fi
           done
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends g++-aarch64-linux-gnu qemu-user
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends g++-aarch64-linux-gnu qemu-user gcc-mingw-w64-i686
       - name: Execute the same ARM64 context switch used by Switch
         run: |
           aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -static -fno-exceptions -fno-rtti -I. tests/test_host_fiber.cpp source/runtime/host_fiber.cpp -o /tmp/test_host_fiber_arm64
@@ -109,6 +109,55 @@ jobs:
             source/runtime/integer_execution_report.h
             docs/G8_ARM64_EMITTER.md
 
+      - name: Execute guarded native step cache on ARM64
+        run: |
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -fno-exceptions -fno-rtti -I. tests/test_native_cache.cpp source/cpu/native_cache.cpp source/cpu/arm64_emitter.cpp source/cpu/block_ir.cpp source/cpu/code_storage.cpp source/cpu/code_storage_platform.cpp source/cpu/interpreter.cpp source/cpu/fpu.cpp source/cpu/sse.cpp -o /tmp/test_native_cache_arm64
+          qemu-aarch64 /tmp/test_native_cache_arm64 > build-host/native-cache-arm64.log
+          cat build-host/native-cache-arm64.log
+      - name: Full ARM64 runtime with real PE callbacks and paired native dispatch measurement
+        timeout-minutes: 20
+        run: python3 tools/run_arm64_native_dispatch.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-dispatch-arm64
+          if-no-files-found: error
+          path: |
+            build-host/native-cache-arm64.log
+            build-host/arm64-dispatch/native-dispatch-pe-arm64.log
+            build-host/arm64-dispatch/native-dispatch-measurement.json
+            build-host/arm64-dispatch/native-dispatch-measurement.log
+            build-host/arm64-dispatch/test_native_dispatch_pe
+            build-host/arm64-dispatch/guest/native_dispatch.exe
+            build-host/arm64-dispatch/guest/native_dispatch.dll
+            tests/test_native_cache.cpp
+            tests/test_native_dispatch_pe.cpp
+            tests/guest/native_dispatch.c
+            tests/guest/native_dispatch_dll.c
+            tests/guest/native_dispatch_kernel.h
+            tools/run_arm64_native_dispatch.py
+            tools/measure_native_dispatch.py
+            source/cpu/native_cache.h
+            source/cpu/native_cache.cpp
+            source/cpu/arm64_emitter.h
+            source/cpu/arm64_emitter.cpp
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
+            source/cpu/code_storage.h
+            source/cpu/code_storage.cpp
+            source/cpu/code_storage_platform.cpp
+            source/cpu/interpreter.h
+            source/cpu/interpreter.cpp
+            source/cpu/cpu_state.h
+            source/cpu/paged_memory.h
+            source/runtime/guest_session.h
+            source/runtime/guest_session.cpp
+            source/runtime/guest_execution.h
+            source/runtime/guest_execution.cpp
+            source/runtime/workload_profile.h
+            source/runtime/integer_execution_report.h
+            source/main.cpp
+            docs/G9_NATIVE_DISPATCH.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -129,6 +178,32 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-dispatch
+          if-no-files-found: error
+          path: |
+            build-host/test_native_cache.log
+            build-host/native_dispatch_pe.log
+            build-host/guest-run.*/native_dispatch.exe
+            build-host/guest-run.*/native_dispatch.dll
+            tests/test_native_cache.cpp
+            tests/test_native_dispatch_pe.cpp
+            tests/guest/native_dispatch.c
+            tests/guest/native_dispatch_dll.c
+            tests/guest/native_dispatch_kernel.h
+            tests/guest/build.sh
+            tools/run_arm64_native_dispatch.py
+            tools/measure_native_dispatch.py
+            source/cpu/native_cache.h
+            source/cpu/native_cache.cpp
+            source/cpu/interpreter.cpp
+            source/cpu/paged_memory.h
+            source/runtime/guest_session.h
+            source/runtime/guest_session.cpp
+            source/runtime/integer_execution_report.h
+            source/main.cpp
+            docs/G9_NATIVE_DISPATCH.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-arm64-emitter

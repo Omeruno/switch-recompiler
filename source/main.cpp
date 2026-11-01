@@ -337,6 +337,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     auto flag=[](const char* file){FILE* f=fopen(file,"rb");const bool on=f && fgetc(f)=='1';if(f)fclose(f);return on;};
     const bool profileExecution=flag("sdmc:/switch-recompiler/profile-execution.flag");
     mem.EnableIntegerFastPath(!flag("sdmc:/switch-recompiler/cpu-reference.flag"));
+    mem.EnableNativeExecution(flag("sdmc:/switch-recompiler/cpu-native.flag"));
     mem.TrackIntegerExecution(profileExecution);
     struct PerformanceReport {
         cpu::IGuestMemory& memory;const char* executable;bool tracked;
