@@ -13,7 +13,7 @@ p.add_argument('--fixtures',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
 a=p.parse_args()
 root=Path(__file__).resolve().parents[1]
-sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+sha=subprocess.check_output(['git','-c','safe.directory='+str(root),'rev-parse','HEAD'],cwd=root,text=True).strip()
 nro=a.nro.read_bytes()
 assert nro[16:20]==b'NRO0' and sha.encode() in nro
 files={'switch/cpu-batch-validation/cpu-batch-validation.nro':nro,

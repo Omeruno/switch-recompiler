@@ -55,3 +55,10 @@ Next: inspect physical CPU correctness/costs, then choose wider memory/stack/
 block-linking work from measured fallback coverage. Do not turn native on by
 default merely because this register-heavy fixture wins under QEMU. Full dynarec,
 DirectDraw/D3D and broad workload/default activation remain open.
+
+G10 packaging follow-up: CI41355944529 at4175be9 compiled the Switch NRO,
+but the new ZIP step failed Git's container ownership check before packaging.
+The packager now scopes `git -c safe.directory=<this checkout>` to its SHA query;
+no global trust exception or runtime change. The completed local full host/
+MinGW/Mesa runner passed. Physical CPU acceptance remains pending; publish only
+the revised exact-SHA bundle after all six CI jobs and binary/fixture audit.

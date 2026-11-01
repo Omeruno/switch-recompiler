@@ -4261,3 +4261,10 @@ with exact opcode/HLE/instruction/quantum and real file bytes +2 genuine parked
 SleepEx HLE aborts. Production stays G5;no native emission,code cache,batched
 scheduler or new FPS acceptance. Next:session-owned executable storage/W^X/icache/
 leases/retirement,then ARM64 emitter using IR+reference oracles. Hardware deferred.
+
+G10 packaging follow-up: CI41355944529 at4175be9 compiled the Switch NRO,
+but the new ZIP step failed Git's container ownership check before packaging.
+The packager now scopes `git -c safe.directory=<this checkout>` to its SHA query;
+no global trust exception or runtime change. The completed local full host/
+MinGW/Mesa runner passed. Physical CPU acceptance remains pending; publish only
+the revised exact-SHA bundle after all six CI jobs and binary/fixture audit.

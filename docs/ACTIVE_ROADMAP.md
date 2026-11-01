@@ -211,3 +211,10 @@ G10 software extends G9 with exact-budget native batches. Deliver the isolated
 CPU test,collect actual Switch report,then select memory/stack/block coverage
 from measured costs;default activation remains a separate acceptance decision.
 All other deferred hardware checks stay deferred;do not infer full game/GPU FPS.
+
+G10 packaging follow-up: CI41355944529 at4175be9 compiled the Switch NRO,
+but the new ZIP step failed Git's container ownership check before packaging.
+The packager now scopes `git -c safe.directory=<this checkout>` to its SHA query;
+no global trust exception or runtime change. The completed local full host/
+MinGW/Mesa runner passed. Physical CPU acceptance remains pending; publish only
+the revised exact-SHA bundle after all six CI jobs and binary/fixture audit.
