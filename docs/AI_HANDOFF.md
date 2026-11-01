@@ -1,15 +1,28 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`fb72a7a0db205ee826671c8c30ddbe01b36eab81` (2026-11-01).
-[CI 41250836221](https://github.com/Omeruno/switch-recompiler/actions/runs/41250836221)
+`b4e160ab39f29bee07bcf9c452dbc6448c1042e8` (2026-11-01).
+[CI 41253673567](https://github.com/Omeruno/switch-recompiler/actions/runs/41253673567)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G7 executable storage;production G5 retained,ARM64 emitter next (2026-11-01)
+## Current position: G8 actual ARM64 emitter;production G5 retained,guarded dispatch/integration next (2026-11-01)
+
+[G8 emitter](G8_ARM64_EMITTER.md): actual bounded ARM64 arithmetic/register/branch
+emission from G6 IR,published through G7.52437 native/reference/IR comparisons,
+198371 translated nodes,26013 checkpoint comparisons,all raw lazy flags/state/
+opcode/budget parity;explicit GPR/SP ABI,parked checkpoint source/store lifetime,
+RDTSC and reference AV fallback.1483 emitted/published layouts on x86 host;native
+execution is explicitly unavailable there. Strict native/ARM64-QEMU and focused
+host ASan/UBSan/leak checks;full host/MinGW/Mesa remains mandatory. Two pure flag
+query helpers,not per-node IR/Step replay. Per-memory native counts/report field.
+Production remains G5;no new Switch FPS claim. Next:guarded dispatch/cache with
+current bytes/owner validation and exact scheduler/TEB/SEH/APC/callback/stop gates,
+then public real-PE parity/paired measurements before activation. Local SDK absent;
+CI compiles Switch/NRO,physical checks deferred. No SD/JIT42 repeat.
 
 [G7 storage](G7_EXECUTABLE_STORAGE.md): lazy GuestSession-owned immutable native
 images,owner/serial tokens,pinned cooperative invocations and retirement,hard
@@ -19,8 +32,7 @@ release is retained once in a bounded process vault,never retried or reported fr
 8192 real native arithmetic calls;real generated return frame parks inside C++,
 survives store destruction and resumes;ARM64/QEMU,strict and focused ASan/UBSan
 (no-fiber with leak detection),full runtime nested/sequential session tests.
-Production remains G5;no normal FPS gain expected. Next:actual bounded ARM64
-emitter with G6 differential/reference oracles,then guarded dispatch/invalidation/
+Production remains G5;no normal FPS gain expected. G8 now supplies actual bounded ARM64 emission;next guarded dispatch/invalidation/
 scheduler integration. Local SDK absent;Switch build in CI,hardware deferred.
 
 [G6 block IR](G6_CPU_BLOCK_IR.md): bounded32-node/192-byte owned register/ALU/
@@ -31,7 +43,7 @@ focused strict/sanitizer gates. Hardware oracle adds IR/reference to fast/refere
 for3×50000 native-x86 cases. Authored old PE+ordinal DLL:4 normal new/legacy sessions
 with exact opcode/HLE/instruction/quantum and real file bytes +2 genuine parked
 SleepEx HLE aborts. Production stays G5;no native emission,code cache,batched
-scheduler or new FPS acceptance. Storage is now G7;next ARM64 emitter using IR+reference oracles. Hardware deferred.
+scheduler or new FPS acceptance. G7 storage/G8 emission now exist;next guarded dispatch/cache and scheduler integration. Hardware deferred.
 
 [G5 common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md): default bounded
 unprefixed32-bit register and in-page mapped ALU/MOV/LEA/stack execution reuses
@@ -46,7 +58,7 @@ controls detailed clocks+bounded opcode/HLE census. End-of-session owning CPU
 report and modern renderer counters are emitted after draining;normal detailed
 raster clocks are off. Full dynarec/code cache and GPU-GDI/DirectX remain open.
 User priority2026-11-01 is performance before Doom95 MIDI/import coverage;next
-software block is bounded block/IR frontend+oracle and safe ARM64 code storage,
+software block is guarded native dispatch/cache and scheduler integration after G6–G8,
 with existing CPU/GPU correctness/fallback retained. Physical tests deferred.
 
 [D13 legacy registry creation](D13_LEGACY_REGISTRY_CREATE.md): RegCreateKey A/W
@@ -4197,7 +4209,7 @@ controls detailed clocks+bounded opcode/HLE census. End-of-session owning CPU
 report and modern renderer counters are emitted after draining;normal detailed
 raster clocks are off. Full dynarec/code cache and GPU-GDI/DirectX remain open.
 User priority2026-11-01 is performance before Doom95 MIDI/import coverage;next
-software block is bounded block/IR frontend+oracle and safe ARM64 code storage,
+software block is guarded native dispatch/cache and scheduler integration after G6–G8,
 with existing CPU/GPU correctness/fallback retained. Physical tests deferred.
 
 ## 2026-11-01 G6 — block frontend/oracle

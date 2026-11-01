@@ -2,12 +2,12 @@
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: [G7 executable storage](G7_EXECUTABLE_STORAGE.md) implemented:
-immutable session-owned images,real native/ARM64 calls,pinned suspension/retirement,
-bounded failed-release retention. Production stays G5;next actual ARM64 emitter,
-then guarded cache/dispatch and scheduler integration. No new Switch FPS claim.**
-Incoming verified runtime `fb72a7a0db205ee826671c8c30ddbe01b36eab81`
-passed [CI41250836221, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41250836221).
+**Current position: [G8 actual ARM64 emitter](G8_ARM64_EMITTER.md) implemented:
+52437 three-way comparisons,198371 translated nodes,ABI/parked checkpoint/source/
+store lifetime and exact flags/accounting. Production stays G5;next guarded native
+dispatch/cache and exact scheduler/callback integration. No Switch FPS claim.**
+Incoming verified runtime `b4e160ab39f29bee07bcf9c452dbc6448c1042e8`
+passed [CI41253673567,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41253673567).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -122,8 +122,9 @@ double-click; single selection/controller Open remain. One native tool group.
 | D12 | [Launcher contract](D12_LAUNCHER_CONTRACT.md):checked empty A/W+Ex paths,virtual UserName,unsupported DirectPlay names/ordinals with correct ABI;4 normal x86 sessions+2 aborts | Composed launcher visible;New Game stops at RegCreateKeyA;configuration/Common Controls/game/DirectX remain open |
 | D13 | [Legacy registry create](D13_LEGACY_REGISTRY_CREATE.md):real RegCreateKey A/W,stdcall12,checked outputs,no Ex-only stack reads;4 normal x86 sessions+2 aborts and independent store bytes | New Game reaches missing MIDI device enumeration;game/DirectX remain open |
 | G5 | [Common CPU performance](G5_CPU_INTEGER_PERFORMANCE.md):register/mapped/stack path,214323 differential cases,ARM64/QEMU,native CPU dual-path oracle;paired PE reports and Switch reference/census flags | Host-only ratios;full dynarec/physical performance/GPU game APIs remain open |
-| G6 | [Owned block IR](G6_CPU_BLOCK_IR.md):32 nodes/192 bytes,portable semantics/budgets/checkpoints/current-byte validation/owner ABA;68865 cases+4 PE exits/2 HLE aborts | Production G5;G7 storage implemented;native emission/cache/batching and hardware performance remain open |
+| G6 | [Owned block IR](G6_CPU_BLOCK_IR.md):32 nodes/192 bytes,portable semantics/budgets/checkpoints/current-byte validation/owner ABA;68865 cases+4 PE exits/2 HLE aborts | Production G5;G7 storage/G8 emission implemented;production cache/batching and hardware performance remain open |
 | G7 | [Executable storage](G7_EXECUTABLE_STORAGE.md):session ownership,immutable publication/cache protocol,8192 native calls,pinned suspension/retirement,bounded failed-release vault;ARM64/QEMU and full-runtime session tests | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
+| G8 | [Actual ARM64 emitter](G8_ARM64_EMITTER.md):52437 native/reference/IR cases,198371 translated nodes,ABI/budgets/raw flags and parked checkpoint lifetime | Test-only executor;production dispatch/cache/scheduler integration and physical performance remain open |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -142,11 +143,13 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
    Production batching/callback integration remains open.
 3. **Implemented G7:** session-owned libnx/Linux executable storage,immutable publication/cache protocol,
    bounded pinned retirement and failed-close retention. Libnx alias mode is not physical W^X.
-4. **Next independent software block:** actual bounded ARM64 emitter from G6 IR,
-   exact flags/register/branch differential checks and fallback at unsupported boundaries.
-   Broader memory/TEB/SEH semantics remain gated;existing JIT42 need not repeat.
-5. Invalidation for guest writes,raw host aliases,DLL unload/remap;page generations
-   alone cannot observe all aliases. Keep scheduler quantum/stop/callback gates.
+4. **Implemented G8:** actual bounded ARM64 emitter from G6 IR,exact raw flags/
+   register/branch parity,ABI/checkpoint/lifetime/accounting and reference boundaries.
+5. **Next independent software block:** guarded native dispatch/cache with current
+   source/owner validation across guest writes,raw aliases,DLL unload/remap;page
+   generations alone cannot observe all aliases. Integrate exact quantum/TEB/SEH/
+   APC/callback/stop/drain contracts and public real-PE parity/paired measurement
+   before production activation. Broader memory/stack/SIMD remains separately gated.
 6. Actual Switch profile/overhead comparison when physical testing resumes;use
    phase/census scopes honestly. Hardware is not a prerequisite for steps2–5.
 7. Extend resident GPU GDI/batches by measured workload needs and existing

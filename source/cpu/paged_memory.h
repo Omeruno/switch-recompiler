@@ -67,11 +67,12 @@ public:
     uint64_t Identity() const {return identity_;}
 
     // Per-address-space policy/counters; no static cache or borrowed code bytes.
-    struct IntegerExecutionStats {uint64_t fast=0,reference=0,mapped=0,ir=0;};
+    struct IntegerExecutionStats {uint64_t fast=0,reference=0,mapped=0,ir=0,native=0;};
     void EnableIntegerFastPath(bool enabled){integerFast_=enabled;}
     bool IntegerFastPathEnabled() const {return integerFast_;}
     void TrackIntegerExecution(bool enabled){integerTrack_=enabled;integerStats_={};}
     void RecordIntegerExecution(bool fast,bool mapped=false){if(integerTrack_){if(fast)++integerStats_.fast;else ++integerStats_.reference;if(mapped)++integerStats_.mapped;}}
+    void RecordNativeExecution(){if(integerTrack_)++integerStats_.native;}
     void RecordIrExecution(){if(integerTrack_)++integerStats_.ir;}
     const IntegerExecutionStats& IntegerStats() const {return integerStats_;}
 

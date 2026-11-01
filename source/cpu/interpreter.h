@@ -52,6 +52,7 @@ struct CpuException {
 };
 
 // Shared successful-instruction accounting for the experimental portable IR.
+void AccountNativeInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode);
 void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode);
 
 class Interpreter {

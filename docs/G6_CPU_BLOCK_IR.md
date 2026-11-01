@@ -108,10 +108,9 @@ unavailable; CI builds NRO. Hardware acceptance remains deferred.
 
 ## Next concrete block
 
-Implement bounded session-owned executable code storage: host and Horizon/libnx
-backends, W^X/publication/icache rules, leases/retirement and genuine failure paths.
-Then emit useful ARM64 blocks from this IR and verify against the portable and
-full-reference oracles. Preserve exact budgets, source validation, fallback and
+Successors [G7 storage](G7_EXECUTABLE_STORAGE.md) and [G8 actual ARM64 emitter](G8_ARM64_EMITTER.md)
+now supply bounded publication/retirement and native emission with three-way
+comparison. Next:guarded dispatch/cache and exact scheduler/callback integration. Preserve exact budgets, source validation, fallback and
 native continuation draining before production activation. The old JIT42 probe
 need not repeat and is not accepted as a translator. Unsupported IR memory/stack/
 SIMD operations, complete invalidation/alias handling, hot-block selection and

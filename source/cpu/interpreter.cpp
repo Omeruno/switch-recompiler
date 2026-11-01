@@ -286,6 +286,11 @@ static bool FastMapped(CpuState& c,IGuestMemory& m,const uint8_t* code,uint32_t 
     length=uint8_t(x.pos);c.eip+=length;return true;
 }
 
+void AccountNativeInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
+    memory.ClearFault();g_lastKnownEip=eip;++g_timeStampCounter;memory.RecordNativeExecution();
+    if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode);
+}
+
 void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
     memory.ClearFault();g_lastKnownEip=eip;++g_timeStampCounter;memory.RecordIrExecution();
     if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode);

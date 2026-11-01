@@ -144,4 +144,8 @@ D13's next MIDI discovery/Doom95 compatibility queue remains open but is no long
 above this performance direction. Preserve Luna, F7/F8 controls/view, L/ZL overrides,
 current audio and the closed SD recovery diagnosis.
 
-Successor [G6](G6_CPU_BLOCK_IR.md) implements the bounded owned IR/portable oracle and public PE path. Next is executable storage/publication and actual ARM64 emission;production remains G5.
+Successors [G6 IR](G6_CPU_BLOCK_IR.md),[G7 storage](G7_EXECUTABLE_STORAGE.md)
+and [G8 ARM64 emitter](G8_ARM64_EMITTER.md) implement the bounded frontend/storage/
+native emission software foundations. Production remains G5;next guarded dispatch/
+cache and exact scheduler/callback integration,then public PE measurements before
+activation. G8 reports separate native work counts;no physical FPS is inferred.

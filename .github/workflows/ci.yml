@@ -83,6 +83,32 @@ jobs:
             source/cpu/code_storage_platform.cpp
             docs/G7_EXECUTABLE_STORAGE.md
 
+      - name: Execute emitted x86 IR as actual ARM64 and compare all three engines
+        run: |
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -fno-exceptions -fno-rtti -I. tests/test_arm64_emitter.cpp source/cpu/arm64_emitter.cpp source/cpu/block_ir.cpp source/cpu/code_storage.cpp source/cpu/code_storage_platform.cpp source/cpu/interpreter.cpp source/cpu/fpu.cpp source/cpu/sse.cpp source/runtime/host_fiber.cpp -o /tmp/test_arm64_emitter
+          qemu-aarch64 /tmp/test_arm64_emitter > build-host/arm64-emitter-arm64.log
+          cat build-host/arm64-emitter-arm64.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-arm64-emitter-arm64
+          if-no-files-found: error
+          path: |
+            build-host/arm64-emitter-arm64.log
+            tests/test_arm64_emitter.cpp
+            source/cpu/arm64_emitter.h
+            source/cpu/arm64_emitter.cpp
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
+            source/cpu/code_storage.h
+            source/cpu/code_storage.cpp
+            source/cpu/code_storage_platform.cpp
+            source/cpu/interpreter.h
+            source/cpu/interpreter.cpp
+            source/cpu/cpu_state.h
+            source/cpu/paged_memory.h
+            source/runtime/integer_execution_report.h
+            docs/G8_ARM64_EMITTER.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -103,6 +129,26 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-arm64-emitter
+          if-no-files-found: error
+          path: |
+            build-host/test_arm64_emitter.log
+            tests/test_arm64_emitter.cpp
+            source/cpu/arm64_emitter.h
+            source/cpu/arm64_emitter.cpp
+            source/cpu/block_ir.h
+            source/cpu/block_ir.cpp
+            source/cpu/code_storage.h
+            source/cpu/code_storage.cpp
+            source/cpu/code_storage_platform.cpp
+            source/cpu/interpreter.h
+            source/cpu/interpreter.cpp
+            source/cpu/cpu_state.h
+            source/cpu/paged_memory.h
+            source/runtime/integer_execution_report.h
+            docs/G8_ARM64_EMITTER.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-code-storage

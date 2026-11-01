@@ -2,8 +2,9 @@
 
 Software milestone,2026-11-01. Builds on [G6 IR](G6_CPU_BLOCK_IR.md).
 Production still executes through G5;this package does not translate x86 or
-increase normal application FPS. Next is an actual bounded ARM64 emitter using
-the G6 semantic/reference oracles and this storage. Full dynarec,dispatch/cache
+increase normal application FPS. Successor [G8](G8_ARM64_EMITTER.md) now emits actual bounded ARM64 using
+the G6 semantic/reference oracles and this storage. Next is guarded native
+dispatch/cache and exact scheduler/callback integration. Full dynarec,dispatch/cache
 invalidation,scheduler integration and GPU API translation remain open.
 
 ## Ownership and publication
