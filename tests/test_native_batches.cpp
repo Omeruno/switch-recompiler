@@ -14,7 +14,7 @@ std::vector<Point> Trace(bool native,uint32_t cap,uint32_t stop){
     assert(p.Scheduler().Add(main) && p.Scheduler().Add(peer));
     for(unsigned i=0;i<32;++i)m.Write8(0x20000+i,i&1?0x4a:0x40);
     m.Write8(0x20020,0xeb);m.Write8(0x20021,0xde);
-    m.EnableNativeExecution(native);m.EnableNativeBatching(native);m.TrackIntegerExecution(true);
+    m.EnableIntegerFastPath(native);m.EnableNativeExecution(native);m.EnableNativeBatching(native);m.TrackIntegerExecution(true);
     // Exercise a maximal32-node prefix instead of waiting for32 cold addresses
     // to fit in a16-slot admission table. Reset architectural state afterwards.
     if(native){cpu::Interpreter warm(m);for(unsigned n=0;n<cpu::NativeCache::HotVisits;++n){cpu::CpuState c;c.eip=0x20000;assert(warm.Step(c)==cpu::StepResult::Continue);}}
