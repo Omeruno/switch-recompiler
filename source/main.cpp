@@ -344,6 +344,7 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
     struct PerformanceReport {
         cpu::IGuestMemory& memory;const char* executable;bool tracked;
         std::unique_ptr<rt::WorkloadProfile> census;
+        std::unique_ptr<rt::EngineCensus> engines;
         ~PerformanceReport(){
             FILE* out=fopen("sdmc:/switch-recompiler-performance.txt","w");if(!out)return;
             fprintf(out,"Execution performance v1\nBuild: %s\nExecutable: %s\n",SR_BUILD_REVISION,executable);
@@ -352,7 +353,9 @@ static void RunInterpreter(const char* path, int maxLinesToShow, int maxSteps)
             else fprintf(out,"Opcode/HLE census: %s\n",tracked?"allocation unavailable":"disabled");
             fclose(out);
         }
-    } performanceReport{mem,path,profileExecution,profileExecution?std::unique_ptr<rt::WorkloadProfile>(new(std::nothrow) rt::WorkloadProfile()):nullptr};
+    } performanceReport{mem,path,profileExecution,profileExecution?std::unique_ptr<rt::WorkloadProfile>(new(std::nothrow) rt::WorkloadProfile()):nullptr,
+        profileExecution?std::unique_ptr<rt::EngineCensus>(new(std::nothrow) rt::EngineCensus()):nullptr};
+    if(performanceReport.census)performanceReport.census->engines=performanceReport.engines.get();
     rt::WorkloadProfileScope workloadScope(performanceReport.census.get());
     win32::EnableHostLayer(win32::kUiLayer,g_useNewUi);
     struct FrontendCleanup {bool legacy;~FrontendCleanup(){if(legacy)ResetLegacyFrontend();}} frontendCleanup{!g_useNewUi};

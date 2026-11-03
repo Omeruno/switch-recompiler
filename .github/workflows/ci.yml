@@ -189,6 +189,28 @@ jobs:
             source/
             docs/G11_NATIVE_ADDRESS.md
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-mixed-arm64
+          if-no-files-found: error
+          path: |
+            build-host/arm64-dispatch/test_workload_profile.log
+            build-host/arm64-dispatch/test_native_memory_boundary.log
+            build-host/arm64-dispatch/test_native_mixed_pe.log
+            build-host/arm64-dispatch/test_native_mixed_pe
+            build-host/arm64-dispatch/guest/native_mixed.exe
+            build-host/arm64-dispatch/native-mixed-measurement.json
+            build-host/arm64-dispatch/native-mixed-measurement.log
+            tests/test_native_mixed_pe.cpp
+            tests/test_native_memory_boundary.cpp
+            tests/test_workload_profile.cpp
+            tests/guest/native_mixed.c
+            tests/guest/build.sh
+            tools/measure_native_mixed.py
+            tools/run_arm64_native_dispatch.py
+            source/
+            docs/G12_MIXED_CPU_COVERAGE.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -209,6 +231,24 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-mixed
+          if-no-files-found: error
+          path: |
+            build-host/test_workload_profile.log
+            build-host/test_native_memory_boundary.log
+            build-host/native_mixed_pe.log
+            build-host/guest-run.*/native_mixed.exe
+            tests/test_native_mixed_pe.cpp
+            tests/test_native_memory_boundary.cpp
+            tests/test_workload_profile.cpp
+            tests/guest/native_mixed.c
+            tests/guest/build.sh
+            tools/measure_native_mixed.py
+            tools/run_arm64_native_dispatch.py
+            source/
+            docs/G12_MIXED_CPU_COVERAGE.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-native-address

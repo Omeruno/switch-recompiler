@@ -1,15 +1,34 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`1710370d9d56dab2b1df53c0fe351360e338b43d` (2026-11-03).
-[CI 41356429899](https://github.com/Omeruno/switch-recompiler/actions/runs/41356429899)
+`b653d950f335e60a2ddd5acd00f21b113d2c03a2` (2026-11-03).
+[CI 41608994958](https://github.com/Omeruno/switch-recompiler/actions/runs/41608994958)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G11 native LEA; G5 default; G10 hardware pending
+## Current position: G12 mixed CPU coverage/fault boundaries;G5 default;hardware deferred
+
+[G12 mixed coverage](G12_MIXED_CPU_COVERAGE.md) adds optional bounded per-engine
+opcode accounting and five real PE workloads with engine census on/off. Forty
+four-mode/control sessions plus five baselines,80 paired rows;independent values,
+1024 actual cells/stack balance/full CPU/HLE/quanta.17 fault-boundary cases/68
+sessions preserve committed native prefix,EIP/ESP/raw flags and12KiB data,including
+CALL target-fetch semantics;cross-page Read16/Read32 now explicitly read low first.
+Local QEMU native coverage is98/72/62/62/55% for register/memory/stack/calls/mixed;
+hot G5/native~1.21/0.77/0.81/0.61/0.61. Slower cases retained,not physical FPS.
+G5 remains default. User explicitly DEFERRED G10 hardware on2026-11-03;all outstanding
+physical tests are deferred,no request/reminder. Next G13:checked32-bit MOV loads
+with dynamic executed-prefix ABI and real fault refusal,then wider memory/stack.
+Local final gates:full COMPOSITION_GL_TEST=1 host/MinGW/Mesa,22 F groups and17
+GPU groups/five reports;fresh full ARM64 runtime and all old G10/G11/new G12
+checks;focused strict/ASan/UBSan/leak probe(profile+CPU instrumented,other runtime
+ordinary,no guest fibers);67 document links and desktop/mobile browser checks pass.
+Publish normally,verify exact-SHA all six CI/Pages/NRO/source/fixture/report identities.
+
+## Prior G11 milestone
 
 [G11 native address arithmetic](G11_NATIVE_ADDRESS.md) adds true ARM64 32-bit LEA
 through owning IR and direct ADD/shift emission. 6,314 layouts,152,304 full-reference

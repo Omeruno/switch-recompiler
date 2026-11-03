@@ -252,7 +252,11 @@ public:
             std::memcpy(&v, page + off, 2);
             return v;
         }
-        return static_cast<uint16_t>(Read8(addr) | (Read8(addr + 1) << 8));
+        // The first missing byte defines the sticky fault address. Sequence
+        // these accesses explicitly;binary operands have no left-first guarantee.
+        const auto low=Read8(addr);
+        const auto high=Read8(addr+1);
+        return static_cast<uint16_t>(low | (uint16_t(high)<<8));
     }
 
     uint32_t Read32(uint32_t addr) const {
@@ -263,7 +267,9 @@ public:
             std::memcpy(&v, page + off, 4);
             return v;
         }
-        return static_cast<uint32_t>(Read16(addr)) | (static_cast<uint32_t>(Read16(addr + 2)) << 16);
+        const auto low=Read16(addr);
+        const auto high=Read16(addr+2);
+        return uint32_t(low) | (uint32_t(high)<<16);
     }
 
     void Write8(uint32_t addr, uint8_t value) {

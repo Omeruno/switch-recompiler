@@ -24,5 +24,13 @@ inline void WriteWorkloadReport(FILE* out, const WorkloadProfile& p) {
         } else std::fprintf(out, "host %zu unknown %llu\n", i, (unsigned long long)p.hosts[i]);
     }
     std::fprintf(out, "host other/dynamic-mfc %llu\n", (unsigned long long)p.otherHosts);
+    if(p.engines){const auto& census=*p.engines;
+        std::fprintf(out,"engine-census-v1 instructions=%llu profile_instructions=%llu storage=%zu scope=accepted-attempts-while-bound\n",(unsigned long long)census.instructionCount,(unsigned long long)p.instructionCount,sizeof(census));
+        for(size_t engine=0;engine<EngineCensus::EngineSlots;++engine){
+            std::fprintf(out,"engine %s total=%llu\n",EngineCensus::Name(engine),(unsigned long long)census.totals[engine]);
+            for(size_t opcode=0;opcode<EngineCensus::OpcodeSlots;++opcode)if(census.opcodes[engine][opcode])
+                std::fprintf(out,"engine-opcode %s %03x %llu\n",EngineCensus::Name(engine),unsigned(opcode),(unsigned long long)census.opcodes[engine][opcode]);
+        }
+    }else std::fputs("engine-census-v1 disabled-or-unavailable\n",out);
 }
 } // namespace rt

@@ -288,12 +288,12 @@ static bool FastMapped(CpuState& c,IGuestMemory& m,const uint8_t* code,uint32_t 
 
 void AccountNativeInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
     memory.ClearFault();g_lastKnownEip=eip;++g_timeStampCounter;memory.RecordNativeExecution();
-    if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode);
+    if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode,rt::ExecutionEngine::Native);
 }
 
 void AccountIrInstruction(IGuestMemory& memory,uint32_t eip,size_t opcode) {
     memory.ClearFault();g_lastKnownEip=eip;++g_timeStampCounter;memory.RecordIrExecution();
-    if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode);
+    if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(opcode,rt::ExecutionEngine::PortableIr);
 }
 
 StepResult Interpreter::Step(CpuState& cpu, Instruction* outInstr) {return StepOne(cpu,outInstr,true);}
@@ -322,7 +322,7 @@ StepResult Interpreter::StepOne(CpuState& cpu, Instruction* outInstr,bool native
         (mapped=FastMapped(cpu,memory_,bytes,available,fastLength)))) {
         memory_.RecordIntegerExecution(true,mapped);
         if(mapped)fastOpcode=firstOpcode;
-        if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(fastOpcode);
+        if(rt::g_workloadProfile)rt::g_workloadProfile->Instruction(fastOpcode,mapped?rt::ExecutionEngine::FastMapped:rt::ExecutionEngine::FastRegister);
         if(outInstr){outInstr->length=fastLength;outInstr->rawOpcodeForDebug=firstOpcode;outInstr->mnemonic=Mnemonic::Unknown;}
         return StepResult::Continue;
     }
@@ -1289,7 +1289,7 @@ StepResult Interpreter::StepOne(CpuState& cpu, Instruction* outInstr,bool native
     }
 
 done:
-    if (rt::g_workloadProfile) rt::g_workloadProfile->Instruction(profileOpcode);
+    if (rt::g_workloadProfile) rt::g_workloadProfile->Instruction(profileOpcode,rt::ExecutionEngine::Reference);
     if (outInstr) {
         outInstr->length = static_cast<uint8_t>(x.pos);
         outInstr->rawOpcodeForDebug = x.opcode;

@@ -2,10 +2,12 @@
 #include "source/runtime/workload_profile.h"
 #include "source/runtime/workload_report.h"
 #include "source/cpu/interpreter.h"
+#include "source/cpu/native_cache.h"
 #include "source/win32/host_functions.h"
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <cstring>
 
 #define CHECK(x) do {if (!(x)) {std::fprintf(stderr,"profile CHECK line %d: %s\n",__LINE__,#x);std::exit(1);}} while(0)
 
@@ -95,6 +97,49 @@ int main() {
     bounds.instructionLimit=std::numeric_limits<uint64_t>::max();
     bounds.instructionCount=bounds.instructionLimit;
     bounds.Instruction(0);CHECK(bounds.instructionCount==bounds.instructionLimit && bounds.instructionsTruncated);
+    rt::WorkloadProfile classified;rt::EngineCensus engines;
+    {
+        rt::EngineCensusScope bind(classified,engines);Run(&classified);
+        CHECK(classified.engines==&engines);
+        rt::EngineCensus nested;
+        {rt::EngineCensusScope inner(classified,nested);CHECK(classified.engines==&nested);}
+        CHECK(classified.engines==&engines);
+        FILE* file=std::tmpfile();CHECK(file);rt::WriteWorkloadReport(file,classified);CHECK(!std::ferror(file));
+        std::rewind(file);char text[32768]={};CHECK(std::fread(text,1,sizeof(text)-1,file)>0);std::fclose(file);
+        CHECK(std::strstr(text,"engine-census-v1 instructions=3009") && std::strstr(text,"engine fast-register total=2002"));
+    }
+    CHECK(!classified.engines && classified.opcodes==a.opcodes && engines.instructionCount==3009);
+    CHECK(engines.totals[size_t(rt::ExecutionEngine::FastRegister)]==2002);
+    CHECK(engines.totals[size_t(rt::ExecutionEngine::Reference)]==1007);
+    CHECK(!engines.totals[size_t(rt::ExecutionEngine::Unclassified)]);
+    for(size_t op=0;op<rt::WorkloadProfile::OpcodeSlots;++op){uint64_t sum=0;for(const auto& row:engines.opcodes)sum+=row[op];CHECK(sum==classified.opcodes[op]);}
+    rt::WorkloadProfile capped;capped.instructionLimit=7;rt::EngineCensus cap;
+    {rt::EngineCensusScope bind(capped,cap);Run(&capped);}
+    CHECK(cap.instructionCount==7 && capped.instructionsTruncated);
+    rt::WorkloadProfile empty;empty.instructionLimit=0;rt::EngineCensus none;
+    {rt::EngineCensusScope bind(empty,none);Run(&empty);}
+    CHECK(!none.instructionCount && empty.instructionsTruncated);
+    rt::WorkloadProfile invalid;rt::EngineCensus unknown;
+    {rt::EngineCensusScope bind(invalid,unknown);invalid.Instruction(std::numeric_limits<size_t>::max(),rt::ExecutionEngine(255));}
+    CHECK(unknown.instructionCount==1 && unknown.opcodes[size_t(rt::ExecutionEngine::Unclassified)][512]==1);
+    {
+        cpu::PagedGuestMemory memory(0x10000,0x3000);memory.TrackIntegerExecution(true);
+        cpu::CodeStore store(memory.Identity());cpu::NativeCache cache(memory,store);
+        const uint8_t code[]={0x40,0x49,0x75,0xfc};memory.LoadBytes(0x10000,code,sizeof(code));
+        rt::WorkloadProfile profile;rt::EngineCensus counts;
+        {rt::EngineCensusScope bind(profile,counts);rt::WorkloadProfileScope scope(&profile);
+            auto block=cpu::ir::Build(memory,0x10000);cpu::CpuState portable;portable.eip=0x10000;portable.regs[1]=1;
+            CHECK(cpu::ir::Execute(block,memory,portable,3).executed==3);
+            memory.EnableNativeExecution(true);memory.EnableNativeBatching(true);
+            cpu::Interpreter interpreter(memory);cpu::CpuState state;state.eip=0x10000;state.regs[1]=128;
+            for(unsigned n=0;n<384 && state.eip!=0x10004;++n){auto result=interpreter.Run(state,32);CHECK(result.executed && result.status==cpu::StepResult::Continue);}
+            CHECK(state.eip==0x10004 && state.regs[0]==128 && !state.regs[1]);
+        }
+        CHECK(counts.totals[size_t(rt::ExecutionEngine::PortableIr)]==3);
+        CHECK(counts.totals[size_t(rt::ExecutionEngine::Native)]==memory.IntegerStats().native);
+        CHECK(bool(counts.totals[size_t(rt::ExecutionEngine::Native)])==memory.NativeArchitectureAvailable());
+        CHECK(!counts.totals[size_t(rt::ExecutionEngine::Unclassified)] && counts.instructionCount==profile.instructionCount);
+    }
     rt::WriteWorkloadReport(stdout,a);
-    std::puts("workload profile: PASSED (disabled/repeat/fault/budget/nesting/bounds)");
+    std::puts("workload profile: PASSED (disabled/repeat/fault/budget/nesting/bounds;optional per-engine opcode conservation,limits,scope lifetime,report,actual IR/native or honest unavailable)");
 }

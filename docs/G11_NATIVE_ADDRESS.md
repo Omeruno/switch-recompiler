@@ -1,5 +1,10 @@
 # G11 — native 32-bit LEA address arithmetic
 
+Successor: [G12 mixed coverage/fault boundaries](G12_MIXED_CPU_COVERAGE.md)
+measures memory/stack/call workloads and specifies checked-load requirements.
+The user deferred G10 hardware testing;historical results below remain scoped.
+
+
 Date: 2026-11-03. Incoming verified runtime `1710370d9d56dab2b1df53c0fe351360e338b43d`
 passed [CI 41356429899, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41356429899).
 Software implementation extends G6/G8/G9/G10. Physical CPU performance is pending.
