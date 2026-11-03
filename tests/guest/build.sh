@@ -7,6 +7,7 @@ cc="${MINGW_CC:-i686-w64-mingw32-gcc}"
 mkdir -p "$out"
 $cc -O2 -Wall -Wextra -Werror -shared -nostdlib -e _DllMain@12 -Wl,--image-base,0x64000000 "$here/native_dispatch_dll.c" -o "$out/native_dispatch.dll" -lkernel32
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/native_dispatch.c" -o "$out/native_dispatch.exe" -lkernel32 -luser32
+$cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/native_address.c" -o "$out/native_address.exe" -lkernel32
 i686-w64-mingw32-dlltool --kill-at -d "$here/launcher_dplay.def" -l "$out/launcher_dplay.a"
 $cc -O2 -Wall -Wextra -Werror -nostdlib -e _start@0 "$here/launcher_contract.c" \
     "$out/launcher_dplay.a" -o "$out/launcher_contract.exe" -lkernel32 -ladvapi32

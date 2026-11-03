@@ -73,6 +73,12 @@ class Emitter {
             Store(3,offsetof(CpuState,eip));return;
         }
         if(n.op==ir::Op::Nop)return;
+        if(n.op==ir::Op::Address){
+            Constant(0,n.value);
+            if(n.base<8){Load(1,Reg(n.base));Binary(0x0b000000,0,0,1);}
+            if(n.index<8){Load(1,Reg(n.index));Word(0x0b010000u|(uint32_t(n.scale)<<10));} // ADD W0,W0,W1,LSL #scale
+            Store(0,Reg(n.dst));return;
+        }
         const bool increment=n.op==ir::Op::Increment || n.op==ir::Op::Decrement;
         const bool carry=n.op==ir::Op::Alu && (n.kind==2 || n.kind==3);
         if(increment || carry){Call(reinterpret_cast<uintptr_t>(&Carry));Move(4,0);}

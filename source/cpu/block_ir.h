@@ -6,7 +6,7 @@
 #include <cassert>
 namespace cpu::ir {
 // Bounded semantic frontend. No executable allocation or borrowed code pointers.
-enum class Op : uint8_t {Nop,Move,Exchange,Alu,Increment,Decrement,Test,Jump,Conditional};
+enum class Op : uint8_t {Nop,Move,Exchange,Alu,Increment,Decrement,Test,Jump,Conditional,Address};
 enum class Stop : uint8_t {Unsupported,FetchUnavailable,HostBoundary,Capacity,Branch,AddressBoundary};
 struct Node {
     Op op=Op::Nop;
@@ -15,6 +15,8 @@ struct Node {
     uint32_t value=0,target=0,flagsRead=0,flagsWrite=0;
     uint16_t profileOpcode=0;
     uint8_t registersRead=0,registersWritten=0;
+    // LEA is pure uint32 address arithmetic,not a guest data access.8=no register.
+    uint8_t base=8,index=8,scale=0;
 };
 class Block {
 public:

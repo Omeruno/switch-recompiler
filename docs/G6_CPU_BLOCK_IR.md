@@ -1,5 +1,10 @@
 # G6 — bounded owned block IR and portable execution oracle
 
+Successor: [G11 native LEA](G11_NATIVE_ADDRESS.md) extends pure32-bit address
+arithmetic;historical counts/scope below belong to this milestone. G5 remains
+default and G10 actual Switch CPU acceptance is pending.
+
+
 2026-11-01. Incoming `fe29b2493f4bb1a99895e93f5df4d11be48c151f` passed
 [CI41243997654, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41243997654).
 This closes G5's next bounded frontend/oracle step. It supplies a semantic block

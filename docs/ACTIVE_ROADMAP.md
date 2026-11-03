@@ -1,14 +1,13 @@
-# Active implementation map — 2026-11-01
+# Active implementation map — 2026-11-03
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: [G10 budgeted native batches](G10_NATIVE_BATCHES.md):up to32
-pure instructions,exact scheduler debt/stop/callback boundaries;8 normal+6 abort
-PE sessions,80 scheduling traces,19 shared-validator samples. G5 default;
-local QEMU total1.227×/hot1.656×,not physical FPS. Separate
-[Switch CPU package](G10_SWITCH_CPU_TEST.md) PENDING_USER_SWITCH_RUN.**
-Incoming verified runtime `4051a5c135cd5708ef8e0b0403a8bfb83ba69f35`
-passed [CI41352427766,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41352427766).
+**Current position: [G11 native LEA](G11_NATIVE_ADDRESS.md):direct ARM64 address
+arithmetic,152,304 full-reference cases/76,536 positive native comparisons;
+four real PE modes,source-bound paired QEMU measurement. G5 default;actual
+[G10 Switch CPU test](G10_SWITCH_CPU_TEST.md) still PENDING_USER_SWITCH_RUN.**
+Incoming verified runtime `1710370d9d56dab2b1df53c0fe351360e338b43d`
+passed [CI41356429899,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41356429899).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -35,7 +34,7 @@ choose subsequent CPU/H/D work by measured bottlenecks and actual dependencies.
 | D | PE/DLL/TLS/unload/rollback, bounded SEH, substantial Win32/CRT | Page-right enforcement, full unwind/COM/API compatibility; D1–D4d bounded playback controls/PCM/MP3/MCI implemented; mixing/DirectSound/MIDI and game audio remain open |
 | E | CPU GDI reference, production Switch GL composition/fallback, retained windows/ownership/revisions, E8/E9 metrics/public oracles | Current physical Paint/GPU/fallback/Lite/input/relaunch and real workload evidence |
 | F | Bounded software F0–F5 passes; Luna updates and active-panel integration retained | Physical acceptance; complete XP window behavior and planned extensions |
-| G | [G5](G5_CPU_INTEGER_PERFORMANCE.md) bounded common CPU execution,reference/console diagnostics,paired PE measurements;G0/G1 measurement, G2 CPU SRCCOPY enabled; G3/G4a/G4b.1 actual-GL semantic prototypes/count and timing controls | Bounded G4b.2 native software acceptance; default/physical/broader GDI and dynarec/code-cache remain open |
+| G | G5 common CPU fast path;G6 IR/G7 storage/G8 emitter/G9 cache/G10 batches/[G11 native LEA](G11_NATIVE_ADDRESS.md);paired PE measurements;G2 CPU copies and bounded native GL software acceptance | Native guest data/stack/calls,default activation,physical performance,broader GPU GDI and game APIs remain open |
 | H | No completed DirectDraw/D3D translation | Real supported graphics APIs, application/game fixtures and GPU translation |
 | I | CI NROs, diagnostics and public artifacts | Product compatibility matrix/configuration/delivery/stability/acceptance |
 
@@ -127,6 +126,8 @@ double-click; single selection/controller Open remain. One native tool group.
 | G7 | [Executable storage](G7_EXECUTABLE_STORAGE.md):session ownership,immutable publication/cache protocol,8192 native calls,pinned suspension/retirement,bounded failed-release vault;ARM64/QEMU and full-runtime session tests | Preserve exact CPU/fault/TEB/callback/quantum/stop and renderer/ownership contracts;Doom95 MIDI and DirectX queues retained |
 | G8 | [Actual ARM64 emitter](G8_ARM64_EMITTER.md):52437 native/reference/IR cases,198371 translated nodes,ABI/budgets/raw flags and parked checkpoint lifetime | G9 cache/G10 batching implemented;default activation and physical performance remain open |
 | G9 | [Common native step cache](G9_NATIVE_DISPATCH.md):session-scoped16-slot/8-visit cache,current source validation,one-step integration,real ARM64 PE/DLL/callback/thread parity and7 paired samples | Experimental cpu-native.flag only;G9 one-step QEMU slower;G10 batching follows,G5 default;activation/physical performance open |
+| G10 | [Budgeted native batches](G10_NATIVE_BATCHES.md):exact instruction/quantum/stop accounting,8 normal+6 abort PE sessions,80 traces,19 shared-validator samples | G5 default;actual Switch CPU report pending;broader native/default activation open |
+| G11 | [Native LEA](G11_NATIVE_ADDRESS.md):all legal32-bit ModRM/SIB,owning IR/direct ARM64,152304 differential cases,76536 actual native comparisons,four PE modes/paired report | Pure address arithmetic;guest memory/stack/calls and physical/default activation remain open |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -138,7 +139,7 @@ Reproduced non-relocatable fixture/HLE-base collision;public resource DLL bases
 are now deterministic and failure diagnostics split. Production loader unchanged;
 revised b110fcc passed all six jobs in CI41344237545. See [G8](G8_ARM64_EMITTER.md).
 
-| G10 | [Budgeted native batches](G10_NATIVE_BATCHES.md):exact instruction/quantum/stop accounting,8 normal+6 abort PE sessions,80 traces,19 shared-validator samples | G5 default;actual Switch CPU report pending;broader native/default activation open |
+
 
 ## Next package and activation gates
 
@@ -160,7 +161,11 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
    remains one instruction. Native is slower in local QEMU;G5 stays default.
    **Implemented G10:** exact-budget native batches,remaining-quantum charge,
    nested Step1,80 traces and paired public PE measurements.
-6. **Current gate:** separate actual Switch CPU test requested by the user;
+6. **Implemented G11:** measured LEA boundary and added direct native address arithmetic,
+   complete encoding/state/budget checks and paired real PE evidence.
+   **Next independent software block:** mixed memory/stack/call workloads and
+   precise guest-data fault/rollback boundaries before native memory extension.
+   **Parallel physical gate:** separate actual Switch CPU test requested by the user;
    deliver exact-SHA bundle,collect19-sample report and compare measured costs.
    Only CPU hardware testing is active;other physical gates remain deferred.
 7. Extend resident GPU GDI/batches by measured workload needs and existing
@@ -207,9 +212,10 @@ fix. The earlier eb67ac3 host failure is not acceptance for that earlier SHA.
 
 ## G10 next gate
 
-G10 software extends G9 with exact-budget native batches. Deliver the isolated
-CPU test,collect actual Switch report,then select memory/stack/block coverage
-from measured costs;default activation remains a separate acceptance decision.
+G10 software extends G9 with exact-budget native batches. The isolated
+CPU package is published at1710370/CI41356429899;collect actual Switch report.
+G11 independently closes measured LEA coverage. Next mixed memory/stack/call
+measurements and fault boundaries;default activation remains a separate decision.
 All other deferred hardware checks stay deferred;do not infer full game/GPU FPS.
 
 G10 packaging follow-up: CI41355944529 at4175be9 compiled the Switch NRO,
@@ -218,3 +224,8 @@ The packager now scopes `git -c safe.directory=<this checkout>` to its SHA query
 no global trust exception or runtime change. The completed local full host/
 MinGW/Mesa runner passed. Physical CPU acceptance remains pending; publish only
 the revised exact-SHA bundle after all six CI jobs and binary/fixture audit.
+
+G11 local verification completed: full COMPOSITION_GL_TEST=1 host/MinGW/Mesa,
+22 F groups and17 GPU groups/five reports;fresh full ARM64/QEMU PE/callback/
+abort/batch/shared-validator and new LEA checks,strict/sanitizer and map/browser
+checks pass. Publish normally,then verify exact-SHA six-job CI and artifact identity.

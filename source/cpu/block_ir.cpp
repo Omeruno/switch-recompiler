@@ -31,6 +31,14 @@ bool Decode(Reader& r,Node& n){
     } else if(op==0x0f){
         const auto second=r.Byte();n.profileOpcode=256+second;if(second<0x80 || second>0x8f)return false;
         n.op=Op::Conditional;n.kind=second&15;const auto rel=r.Dword();n.target=r.pc+r.length+rel;
+    } else if(op==0x8d){
+        const auto modrm=r.Byte();const unsigned mode=modrm>>6;
+        if(mode==3)return false;
+        n.op=Op::Address;n.dst=(modrm>>3)&7;n.base=modrm&7;
+        if(n.base==4){const auto sib=r.Byte();n.base=sib&7;n.index=(sib>>3)&7;n.scale=sib>>6;if(n.index==4)n.index=8;}
+        if(mode==0 && n.base==5){n.base=8;n.value=r.Dword();}
+        else if(mode==1)n.value=uint32_t(int32_t(int8_t(r.Byte())));
+        else if(mode==2)n.value=r.Dword();
     } else if((op<0x40 && (op&7)==5) || op==0xa9){
         n.op=op==0xa9?Op::Test:Op::Alu;n.kind=op>>3;n.immediate=true;n.value=r.Dword();
     } else {
@@ -47,6 +55,8 @@ bool Decode(Reader& r,Node& n){
     if(!r.available)return false;
     n.length=uint8_t(r.length);
     switch(n.op){
+        case Op::Address:
+            n.registersRead=(n.base<8?Bit(n.base):0)|(n.index<8?Bit(n.index):0);n.registersWritten=Bit(n.dst);break;
         case Op::Move:n.registersWritten=Bit(n.dst);n.registersRead=n.immediate?0:Bit(n.src);break;
         case Op::Exchange:n.registersWritten=n.registersRead=Bit(n.dst)|Bit(n.src);break;
         case Op::Alu:
@@ -73,6 +83,8 @@ void Run(const Node& n,CpuState& c){
     const auto a=c.regs[n.dst],b=n.immediate?n.value:c.regs[n.src];uint32_t value=0;
     c.eip+=n.length;
     switch(n.op){
+        case Op::Address:
+            c.regs[n.dst]=n.value+(n.base<8?c.regs[n.base]:0)+(n.index<8?c.regs[n.index]<<n.scale:0);break;
         case Op::Move:c.regs[n.dst]=b;break;
         case Op::Exchange:c.regs[n.dst]=b;c.regs[n.src]=a;break;
         case Op::Increment:case Op::Decrement:

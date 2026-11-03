@@ -166,6 +166,29 @@ jobs:
             docs/G9_NATIVE_DISPATCH.md
             docs/G10_NATIVE_BATCHES.md
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-address-arm64
+          if-no-files-found: error
+          path: |
+            build-host/arm64-dispatch/test_native_address.log
+            build-host/arm64-dispatch/test_native_address_pe.log
+            build-host/arm64-dispatch/test_native_address_pe
+            build-host/arm64-dispatch/guest/native_address.exe
+            build-host/arm64-dispatch/native-address-measurement.json
+            build-host/arm64-dispatch/native-address-measurement.log
+            tests/test_native_address.cpp
+            tests/test_native_address_pe.cpp
+            tests/guest/native_address.c
+            tests/test_native_dispatch_pe.cpp
+            tests/guest/native_dispatch.c
+            tests/guest/native_dispatch_dll.c
+            tests/guest/native_dispatch_kernel.h
+            tools/run_arm64_native_dispatch.py
+            tools/measure_native_dispatch.py
+            source/
+            docs/G11_NATIVE_ADDRESS.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -186,6 +209,25 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-address
+          if-no-files-found: error
+          path: |
+            build-host/test_native_address.log
+            build-host/native_address_pe.log
+            build-host/guest-run.*/native_address.exe
+            tests/test_native_address.cpp
+            tests/test_native_address_pe.cpp
+            tests/guest/native_address.c
+            tests/test_native_dispatch_pe.cpp
+            tests/guest/native_dispatch.c
+            tests/guest/native_dispatch_dll.c
+            tests/guest/native_dispatch_kernel.h
+            tools/run_arm64_native_dispatch.py
+            tools/measure_native_dispatch.py
+            source/
+            docs/G11_NATIVE_ADDRESS.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-native-dispatch

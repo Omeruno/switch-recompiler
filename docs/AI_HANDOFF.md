@@ -1,15 +1,26 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`4051a5c135cd5708ef8e0b0403a8bfb83ba69f35` (2026-11-01).
-[CI 41352427766](https://github.com/Omeruno/switch-recompiler/actions/runs/41352427766)
+`1710370d9d56dab2b1df53c0fe351360e338b43d` (2026-11-03).
+[CI 41356429899](https://github.com/Omeruno/switch-recompiler/actions/runs/41356429899)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G10 budgeted native batches;G5 default;physical CPU pending
+## Current position: G11 native LEA; G5 default; G10 hardware pending
+
+[G11 native address arithmetic](G11_NATIVE_ADDRESS.md) adds true ARM64 32-bit LEA
+through owning IR and direct ADD/shift emission. 6,314 layouts,152,304 full-reference
+cases and76,536 positive native comparisons;four real PE modes have exact results/
+opcodes/HLE/quanta. Local QEMU G5/native paired ratio about1.43 total/1.61 hot on
+the authored LEA fixture (incoming G10 about0.82/0.78);not Switch or game FPS.
+G5 default,reference/native policy and all G10 budgets/lifetime preserved. G10
+physical CPU report remains pending;other hardware tests remain deferred. Next:
+mixed memory/stack/call measurements and precise native data/fault boundaries.
+
+## Prior G10 milestone
 
 [G10](G10_NATIVE_BATCHES.md) implements Interpreter::Run and guarded outer-thread
 GuestExecution::ExecuteCpu,exact checkpoint debt/maxSteps,up to32 pure native
@@ -4268,3 +4279,18 @@ The packager now scopes `git -c safe.directory=<this checkout>` to its SHA query
 no global trust exception or runtime change. The completed local full host/
 MinGW/Mesa runner passed. Physical CPU acceptance remains pending; publish only
 the revised exact-SHA bundle after all six CI jobs and binary/fixture audit.
+
+## 2026-11-03 G11 — measured native LEA extension
+
+Incoming1710370/CI41356429899 all six. Before edits,the authored LEA PE had32772
+LEAs outside native,49131/82019 native steps,324 quanta and local G5/native~0.82
+total/~0.78 hot. Direct common IR/ARM64 LEA now gives81885 native steps,prefix5,
+unchanged results/opcodes/HLE/324 quanta,and paired local~1.43 total/~1.61 hot.
+No new default/physical/game claim.6314 layouts/152304 IR-reference cases/76536
+positive native comparisons,capacity189-byte and source/fault/checkpoint gates.
+Fresh full ARM64 runtime passes old8+6 PE/80 traces/19 validation samples and
+new4-mode PE;strict and focused host ASan/UBSan/leak checks pass. Full host/
+MinGW/Mesa,22 F groups and17 GPU groups/five reports pass;66 document links and
+desktop/mobile browser checks pass. Publish normally and verify exact-SHA all6
+CI/Pages/NRO/public-source/fixture/report identities. G10 hardware report pending;
+next mixed memory/stack/call measurements and precise native data/fault boundaries.

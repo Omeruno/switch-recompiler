@@ -1,5 +1,10 @@
 # G8 — actual bounded ARM64 emission from x86 IR
 
+Successor: [G11 native LEA](G11_NATIVE_ADDRESS.md) extends pure32-bit address
+arithmetic;historical counts/scope below belong to this milestone. G5 remains
+default and G10 actual Switch CPU acceptance is pending.
+
+
 2026-11-01. Incoming verified runtime
 `b4e160ab39f29bee07bcf9c452dbc6448c1042e8` passed
 [CI41253673567,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41253673567).
