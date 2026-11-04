@@ -2,6 +2,8 @@
 #include "quickjs.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -10,6 +12,39 @@
 #define JS_TIME_LIMIT_MS 300
 
 typedef struct { uint64_t deadline; unsigned checks; } ScriptBudget;
+typedef union { max_align_t alignment; size_t size; } Allocation;
+
+static void *js_alloc(JSMallocState *state, size_t size) {
+    (void)state;
+    if (size > SIZE_MAX - sizeof(Allocation)) return NULL;
+    Allocation *block = malloc(sizeof(Allocation) + size);
+    if (!block) return NULL;
+    block->size = size;
+    return block + 1;
+}
+
+static void js_dealloc(JSMallocState *state, void *pointer) {
+    (void)state;
+    if (pointer) free((Allocation *)pointer - 1);
+}
+
+static void *js_resize(JSMallocState *state, void *pointer, size_t size) {
+    if (!pointer) return js_alloc(state, size);
+    if (!size) { js_dealloc(state, pointer); return NULL; }
+    if (size > SIZE_MAX - sizeof(Allocation)) return NULL;
+    Allocation *block = realloc((Allocation *)pointer - 1, sizeof(Allocation) + size);
+    if (!block) return NULL;
+    block->size = size;
+    return block + 1;
+}
+
+static size_t js_size(const void *pointer) {
+    return pointer ? ((const Allocation *)pointer - 1)->size : 0;
+}
+
+static const JSMallocFunctions js_allocator = {
+    js_alloc, js_dealloc, js_resize, js_size
+};
 
 static uint64_t now_ms(void) {
     struct timeval time;
@@ -65,7 +100,7 @@ void browser_js_apply(BrowserPage *page) {
         return;
     }
 
-    JSRuntime *runtime = JS_NewRuntime();
+    JSRuntime *runtime = JS_NewRuntime2(&js_allocator, NULL);
     if (!runtime) {
         snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript runtime allocation failed");
         return;

@@ -2142,6 +2142,9 @@ static size_t js_def_malloc_usable_size(const void *ptr)
     return _msize((void *)ptr);
 #elif defined(__EMSCRIPTEN__)
     return 0;
+#elif defined(__SWITCH__)
+    /* The browser uses JS_NewRuntime2 with its own size-tracking allocator. */
+    return 0;
 #elif defined(__linux__) || defined(__GLIBC__)
     return malloc_usable_size((void *)ptr);
 #else
@@ -47251,7 +47254,7 @@ static int getTimezoneOffset(int64_t time)
         }
     }
     ti = time;
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__SWITCH__)
     {
         struct tm *tm;
         time_t gm_ti, loc_ti;

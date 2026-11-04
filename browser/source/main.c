@@ -29,6 +29,8 @@ typedef struct {
     char history[HISTORY_MAX][BROWSER_URL_MAX];
     char address[BROWSER_URL_MAX];
     char status[192];
+    char startup_error[256];
+    bool romfs_ready, sdl_ready, ttf_ready;
     bool loaded, network_ready, local_demo;
     int selection;
 } App;
@@ -208,20 +210,88 @@ static void load_demo(App *app) {
 }
 
 static bool setup_graphics(App *app) {
-    if (R_FAILED(romfsInit())) return false;
-    if (SDL_Init(SDL_INIT_VIDEO) != 0 || TTF_Init() != 0) return false;
+    Result romfs_result = romfsInit();
+    if (R_FAILED(romfs_result)) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "romfsInit: 0x%08X", romfs_result);
+        return false;
+    }
+    app->romfs_ready = true;
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "SDL_Init: %.220s", SDL_GetError());
+        return false;
+    }
+    app->sdl_ready = true;
+    if (TTF_Init() != 0) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "TTF_Init: %.220s", TTF_GetError());
+        return false;
+    }
+    app->ttf_ready = true;
     app->window = SDL_CreateWindow("Switch Browser", SDL_WINDOWPOS_CENTERED,
                                    SDL_WINDOWPOS_CENTERED, SCREEN_W, SCREEN_H,
                                    SDL_WINDOW_FULLSCREEN_DESKTOP);
-    if (!app->window) return false;
+    if (!app->window) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "SDL_CreateWindow: %.200s", SDL_GetError());
+        return false;
+    }
     app->renderer = SDL_CreateRenderer(app->window, -1,
                                        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!app->renderer) app->renderer = SDL_CreateRenderer(app->window, -1, SDL_RENDERER_SOFTWARE);
-    if (!app->renderer) return false;
+    if (!app->renderer) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "SDL_CreateRenderer: %.190s", SDL_GetError());
+        return false;
+    }
     SDL_RenderSetLogicalSize(app->renderer, SCREEN_W, SCREEN_H);
     app->font = TTF_OpenFont("romfs:/DejaVuSans.ttf", 21);
     app->heading = TTF_OpenFont("romfs:/DejaVuSans.ttf", 29);
-    return app->font && app->heading;
+    if (!app->font || !app->heading) {
+        snprintf(app->startup_error, sizeof(app->startup_error), "TTF_OpenFont: %.210s", TTF_GetError());
+        return false;
+    }
+    return true;
+}
+
+static void run_console_fallback(BrowserPage *page, const char *reason) {
+    consoleInit(NULL);
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    Result socket_result = socketInitializeDefault();
+    bool network_ready = R_SUCCEEDED(socket_result) && curl_global_init(CURL_GLOBAL_DEFAULT) == 0;
+    char status[192] = "Press A to load Keldurn, X for HTTPS address.";
+    char address[BROWSER_URL_MAX] = "https://";
+    bool have_page = false;
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        u64 pressed = padGetButtonsDown(&pad);
+        if (pressed & HidNpadButton_Plus) break;
+        if ((pressed & HidNpadButton_A) && network_ready) {
+            have_page = true;
+            bool ok = browser_fetch(page, "https://keldurn.com/ru/");
+            if (ok) browser_js_apply(page);
+            snprintf(status, sizeof(status), "%s", ok ? "HTTPS OK" : page->error);
+        }
+        if ((pressed & HidNpadButton_X) && network_ready) {
+            if (enter_url(address)) {
+                have_page = true;
+                bool ok = browser_fetch(page, address);
+                if (ok) browser_js_apply(page);
+                snprintf(status, sizeof(status), "%s", ok ? "HTTPS OK" : page->error);
+            }
+            padUpdate(&pad);
+        }
+        consoleClear();
+        printf("Switch Browser: graphics unavailable\n\nCause: %.220s\n\n", reason);
+        printf("A: Keldurn  X: address  +: quit\nNetwork: %s\n%s\n\n",
+               network_ready ? "ready" : "failed", status);
+        if (have_page) {
+            printf("HTTP %ld\n%.72s\n\n", page->http_status, page->url);
+            printf("%.900s\n", page->text);
+        }
+        consoleUpdate(NULL);
+    }
+    if (network_ready) curl_global_cleanup();
+    if (R_SUCCEEDED(socket_result)) socketExit();
+    consoleExit(NULL);
 }
 
 int main(void) {
@@ -230,11 +300,16 @@ int main(void) {
     app->page = calloc(1, sizeof(*app->page));
     if (!app->page) { free(app); return 1; }
     if (!setup_graphics(app)) {
+        char reason[sizeof(app->startup_error)];
+        snprintf(reason, sizeof(reason), "%s", app->startup_error[0] ? app->startup_error : "Unknown graphics error");
         if (app->heading) TTF_CloseFont(app->heading);
         if (app->font) TTF_CloseFont(app->font);
         if (app->renderer) SDL_DestroyRenderer(app->renderer);
         if (app->window) SDL_DestroyWindow(app->window);
-        TTF_Quit(); SDL_Quit(); romfsExit();
+        if (app->ttf_ready) TTF_Quit();
+        if (app->sdl_ready) SDL_Quit();
+        if (app->romfs_ready) romfsExit();
+        run_console_fallback(app->page, reason);
         free(app->page); free(app); return 2;
     }
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);

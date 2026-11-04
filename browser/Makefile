@@ -29,7 +29,7 @@ $(BUILD)/%.o: source/%.c
 	$(CC) $(CFLAGS) -I$(DEVKITPRO)/libnx/include -isystem $(QJS_DIR) $(PORT_CFLAGS) -MMD -MP -c $< -o $@
 $(BUILD)/qjs_%.o: $(QJS_DIR)/%.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -fwrapv -D_GNU_SOURCE -DCONFIG_VERSION='"2026-06-04"' -I$(QJS_DIR) -MMD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -fwrapv -D_GNU_SOURCE -D__SWITCH__ -DCONFIG_VERSION='"2026-06-04"' -I$(QJS_DIR) -MMD -MP -c $< -o $@
 clean:
 	rm -rf $(BUILD) $(TARGET).elf $(TARGET).nro $(TARGET).elf.map
 -include $(OFILES:.o=.d)
