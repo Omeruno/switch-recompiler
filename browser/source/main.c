@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "page.h"
+#include "js_runtime.h"
 
 #define SCREEN_W 1280
 #define SCREEN_H 720
@@ -28,7 +29,7 @@ typedef struct {
     char history[HISTORY_MAX][BROWSER_URL_MAX];
     char address[BROWSER_URL_MAX];
     char status[192];
-    bool loaded, network_ready;
+    bool loaded, network_ready, local_demo;
     int selection;
 } App;
 
@@ -130,14 +131,15 @@ static void render(App *app) {
 
     if (!app->loaded) {
         label(app, app->heading, 46, 110, "Open a page on this Switch", white, 1100);
-        const char *items[] = {"Keldurn — русский сайт", "Keldurn — игра", "Ввести HTTPS-адрес"};
-        for (int i = 0; i < 3; ++i) {
-            int y = 180 + 104 * i;
-            rect(app, 44, y, 1192, 82, i == app->selection ?
+        const char *items[] = {"Keldurn — русский сайт", "Keldurn — игра",
+                               "Ввести HTTPS-адрес", "JavaScript: локальная проверка"};
+        for (int i = 0; i < 4; ++i) {
+            int y = 172 + 82 * i;
+            rect(app, 44, y, 1192, 70, i == app->selection ?
                  (SDL_Color){29, 75, 91, 255} : (SDL_Color){25, 39, 60, 255});
-            label(app, app->heading, 72, y + 23, items[i], i == app->selection ? accent : white, 1100);
+            label(app, app->heading, 72, y + 17, items[i], i == app->selection ? accent : white, 1100);
         }
-        label(app, app->font, 46, 570, "D-pad: выбор    A: открыть    +: выход", muted, 1160);
+        label(app, app->font, 46, 550, "D-pad: выбор    A: открыть    +: выход", muted, 1160);
     } else {
         label(app, app->font, 26, 86, app->page->url, accent, 1210);
         label(app, app->font, 26, 122, app->page->title, white, 1210);
@@ -172,11 +174,37 @@ static void load_page(App *app, const char *url) {
     snprintf(app->status, sizeof(app->status), "Загрузка: %.130s", url);
     render(app);
     int ok = browser_fetch(app->page, url);
-    snprintf(app->status, sizeof(app->status), "%s", ok ?
-             "Страница получена по HTTPS." : app->page->error);
+    if (ok) browser_js_apply(app->page);
+    if (ok && app->page->js_notice[0])
+        snprintf(app->status, sizeof(app->status), "JS %u/%u: %.125s",
+                 (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
+                 app->page->js_notice);
+    else if (ok)
+        snprintf(app->status, sizeof(app->status), "HTTPS OK | JS %u/%u",
+                 (unsigned)app->page->js_ran, (unsigned)app->page->script_count);
+    else snprintf(app->status, sizeof(app->status), "%s", app->page->error);
     app->link = 0;
     layout_text(app);
     app->loaded = true;
+    app->local_demo = false;
+}
+
+static void load_demo(App *app) {
+    static const char html[] = "<title>До JavaScript</title><p>Исходный текст.</p>"
+        "<script>document.title='JavaScript на Switch';"
+        "document.body.textContent='Привет! Русский текст изменён JavaScript прямо на консоли.';"
+        "console.log('JS OK')</script>";
+    memset(app->page, 0, sizeof(*app->page));
+    strcpy(app->page->url, "browser://local-js-demo");
+    browser_parse_html(app->page, html, sizeof(html) - 1);
+    browser_js_apply(app->page);
+    snprintf(app->status, sizeof(app->status), "JS %u/%u: %.125s",
+             (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
+             app->page->js_notice);
+    app->link = 0;
+    layout_text(app);
+    app->loaded = true;
+    app->local_demo = true;
 }
 
 static bool setup_graphics(App *app) {
@@ -227,13 +255,14 @@ int main(void) {
         u64 pressed = padGetButtonsDown(&pad);
         if (pressed & HidNpadButton_Plus) break;
         if (!app->loaded) {
-            if (pressed & HidNpadButton_Up) { app->selection = (app->selection + 2) % 3; dirty = true; }
-            if (pressed & HidNpadButton_Down) { app->selection = (app->selection + 1) % 3; dirty = true; }
+            if (pressed & HidNpadButton_Up) { app->selection = (app->selection + 3) % 4; dirty = true; }
+            if (pressed & HidNpadButton_Down) { app->selection = (app->selection + 1) % 4; dirty = true; }
             if (pressed & HidNpadButton_A) {
                 const char *next = app->selection == 0 ? "https://keldurn.com/ru/" :
                                    app->selection == 1 ? "https://play.keldurn.com/" : app->address;
                 bool accepted = app->selection != 2 || enter_url(app->address);
-                if (accepted && app->network_ready) load_page(app, next);
+                if (app->selection == 3) load_demo(app);
+                else if (accepted && app->network_ready) load_page(app, next);
                 else if (!accepted) strcpy(app->status, "Адрес отменён или неверен.");
                 padUpdate(&pad);
                 dirty = true;
@@ -259,13 +288,17 @@ int main(void) {
                 } else app->loaded = false;
                 dirty = true;
             } else if (pressed & HidNpadButton_Y) {
-                char current[BROWSER_URL_MAX];
-                strcpy(current, app->page->url);
-                load_page(app, current); dirty = true;
+                if (app->local_demo) load_demo(app);
+                else {
+                    char current[BROWSER_URL_MAX];
+                    strcpy(current, app->page->url);
+                    load_page(app, current);
+                }
+                dirty = true;
             } else if (pressed & HidNpadButton_X) {
-                strcpy(app->address, app->page->url);
+                strcpy(app->address, app->local_demo ? "https://" : app->page->url);
                 if (enter_url(app->address)) {
-                    if (app->history_count < HISTORY_MAX)
+                    if (!app->local_demo && app->history_count < HISTORY_MAX)
                         strcpy(app->history[app->history_count++], app->page->url);
                     load_page(app, app->address);
                 }

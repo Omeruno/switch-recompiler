@@ -21,6 +21,7 @@ int main(void) {
     assert(strstr(page.text, "Welcome"));
     assert(strstr(page.text, "Play & explore"));
     assert(!strstr(page.text, "hidden()"));
+    assert(page.script_count == 1);
     assert(page.link_count == 1);
     assert(strcmp(page.links[0].url, "https://keldurn.com/play") == 0);
     puts("browser page parser: PASS");

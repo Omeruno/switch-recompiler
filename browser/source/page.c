@@ -40,6 +40,31 @@ static int same(const char *s, size_t n, const char *word) {
     return 1;
 }
 
+static int prefix(const char *s, size_t available, const char *word) {
+    size_t n = strlen(word);
+    return available >= n && same(s, n, word);
+}
+
+static size_t receive_header(char *data, size_t unit, size_t count, void *context) {
+    BrowserPage *page = (BrowserPage *)context;
+    if (unit && count > SIZE_MAX / unit) return 0;
+    size_t size = unit * count;
+    if (prefix(data, size, "HTTP/")) page->csp[0] = 0; // final redirect wins
+    const char *name = "Content-Security-Policy:";
+    size_t name_size = strlen(name);
+    if (prefix(data, size, name)) {
+        size_t start = name_size;
+        while (start < size && (data[start] == ' ' || data[start] == '\t')) ++start;
+        size_t end = size;
+        while (end > start && (data[end - 1] == '\r' || data[end - 1] == '\n' || data[end - 1] == ' ')) --end;
+        size_t copy = end - start;
+        if (copy >= sizeof(page->csp)) copy = sizeof(page->csp) - 1;
+        memcpy(page->csp, data + start, copy);
+        page->csp[copy] = 0;
+    }
+    return size;
+}
+
 static void append_char(char *buffer, size_t capacity, size_t *used, char c) {
     if (*used + 1 >= capacity) return;
     buffer[(*used)++] = c;
@@ -110,11 +135,78 @@ static void parse_href(BrowserPage *page, const char *tag, size_t length) {
     }
 }
 
+static int attribute(const char *tag, size_t length, const char *wanted,
+                     char *output, size_t capacity) {
+    size_t i = 0;
+    while (i < length) {
+        while (i < length && (isspace((unsigned char)tag[i]) || tag[i] == '/')) ++i;
+        size_t start = i;
+        while (i < length && (isalnum((unsigned char)tag[i]) || tag[i] == '-')) ++i;
+        size_t name_end = i;
+        if (start == name_end) { ++i; continue; }
+        while (i < length && isspace((unsigned char)tag[i])) ++i;
+        if (i >= length || tag[i] != '=') {
+            if (same(tag + start, name_end - start, wanted)) { output[0] = 0; return 1; }
+            continue;
+        }
+        ++i;
+        while (i < length && isspace((unsigned char)tag[i])) ++i;
+        char quote = 0;
+        if (i < length && (tag[i] == '"' || tag[i] == '\'')) quote = tag[i++];
+        size_t value = i;
+        while (i < length && (quote ? tag[i] != quote : !isspace((unsigned char)tag[i]))) ++i;
+        if (same(tag + start, name_end - start, wanted)) {
+            size_t copy = i - value;
+            if (copy >= capacity) copy = capacity - 1;
+            memcpy(output, tag + value, copy);
+            output[copy] = 0;
+            return 1;
+        }
+        if (quote && i < length) ++i;
+    }
+    return 0;
+}
+
+static void extract_scripts(BrowserPage *page, const char *html, size_t size) {
+    for (size_t i = 0; i + 7 < size && page->script_count < BROWSER_SCRIPT_MAX;) {
+        if (html[i] != '<' || !prefix(html + i + 1, size - i - 1, "script") ||
+            !(isspace((unsigned char)html[i + 7]) || html[i + 7] == '>')) { ++i; continue; }
+        size_t tag_end = i + 7;
+        char quote = 0;
+        while (tag_end < size) {
+            char c = html[tag_end];
+            if (quote) { if (c == quote) quote = 0; }
+            else if (c == '"' || c == '\'') quote = c;
+            else if (c == '>') break;
+            ++tag_end;
+        }
+        if (tag_end == size) break;
+        size_t close = tag_end + 1;
+        while (close + 8 < size &&
+               !(html[close] == '<' && prefix(html + close + 1, size - close - 1, "/script"))) ++close;
+        if (close + 8 >= size) break;
+        char type[80], src[80];
+        int has_type = attribute(html + i + 7, tag_end - i - 7, "type", type, sizeof(type));
+        int has_src = attribute(html + i + 7, tag_end - i - 7, "src", src, sizeof(src));
+        size_t length = close - tag_end - 1;
+        if (!has_src && (!has_type || same(type, strlen(type), "text/javascript") ||
+                         same(type, strlen(type), "application/javascript")) &&
+            length > 0 && length < BROWSER_SCRIPT_BYTES) {
+            memcpy(page->scripts[page->script_count], html + tag_end + 1, length);
+            page->scripts[page->script_count++][length] = 0;
+        }
+        i = close + 8;
+    }
+}
+
 int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
     if (!page || !html) return 0;
     page->text[0] = 0;
     page->title[0] = 0;
     page->link_count = 0;
+    page->script_count = 0;
+    page->inline_allowed = page->csp[0] == 0;
+    extract_scripts(page, html, size);
     size_t text_used = 0, title_used = 0;
     int in_title = 0, skip = 0;
     for (size_t i = 0; i < size;) {
@@ -194,6 +286,8 @@ int browser_fetch(BrowserPage *page, const char *url) {
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_body);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, receive_header);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, page);
     CURLcode result = curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &page->http_status);
     char *effective = NULL;

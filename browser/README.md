@@ -1,9 +1,10 @@
 # Switch Browser: independent prototype
 
 This NRO makes direct HTTPS requests with libcurl/libnx and draws a bounded
-page view with SDL2 and DejaVu Sans. It never calls Nintendo's WebApplet. It is
-the networking, navigation and Unicode display foundation for a browser that
-runs on the Switch itself.
+page view with SDL2 and DejaVu Sans. A bounded QuickJS runtime runs inline
+classic scripts when the page has no CSP header. It never calls Nintendo's
+WebApplet. It is the networking, navigation, Unicode and JavaScript foundation
+for a browser that runs on the Switch itself.
 The x86 runtime and main NRO are untouched. All work stays on
 `feature/switch-browser`.
 
@@ -15,7 +16,9 @@ Copy `browser/switch-browser.nro` to `/switch/` on the SD card, then launch it
 through Homebrew Menu with title override for full memory. Connect the Switch
 to Wi-Fi before opening a site. The NRO does not invoke Horizon update services.
 
-- Home: D-pad selects Keldurn, its game URL, or a typed HTTPS address; A opens.
+- Home: D-pad selects Keldurn, its game URL, a typed HTTPS address or an offline
+  JavaScript demo; A opens. The demo should show a Russian title and text that
+  JavaScript wrote after loading.
 - Page: Up/Down scroll; ZL/ZR select a link; A follows it; B goes back; X edits
   the address; Y reloads; + quits.
 
@@ -26,8 +29,12 @@ first real-Switch test on firmware 21.1.0.
 
 ## Current limit
 
-This build extracts text and links from HTML. It does not run JavaScript,
-WebAssembly, WebGL, video or the Keldurn game. The older WebApplet NRO requested
+This build extracts text and links from HTML and runs only bounded inline
+classic JavaScript. It exposes `document.title`, `document.body.textContent`
+and `console.log`. External scripts, ES modules, a real DOM, WebAssembly, WebGL,
+video and the Keldurn game are not implemented. A CSP header conservatively
+blocks inline execution. Each script has a 300 ms execution budget; the runtime
+has a 16 MiB memory limit. The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
 The user confirmed that the previous console-text NRO loaded site information
 without an update prompt on their Switch. English displayed normally, while
@@ -36,11 +43,8 @@ Unicode font; Cyrillic display needs a new hardware check. Gameplay still
 needs a modern browser engine with the APIs listed in
 [ENGINE_PATH.md](ENGINE_PATH.md).
 
-Host parser check:
+Host parser and JavaScript check:
 
 ```sh
-cc -std=c11 -Wall -Wextra -Werror -Ibrowser/source \
-  browser/tests/page_test.c browser/source/page.c \
-  -o /tmp/browser-page-test $(pkg-config --cflags --libs libcurl)
-/tmp/browser-page-test
+sh browser/tests/run_host_tests.sh
 ```

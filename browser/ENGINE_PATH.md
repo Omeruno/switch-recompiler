@@ -17,6 +17,12 @@ garbled in the libnx console view. The next build replaces console output with
 SDL2 and a bundled DejaVu Sans font that supports Cyrillic. Its Unicode display
 and navigation still need a real-Switch check. It is not yet game-capable.
 
+The next block embeds QuickJS and runs bounded inline classic scripts on pages
+without a CSP header. The bridge currently covers only title, body text and
+console output. A local demo exercises this on real hardware. External scripts,
+modules, DOM APIs, WASM, graphics, audio and media remain open; this milestone
+does not imply that Keldurn can run.
+
 ## Independent-browser requirements
 
 Keldurn gameplay must be checked against its actual game client, not only its
