@@ -1,14 +1,16 @@
 # Switch Browser: independent prototype
 
-This NRO now makes direct HTTPS requests with libcurl/libnx and renders a bounded
-text view with links. It never calls Nintendo's WebApplet. It is the first
-networking and navigation milestone for a browser that runs on the Switch itself.
+This NRO makes direct HTTPS requests with libcurl/libnx and draws a bounded
+page view with SDL2 and DejaVu Sans. It never calls Nintendo's WebApplet. It is
+the networking, navigation and Unicode display foundation for a browser that
+runs on the Switch itself.
 The x86 runtime and main NRO are untouched. All work stays on
 `feature/switch-browser`.
 
 ## Build and use
 
-Install devkitPro, devkitA64, libnx and `switch-curl`; run `make -C browser`.
+Install devkitPro, devkitA64, libnx, `switch-curl` and `switch-sdl2_ttf`;
+run `make -C browser`.
 Copy `browser/switch-browser.nro` to `/switch/` on the SD card, then launch it
 through Homebrew Menu with title override for full memory. Connect the Switch
 to Wi-Fi before opening a site. The NRO does not invoke Horizon update services.
@@ -27,9 +29,12 @@ first real-Switch test on firmware 21.1.0.
 This build extracts text and links from HTML. It does not run JavaScript,
 WebAssembly, WebGL, video or the Keldurn game. The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
-The next hardware gate is whether this independent NRO can fetch and display
-Keldurn's landing page without that prompt. Gameplay needs a modern browser
-engine with the APIs listed in [ENGINE_PATH.md](ENGINE_PATH.md).
+The user confirmed that the previous console-text NRO loaded site information
+without an update prompt on their Switch. English displayed normally, while
+Russian text was garbled. This build replaces that console output with a
+Unicode font; Cyrillic display needs a new hardware check. Gameplay still
+needs a modern browser engine with the APIs listed in
+[ENGINE_PATH.md](ENGINE_PATH.md).
 
 Host parser check:
 

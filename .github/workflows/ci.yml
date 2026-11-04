@@ -827,8 +827,8 @@ jobs:
     container: devkitpro/devkita64:latest
     steps:
       - uses: actions/checkout@v4
-      - name: HTTPS dependency
-        run: dkp-pacman -S --noconfirm --needed switch-curl
+      - name: HTTPS and graphics dependencies
+        run: dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf
       - name: Build standalone browser
         run: make -C browser -j"$(nproc)"
       - uses: actions/upload-artifact@v4

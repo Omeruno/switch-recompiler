@@ -11,15 +11,19 @@ CFLAGS := -O2 -Wall -Wextra -ffunction-sections -fdata-sections $(ARCH)
 LDFLAGS := -specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,-Map,$(TARGET).elf.map
 PORTLIBS := $(DEVKITPRO)/portlibs/switch
 OFILES := $(BUILD)/main.o $(BUILD)/page.o
+PKG_CONFIG_LIBDIR := $(PORTLIBS)/lib/pkgconfig
+PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --cflags sdl2 SDL2_ttf libcurl)
+PORT_LIBS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --static --libs sdl2 SDL2_ttf libcurl)
+NROFLAGS += --romfsdir=$(CURDIR)/romfs
 
 .PHONY: all clean
 all: $(TARGET).nro
 $(TARGET).nro: $(TARGET).elf
 $(TARGET).elf: $(OFILES)
-	$(CC) $(LDFLAGS) $(OFILES) -L$(PORTLIBS)/lib -L$(DEVKITPRO)/libnx/lib -lcurl -lz -lnx -o $@
+	$(CC) $(LDFLAGS) $(OFILES) -L$(PORTLIBS)/lib -L$(DEVKITPRO)/libnx/lib $(PORT_LIBS) -lnx -o $@
 $(BUILD)/%.o: source/%.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(DEVKITPRO)/libnx/include -I$(PORTLIBS)/include -MMD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -I$(DEVKITPRO)/libnx/include $(PORT_CFLAGS) -MMD -MP -c $< -o $@
 clean:
 	rm -rf $(BUILD) $(TARGET).elf $(TARGET).nro $(TARGET).elf.map
 -include $(OFILES:.o=.d)
