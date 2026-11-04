@@ -36,6 +36,8 @@ jobs:
         run: dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf
       - name: Build standalone browser
         run: make -C browser -j"$(nproc)"
+      - name: Verify embedded font RomFS
+        run: python3 browser/tests/check_nro_romfs.py browser/switch-browser.nro
       - uses: actions/upload-artifact@v4
         with:
           name: switch-browser-native-nro

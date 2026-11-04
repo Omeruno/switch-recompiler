@@ -36,10 +36,13 @@ video and the Keldurn game are not implemented. A CSP header conservatively
 blocks inline execution. Each script has a 300 ms execution budget; the runtime
 has a 16 MiB memory limit. The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
-The user confirmed that the previous console-text NRO loaded site information
-without an update prompt on their Switch. English displayed normally, while
-Russian text was garbled. This build replaces that console output with a
-Unicode font; Cyrillic display needs a new hardware check. Gameplay still
+The user confirmed direct HTTPS to Keldurn returns HTTP 200 on their Switch,
+without an update prompt. Earlier graphical builds exited to the text fallback:
+`romfsInit: 0x00001559`. Inspection of the published NRO found no asset header
+or embedded RomFS. The build now invokes `elf2nro` with the RomFS path
+explicitly, and CI checks that the font resource is present. The text fallback
+still cannot render Cyrillic correctly; the graphical font path needs a new
+hardware check. Gameplay still
 needs a modern browser engine with the APIs listed in
 [ENGINE_PATH.md](ENGINE_PATH.md).
 

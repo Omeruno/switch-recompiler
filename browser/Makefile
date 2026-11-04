@@ -17,11 +17,11 @@ OFILES := $(BUILD)/main.o $(BUILD)/page.o $(BUILD)/js_runtime.o $(QJS_OFILES)
 PKG_CONFIG_LIBDIR := $(PORTLIBS)/lib/pkgconfig
 PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --cflags sdl2 SDL2_ttf libcurl)
 PORT_LIBS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --static --libs sdl2 SDL2_ttf libcurl)
-NROFLAGS += --romfsdir=$(CURDIR)/romfs
 
 .PHONY: all clean
 all: $(TARGET).nro
 $(TARGET).nro: $(TARGET).elf
+	elf2nro $< $@ --romfsdir=$(CURDIR)/romfs
 $(TARGET).elf: $(OFILES)
 	$(CC) $(LDFLAGS) $(OFILES) -L$(PORTLIBS)/lib -L$(DEVKITPRO)/libnx/lib $(PORT_LIBS) -lm -lnx -o $@
 $(BUILD)/%.o: source/%.c
