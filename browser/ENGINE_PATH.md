@@ -10,6 +10,11 @@ this target device; changing the URL or whitelist cannot fix a prompt that
 occurs before page load. We do not know the exact origin of the update check
 without a screenshot or console trace.
 
+The first replacement milestone is a separate NRO using direct libcurl/libnx
+HTTPS, bounded text rendering, address input and links. This proves networking
+without WebApplet but is not yet a graphical or game-capable browser. A real
+Switch run must confirm that this route avoids the update prompt.
+
 ## Independent-browser requirements
 
 Keldurn gameplay must be checked against its actual game client, not only its
