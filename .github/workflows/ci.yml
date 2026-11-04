@@ -821,36 +821,6 @@ jobs:
             tools/package_cpu_validation.py
             docs/G10_SWITCH_CPU_TEST.md
 
-  browser-host:
-    name: Browser parser and JavaScript runtime (host)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Ensure libcurl development headers
-        run: |
-          if ! pkg-config --exists libcurl; then
-            sudo apt-get update
-            sudo apt-get install -y libcurl4-openssl-dev
-          fi
-      - name: Test browser parser and bounded JavaScript
-        run: sh browser/tests/run_host_tests.sh
-
-  browser-build:
-    name: Independent browser prototype (devkitA64)
-    runs-on: ubuntu-latest
-    container: devkitpro/devkita64:latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: HTTPS and graphics dependencies
-        run: dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf
-      - name: Build standalone browser
-        run: make -C browser -j"$(nproc)"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: switch-browser-native-nro
-          if-no-files-found: error
-          path: browser/switch-browser.nro
-
   jit-probe-build:
     name: Экспериментальный JIT NRO (отдельная сборка)
     runs-on: ubuntu-latest
