@@ -45,7 +45,13 @@ static void rect(App *app, int x, int y, int w, int h, SDL_Color color) {
 static void label(App *app, TTF_Font *font, int x, int y, const char *text,
                   SDL_Color color, int max_width) {
     if (!font || !text || !*text) return;
-    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, text, color);
+    int measured = 0, bytes = 0;
+    if (TTF_MeasureUTF8(font, text, max_width, &measured, &bytes) != 0 || bytes <= 0) return;
+    if (bytes > 2047) bytes = 2047;
+    char clipped[2048];
+    memcpy(clipped, text, (size_t)bytes);
+    clipped[bytes] = 0;
+    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, clipped, color);
     if (!surface) return;
     SDL_Texture *texture = SDL_CreateTextureFromSurface(app->renderer, surface);
     if (texture) {
