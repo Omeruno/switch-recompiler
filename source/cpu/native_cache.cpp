@@ -58,6 +58,7 @@ bool NativeCache::Step(CpuState& cpu,uint32_t budget,uint32_t& count,uint8_t& le
             if(count>stats.maxBatch)stats.maxBatch=count;
             return true;
         }
+        if(result.status==arm64::Status::Complete && result.execution.reason==ir::Exit::MemoryRefusal)return false;
         if(result.status==arm64::Status::Complete && result.execution.reason==ir::Exit::CodeChanged){
             ++stats.invalidations;const auto i=size_t(&entry-state.entries.data());Retire(i);
         }else Disable();

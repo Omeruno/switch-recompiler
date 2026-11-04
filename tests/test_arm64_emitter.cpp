@@ -10,7 +10,7 @@
 #include <vector>
 using namespace cpu;
 #if defined(__aarch64__)
-extern "C" uint64_t sr_check_translated_abi(void*,CpuState*,uint32_t,uint32_t);
+extern "C" uint64_t sr_check_translated_abi(void*,CpuState*,uint32_t,uint32_t,IGuestMemory*);
 asm(R"(
 .text
 .align 2
@@ -27,6 +27,7 @@ sr_check_translated_abi:
  mov x0,x1
  mov w1,w2
  mov w2,w3
+ mov x3,x4
  mov x19,#19
  movk x19,#0xa5a5,lsl #48
  mov x20,#20
@@ -194,7 +195,7 @@ int main(){
     auto codeCase=[&](std::vector<uint8_t> code,unsigned samples){
         code.push_back(0xcc);load(code);const auto block=ir::Build(memory,entry);assert(block.Count());
         const auto image=arm64::Emit(block);assert(image && image.Bytes()<=arm64::Image::MaxWords*4);
-        assert(image.Words()[0]==0xa9be53f3 && image.Words()[image.Bytes()/4-1]==0xd65f03c0);
+        assert(image.Words()[0]==0xa9bd53f3 && image.Words()[image.Bytes()/4-1]==0xd65f03c0);
         arm64::Translation translated;assert(arm64::Compile(store,memory,block,translated));++layouts;
         for(unsigned n=0;n<samples;++n)compare(translated,State(entry,n),32,n&1);
         assert(store.Retire(translated.Token()));assert(store.Stats().images==0);
@@ -238,14 +239,16 @@ int main(){
     for(unsigned budget=0;budget<34;++budget)compare(translated,State(entry,budget),budget,budget&1);
     assert(store.Retire(translated.Token()));
 #if defined(__aarch64__)
-    load({0x83,0xd0,0xff,0x40,0x75,0x80});
+    load({0x8b,0x05,0x00,0x10,0x01,0x00,0x83,0xd0,0xff,0x40,0x75,0x80});
     assert(arm64::Compile(store,memory,ir::Build(memory,entry),translated));
     struct AbiCall {
-        CpuState state;uint32_t count;
+        CpuState state;uint32_t count;IGuestMemory* memory;
         static bool Run(void* context,const void* entry,size_t){auto& c=*static_cast<AbiCall*>(context);
-            return sr_check_translated_abi(const_cast<void*>(entry),&c.state,0,c.count)==1;}
-    } abi{State(entry,0),uint32_t(translated.Source().Count())};
+            return sr_check_translated_abi(const_cast<void*>(entry),&c.state,0,c.count,c.memory)==1;}
+    } abi{State(entry,0),uint32_t(translated.Source().Count()),&memory};
+    abi.state.segBase[SEG_DS]=0; // The ABI probe must complete the read,not refuse a random segment.
     auto lease=store.Acquire(memory,translated.Token());assert(lease.Invoke(memory,&AbiCall::Run,&abi));
+    assert(abi.state.eip==translated.Source().At(translated.Source().Count()-1).target);
     assert(store.Retire(translated.Token()));lease={};
 #endif
     // Guard failures and code-storage lifetime are observable without executing
@@ -314,7 +317,7 @@ int main(){
         c.eip=0xffffffff;r=arm64::Execute(t,owner,m,c,32);assert(r.execution.reason==ir::Exit::Tail && r.execution.executed==1 && !c.eip);assert(owner.Retire(t.Token()));
         const uint8_t faulting[]={0xbb,0,0,0,0,0x8b,0x03};m.LoadBytes(entry,faulting,sizeof(faulting));
         assert(arm64::Compile(owner,m,ir::Build(m,entry),t));c=CpuState{};c.eip=entry;
-        r=arm64::Execute(t,owner,m,c,32);assert(r.execution.reason==ir::Exit::Unsupported && r.execution.executed==1 && c.eip==entry+5);
+        r=arm64::Execute(t,owner,m,c,32);assert(r.execution.reason==ir::Exit::MemoryRefusal && r.execution.executed==1 && c.eip==entry+5);
         const auto saved=c;Interpreter interpreter(m);assert(interpreter.Step(c)==StepResult::Exception && interpreter.LastException().code==EXC_ACCESS_VIOLATION);Equal(c,saved);assert(owner.Retire(t.Token()));
         // Accounting retains the same synthetic RDTSC delta and debug EIP.
         std::vector<uint8_t> nops(32,0x90);m.LoadBytes(entry,nops.data(),nops.size());assert(arm64::Compile(owner,m,ir::Build(m,entry),t));
@@ -325,7 +328,8 @@ int main(){
         assert(owner.Retire(t.Token()));
     }
 #endif
-    load({0x8b,0x00});assert(!arm64::Compile(foreign,memory,ir::Build(memory,entry),refused));
+    load({0x89,0x00});assert(!arm64::Compile(foreign,memory,ir::Build(memory,entry),refused));
+    load({0x8b,0x00});
     state=CpuState{};state.eip=entry;Interpreter fallback(memory);assert(fallback.Step(state)==StepResult::Exception && fallback.LastException().code==EXC_ACCESS_VIOLATION && state.eip==entry);
 #if defined(__aarch64__)
     assert(cases>50000 && nodes>100000 && hooked>10000);

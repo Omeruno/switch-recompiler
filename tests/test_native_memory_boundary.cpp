@@ -62,7 +62,7 @@ Result Run(const Case& spec,unsigned mode){Result out;
         assert(out.profile.instructionCount==stats.fast+stats.reference+stats.native && out.engines.instructionCount==out.profile.instructionCount);
         for(size_t opcode=0;opcode<rt::EngineCensus::OpcodeSlots;++opcode){uint64_t sum=0;for(const auto& row:out.engines.opcodes)sum+=row[opcode];assert(sum==out.profile.opcodes[opcode]);}
         assert(!out.engines.totals[size_t(rt::ExecutionEngine::Unclassified)]);
-        if(mode>=2 && m.NativeArchitectureAvailable())assert(out.native==4);else assert(!out.native);
+        if(mode>=2 && m.NativeArchitectureAvailable())assert(out.native==(!std::strcmp(spec.name,"load-split-blocks")?5u:4u));else assert(!out.native);
     }
     assert(!cpu::GlobalCodeStats().images);return out;
 }
@@ -95,5 +95,5 @@ int main(){
         assert(!std::memcmp(a.segBase,b.segBase,sizeof(a.segBase)) && value.exception.code==reference.exception.code && value.exception.eip==reference.exception.eip && value.exception.faultAddress==reference.exception.faultAddress && value.exception.write==reference.exception.write);
         ++compared;
     }}
-    std::printf("Native memory boundary PASS (%zu cases/68 sessions,%u reference comparisons;primed native prefix then real load/store/PUSH/POP/CALL/RET/fetch fault,full EIP/ESP/raw flags and 12KiB bytes,atomic32 stores,split blocks,SS/FS,engine/census/quanta/retirement;architecture %s;not native data access or physical FPS)\n",cases.size(),compared,cpu::PagedGuestMemory::NativeArchitectureAvailable()?"ARM64 executed":"host fallback only");
+    std::printf("Native memory boundary PASS (%zu cases/68 sessions,%u reference comparisons;primed native prefix then real load/store/PUSH/POP/CALL/RET/fetch fault,full EIP/ESP/raw flags and 12KiB bytes,atomic32 stores,split blocks,SS/FS,engine/census/quanta/retirement;architecture %s;stores/stack remain interpreter;not physical FPS)\n",cases.size(),compared,cpu::PagedGuestMemory::NativeArchitectureAvailable()?"ARM64 executed":"host fallback only");
 }

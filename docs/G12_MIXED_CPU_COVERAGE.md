@@ -1,5 +1,10 @@
 # G12 — mixed CPU measurements and precise fallback boundaries
 
+Successor: [G13 checked loads](G13_NATIVE_LOADS.md) adds readonly32-bit memory
+access and a dynamic committed-prefix ABI. Historical scope/counts below remain
+those of this milestone. Outstanding physical checks stay deferred.
+
+
 2026-11-03. Incoming verified HEAD `b653d950f335e60a2ddd5acd00f21b113d2c03a2`
 passed [CI 41608994958, all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41608994958).
 The user explicitly deferred the G10 Switch test. All outstanding physical acceptance is

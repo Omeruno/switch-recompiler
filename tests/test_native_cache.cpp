@@ -59,7 +59,7 @@ int main(){
     // Neither stale native code nor stale negative admission survives remapping.
     for(auto* m:{&memory,&reference}){m->Unmap(pc,4096);assert(m->Map(pc,4096));m->Write8(pc,0x90);m->Write8(pc+1,0xcc);}
     for(unsigned n=0;n<20;++n){first.eip=second.eip=pc;assert(step(first,second)==StepResult::Continue);}
-    for(auto* m:{&memory,&reference}){m->Write8(pc,0x8b);m->Write8(pc+1,0x00);}
+    for(auto* m:{&memory,&reference}){m->Write8(pc,0x89);m->Write8(pc+1,0x00);}
     for(unsigned n=0;n<24;++n){first.eip=second.eip=pc;first.regs[0]=second.regs[0]=0;assert(step(first,second)==StepResult::Exception);}
     for(auto* m:{&memory,&reference})m->Write8(pc,0x90);
     for(unsigned n=0;n<20;++n){first.eip=second.eip=pc;assert(step(first,second)==StepResult::Continue);}

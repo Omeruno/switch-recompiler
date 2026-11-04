@@ -35,6 +35,8 @@ struct Result {Status status=Status::Complete;ir::Result execution;};
 // caller falls back at the current EIP. Checkpoint can yield/retire/destroy store;
 // memory must remain alive. Source is copied before any callback. Sole native
 // owner only. Without checkpoints,the native prefix is one synchronous call.
+// ABI v2 returns the dynamic committed count;checked read refusal commits no
+// destination/EIP/fault/count for that node and leaves interpreter fault handling.
 Result Execute(const Translation&,CodeStore&,IGuestMemory&,CpuState&,uint32_t budget,
                ir::Checkpoint hook=nullptr,void* context=nullptr);
 } // namespace cpu::arm64

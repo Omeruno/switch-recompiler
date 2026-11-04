@@ -211,6 +211,21 @@ jobs:
             source/
             docs/G12_MIXED_CPU_COVERAGE.md
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-load-arm64
+          if-no-files-found: error
+          path: |
+            build-host/arm64-dispatch/test_native_load.log
+            tests/test_native_load.cpp
+            tests/test_arm64_emitter.cpp
+            tests/test_block_ir.cpp
+            tests/test_native_cache.cpp
+            tests/test_native_memory_boundary.cpp
+            tools/run_arm64_native_dispatch.py
+            source/
+            docs/G13_NATIVE_LOADS.md
+
   host-tests:
     name: Хост-тесты (g++)
     runs-on: ubuntu-latest
@@ -231,6 +246,20 @@ jobs:
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-i686 g++-mingw-w64-i686 libegl1-mesa-dev libgl-dev
       - name: Регрессия Сапёра и гостевые программы
         run: COMPOSITION_GL_TEST=1 sh tools/run_host_tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-cpu-native-load
+          if-no-files-found: error
+          path: |
+            build-host/test_native_load.log
+            tests/test_native_load.cpp
+            tests/test_arm64_emitter.cpp
+            tests/test_block_ir.cpp
+            tests/test_native_cache.cpp
+            tests/test_native_memory_boundary.cpp
+            tools/run_arm64_native_dispatch.py
+            source/
+            docs/G13_NATIVE_LOADS.md
       - uses: actions/upload-artifact@v4
         with:
           name: stage-cpu-native-mixed

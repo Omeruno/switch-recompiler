@@ -1,5 +1,10 @@
 # G8 — actual bounded ARM64 emission from x86 IR
 
+Successor: [G13 checked loads](G13_NATIVE_LOADS.md) adds readonly32-bit memory
+access and a dynamic committed-prefix ABI. Historical scope/counts below remain
+those of this milestone. Outstanding physical checks stay deferred.
+
+
 Successor: [G11 native LEA](G11_NATIVE_ADDRESS.md) extends pure32-bit address
 arithmetic;historical counts/scope below belong to this milestone. G5 remains
 default and G10 actual Switch CPU acceptance is pending.

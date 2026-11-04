@@ -104,7 +104,7 @@ int main(){
     memory.Unmap(0x11000,0x1000);assert(!block.Matches(memory));assert(memory.Map(0x11000,0x1000));
     memory.LoadBytes(0x11000,sequence,sizeof(sequence));assert(block.Matches(memory)); // current identical bytes are valid,not retained host pointers
     // Prefixes/data accesses/calls/faults remain for the full interpreter.
-    for(auto code:std::vector<std::vector<uint8_t>>{{0x66,0x89,0xc8},{0x8b,0},{0xe8,0,0,0,0},{0xc3},{0x0f,0x0b},{0xf3,0xa4},{0xf0,0x01,0xc8}}){
+    for(auto code:std::vector<std::vector<uint8_t>>{{0x66,0x89,0xc8},{0x89,0},{0xe8,0,0,0,0},{0xc3},{0x0f,0x0b},{0xf3,0xa4},{0xf0,0x01,0xc8}}){
         memory.LoadBytes(0x11000,code.data(),code.size());const auto refused=ir::Build(memory,0x11000);
         assert(refused.Count()==0 && refused.Boundary()==ir::Stop::Unsupported);
     }

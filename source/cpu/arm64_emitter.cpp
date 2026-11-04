@@ -10,7 +10,12 @@ namespace {
 // conversion that would change the exact CpuState contract.
 uint32_t Carry(const CpuState* cpu){return cpu->CF();}
 uint32_t Flags(const CpuState* cpu){return cpu->GetEflags();}
-constexpr unsigned State=19,Remaining=20;
+// Read-only leaf: no guest callback,yield,allocation or retained mapping pointer.
+uint64_t CheckedRead(IGuestMemory* memory,uint32_t address){
+    if(!memory->IsRangeMapped(address,4))return 0;
+    return (uint64_t(1)<<32)|memory->Read32(address);
+}
+constexpr unsigned State=19,Remaining=20,Completed=21,Memory=22;
 constexpr size_t Reg(unsigned r){return offsetof(CpuState,regs)+r*4;}
 [[maybe_unused]] ir::Exit Tail(const ir::Block& b){
     if(b.Boundary()==ir::Stop::HostBoundary)return ir::Exit::HostBoundary;
@@ -23,7 +28,7 @@ class Emitter {
     Image image_;
     bool valid_=true;
     std::array<size_t,ir::Block::MaxInstructions> dispatch_{};
-    std::array<size_t,ir::Block::MaxInstructions+2> exits_{};
+    std::array<size_t,2*ir::Block::MaxInstructions+3> exits_{};
     size_t exitCount_=0;
     size_t Here()const{return image_.count_;}
     void Word(uint32_t word){if(Here()==Image::MaxWords){valid_=false;return;}image_.words_[image_.count_++]=word;}
@@ -42,8 +47,8 @@ class Emitter {
         image_.words_[at]|=conditional?(uint32_t(delta)&0x7ffffu)<<5:uint32_t(delta)&0x3ffffffu;
     }
     void Exit(){assert(exitCount_<exits_.size());exits_[exitCount_++]=Here();Word(0x14000000u);}
-    void Call(uintptr_t address){
-        Move(0,State,true);
+    void Call(uintptr_t address,bool stateArgument=true){
+        if(stateArgument)Move(0,State,true);
         Word(0xd2800010u|(uint32_t(address&0xffff)<<5)); // MOVZ X16
         for(unsigned n=1;n<4;++n)Word(0xf2800010u|(n<<21)|(uint32_t((uint64_t(address)>>(16*n))&0xffff)<<5));
         Word(0xd63f0200u); // BLR X16
@@ -55,6 +60,16 @@ class Emitter {
         Store(logic?31:0,offsetof(CpuState,lazyA));Store(logic?31:1,offsetof(CpuState,lazyB));Store(2,offsetof(CpuState,lazyRes));
     }
     void Node(const ir::Node& n,uint32_t pc){
+        if(n.op==ir::Op::Load){
+            Constant(1,n.value);
+            if(n.base<8){Load(2,Reg(n.base));Binary(0x0b000000,1,1,2);}
+            if(n.index<8){Load(2,Reg(n.index));Word(0x0b020021u|(uint32_t(n.scale)<<10));} // ADD W1,W1,W2,LSL
+            Load(2,offsetof(CpuState,segBase)+n.segment*4);Binary(0x0b000000,1,1,2);
+            Move(0,Memory,true);Call(reinterpret_cast<uintptr_t>(&CheckedRead),false);
+            Word(0xd360fc02u); // LSR X2,X0,#32: checked read success
+            exits_[exitCount_++]=Here();Word(0x34000002u); // CBZ W2,epilogue;no register/EIP commit
+            Store(0,Reg(n.dst));Constant(3,pc+n.length);Store(3,offsetof(CpuState,eip));return;
+        }
         Constant(3,pc+n.length);Store(3,offsetof(CpuState,eip));
         if(n.op==ir::Op::Jump){Constant(3,n.target);Store(3,offsetof(CpuState,eip));return;}
         if(n.op==ir::Op::Conditional){
@@ -105,21 +120,23 @@ public:
     Image Run(const ir::Block& block){
         static_assert(std::is_standard_layout<CpuState>::value,"native field offsets require standard layout");
         if(!block.Count())return {};
-        // void entry(CpuState* X0,uint32_t first W1,uint32_t count W2).
-        // Preserve x19/x20,x29/LR and16-byte stack alignment across flag helpers.
-        Word(0xa9be53f3u);Word(0xa9017bfdu);Move(State,0,true);Move(Remaining,2);
+        // uint32 entry(CpuState* X0,uint32 first W1,uint32 count W2,Memory* X3).
+        // Return completed instructions;preserve x19-x22,x29/LR and16-byte SP.
+        Word(0xa9bd53f3u);Word(0xa9015bf5u);Word(0xa9027bfdu);
+        Move(State,0,true);Move(Remaining,2);Move(Memory,3,true);Constant(Completed,0);
         exits_[exitCount_++]=Here();Word(0x34000014u); // CBZ W20,epilogue (imm19)
         for(size_t i=0;i<block.Count();++i){Word(0x7100003fu|(uint32_t(i)<<10));dispatch_[i]=Here();Word(0x54000000u);}
         Exit();
         for(size_t i=0;i<block.Count();++i){
             Patch(dispatch_[i],Here(),true);const auto& node=block.At(i);Node(node,block.Entry()+node.offset);
-            if(node.op==ir::Op::Jump || node.op==ir::Op::Conditional){Exit();break;}
+            Word(0x110006b5u); // ADD W21,W21,#1: only committed instructions
             Word(0x71000694u); // SUBS W20,W20,#1
+            if(node.op==ir::Op::Jump || node.op==ir::Op::Conditional){Exit();break;}
             assert(exitCount_<exits_.size());exits_[exitCount_++]=Here();Word(0x54000000u); // B.EQ epilogue
         }
         const auto end=Here();
         for(size_t i=0;i<exitCount_;++i){const auto at=exits_[i];Patch(at,end,(image_.words_[at]&0x7c000000u)!=0x14000000u);}
-        Word(0xa9417bfdu);Word(0xa8c253f3u);Word(0xd65f03c0u);
+        Move(0,Completed);Word(0xa9427bfdu);Word(0xa9415bf5u);Word(0xa8c353f3u);Word(0xd65f03c0u);
         if(!valid_)return {};
         return image_;
     }
@@ -150,10 +167,10 @@ Result Execute(const Translation& translated,CodeStore& store,IGuestMemory& memo
     result.status=Status::ArchitectureUnavailable;return result;
 #else
     struct Call {
-        CpuState* cpu;uint32_t first,count;
+        CpuState* cpu;IGuestMemory* memory;uint32_t first,count,completed=0;
         static bool Run(void* context,const void* entry,size_t){auto& c=*static_cast<Call*>(context);
-            using Function=void(*)(CpuState*,uint32_t,uint32_t);
-            reinterpret_cast<Function>(const_cast<void*>(entry))(c.cpu,c.first,c.count);return true;
+            using Function=uint32_t(*)(CpuState*,uint32_t,uint32_t,IGuestMemory*);
+            c.completed=reinterpret_cast<Function>(const_cast<void*>(entry))(c.cpu,c.first,c.count,c.memory);return c.completed<=c.count;
         }
     };
     while(index<block.Count()){
@@ -165,12 +182,14 @@ Result Execute(const Translation& translated,CodeStore& store,IGuestMemory& memo
             if(cpu.eip!=pc){execution.reason=ir::Exit::WrongEntry;return result;}
         }
         const auto count=hook?1u:std::min<uint32_t>(budget-execution.executed,uint32_t(block.Count()-index));
-        Call call{&cpu,uint32_t(index),count};
-        // Supported native operations/flag queries do not yield or touch guest
-        // memory. Account the known prefix only after a successful invocation.
+        Call call{&cpu,&memory,uint32_t(index),count};
+        // Leaf reads cannot yield or write data. Account only committed nodes;
+        // a refused load remains at its original EIP for the common interpreter.
         if(!lease.Invoke(memory,&Call::Run,&call)){result.status=Status::Unavailable;return result;}
-        for(unsigned n=0;n<count;++n){const auto& node=block.At(index+n);AccountNativeInstruction(memory,block.Entry()+node.offset,node.profileOpcode);}
-        const auto last=block.At(index+count-1).op;index+=count;execution.executed+=count;
+        for(unsigned n=0;n<call.completed;++n){const auto& node=block.At(index+n);AccountNativeInstruction(memory,block.Entry()+node.offset,node.profileOpcode);}
+        index+=call.completed;execution.executed+=call.completed;
+        if(call.completed<count){execution.reason=ir::Exit::MemoryRefusal;return result;}
+        const auto last=block.At(index-1).op;
         if(last==ir::Op::Jump || last==ir::Op::Conditional){execution.reason=ir::Exit::Branch;return result;}
     }
     execution.reason=Tail(block);return result;

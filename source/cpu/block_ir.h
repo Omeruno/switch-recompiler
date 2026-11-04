@@ -6,7 +6,7 @@
 #include <cassert>
 namespace cpu::ir {
 // Bounded semantic frontend. No executable allocation or borrowed code pointers.
-enum class Op : uint8_t {Nop,Move,Exchange,Alu,Increment,Decrement,Test,Jump,Conditional,Address};
+enum class Op : uint8_t {Nop,Move,Exchange,Alu,Increment,Decrement,Test,Jump,Conditional,Address,Load};
 enum class Stop : uint8_t {Unsupported,FetchUnavailable,HostBoundary,Capacity,Branch,AddressBoundary};
 struct Node {
     Op op=Op::Nop;
@@ -16,7 +16,7 @@ struct Node {
     uint16_t profileOpcode=0;
     uint8_t registersRead=0,registersWritten=0;
     // LEA is pure uint32 address arithmetic,not a guest data access.8=no register.
-    uint8_t base=8,index=8,scale=0;
+    uint8_t base=8,index=8,scale=0,segment=SEG_DS;
 };
 class Block {
 public:
@@ -42,7 +42,7 @@ private:
 };
 using HostBoundary=bool(*)(void*,uint32_t);
 Block Build(const IGuestMemory& memory,uint32_t entry,HostBoundary host=nullptr,void* context=nullptr);
-enum class Exit : uint8_t {Tail,Branch,Budget,Unsupported,HostBoundary,FetchUnavailable,CodeChanged,WrongOwner,WrongEntry,Checkpoint};
+enum class Exit : uint8_t {Tail,Branch,Budget,Unsupported,HostBoundary,FetchUnavailable,CodeChanged,WrongOwner,WrongEntry,Checkpoint,MemoryRefusal};
 struct Result {Exit reason=Exit::Unsupported;uint32_t executed=0;};
 // Hook runs before each instruction. It may park/yield or mutate source bytes;
 // owner/source/EIP are checked again after it returns. false executes no instruction.

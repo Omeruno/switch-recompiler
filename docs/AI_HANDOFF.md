@@ -1,15 +1,33 @@
 # Active development handoff — switch-recompiler
 
 Branch: `claude/wonderful-hawking-10mpr0` only. Incoming verified HEAD:
-`b653d950f335e60a2ddd5acd00f21b113d2c03a2` (2026-11-03).
-[CI 41608994958](https://github.com/Omeruno/switch-recompiler/actions/runs/41608994958)
+`af8feab0e0a52d440813d16761c31475ba8178df` (2026-11-04).
+[CI 41641059407](https://github.com/Omeruno/switch-recompiler/actions/runs/41641059407)
 passed all six jobs: host/MinGW, CPU oracle, actual OpenGL/EGL reference,
 ARM64/QEMU continuation ABI, Switch build and isolated JIT probe build.
 This document and [ACTIVE_ROADMAP.md](ACTIVE_ROADMAP.md) are the current technical summary and implementation queue. Earlier investigative material
 has been removed from the active handoff; use current source and subsystem docs,
 not obsolete E1/common-dialog plans. No private hardware reports are reproduced.
 
-## Current position: G12 mixed CPU coverage/fault boundaries;G5 default;hardware deferred
+## Current position: G13 checked native loads/dynamic prefix;G5 default;hardware deferred
+
+[G13 checked native loads](G13_NATIVE_LOADS.md) implements32-bit8B/moffs loads,
+all ModRM/SIB/DS/SS forms and a readonly mapped-memory leaf. Native ABI v2 returns
+actual committed prefixes,preserves x19–22/x29/LR;refusal changes no destination/
+EIP/fault/count and remains retryable in cache.6313 layouts/50504 mapped reference
+and actual ARM64 load comparisons/12626 refusals,budget/interior/data-remap/recovery
+checks. Full old CPU/PE/lifecycle/mixed gates retained. Memory native coverage
+72.1→85.6%,mixed54.8→62.2% locally;QEMU ratios still show slower mixed cases,not FPS.
+G5 default;all outstanding hardware DEFERRED_BY_USER. Next G14:checked32-bit MOV
+stores ending their block after commit,with source revalidation/self-modification
+and exact fault/counter/quantum gates. Stack/CALL/RMW and permissions remain later.
+Local final gates pass:full COMPOSITION_GL_TEST=1 host/MinGW/Mesa,22 F and17 GPU
+groups/five reports;fresh full ARM64 runtime+mixed matrix;strict native-load and
+emitter ABI probes;focused CPU/unit ASan/UBSan/leak scan(no guest fibers);68 linked
+documents and desktop/mobile browser checks. Publish normally,then verify exact-SHA
+all six CI/Pages/NRO/public source/fixture/report identities.
+
+## Prior G12 milestone
 
 [G12 mixed coverage](G12_MIXED_CPU_COVERAGE.md) adds optional bounded per-engine
 opcode accounting and five real PE workloads with engine census on/off. Forty

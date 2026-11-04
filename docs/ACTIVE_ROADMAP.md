@@ -1,13 +1,12 @@
-# Active implementation map — 2026-11-03
+# Active implementation map — 2026-11-04
 
 [Визуальная карта проекта](https://omeruno.github.io/switch-recompiler/) · [Автономный HTML](roadmap/index.html) · [Как открыть и публиковать](roadmap/README.md)
 
-**Current position: [G12 mixed CPU coverage/fault boundaries](G12_MIXED_CPU_COVERAGE.md):
-optional engine census,five PE workloads,on/off controls,68 precise fallback sessions
-and paired reports. Native is slower on mixed QEMU cases;G5 default. User deferred
-G10 actual Switch testing;all outstanding physical checks DEFERRED_BY_USER.**
-Incoming verified runtime `b653d950f335e60a2ddd5acd00f21b113d2c03a2`
-passed [CI41608994958,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41608994958).
+**Current position: [G13 checked native MOV loads](G13_NATIVE_LOADS.md):dynamic
+committed-prefix ABI,readonly mapped helper,50504 actual ARM64 load comparisons,
+12626 refusals and exact fallback/recovery. G5 default;outstanding hardware deferred.**
+Incoming verified runtime `af8feab0e0a52d440813d16761c31475ba8178df`
+passed [CI41641059407,all six jobs](https://github.com/Omeruno/switch-recompiler/actions/runs/41641059407).
 Ordinary GDI stays CPU by default; explicit native experiment admits bounded solid top-level window calls. No Paint speedup claim.
 
 [User-facing global status](PROJECT_STATUS_RU.md), [global A–I plan](ROADMAP.md),
@@ -129,6 +128,7 @@ double-click; single selection/controller Open remain. One native tool group.
 | G10 | [Budgeted native batches](G10_NATIVE_BATCHES.md):exact instruction/quantum/stop accounting,8 normal+6 abort PE sessions,80 traces,19 shared-validator samples | G5 default;actual Switch CPU report pending;broader native/default activation open |
 | G11 | [Native LEA](G11_NATIVE_ADDRESS.md):all legal32-bit ModRM/SIB,owning IR/direct ARM64,152304 differential cases,76536 actual native comparisons,four PE modes/paired report | Pure address arithmetic;guest memory/stack/calls and physical/default activation remain open |
 | G12 | [Mixed measurements/fault boundaries](G12_MIXED_CPU_COVERAGE.md):optional6x513 engine census,five PE cases/80 paired rows,17 boundary cases/68 sessions,explicit low-first reads | No native data accesses yet;G5 default;all outstanding hardware deferred;next checked MOV load/dynamic prefix |
+| G13 | [Checked native loads](G13_NATIVE_LOADS.md):32-bit8B/moffs,DS/SS/ModRM/SIB,actual prefix ABI,retryable refusal,50504 native comparisons/12626 refusals | Readonly/current mapping model;stores/stack/CALL/RMW/permissions/default activation remain open |
 
 Host software GL timings and exact work reductions are not Switch GPU/FPS
 measurements. Capacity checkpoints and explicit CPU reads still synchronize.
@@ -166,8 +166,11 @@ supersedes the previous next-MIDI and immediate GPU-sequence wording.
    complete encoding/state/budget checks and paired real PE evidence.
    **Implemented G12:** five mixed workloads,optional engine census/on-off controls,
    precise native-prefix/data/stack/control fault boundaries and low-first reads.
-   **Next G13:** checked32-bit MOV loads,dynamic completed-prefix ABI and exact
-   refusal/fault accounting;stores/stack/CALL and broader policies follow.
+   **Implemented G13:** checked32-bit MOV loads,dynamic completed-prefix ABI and
+   exact refusal/fault/counter accounting.
+   **Next G14:** checked MOV stores,end block after commit and revalidate source
+   bytes before continuing;self-modification/atomic span/recovery gates.
+   Stack/CALL/RMW and broader policies follow.
    **Hardware:** user explicitly deferred G10 on2026-11-03. All outstanding physical
    checks deferred;continue software work without requesting a report or activation.
 7. Extend resident GPU GDI/batches by measured workload needs and existing
@@ -216,8 +219,8 @@ fix. The earlier eb67ac3 host failure is not acceptance for that earlier SHA.
 
 The user deferred the G10 Switch test on2026-11-03. Its published exact-SHA
 package remains available for later;no physical acceptance is inferred. G12
-continues independent software coverage/fault work. Next is G13 checked MOV
-loads with a dynamic prefix/fault contract. Default native activation still
+continues independent software coverage/fault work. G13 now implements checked loads. Next
+is G14 stores with a source revalidation boundary after commit. Default native activation still
 requires separate evidence;all outstanding physical checks remain deferred.
 
 G10 packaging follow-up: CI41355944529 at4175be9 compiled the Switch NRO,

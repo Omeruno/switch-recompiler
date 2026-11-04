@@ -62,7 +62,7 @@ subprocess.run([sys.executable,str(root/'tools/measure_native_dispatch.py'),'--r
 
 # Mixed memory/stack/call coverage and precise existing data-fallback boundaries.
 subprocess.run([*base,'-e','_start@0',str(root/'tests/guest/native_mixed.c'),'-o',str(guest/'native_mixed.exe'),'-lkernel32'],check=True)
-for name in ['test_workload_profile','test_native_memory_boundary','test_native_mixed_pe']:
+for name in ['test_native_load','test_workload_profile','test_native_memory_boundary','test_native_mixed_pe']:
     target=out/name
     subprocess.run([cxx,*flags,'-Wextra','-Werror','-static',str(root/'tests'/(name+'.cpp')),*map(str,built),'-o',str(target)],cwd=root,check=True)
     args=[runner,str(target)]
