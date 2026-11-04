@@ -26,13 +26,15 @@ not a confirmed Keldurn or cloud gaming solution. The browser work should first
 establish the exact Keldurn runtime/API failures on a device that can load the
 game, then select an engine and implement the missing APIs against those traces.
 
-## Play without updating Horizon
+## Product requirement
 
-The user has a PC. [Moonlight Switch](https://github.com/XITRIX/Moonlight-Switch)
-can stream a PC browser or locally installed game to the Switch from a Sunshine
-host. See [PLAY_WITH_PC_RU.md](PLAY_WITH_PC_RU.md). This is a separate homebrew
-client and is not a standalone Switch browser;
-it requires a PC, a suitable network, and games or services available on the PC.
-Keldurn and NFS Underground have not been verified in this setup. A Switchroot
-Android browser is another separate-OS option, dependent on console model and
-installation; it is outside this NRO project.
+The user wants to play Keldurn on the Switch itself while travelling, over any
+working Internet connection, without a PC host and without updating Horizon.
+PC streaming is explicitly rejected and is not an implementation path for this
+project. A standalone browser must execute the web game locally on the Switch.
+
+Switchroot Android with an Android browser is a possible on-device route that
+does not use Nintendo's WebApplet. It is a separate OS installation, not an NRO,
+and its suitability depends on console model, storage setup, browser features
+and a real Keldurn play test. It should not be represented as a completed native
+Horizon browser.

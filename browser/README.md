@@ -31,4 +31,4 @@ use + to exit. The native browser applet handles touch and cursor input.
 This is an applet launcher, not an independent browser engine. The system update
 gate makes it unusable on this console. No Keldurn gameplay or cloud gaming
 compatibility has been verified. See [ENGINE_PATH.md](ENGINE_PATH.md) for the
-independent-engine and streaming requirements.
+independent-engine requirements.
