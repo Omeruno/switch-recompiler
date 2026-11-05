@@ -1,0 +1,40 @@
+{
+  "runtime_commit": "3a6fb9a8e7871f20471c48592390b9d2342287b1",
+  "mode": "classic interpreter, no JIT/AOT",
+  "host": {
+    "architecture": "x86_64",
+    "executable_feature_checks_passed": 12,
+    "address_sanitizer_with_leak_detection": "passed feature harness"
+  },
+  "client": {
+    "sha256": "c8cf2c4b1ec64bc1cbf243b2d91de923cfccf8fb2c582eb70ef57fdeafd86407",
+    "bytes": 84164297,
+    "wamr_load_only": "passed using 64 MiB runtime pool",
+    "instantiated": false,
+    "host_imports_bound": false,
+    "game_executed": false
+  },
+  "native_wabt_disassembly": {
+    "exit_code": 0,
+    "legacy_try": 1,
+    "legacy_catch": 1,
+    "throw": 2,
+    "try_table": 0,
+    "memory_atomic_wait32": 15
+  },
+  "switch": {
+    "arm64_nro_build": "passed CI",
+    "executed_on_device": false,
+    "shared_mapping_backing_budget_bytes": 67108864,
+    "four_gib_va_probe": "implemented, device result unknown",
+    "four_gib_physical_commit_and_growth": "not implemented"
+  },
+  "not_established": [
+    "game performance",
+    "native feature execution",
+    "production engine selection",
+    "WebGPU backend",
+    "JS/wasm-bindgen bridge",
+    "game startup"
+  ]
+}

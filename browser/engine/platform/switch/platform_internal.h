@@ -14,7 +14,9 @@
 #include <string.h>
 #include <switch.h>
 #include <time.h>
+#ifndef BH_PLATFORM_SWITCH
 #define BH_PLATFORM_SWITCH
+#endif
 #define BH_APPLET_PRESERVED_STACK_SIZE (32 * 1024)
 #define BH_THREAD_DEFAULT_PRIORITY 0x3b
 #define os_thread_local_attribute __thread
