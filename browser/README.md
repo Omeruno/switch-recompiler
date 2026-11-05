@@ -34,10 +34,16 @@ This build extracts text and links from HTML and runs bounded classic JavaScript
 It fetches up to eight same-origin HTTPS scripts in document order, with a
 16 KiB limit per script, no redirects and a 10-second timeout. A `script-src
 'self'` policy permits these files and blocks inline scripts. It exposes
-`document.title`, `document.body.textContent` and `console.log`. ES modules,
+`document.title`, `document.body.textContent` and `console.log`. The navigation
+bridge adds `URL` (hostname, pathname, search, searchParams.get/set), `location`,
+the HTML language, and `navigator.language/languages` with a Russian preference.
+Anchor queries support `a` and `a[href^="prefix"]`; script changes to their
+HTTPS addresses are copied back to the browser's link list. Other selectors
+return no matches. Event listeners are placeholders and are not dispatched;
+cookies and storage are not persisted. ES modules,
 a real DOM, WebAssembly, WebGL,
-video and the Keldurn game are not implemented. A CSP header conservatively
-blocks inline execution. Each script has a 300 ms execution budget; the runtime
+video and the Keldurn game are not implemented. Basic CSP script directives
+control execution. Each script has a 300 ms execution budget; the runtime
 has a 16 MiB memory limit. The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
 The user confirmed direct HTTPS to Keldurn returns HTTP 200 on their Switch,

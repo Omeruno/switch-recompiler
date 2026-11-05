@@ -50,6 +50,26 @@ int main(void) {
     assert(csp_external.js_ran == 1);
     assert(strcmp(csp_external.title, "external ran") == 0);
 
+    BrowserPage navigation = {0};
+    strcpy(navigation.url, "https://example.test/ru/?utm_source=switch");
+    const char *navigation_html = "<html lang='ru'><a href='/start?from=ru'>Play</a>"
+        "<a href='/about'>About</a><script>"
+        "const current = new URL(location.href);"
+        "for (const link of document.querySelectorAll('a[href^=\"/start?\"]')) {"
+        "const target = new URL(link.href);"
+        "target.searchParams.set('utm_source', current.searchParams.get('utm_source'));"
+        "link.href = target.pathname + target.search;}"
+        "document.querySelectorAll('a')[1].href = 'javascript:alert(1)';"
+        "document.title = document.documentElement.lang + ':' + location.hostname;"
+        "if (navigator.language !== 'ru-RU') throw 'language';"
+        "</script></html>";
+    assert(browser_parse_html(&navigation, navigation_html, strlen(navigation_html)));
+    browser_js_apply(&navigation);
+    assert(navigation.js_ran == 1);
+    assert(strcmp(navigation.title, "ru:example.test") == 0);
+    assert(strcmp(navigation.links[0].url, "https://example.test/start?from=ru&utm_source=switch") == 0);
+    assert(strcmp(navigation.links[1].url, "https://example.test/about") == 0);
+
     BrowserPage looping = {0};
     strcpy(looping.url, "https://example.test/");
     const char *loop_html = "<script>while(true){}</script>";

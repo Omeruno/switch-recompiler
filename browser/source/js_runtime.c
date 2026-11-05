@@ -1,5 +1,7 @@
 #include "js_runtime.h"
+#include "js_web_apis.h"
 #include "quickjs.h"
+#include <curl/curl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -46,6 +48,42 @@ static const JSMallocFunctions js_allocator = {
     js_alloc, js_dealloc, js_resize, js_size
 };
 
+static JSValue url_resolve(JSContext *context, JSValueConst this_value,
+                           int argc, JSValueConst *argv) {
+    (void)this_value;
+    const char *input = argc ? JS_ToCString(context, argv[0]) : NULL;
+    const char *base = argc > 1 && !JS_IsUndefined(argv[1]) ? JS_ToCString(context, argv[1]) : NULL;
+    CURLU *url = curl_url();
+    char *resolved = NULL;
+    int valid = input && *input && url &&
+                (!base || curl_url_set(url, CURLUPART_URL, base, 0) == CURLUE_OK) &&
+                curl_url_set(url, CURLUPART_URL, input, 0) == CURLUE_OK &&
+                curl_url_get(url, CURLUPART_URL, &resolved, 0) == CURLUE_OK;
+    JSValue result = valid ? JS_NewString(context, resolved) : JS_ThrowTypeError(context, "Invalid URL");
+    curl_free(resolved); curl_url_cleanup(url);
+    if (input) JS_FreeCString(context, input);
+    if (base) JS_FreeCString(context, base);
+    return result;
+}
+
+static JSValue url_part(JSContext *context, JSValueConst this_value,
+                        int argc, JSValueConst *argv) {
+    (void)this_value;
+    const char *input = argc ? JS_ToCString(context, argv[0]) : NULL;
+    int32_t part = -1;
+    if (argc > 1) JS_ToInt32(context, &part, argv[1]);
+    CURLUPart kind = part == 0 ? CURLUPART_HOST : part == 1 ? CURLUPART_PATH : CURLUPART_QUERY;
+    CURLU *url = curl_url();
+    char *value = NULL;
+    if (input && url && part >= 0 && part <= 2 &&
+        curl_url_set(url, CURLUPART_URL, input, 0) == CURLUE_OK)
+        curl_url_get(url, kind, &value, 0);
+    JSValue result = JS_NewString(context, value ? value : "");
+    curl_free(value); curl_url_cleanup(url);
+    if (input) JS_FreeCString(context, input);
+    return result;
+}
+
 static uint64_t now_ms(void) {
     struct timeval time;
     gettimeofday(&time, NULL);
@@ -90,6 +128,21 @@ static void copy_js_string(JSContext *context, JSValueConst value,
     JS_FreeCString(context, text);
 }
 
+static void report_exception(JSContext *context, BrowserPage *page) {
+    JSValue exception = JS_GetException(context);
+    JSValue description = JS_ToString(context, exception);
+    if (!JS_IsException(description))
+        copy_js_string(context, description, page->js_notice, sizeof(page->js_notice));
+    else {
+        JSValue secondary = JS_GetException(context);
+        JS_FreeValue(context, secondary);
+    }
+    if (!page->js_notice[0])
+        snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript interrupted or threw");
+    JS_FreeValue(context, description);
+    JS_FreeValue(context, exception);
+}
+
 void browser_js_apply(BrowserPage *page) {
     if (!page) return;
     page->js_ran = 0;
@@ -128,6 +181,39 @@ void browser_js_apply(BrowserPage *page) {
     JS_SetPropertyStr(context, global, "console", console);
     JS_SetPropertyStr(context, global, "window", JS_DupValue(context, global));
 
+    JS_SetPropertyStr(context, global, "__urlResolve", JS_NewCFunction(context, url_resolve, "__urlResolve", 2));
+    JS_SetPropertyStr(context, global, "__urlPart", JS_NewCFunction(context, url_part, "__urlPart", 2));
+    JSValue location = JS_NewObject(context);
+    JS_SetPropertyStr(context, location, "href", JS_NewString(context, page->url));
+    JS_SetPropertyStr(context, global, "location", location);
+    JSValue root = JS_NewObject(context);
+    JS_SetPropertyStr(context, root, "lang", JS_NewString(context, page->language));
+    JS_SetPropertyStr(context, document, "documentElement", root);
+    JS_SetPropertyStr(context, document, "referrer", JS_NewString(context, ""));
+    JS_SetPropertyStr(context, document, "cookie", JS_NewString(context, ""));
+    JSValue navigator = JS_NewObject(context);
+    JS_SetPropertyStr(context, navigator, "language", JS_NewString(context, "ru-RU"));
+    JSValue languages = JS_NewArray(context);
+    JS_SetPropertyUint32(context, languages, 0, JS_NewString(context, "ru-RU"));
+    JS_SetPropertyStr(context, navigator, "languages", languages);
+    JS_SetPropertyStr(context, global, "navigator", navigator);
+    JSValue links = JS_NewArray(context);
+    for (size_t i = 0; i < page->link_count; ++i) {
+        JSValue link = JS_NewObject(context);
+        JS_SetPropertyStr(context, link, "href", JS_NewString(context, page->links[i].url));
+        JS_SetPropertyStr(context, link, "rawHref", JS_NewString(context, page->links[i].href));
+        JS_SetPropertyUint32(context, links, (uint32_t)i, link);
+    }
+    JS_SetPropertyStr(context, global, "__browserLinks", JS_DupValue(context, links));
+    JSValue bootstrap = JS_Eval(context, browser_web_apis, strlen(browser_web_apis),
+                                "<browser-apis>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(bootstrap)) {
+        report_exception(context, page);
+        JS_FreeValue(context, bootstrap);
+        goto cleanup;
+    }
+    JS_FreeValue(context, bootstrap);
+
     for (size_t i = 0; i < page->script_count; ++i) {
         if (page->script_urls[i][0] ? !page->external_allowed : !page->inline_allowed) continue;
         if (!page->scripts[i][0]) continue;
@@ -137,11 +223,7 @@ void browser_js_apply(BrowserPage *page) {
                                  page->script_urls[i][0] ? page->script_urls[i] : "<inline>",
                                  JS_EVAL_TYPE_GLOBAL);
         if (JS_IsException(result)) {
-            JSValue exception = JS_GetException(context);
-            copy_js_string(context, exception, page->js_notice, sizeof(page->js_notice));
-            if (!page->js_notice[0])
-                snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript interrupted or threw");
-            JS_FreeValue(context, exception);
+            report_exception(context, page);
             JS_FreeValue(context, result);
             continue;
         }
@@ -163,6 +245,25 @@ void browser_js_apply(BrowserPage *page) {
         JS_FreeValue(context, body_text);
     }
     JS_FreeValue(context, new_body);
+    for (size_t i = 0; i < page->link_count; ++i) {
+        JSValue link = JS_GetPropertyUint32(context, links, (uint32_t)i);
+        JSValue args[] = {JS_GetPropertyStr(context, link, "href"), JS_NewString(context, page->url)};
+        JSValue resolved = url_resolve(context, JS_UNDEFINED, 2, args);
+        if (!JS_IsException(resolved)) {
+            char candidate[BROWSER_URL_MAX] = {0};
+            copy_js_string(context, resolved, candidate, sizeof(candidate));
+            if (browser_valid_url(candidate))
+                snprintf(page->links[i].url, sizeof(page->links[i].url), "%s", candidate);
+        } else {
+            JSValue exception = JS_GetException(context);
+            JS_FreeValue(context, exception);
+        }
+        JS_FreeValue(context, resolved);
+        JS_FreeValue(context, args[0]); JS_FreeValue(context, args[1]);
+        JS_FreeValue(context, link);
+    }
+cleanup:
+    JS_FreeValue(context, links);
     JS_FreeValue(context, document);
     JS_FreeValue(context, global);
     JS_FreeContext(context);

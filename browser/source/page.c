@@ -222,6 +222,7 @@ static void add_link(BrowserPage *page, const char *href, size_t length) {
             if (browser_valid_url(resolved)) {
                 BrowserLink *link = &page->links[page->link_count++];
                 snprintf(link->url, sizeof(link->url), "%s", resolved);
+                snprintf(link->href, sizeof(link->href), "%s", candidate);
                 snprintf(link->label, sizeof(link->label), "%.95s", resolved);
             }
             curl_free(resolved);
@@ -323,6 +324,7 @@ int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
     if (!page || !html) return 0;
     page->text[0] = 0;
     page->title[0] = 0;
+    snprintf(page->language, sizeof(page->language), "en");
     page->link_count = 0;
     page->script_count = 0;
     page->script_fetch_failed = 0;
@@ -353,6 +355,8 @@ int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
             if (same(html + name, len, "script")) skip = closing ? 0 : 1;
             else if (same(html + name, len, "style")) skip = closing ? 0 : 2;
             else if (same(html + name, len, "title")) in_title = !closing;
+            else if (!closing && same(html + name, len, "html"))
+                attribute(html + p, end - p, "lang", page->language, sizeof(page->language));
             else if (!skip && !closing && same(html + name, len, "a")) parse_href(page, html + p, end - p);
             if (!skip && (same(html + name, len, "p") || same(html + name, len, "br") ||
                           same(html + name, len, "div") || same(html + name, len, "li") ||

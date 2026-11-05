@@ -1,0 +1,50 @@
+#ifndef SWITCH_BROWSER_JS_WEB_APIS_H
+#define SWITCH_BROWSER_JS_WEB_APIS_H
+
+// Small navigation/selector bridge. This is deliberately limited to the
+// document state represented by BrowserPage; it is not a general DOM.
+static const char browser_web_apis[] =
+    "globalThis.URL = class URL {\n"
+    "  constructor(input, base) { this.href = __urlResolve(String(input), base); }\n"
+    "  get hostname() { return __urlPart(this.href, 0); }\n"
+    "  get pathname() { return __urlPart(this.href, 1) || '/'; }\n"
+    "  get search() { const q = __urlPart(this.href, 2); return q ? '?' + q : ''; }\n"
+    "  get searchParams() {\n"
+    "    const url = this;\n"
+    "    const entries = () => url.search.slice(1).split('&').filter(Boolean).map(part => {\n"
+    "      const at = part.indexOf('=');\n"
+    "      const decode = value => decodeURIComponent(value.replace(/\\+/g, ' '));\n"
+    "      return [decode(at < 0 ? part : part.slice(0, at)), decode(at < 0 ? '' : part.slice(at + 1))];\n"
+    "    });\n"
+    "    return {\n"
+    "      get(key) { const pair = entries().find(entry => entry[0] === String(key)); return pair ? pair[1] : null; },\n"
+    "      set(key, value) {\n"
+    "        key = String(key); value = String(value);\n"
+    "        const pairs = entries().filter(entry => entry[0] !== key);\n"
+    "        pairs.push([key, value]);\n"
+    "        const hash = url.href.indexOf('#');\n"
+    "        const fragment = hash < 0 ? '' : url.href.slice(hash);\n"
+    "        const path = (hash < 0 ? url.href : url.href.slice(0, hash)).split('?')[0];\n"
+    "        url.href = path + '?' + pairs.map(entry => entry.map(encodeURIComponent).join('=')).join('&') + fragment;\n"
+    "      }\n"
+    "    };\n"
+    "  }\n"
+    "  toString() { return this.href; }\n"
+    "};\n"
+    "location.hostname = __urlPart(location.href, 0);\n"
+    "location.pathname = __urlPart(location.href, 1);\n"
+    "location.search = __urlPart(location.href, 2);\n"
+    "if (location.search) location.search = '?' + location.search;\n"
+    "document.querySelectorAll = function(selector) {\n"
+    "  if (selector === 'a') return __browserLinks;\n"
+    "  const prefixes = [];\n"
+    "  const pattern = /a\\[href\\^=[\"']([^\"']+)[\"']\\]/g;\n"
+    "  let match;\n"
+    "  while ((match = pattern.exec(String(selector))) !== null) prefixes.push(match[1]);\n"
+    "  return prefixes.length ? __browserLinks.filter(link => prefixes.some(prefix => link.rawHref.startsWith(prefix))) : [];\n"
+    "};\n"
+    "document.querySelector = function(selector) { return this.querySelectorAll(selector)[0] || null; };\n"
+    "document.getElementById = function() { return null; };\n"
+    "document.addEventListener = function() {};\n";
+
+#endif

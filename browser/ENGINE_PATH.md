@@ -33,7 +33,11 @@ does not imply that Keldurn can run.
 An HTTPS host probe of `https://keldurn.com/ru/` returned HTTP 200 and fetched
 all three same-origin scripts (`acquisition.js`, `mega.js`, `lang.js`) with zero
 download failures. Its `script-src 'self'` policy correctly blocks inline code.
-Execution still needs browser DOM APIs that this prototype does not provide.
+The navigation bridge now exposes URL parsing, query parameters, anchor-prefix
+queries, link address changes, the document language and Russian navigator
+preferences. A host probe executed two of the three landing-page scripts;
+`mega.js` stops at `ReferenceError: 'Intl' is not defined`. General DOM mutation,
+events and the game engine APIs remain unimplemented.
 
 ## Independent-browser requirements
 

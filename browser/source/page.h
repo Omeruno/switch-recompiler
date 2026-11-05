@@ -11,12 +11,14 @@
 
 typedef struct {
     char url[BROWSER_URL_MAX];
+    char href[BROWSER_URL_MAX];
     char label[96];
 } BrowserLink;
 
 typedef struct {
     char url[BROWSER_URL_MAX];
     char title[256];
+    char language[16];
     char text[BROWSER_TEXT_MAX];
     BrowserLink links[BROWSER_LINK_MAX];
     size_t link_count;
