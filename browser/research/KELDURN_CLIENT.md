@@ -5,6 +5,10 @@ It is static research, not a successful game run in the Switch browser.
 The binary and site source are external inputs and are not stored in this repo.
 The machine-readable interface summary is [keldurn-2026-11-05.json](keldurn-2026-11-05.json).
 
+> Update: the loader follow-up at the end of this report resolves the normal
+> launch gate as WebGPU-required, confirms the initial shared-memory allocation,
+> identifies the optional compute pool and verifies the supplied WASI stubs.
+
 ## Verified module facts
 
 | Field | Observed value |
@@ -68,8 +72,9 @@ The module imports both GPU families:
 
 This proves both binding families exist in the build. It does **not** prove
 that a WebGL2 fallback is enabled, selectable, adequate for this game, or active
-in the user's browser. Selection and configuration need the JS loader and a
-runtime trace. Some dependencies can include unused alternative backends.
+in the user's browser. Selection and configuration needed the JS loader and a runtime trace. The
+loader follow-up below confirms a WebGPU gate in the normal entry. Dependencies
+can still include unused alternative backends.
 
 Audio bindings include decodeAudioData, AudioBuffer/BufferSource and
 AudioWorklet. Exported WASM audio processors suggest worklet integration.
@@ -107,7 +112,7 @@ then demonstrate ARM64/Horizon execution, worker synchronization and a viable
 GPU bridge. Executable-memory/JIT/AOT constraints and performance need device
 measurements; no compatible engine has been selected yet.
 
-## Next concrete gates
+## Initial investigation gates (superseded by the loader follow-up below)
 
 1. Obtain the actual generated binding/loader JS. `./keldurn_bg.js` is an explicit
    import namespace, but is not proof that an HTTP resource with that name is
@@ -138,3 +143,124 @@ wasm-validate --enable-all --disable-simd /path/to/keldurn_bg.wasm
 The Python tool inspects bounded section metadata and rejects truncated fields;
 it explicitly does not validate function bodies. CI tests it with small synthetic
 modules, without including any proprietary game payload.
+
+## Loader follow-up — supplied JS and saved entry page
+
+Capture scope: the user reached character creation, not the in-world gameplay
+stage. These files establish core loader/binary requirements, but are not a
+complete in-world network/resource trace. World entry may load more modules,
+zone assets, shaders, audio and transport traffic. Peak memory, shader coverage,
+frame rate and session stability cannot be inferred from this capture. Those
+measurements belong to a later representative in-world trace; they are not
+needed to recognize the current WebGPU/shared-memory engine feasibility gate.
+
+The five requested files were supplied: `keldurn.js`, `startup_cache.js`,
+`wasi_stubs.js`, `compute_worker.js`, and `client_capabilities.js`.
+All four uploaded copies of keldurn.js are byte-identical. The repeated Games.zip
+is also byte-identical to the previous archive. The loader's namespace
+`./keldurn_bg.js` is implemented inside keldurn.js's import object; a separate
+HTTP file with that name is not needed to explain these imports.
+
+The [JS inventory and binding check](keldurn-js-2026-11-05.json) records file
+sizes/checksums without storing site source. The saved HTML was reviewed locally
+for its boot sequence; no page/account content or credential values are copied
+into the repository. Its `/api/play` response is fetched dynamically and was
+not supplied or requested for this analysis.
+
+### Interface coverage
+
+The supplied glue defines all 1,020 names expected in the WASM's core namespace
+(including memory). All 65 statically named WASM exports referenced by the glue
+exist in the uploaded module. wasi_stubs.js exports all 18 required WASI names.
+These are name-coverage checks, not proof of argument-signature compatibility
+or a successful execution. Mousefix and other auxiliary module implementations
+still have to be available when the module graph is loaded.
+
+### WebGPU is an actual launch gate
+
+client_capabilities.js checks navigator.gpu, crossOriginIsolated,
+SharedArrayBuffer, construction of shared WebAssembly.Memory and a usable GPU
+adapter. The saved normal entry module invokes that check before starting its
+WASM/module/resource download sequence and fails startup on a rejected result.
+There is no normal WebGL fallback in this supplied launcher. Thus a WebGL2-only
+port does not satisfy the current normal boot path, despite the binary's GL
+bindings. A genuine WebGPU implementation/translation layer or an independently
+verified supported alternative client path is required. Faking a positive
+capability check does not supply the renderer.
+
+This supersedes the earlier uncertainty about whether the normal launcher
+requires WebGPU. Backend choice inside the Rust engine and actual device
+feature/limit requirements still need runtime verification.
+
+### Memory, pools and audio
+
+The normal entry calls init with the compiled module and no memory override.
+The glue therefore creates shared memory with initial=266 and maximum=65536,
+matching 16.625 MiB initially and a 4 GiB declared maximum. No larger initial
+allocation is present in this call. Subsequent growth and overall process/GPU
+memory remain unmeasured.
+
+startupPolicy supports the site's own safe configuration: `startup=safe` selects
+zero compute helpers, preload concurrency four and zero additional heap-headroom
+hint. Normal desktop policy may request one to four helpers based on hardware
+and policy overrides. startComputeForPolicy skips zero helpers and catches pool
+startup failure; the entry starts the pool without awaiting it. This supports
+treating the optional compute pool separately from the mandatory shared-memory
+interface. It does not establish that all worker/worklet functionality can be
+removed or that safe mode will meet performance needs on Switch.
+
+When enabled, compute helpers are module Workers created from a Blob URL of the
+worker source. The compiled WebAssembly.Module and shared memory are posted to
+each helper; the helper imports the main JS and instantiates against that same
+memory. No per-worker independent copy of the whole linear memory is specified.
+Pool startup is synchronized with audio initialization because Atomics.wait is
+not usable inside the AudioWorklet global scope. AudioWorklet processor
+initialization and shared-memory lifetime are therefore engine integration work,
+not cosmetic audio controls.
+
+### WASI is already deliberately stubbed
+
+The supplied WASI adapter returns EBADF/ENOSYS for file/path and clock calls,
+returns empty environment data, permits sched_yield and throws on proc_exit.
+The browser should reproduce this observed contract rather than planning a full
+POSIX filesystem solely because those symbols appear in the binary. The game
+loads its resources through web APIs; whether any exceptional WASI path matters
+still needs execution testing.
+
+### Real boot/data flow
+
+The entry checks capabilities, starts a same-origin authenticated `/api/play`
+request, compiles WASM, imports modules and preloads a startup manifest in
+parallel. Credentials from the API are passed transiently to the engine and then
+the temporary global is deleted. No real credentials are needed in the report,
+repository or diagnostics. Never ask for the API response as an ordinary fixture.
+
+startup_cache.js uses compileStreaming with a buffered compile fallback, a
+bounded-concurrency manifest/data fetcher, retries/timeouts and an in-memory
+asset catalog/cache. The ordinary scalar WASM build is the default; SIMD is an
+explicit optional loader experiment, consistent with the earlier validator
+result. Optional persistent caching is installed by asset_cache.js, which was
+not in this upload, so its format and storage requirements are not established.
+
+### Remaining source graph and next work
+
+Six direct core dependencies have not been supplied:
+
+- gpulimits_pipeline.js
+- growth_realm.js
+- quest_events.js
+- snippets/bevy_render-0dc7d31cc6170747/inline0.js
+- snippets/keldurn-app-1826881576016968/inline0.js
+- snippets/keldurn-app-1826881576016968/inline1.js
+
+The startup helpers additionally import platform.js, mobile_memory.js and
+gpu_recovery.js. The entry references further resource/UI helpers. This is an
+inventory of the remaining graph, not a claim every helper is essential to the
+first graphics probe. No account/session dumps are needed to resolve it.
+
+There is enough evidence now to evaluate engines against **shared-memory WASM,
+exception/reference support and a real WebGPU path on Horizon**. The next gate
+is an ARM64/Horizon feasibility prototype and a documented engine/backend
+choice, followed by full resource/module/input/audio integration. Request further
+site modules when a specific unresolved dependency blocks that work. Reader DOM
+improvements alone cannot cross this engine gate.

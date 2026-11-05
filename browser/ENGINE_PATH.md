@@ -58,9 +58,16 @@ See [the evidence and next gates](research/KELDURN_CLIENT.md) and its reproducib
 JSON summary. It has 1,041 imports, shared 32-bit memory, exception tags,
 reference tables and both WebGPU/WebGL bindings. Its module minimum is 16.625 MiB
 of linear memory; 4 GiB is its maximum, not a measured RAM requirement. This
-version validates without SIMD. The real wasm-bindgen loader, GPU selection,
-worker/WASI wiring and total working set remain to be established before engine
-selection. The reader cannot execute it by simply raising resource limits.
+version validates without SIMD. The subsequent JS/entry-page upload confirms a
+WebGPU-required normal launcher, default initial shared memory of 16.625 MiB,
+optional 0–4 compute helpers and an intentionally stubbed WASI contract. The
+supplied glue covers every core import name and its static WASM export references.
+See the report's loader follow-up for source coverage and remaining dependencies.
+The supplied capture reaches character creation; in-world traffic/assets and
+performance have not been observed. Actual GPU limits, peak working set, full
+module/resource graph and Horizon
+engine/backend feasibility remain unresolved. The reader cannot execute this
+client by simply raising resource limits.
 
 ## Independent-browser requirements
 

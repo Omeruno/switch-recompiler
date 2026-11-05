@@ -1,0 +1,84 @@
+{
+  "analysis": "Static name/interface coverage only; no game execution or signature proof",
+  "files": {
+    "keldurn.js": {
+      "bytes": 217891,
+      "sha256": "92e859914d36c5e60c424d4cd968cbf1546cb7a4e5e84b1dc49640d2ccbd644e"
+    },
+    "startup_cache.js": {
+      "bytes": 21426,
+      "sha256": "8bf211b241910bb2bfa8f11cd672725366ad89004097669e4c50cc1a9bf29e86"
+    },
+    "wasi_stubs.js": {
+      "bytes": 1271,
+      "sha256": "d2ad59db5ff602fe684d68df5c0eb35430a481bc9ab348029bee06b5dfaceccb"
+    },
+    "compute_worker.js": {
+      "bytes": 11877,
+      "sha256": "8416e8bdf44f1dbc08dbffa0b55959cd70989b0424f22577faf3afb3352cfdbd"
+    },
+    "client_capabilities.js": {
+      "bytes": 2068,
+      "sha256": "0827901358220c53fc74eed2f297fc0d3207a8ae070d3f11a1772e329580e8ac"
+    }
+  },
+  "duplicate_glue_files": {
+    "keldurn (1).js": true,
+    "keldurn (2).js": true,
+    "keldurn (3).js": true
+  },
+  "same_archive_as_previous_upload": true,
+  "wasm_sha256": "c8cf2c4b1ec64bc1cbf243b2d91de923cfccf8fb2c582eb70ef57fdeafd86407",
+  "bindings": {
+    "core_expected": 1020,
+    "core_provided": 1020,
+    "core_missing": [],
+    "static_wasm_members_used": 65,
+    "missing_wasm_exports": [],
+    "wasi_expected": 18,
+    "wasi_missing": []
+  },
+  "direct_core_module_imports": [
+    "./compute_worker.js",
+    "./gpulimits_pipeline.js",
+    "./growth_realm.js",
+    "./quest_events.js",
+    "./snippets/bevy_render-0dc7d31cc6170747/inline0.js",
+    "./snippets/keldurn-app-1826881576016968/inline0.js",
+    "./snippets/keldurn-app-1826881576016968/inline1.js",
+    "./wasi_stubs.js"
+  ],
+  "core_dependencies_not_supplied": [
+    "./gpulimits_pipeline.js",
+    "./growth_realm.js",
+    "./quest_events.js",
+    "./snippets/bevy_render-0dc7d31cc6170747/inline0.js",
+    "./snippets/keldurn-app-1826881576016968/inline0.js",
+    "./snippets/keldurn-app-1826881576016968/inline1.js"
+  ],
+  "normal_launcher": {
+    "webgpu_required_before_wasm_download": true,
+    "shared_memory_required": true,
+    "initial_memory_pages": 266,
+    "maximum_memory_pages": 65536,
+    "compute_pool_range": [
+      0,
+      4
+    ],
+    "safe_mode_compute_pool": 0,
+    "safe_mode_preload_concurrency": 4,
+    "safe_mode_heap_headroom_mb": 0
+  },
+  "saved_html": "Reviewed locally for boot flow; no HTML content, account labels, credentials or HTML fingerprint recorded here.",
+  "capture_scope": {
+    "stage": "character creation",
+    "in_world_gameplay_captured": false,
+    "not_measured": [
+      "peak memory",
+      "GPU limits and shaders exercised in world",
+      "frame rate",
+      "long-session network stability",
+      "complete zone/module/resource graph"
+    ]
+  }
+}
