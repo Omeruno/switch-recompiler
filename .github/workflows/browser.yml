@@ -39,6 +39,7 @@ jobs:
       - name: Verify embedded font RomFS
         run: python3 browser/tests/check_nro_romfs.py browser/switch-browser.nro
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: switch-browser-native-nro
           if-no-files-found: error

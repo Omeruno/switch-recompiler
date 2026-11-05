@@ -14,7 +14,10 @@ def main(path: Path) -> None:
     if magic != 0x304F524E:
         raise ValueError("not an NRO")
     if code_size + 56 > len(data):
-        raise ValueError("NRO has no asset header")
+        raise ValueError(
+            f"NRO has no asset header: code_size={code_size}, "
+            f"file_size={len(data)}, ASET_at={data.find(b'ASET')}"
+        )
     asset = struct.unpack_from("<2I6Q", data, code_size)
     if asset[0] != 0x54455341 or asset[1] != 0:
         raise ValueError("invalid NRO asset header")
