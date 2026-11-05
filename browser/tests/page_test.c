@@ -8,6 +8,8 @@ int main(void) {
     assert(!browser_valid_url("http://keldurn.com/ru/"));
     assert(!browser_valid_url("https://evil.test/\nheader"));
     assert(!browser_valid_url("https:///missing-host"));
+    assert(!browser_valid_url("https://user:password@example.test/"));
+    assert(!browser_valid_url("https://example.test:99999/"));
 
     BrowserPage page = {0};
     strcpy(page.url, "https://keldurn.com/ru/");

@@ -38,9 +38,18 @@ cancellation, navigation cleanup and interruption/heap limits. These checks do
 not establish that the actual game client can execute.
 
 The next engine stages need standards-level HTML/CSS and DOM behavior, module
-loading, storage/network APIs, WASM and GPU rendering. The page reader remains
+loading, full network APIs, IndexedDB, WASM and GPU rendering. The page reader remains
 text-based and cannot run WoW or a cloud gaming video client. Hardware rendering
 and input latency must still be verified on the target console.
+
+The profile milestone bundles and verifies a Mozilla/curl CA snapshot, configures
+TLS for pages and scripts, shares HTTP cookies, and exposes bounded origin-scoped
+localStorage/sessionStorage plus document.cookie. The SD profile saves persistent
+cookies and local storage, reports write failures and allows user-initiated data
+clearing. Loopback TLS tests verify unknown CAs, hostname mismatch, expiry and
+HTTPS-to-HTTP rejection on the host. Native libnx root import and SD persistence
+still require a console check. Authentication remains limited by the reader's
+missing form, navigation and cross-origin APIs.
 
 ## Independent-browser requirements
 

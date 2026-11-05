@@ -21,6 +21,8 @@ to Wi-Fi before opening a site. The NRO does not invoke Horizon update services.
   JavaScript demo; A opens. The demo updates a counter and adds text while open.
 - Page: Up/Down scroll; ZL/ZR select a link or button; A activates it; B goes back; X edits
   the address; Y reloads; + quits.
+- Home: − opens a confirmation to erase cookies, storage and network diagnostics.
+  A confirms; B cancels.
 
 TLS verification is enabled. Only HTTPS pages and HTTPS redirects are accepted.
 Responses are capped at 2 MiB and requests time out after 25 seconds. The page
@@ -58,13 +60,60 @@ Up to eight same-origin classic HTTPS script files are fetched, limited to
 16 KiB each with a 10-second timeout and no redirects. Basic CSP directives
 control script execution; nonce/hash policies are not implemented. URL parsing,
 query parameters, location, document language and Russian navigator preferences
-are exposed. Cookies and storage are not persisted. Intl.DateTimeFormat and
+are exposed. The profile below adds cookies and storage. Intl.DateTimeFormat and
 Intl.RelativeTimeFormat provide a limited ru/en subset using UTC only.
+
+## HTTPS trust and site profile
+
+RomFS includes a Mozilla-derived CA bundle from curl.se. CA_BUNDLE.json pins its
+SHA-256, extraction date and certificate count; host tests validate it offline,
+and CI checks that the exact CA bundle and font are embedded in the NRO. The
+Switch libnx TLS backend imports the PEM roots individually into its context;
+its system roots may also apply. Other backends use CAINFO. Peer and hostname
+checks remain enabled, including on errors. Native certificate import requires
+a real-Switch test; host TLS tests use OpenSSL and do not validate that service.
+A missing/unimportable bundle does not trigger a retry with verification off.
+The diagnostic console explicitly reports system-trust mode if RomFS cannot
+mount. A correct console date is necessary for certificate validity checks.
+
+The app creates `sdmc:/switch/switch-browser/`. If it cannot write there, it
+reports memory-only mode. `localStorage` and expiry-bearing cookies persist;
+`sessionStorage` survives same-origin navigation within the app and is discarded
+on exit, as are cookies without an expiry. Origin isolation includes scheme,
+host and effective port. Storage methods are getItem/setItem/removeItem/clear,
+key and length; property-style access and storage events are not implemented.
+Quotas are 64 KiB per origin per storage kind, 16 KiB per value, 1 KiB per key,
+256 records and 1 MiB total. Writes use a temporary snapshot and a previous-version backup, including on
+Horizon where rename cannot overwrite an existing file. Failed localStorage
+mutations roll back. Startup can recover a valid backup after an interrupted
+rotation; corrupt snapshots are ignored and reported.
+
+Network transfers share libcurl cookies and connection/session caches. JS
+`document.cookie` filters path/domain/expiry and hides HttpOnly cookies; scripts
+cannot overwrite them. JS cookie creation supports host-only cookies, Path,
+Secure, Max-Age and Expires; Domain is accepted only for the exact host and
+remains host-only. Cookie prefixes are checked. Full SameSite policy, parent-
+domain JS cookie creation, cross-origin request APIs and third-party-cookie
+policy are not implemented. This profile does not make unsupported login
+forms or OAuth flows functional. The local files and retained snapshots contain unencrypted site data. The Home
+clear action erases retained snapshots too. Cookies set by JS are flushed on
+normal exit or a later page transfer, so abrupt power loss can discard recent
+cookie changes.
+
+`network.log` records timestamp, origin, transfer phase, HTTP status and curl
+error number, with bounded rotation. It excludes URL paths/queries, cookies,
+request/response content and authorization headers. It is erased with the site
+data from the Home menu. TLS errors suggest checking the certificate/date;
+CA import failures retain the libnx error code for diagnosis.
+
+Update the bundled roots deliberately using `python3 browser/tools/update_ca.py`,
+then review the diff and rebuild; `--check` performs no network access. Roots
+are not automatically refreshed on the console. See romfs/CA_README.txt.
 
 ## Remaining engine work
 
 ES modules, standards-compliant DOM/CSS, WebAssembly, WebGL, media, WebRTC,
-storage and the Keldurn game are not implemented. A host probe of the Russian
+IndexedDB, resource caching and the Keldurn game are not implemented. A host probe of the Russian
 landing page executed all three scripts and pumped its interval without an
 exception. This confirms the page reader APIs; it does not verify gameplay or
 Switch performance. The graphics path still needs a hardware check.

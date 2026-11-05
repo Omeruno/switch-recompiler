@@ -1,0 +1,6 @@
+{
+  "source": "https://curl.se/ca/cacert.pem",
+  "extracted": "Thu Nov  5 04:12:01 2026 GMT",
+  "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285",
+  "certificates": 118
+}

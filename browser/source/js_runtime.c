@@ -1,4 +1,5 @@
 #include "js_runtime.h"
+#include "profile.h"
 #include "js_web_apis.h"
 #include "js_intl.h"
 #include "dom_js.h"
@@ -100,6 +101,60 @@ static JSValue url_part(JSContext *context, JSValueConst this_value,
     curl_free(value); curl_url_cleanup(url);
     if (input) JS_FreeCString(context, input);
     return result;
+}
+
+static JSValue storage_call(JSContext *context, JSValueConst self, int argc, JSValueConst *argv) {
+    (void)self;
+    BrowserPage *page = JS_GetContextOpaque(context);
+    int32_t operation = -1;
+    if (argc < 2 || JS_ToInt32(context,&operation,argv[0]) < 0) return JS_EXCEPTION;
+    int session = JS_ToBool(context,argv[1]) > 0;
+    if (operation == 4) return JS_NewInt32(context,(int)browser_storage_length(page->url,session));
+    if (operation == 5) {
+        uint32_t index = 0;
+        if (argc > 2 && JS_ToUint32(context,&index,argv[2]) < 0) return JS_EXCEPTION;
+        const char *key = browser_storage_key(page->url,session,index);
+        return key ? JS_NewString(context,key) : JS_NULL;
+    }
+    size_t key_length = 0,value_length = 0;
+    const char *key = argc > 2 ? JS_ToCStringLen(context,&key_length,argv[2]) : NULL;
+    const char *value = argc > 3 ? JS_ToCStringLen(context,&value_length,argv[3]) : NULL;
+    if ((argc > 2 && !key) || (argc > 3 && !value)) {
+        if(key)JS_FreeCString(context,key);
+        if(value)JS_FreeCString(context,value);
+        return JS_EXCEPTION;
+    }
+    if ((key && memchr(key,0,key_length)) || (value && memchr(value,0,value_length))) {
+        if(key)JS_FreeCString(context,key);
+        if(value)JS_FreeCString(context,value);
+        return JS_ThrowTypeError(context,"Storage strings cannot contain NUL");
+    }
+    JSValue result = JS_UNDEFINED;
+    int status = 0;
+    if (operation == 0) {
+        const char *stored = key ? browser_storage_get(page->url,session,key) : NULL;
+        result = stored ? JS_NewString(context,stored) : JS_NULL;
+    } else if (operation == 1) status = browser_storage_set(page->url,session,key,value);
+    else if (operation == 2) status = browser_storage_remove(page->url,session,key);
+    else if (operation == 3) status = browser_storage_clear(page->url,session);
+    else status = -1;
+    if(key)JS_FreeCString(context,key);
+        if(value)JS_FreeCString(context,value);
+    if(status) return status == -2 ? JS_ThrowInternalError(context,"Storage could not be saved") : JS_ThrowRangeError(context,"Storage quota or origin limit");
+    return result;
+}
+
+static JSValue cookie_call(JSContext *context, JSValueConst self, int argc, JSValueConst *argv) {
+    (void)self;
+    BrowserPage *page = JS_GetContextOpaque(context);
+    if (argc) {
+        size_t length = 0;
+        const char *value = JS_ToCStringLen(context,&length,argv[0]);
+        if(!value)return JS_EXCEPTION;
+        if(!memchr(value,0,length))browser_cookie_set(page->url,value);
+        JS_FreeCString(context,value);return JS_UNDEFINED;
+    }
+    char cookies[16384];browser_cookie_get(page->url,cookies,sizeof(cookies));return JS_NewString(context,cookies);
 }
 
 uint64_t browser_js_clock_ms(void) {
@@ -242,6 +297,8 @@ BrowserJS *browser_js_start(BrowserPage *page) {
     JS_SetPropertyStr(context,global,"__clock",JS_NewCFunction(context,clock_read,"__clock",0));
     JS_SetPropertyStr(context,global,"__startedAt",JS_NewFloat64(context,(double)session->clock));
     JS_SetPropertyStr(context,global,"__sourceHTML",JS_NewString(context,page->html));
+    JS_SetPropertyStr(context,global,"__storage",JS_NewCFunction(context,storage_call,"__storage",4));
+    JS_SetPropertyStr(context,global,"__cookie",JS_NewCFunction(context,cookie_call,"__cookie",1));
     const char *sources[] = {browser_web_apis,browser_intl,browser_dom};
     int boot_ok = 1;
     for (unsigned i = 0; i < 3; ++i) {

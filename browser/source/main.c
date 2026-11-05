@@ -8,6 +8,8 @@
 #include <string.h>
 #include "page.h"
 #include "js_runtime.h"
+#include "profile.h"
+#include <sys/stat.h>
 
 #define SCREEN_W 1280
 #define SCREEN_H 720
@@ -31,9 +33,10 @@ typedef struct {
     char address[BROWSER_URL_MAX];
     char status[192];
     char last_js_notice[192];
+    char last_profile_status[160];
     char startup_error[256];
     bool romfs_ready, sdl_ready, ttf_ready;
-    bool loaded, network_ready, local_demo;
+    bool loaded, network_ready, local_demo, clear_pending;
     int selection;
 } App;
 
@@ -143,7 +146,7 @@ static void render(App *app) {
                  (SDL_Color){29, 75, 91, 255} : (SDL_Color){25, 39, 60, 255});
             label(app, app->heading, 72, y + 17, items[i], i == app->selection ? accent : white, 1100);
         }
-        label(app, app->font, 46, 550, "D-pad: выбор    A: открыть    +: выход", muted, 1160);
+        label(app, app->font, 46, 550, app->clear_pending ? "Удалить данные всех сайтов? A: удалить    B: отмена" : "D-pad: выбор    A: открыть    −: очистить данные    +: выход", muted, 1160);
     } else {
         label(app, app->font, 26, 86, app->page->url, accent, 1210);
         label(app, app->font, 26, 122, app->page->title, white, 1210);
@@ -268,7 +271,10 @@ static void run_console_fallback(BrowserPage *page, const char *reason) {
     PadState pad;
     padInitializeDefault(&pad);
     Result socket_result = socketInitializeDefault();
-    bool network_ready = R_SUCCEEDED(socket_result) && curl_global_init(CURL_GLOBAL_DEFAULT) == 0;
+    bool curl_ready = R_SUCCEEDED(socket_result) && curl_global_init(CURL_GLOBAL_DEFAULT) == 0;
+    Result ca_romfs = romfsInit();
+    mkdir("sdmc:/switch",0700);
+    bool network_ready = curl_ready && browser_profile_open("sdmc:/switch/switch-browser",R_SUCCEEDED(ca_romfs) ? "romfs:/cacert.pem" : NULL);
     char status[192] = "Press A to load Keldurn, X for HTTPS address.";
     char address[BROWSER_URL_MAX] = "https://";
     bool have_page = false;
@@ -295,13 +301,16 @@ static void run_console_fallback(BrowserPage *page, const char *reason) {
         printf("Switch Browser: graphics unavailable\n\nCause: %.220s\n\n", reason);
         printf("A: Keldurn  X: address  +: quit\nNetwork: %s\n%s\n\n",
                network_ready ? "ready" : "failed", status);
+        printf("CA: %s\nProfile: %.150s\n",R_SUCCEEDED(ca_romfs)?"bundled":"system trust (diagnostic fallback)",browser_profile_status());
         if (have_page) {
             printf("HTTP %ld\n%.72s\n\n", page->http_status, page->url);
             printf("%.900s\n", page->text);
         }
         consoleUpdate(NULL);
     }
-    if (network_ready) curl_global_cleanup();
+    browser_profile_close();
+    if (curl_ready) curl_global_cleanup();
+    if (R_SUCCEEDED(ca_romfs)) romfsExit();
     if (R_SUCCEEDED(socket_result)) socketExit();
     consoleExit(NULL);
 }
@@ -329,10 +338,12 @@ int main(void) {
     padInitializeDefault(&pad);
     Result socket_result = socketInitializeDefault();
     int curl_result = R_SUCCEEDED(socket_result) ? curl_global_init(CURL_GLOBAL_DEFAULT) : -1;
-    app->network_ready = R_SUCCEEDED(socket_result) && curl_result == 0;
+    mkdir("sdmc:/switch",0700);
+    app->network_ready = R_SUCCEEDED(socket_result) && curl_result == 0 &&
+        browser_profile_open("sdmc:/switch/switch-browser","romfs:/cacert.pem");
     strcpy(app->address, "https://");
     snprintf(app->status, sizeof(app->status), "%s", app->network_ready ?
-             "Прямой HTTPS готов. Системный WebApplet не используется." : "Ошибка инициализации сети.");
+             browser_profile_status() : "Ошибка сети или CA-набора. Проверьте NRO и Wi-Fi.");
     bool dirty = true;
 
     while (appletMainLoop()) {
@@ -344,7 +355,15 @@ int main(void) {
         if (!app->loaded) {
             if (pressed & HidNpadButton_Up) { app->selection = (app->selection + 3) % 4; dirty = true; }
             if (pressed & HidNpadButton_Down) { app->selection = (app->selection + 1) % 4; dirty = true; }
-            if (pressed & HidNpadButton_A) {
+            if (pressed & HidNpadButton_Minus) { app->clear_pending = !app->clear_pending; dirty = true; }
+            if (app->clear_pending) {
+                if (pressed & HidNpadButton_B) { app->clear_pending = false; dirty = true; }
+                if (pressed & HidNpadButton_A) {
+                    int cleared = browser_profile_clear();
+                    snprintf(app->status,sizeof(app->status),"%s",cleared ? "Данные сайтов удалены." : "Не удалось удалить данные профиля.");
+                    app->clear_pending = false; dirty = true;
+                }
+            } else if (pressed & HidNpadButton_A) {
                 const char *next = app->selection == 0 ? "https://keldurn.com/ru/" :
                                    app->selection == 1 ? "https://keldurn.com/play" : app->address;
                 bool accepted = app->selection != 2 || enter_url(app->address);
@@ -417,12 +436,18 @@ int main(void) {
             if (app->page->js_notice[0]) snprintf(app->status, sizeof(app->status), "JS: %.180s", app->page->js_notice);
             dirty = true;
         }
+        if (app->network_ready && strcmp(app->last_profile_status, browser_profile_status())) {
+            snprintf(app->last_profile_status, sizeof(app->last_profile_status), "%s", browser_profile_status());
+            snprintf(app->status, sizeof(app->status), "%s", browser_profile_status());
+            dirty = true;
+        }
         if (dirty) { render(app); dirty = false; }
         SDL_Delay(16);
     }
 done:
     browser_js_destroy(app->js);
-    if (app->network_ready) curl_global_cleanup();
+    browser_profile_close();
+    if (curl_result == 0) curl_global_cleanup();
     if (R_SUCCEEDED(socket_result)) socketExit();
     TTF_CloseFont(app->heading);
     TTF_CloseFont(app->font);

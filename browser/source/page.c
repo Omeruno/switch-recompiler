@@ -1,4 +1,5 @@
 #include "page.h"
+#include "profile.h"
 #include <curl/curl.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -19,7 +20,23 @@ int browser_valid_url(const char *url) {
         unsigned char c = (unsigned char)url[i];
         if (c <= 0x20 || c == 0x7f || c == '\\' || c == '"' || c == '<' || c == '>') return 0;
     }
-    return 1;
+    CURLU *parsed = curl_url();
+    char *host = NULL, *user = NULL, *password = NULL;
+    int valid = parsed && curl_url_set(parsed, CURLUPART_URL, url, 0) == CURLUE_OK &&
+        curl_url_get(parsed, CURLUPART_HOST, &host, 0) == CURLUE_OK && *host;
+    if (valid && (curl_url_get(parsed,CURLUPART_USER,&user,0)==CURLUE_OK ||
+                  curl_url_get(parsed,CURLUPART_PASSWORD,&password,0)==CURLUE_OK)) valid=0;
+    curl_free(host);curl_free(user);curl_free(password);curl_url_cleanup(parsed);
+    return valid;
+}
+static void network_error(BrowserPage *page,CURLcode code,int overflow) {
+    const char *hint = "";
+    if (code==CURLE_PEER_FAILED_VERIFICATION) hint=" Check console date and site certificate.";
+    else if (code==CURLE_SSL_CACERT_BADFILE) hint=" CA bundle is missing or could not be imported.";
+    else if (code==CURLE_COULDNT_RESOLVE_HOST) hint=" Check DNS and Wi-Fi.";
+    else if (code==CURLE_OPERATION_TIMEDOUT) hint=" Request timed out; retry on a stable connection.";
+    snprintf(page->error,sizeof(page->error),"%s%s",overflow?"Page exceeds 2 MiB limit":curl_easy_strerror(code),hint);
+    if(code==CURLE_SSL_CACERT_BADFILE)snprintf(page->error,sizeof(page->error),"CA failure: %.140s",browser_profile_status());
 }
 
 static size_t receive_body(char *data, size_t unit, size_t count, void *context) {
@@ -92,13 +109,13 @@ static void fetch_scripts(BrowserPage *page) {
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
             curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+            CURLcode setup = browser_profile_configure(curl);
             curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_script);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-            CURLcode result = curl_easy_perform(curl);
+            CURLcode result = setup == CURLE_OK ? curl_easy_perform(curl) : setup;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+            browser_profile_log(resolved,"script",status,result);
             if (result != CURLE_OK || body.overflow || status != 200 || !body.size) {
                 page->scripts[i][0] = 0;
                 ++page->script_fetch_failed;
@@ -389,7 +406,8 @@ int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
 }
 
 int browser_fetch(BrowserPage *page, const char *url) {
-    if (!page || !browser_valid_url(url)) return 0;
+    if (!page) return 0;
+    if (!browser_valid_url(url)) { memset(page,0,sizeof(*page)); snprintf(page->error,sizeof(page->error),"Invalid HTTPS URL (credentials are not accepted)"); return 0; }
     memset(page, 0, sizeof(*page));
     Body body = {0};
     body.data = malloc(HTML_LIMIT + 1);
@@ -412,29 +430,30 @@ int browser_fetch(BrowserPage *page, const char *url) {
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 25L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchBrowser/0.1 (libnx; independent prototype)");
+    CURLcode setup = browser_profile_configure(curl);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchBrowser/0.3 (libnx; independent prototype)");
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_body);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, receive_header);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, page);
-    CURLcode result = curl_easy_perform(curl);
+    CURLcode result = setup == CURLE_OK ? curl_easy_perform(curl) : setup;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &page->http_status);
     char *effective = NULL;
     curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective);
     if (effective && browser_valid_url(effective)) snprintf(page->url, sizeof(page->url), "%s", effective);
     else snprintf(page->url, sizeof(page->url), "%s", url);
     if (result != CURLE_OK || body.overflow) {
-        snprintf(page->error, sizeof(page->error), "%s", body.overflow ? "Page exceeds 2 MiB limit" : curl_easy_strerror(result));
+        network_error(page,result,body.overflow);
     } else if (page->http_status >= 400) {
         snprintf(page->error, sizeof(page->error), "HTTP %ld", page->http_status);
     } else {
         browser_parse_html(page, body.data, body.size);
         fetch_scripts(page);
     }
+    browser_profile_log(page->url,"page",page->http_status,result);
     curl_easy_cleanup(curl);
+    browser_profile_save_cookies();
     free(body.data);
     return page->error[0] == 0;
 }

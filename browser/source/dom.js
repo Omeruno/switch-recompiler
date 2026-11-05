@@ -129,7 +129,20 @@
   doc.body = body; doc.head = head; doc.documentElement = root;
   Object.defineProperty(doc,'title',{get:()=>title.textContent,set:value=>{title.textContent=value;}});
   Object.defineProperty(root,'lang',{get:()=>root.getAttribute('lang') || '',set:v=>root.setAttribute('lang',v)});
-  doc.referrer = ''; doc.cookie = ''; doc.readyState = 'loading';
+  doc.referrer = ''; doc.readyState = 'loading';
+  Object.defineProperty(doc,'cookie',{get:()=>__cookie(),set:value=>__cookie(String(value))});
+  function storage(session) {
+    return {
+      getItem(key) { return __storage(0,session,String(key)); },
+      setItem(key,value) { __storage(1,session,String(key),String(value)); },
+      removeItem(key) { __storage(2,session,String(key)); },
+      clear() { __storage(3,session); },
+      get length() { return __storage(4,session); },
+      key(index) { return __storage(5,session,index); }
+    };
+  }
+  globalThis.localStorage = storage(false);
+  globalThis.sessionStorage = storage(true);
   doc.createElement = tag => new Node(String(tag));
   doc.createTextNode = text => new Node('',String(text));
   doc.getElementById = id => doc.querySelectorAll('*').find(n=>n.id===String(id)) || null;

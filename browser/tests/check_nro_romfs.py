@@ -25,6 +25,11 @@ def main(path: Path) -> None:
     start = code_size + romfs_offset
     if not romfs_offset or romfs_size < 759720 or start + romfs_size > len(data):
         raise ValueError("browser font RomFS is missing or truncated")
+    romfs = data[start:start + romfs_size]
+    resources = Path(__file__).resolve().parents[1] / "romfs"
+    for name in ("DejaVuSans.ttf", "cacert.pem", "CA_BUNDLE.json"):
+        if name.encode() not in romfs or resources.joinpath(name).read_bytes() not in romfs:
+            raise ValueError(f"missing or changed embedded resource: {name}")
     print(f"browser RomFS: PASS ({romfs_size} bytes)")
 
 
