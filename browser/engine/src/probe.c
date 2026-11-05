@@ -6,12 +6,33 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __SWITCH__
+#include <unistd.h>
+#endif
 #ifndef ENGINE_WAMR_REVISION
 #define ENGINE_WAMR_REVISION "unknown"
 #endif
 #define POOL_SIZE (64u * 1024u * 1024u)
 static void *pool;
 static int quarantined;
+static void persist(FILE *report) {
+    fflush(stdout);
+    if (report && report != stdout) {
+        fflush(report);
+#ifdef __SWITCH__
+        fsync(fileno(report));
+#endif
+    }
+#ifdef __SWITCH__
+    consoleUpdate(NULL);
+#endif
+}
+void engine_probe_checkpoint(FILE *report, const char *phase, const char *detail) {
+    printf("BEGIN %s %s\n", phase, detail ? detail : "");
+    if (report && report != stdout)
+        fprintf(report, "BEGIN %s %s\n", phase, detail ? detail : "");
+    persist(report);
+}
 static void record(FILE *report, const char *name, int success, const char *detail,
                    uint64 elapsed) {
     printf("%s %s (%" PRIu64 " us) %s\n", success ? "PASS" : "FAIL", name, elapsed, detail);
@@ -20,17 +41,21 @@ static void record(FILE *report, const char *name, int success, const char *deta
                 detail);
         fflush(report);
     }
+    persist(report);
 }
 static int initialize(FILE *report) {
     if (quarantined) {
         record(report, "runtime", 0, "thread join failed earlier; exit the probe", 0);
         return 0;
     }
+    engine_probe_checkpoint(report, "runtime.allocate_pool", "64 MiB");
     pool = malloc(POOL_SIZE);
     RuntimeInitArgs args = {0};
     args.mem_alloc_type = Alloc_With_Pool;
     args.mem_alloc_option.pool.heap_buf = pool;
     args.mem_alloc_option.pool.heap_size = POOL_SIZE;
+    if (pool)
+        engine_probe_checkpoint(report, "runtime.full_init", "pool allocated");
     if (!pool || !wasm_runtime_full_init(&args)) {
         free(pool);
         pool = NULL;
@@ -40,6 +65,7 @@ static int initialize(FILE *report) {
     printf("WAMR %s classic interpreter; no JIT/AOT; runtime pool 64 MiB\n", ENGINE_WAMR_REVISION);
     if (report && report != stdout)
         fprintf(report, "WAMR %s; interpreter only; runtime pool 64 MiB\n", ENGINE_WAMR_REVISION);
+    engine_probe_checkpoint(report, "runtime.ready", "");
     return 1;
 }
 static void shutdown_runtime(void) {
@@ -63,7 +89,7 @@ static void unload(Loaded *x) {
     free(x->bytes);
     memset(x, 0, sizeof(*x));
 }
-static int load(const EngineFixture *fixture, Loaded *x, char error[256]) {
+static int load(const EngineFixture *fixture, Loaded *x, char error[256], FILE *report) {
     memset(x, 0, sizeof(*x));
     x->bytes = malloc(fixture->size);
     if (!x->bytes) {
@@ -71,13 +97,16 @@ static int load(const EngineFixture *fixture, Loaded *x, char error[256]) {
         return 0;
     }
     memcpy(x->bytes, fixture->bytes, fixture->size);
+    engine_probe_checkpoint(report, "fixture.load", fixture->name);
     x->module = wasm_runtime_load(x->bytes, (uint32_t)fixture->size, error, 256);
     if (!x->module)
         return 0;
+    engine_probe_checkpoint(report, "fixture.instantiate", fixture->name);
     x->instance = wasm_runtime_instantiate(x->module, 64 * 1024, 0, error, 256);
     if (!x->instance)
         return 0;
     error[0] = 0;
+    engine_probe_checkpoint(report, "fixture.exec_env", fixture->name);
     x->env = wasm_runtime_create_exec_env(x->instance, 64 * 1024);
     if (!x->env) {
         snprintf(error, 256, "execution environment allocation failed");
@@ -89,10 +118,11 @@ static int run_fixture(const EngineFixture *fixture, FILE *report) {
     uint64 started = os_time_get_boot_us();
     Loaded x = {0};
     char error[256] = {0};
-    int ok = load(fixture, &x, error);
+    int ok = load(fixture, &x, error, report);
     if (ok) {
         wasm_function_inst_t function = wasm_runtime_lookup_function(x.instance, "run");
         uint32_t results[4] = {0};
+        engine_probe_checkpoint(report, "fixture.execute", fixture->name);
         bool called = function && wasm_runtime_call_wasm(x.env, function, 0, results);
         const char *exception = wasm_runtime_get_exception(x.instance);
         if (fixture->trap) {
@@ -110,6 +140,7 @@ static int run_fixture(const EngineFixture *fixture, FILE *report) {
                 }
     }
     record(report, fixture->name, ok, error, os_time_get_boot_us() - started);
+    engine_probe_checkpoint(report, "fixture.cleanup", fixture->name);
     unload(&x);
     return ok;
 }
@@ -138,16 +169,18 @@ static int parallel_test(FILE *report) {
     uint64 started = os_time_get_boot_us();
     Loaded x = {0};
     char error[256] = {0};
-    int ok = fixture && load(fixture, &x, error);
+    int ok = fixture && load(fixture, &x, error, report);
     if (ok) {
         Worker workers[2] = {{x.instance, 0}, {x.instance, 0}};
         korp_tid tids[2];
         unsigned created = 0;
+        engine_probe_checkpoint(report, "threads.create", "two joinable workers");
         for (unsigned i = 0; i < 2; i++) {
             if (os_thread_create(&tids[i], increment_worker, &workers[i], 256 * 1024))
                 break;
             ++created;
         }
+        engine_probe_checkpoint(report, "threads.join", "");
         for (unsigned i = 0; i < created; i++)
             if (os_thread_join(tids[i], NULL)) {
                 quarantined = 1;
@@ -190,28 +223,88 @@ static int condition_test(FILE *report) {
            os_time_get_boot_us() - started);
     return ok;
 }
-int engine_probe_run(FILE *report) {
+static const char *ordered_cases[] = {"scalar",
+                                      "multivalue",
+                                      "bounds_trap",
+                                      "bulk_memory",
+                                      "extended_const",
+                                      "references",
+                                      "legacy_exception",
+                                      "shared_growth",
+                                      "atomics",
+                                      "atomic_wait",
+                                      "native_condition_timeout",
+                                      "two_native_threads_shared_wasm_atomics"};
+// scalar through atomic_wait are fixture cases; the order is intentionally
+// conservative so a shared-memory crash cannot hide basic interpreter results.
+unsigned engine_probe_case_count(void) {
+    return (unsigned)(sizeof(ordered_cases) / sizeof(ordered_cases[0]))
+#ifdef __SWITCH__
+           + 1
+#endif
+        ;
+}
+const char *engine_probe_case_name(unsigned index) {
+#ifdef __SWITCH__
+    if (!index)
+        return "native_tls_roundtrip";
+    --index;
+#endif
+    return index < sizeof(ordered_cases) / sizeof(ordered_cases[0]) ? ordered_cases[index] : NULL;
+}
+int engine_probe_run_case(unsigned index, FILE *report) {
+    const char *name = engine_probe_case_name(index);
+    if (!name)
+        return 1;
+    engine_probe_checkpoint(report, "case.start", name);
+#ifdef __SWITCH__
+    if (!strcmp(name, "native_tls_roundtrip")) {
+        extern int engine_platform_tls_test(void);
+        engine_probe_checkpoint(report, "platform.tls", "");
+        int ok = engine_platform_tls_test();
+        record(report, name, ok, "compiler TLS read/write", 0);
+        return ok ? 0 : 1;
+    }
+#endif
+    if (!strcmp(name, "native_condition_timeout"))
+        return condition_test(report) ? 0 : 1;
     if (!initialize(report))
         return 1;
-    unsigned failed = 0;
-    for (unsigned i = 0; i < engine_fixture_count; i++)
-        if (!run_fixture(&engine_fixtures[i], report))
+    int ok = 0;
+    if (!strcmp(name, "two_native_threads_shared_wasm_atomics"))
+        ok = parallel_test(report);
+    else {
+        for (unsigned i = 0; i < engine_fixture_count; i++)
+            if (!strcmp(engine_fixtures[i].name, name)) {
+                ok = run_fixture(&engine_fixtures[i], report);
+                break;
+            }
+    }
+    if (!quarantined) {
+        engine_probe_checkpoint(report, "runtime.destroy", name);
+        shutdown_runtime();
+    }
+    engine_probe_checkpoint(report, "case.finished", name);
+    return ok ? 0 : 1;
+}
+int engine_probe_run(FILE *report) {
+    unsigned failed = 0, count = engine_probe_case_count();
+    for (unsigned i = 0; i < count; i++) {
+        if (engine_probe_run_case(i, report))
             failed++;
-    if (!parallel_test(report))
-        failed++;
-    if (quarantined)
-        return 1;
-    if (!condition_test(report))
-        failed++;
-    shutdown_runtime();
-    printf("SUMMARY %u/%u passed. GPU/JS bindings and game execution NOT tested.\n",
-           engine_fixture_count + 2 - failed, engine_fixture_count + 2);
+        if (quarantined)
+            return 1;
+    }
+    printf("SUMMARY %u/%u passed. GPU/JS bindings and game execution NOT tested.\n", count - failed,
+           count);
     if (report && report != stdout)
         fprintf(report, "SUMMARY %u/%u passed; GPU/JS bindings and game execution NOT tested.\n",
-                engine_fixture_count + 2 - failed, engine_fixture_count + 2);
+                count - failed, count);
+    persist(report);
     return (int)failed;
 }
 int engine_probe_load_only(const char *path, FILE *report) {
+    engine_probe_checkpoint(report, "client.open", path);
     FILE *file = fopen(path, "rb");
     if (!file) {
         record(report, "client_load_only", 0, "file not found", 0);
@@ -241,6 +334,7 @@ int engine_probe_load_only(const char *path, FILE *report) {
     }
     char error[256] = {0};
     uint64 started = os_time_get_boot_us();
+    engine_probe_checkpoint(report, "client.load_only", "no instantiation");
     wasm_module_t module = wasm_runtime_load(bytes, (uint32_t)length, error, sizeof(error));
     int ok = module != NULL;
     record(report, "client_load_only", ok,

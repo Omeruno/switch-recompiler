@@ -27,7 +27,11 @@
     "executed_on_device": false,
     "shared_mapping_backing_budget_bytes": 67108864,
     "four_gib_va_probe": "implemented, device result unknown",
-    "four_gib_physical_commit_and_growth": "not implemented"
+    "four_gib_physical_commit_and_growth": "not implemented",
+    "device_feedback": {
+      "0.1.0": "User reported system-error termination; last executed stage unknown",
+      "0.1.1": "Repair/diagnostic candidate: idle menu, stepwise cases, write-ahead checkpoints, explicit local-exec TLS; awaiting device retest"
+    }
   },
   "not_established": [
     "game performance",

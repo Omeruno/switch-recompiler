@@ -8,7 +8,7 @@ TARGET := switch-browser
 BUILD := build
 APP_TITLE := Switch Browser
 APP_AUTHOR := switch-recompiler
-APP_VERSION := 0.3.0
+APP_VERSION := 0.3.1
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -O2 -Wall -Wextra -D__SWITCH__ -ffunction-sections -fdata-sections $(ARCH)
 LDFLAGS := -specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,-Map,$(TARGET).elf.map
@@ -16,7 +16,7 @@ PORTLIBS := $(DEVKITPRO)/portlibs/switch
 QJS_DIR := third_party/quickjs
 QJS_PARTS := quickjs dtoa libregexp libunicode cutils
 QJS_OFILES := $(addprefix $(BUILD)/qjs_,$(addsuffix .o,$(QJS_PARTS)))
-OFILES := $(BUILD)/main.o $(BUILD)/page.o $(BUILD)/profile.o $(BUILD)/js_runtime.o $(QJS_OFILES)
+OFILES := $(BUILD)/main.o $(BUILD)/page.o $(BUILD)/profile.o $(BUILD)/ca_bundle.o $(BUILD)/js_runtime.o $(QJS_OFILES)
 PKG_CONFIG_LIBDIR := $(PORTLIBS)/lib/pkgconfig
 PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --cflags sdl2 SDL2_ttf libcurl)
 PORT_LIBS := $(shell PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) pkg-config --static --libs sdl2 SDL2_ttf libcurl)

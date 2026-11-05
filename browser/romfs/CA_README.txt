@@ -7,6 +7,7 @@ CA_BUNDLE.json records the extraction date, SHA-256 and certificate count.
 Refresh deliberately with: python3 browser/tools/update_ca.py
 Validate offline with: python3 browser/tools/update_ca.py --check
 The application does not download or accept replacement trust roots at runtime.
-On Switch, roots are imported individually into the libnx TLS context.
+On Switch, roots are imported in NUL-terminated batches into the libnx TLS context,
+keeping below the limit of 71 imported PKI objects.
 Horizon's built-in trust store may also apply. Import failures never disable
 certificate or hostname validation. Native import still needs a hardware test.

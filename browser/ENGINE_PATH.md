@@ -112,3 +112,12 @@ does not use Nintendo's WebApplet. It is a separate OS installation, not an NRO,
 and its suitability depends on console model, storage setup, browser features
 and a real Keldurn play test. It should not be represented as a completed native
 Horizon browser.
+
+## Hardware feedback requiring confirmation
+
+The user reported a system-error termination in switch-engine-probe.nro and
+CA import result 0x0001B47B in the 0.3.0 browser. Engine 0.1.1 now starts in an
+idle menu with per-case operation checkpoints and explicit local-exec TLS.
+Browser 0.3.1 uses NUL-terminated multi-certificate batches instead of exceeding
+Horizon's 71 PKI-object limit. Host tests and compilation cannot substitute for
+retesting these changes on the user's console.

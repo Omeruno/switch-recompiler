@@ -68,10 +68,12 @@ Intl.RelativeTimeFormat provide a limited ru/en subset using UTC only.
 RomFS includes a Mozilla-derived CA bundle from curl.se. CA_BUNDLE.json pins its
 SHA-256, extraction date and certificate count; host tests validate it offline,
 and CI checks that the exact CA bundle and font are embedded in the NRO. The
-Switch libnx TLS backend imports the PEM roots individually into its context;
+Switch libnx TLS backend imports PEM roots in batches of up to 16 into its context;
 its system roots may also apply. Other backends use CAINFO. Peer and hostname
 checks remain enabled, including on errors. Native certificate import requires
 a real-Switch test; host TLS tests use OpenSSL and do not validate that service.
+Each PEM IPC payload includes its final NUL byte. Batching keeps the 118 roots
+within Horizon’s limit of 71 imported PKI objects (eight objects for this bundle).
 A missing/unimportable bundle does not trigger a retry with verification off.
 The diagnostic console explicitly reports system-trust mode if RomFS cannot
 mount. A correct console date is necessary for certificate validity checks.
@@ -142,3 +144,10 @@ sh browser/tests/run_host_tests.sh
 The separate [engine probe](engine/README.md) builds a pinned WAMR candidate
 for host and libnx ARM64 and executes the client's relevant WASM feature tests.
 It is an engineering diagnostic, not the game engine behind this page reader.
+
+Version 0.3.1 repairs the native CA importer after a device returned SSL result
+0x0001B47B. The old code passed a PEM length excluding NUL and attempted 118
+individual imports despite the SDK's 71-object limit. The corrected path uses
+eight NUL-terminated batches and reports the failing root range/object/native
+result. Mock tests enforce those IPC constraints; native confirmation remains
+pending.

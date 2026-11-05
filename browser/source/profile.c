@@ -1,4 +1,5 @@
 #include "profile.h"
+#include "ca_bundle.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -28,6 +29,7 @@ static CURL *cookies;
 static char directory[768], ca_path[768], status_text[160] = "Memory-only profile";
 static int persistent;
 static char *ca_data;
+static size_t ca_size;
 
 static void release(Entry *e) {
     free(e->origin);
@@ -323,35 +325,26 @@ static int load_storage(void) {
 }
 
 #ifdef __SWITCH__
+static uint32_t import_pem_object(void *context, const char *pem, size_t bytes) {
+    u64 id = 0;
+    return sslContextImportServerPki((SslContext *)context, pem, (u32)bytes,
+                                     SslCertificateFormat_Pem, &id);
+}
 static CURLcode import_roots(CURL *curl, void *context, void *opaque) {
     (void)curl;
     (void)opaque;
+    BrowserCAReport report;
+    if (ca_data && browser_ca_import_batches(ca_data, ca_size, import_pem_object, context, &report))
+        return CURLE_OK;
     if (!ca_data)
-        return CURLE_SSL_CACERT_BADFILE;
-    const char *p = ca_data;
-    size_t count = 0;
-    while ((p = strstr(p, "-----BEGIN CERTIFICATE-----"))) {
-        const char *end = strstr(p, "-----END CERTIFICATE-----");
-        if (!end)
-            return CURLE_SSL_CACERT_BADFILE;
-        end += strlen("-----END CERTIFICATE-----");
-        size_t size = (size_t)(end - p);
-        char *pem = malloc(size + 1);
-        if (!pem)
-            return CURLE_OUT_OF_MEMORY;
-        memcpy(pem, p, size);
-        pem[size] = 0;
-        Result result = sslContextImportServerPki((SslContext *)context, pem, size,
-                                                  SslCertificateFormat_Pem, NULL);
-        free(pem);
-        if (R_FAILED(result)) {
-            snprintf(status_text, sizeof(status_text), "CA import failed: libnx 0x%08X", result);
-            return CURLE_SSL_CACERT_BADFILE;
-        }
-        ++count;
-        p = end;
-    }
-    return count ? CURLE_OK : CURLE_SSL_CACERT_BADFILE;
+        snprintf(status_text, sizeof(status_text), "CA bundle missing");
+    else if (report.native_result)
+        snprintf(status_text, sizeof(status_text), "CA roots %zu-%zu object %zu: libnx 0x%08X",
+                 report.failed_first, report.failed_last, report.objects + 1, report.native_result);
+    else
+        snprintf(status_text, sizeof(status_text), "CA import: %s",
+                 report.error ? report.error : "unknown failure");
+    return CURLE_SSL_CACERT_BADFILE;
 }
 #endif
 static int ensure_cookies(void) {
@@ -394,6 +387,7 @@ int browser_profile_open(const char *dir, const char *ca_file) {
             return 0;
         }
         long size = ftell(f);
+        ca_size = (size_t)size;
         rewind(f);
         ca_data = calloc(1, (size_t)size + 1);
         int ok = ca_data && fread(ca_data, 1, (size_t)size, f) == (size_t)size;
@@ -515,6 +509,7 @@ void browser_profile_close(void) {
     entry_count = 0;
     free(ca_data);
     ca_data = NULL;
+    ca_size = 0;
     directory[0] = ca_path[0] = 0;
     persistent = 0;
     snprintf(status_text, sizeof(status_text), "Memory-only profile");

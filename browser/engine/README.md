@@ -13,7 +13,7 @@ externref tables, legacy exceptions, shared atomics, zero-timeout atomic.wait,
 shared memory.grow and a required out-of-bounds trap. Two native threads then
 execute the same shared-memory WASM counter and must produce exactly 20,000.
 A native condition-variable timeout checks lock reacquisition. Twelve passes
-are needed for a successful host run. No positive game-readiness status is
+are needed for a successful host run; Switch adds a compiler-TLS case. No positive game-readiness status is
 inferred from these results.
 
 The runtime is pinned by commit in wamr.lock.json; fetch_wamr.py rejects local
@@ -47,9 +47,12 @@ Requires devkitA64/libnx and CMake/Python/Git. `make -C browser/engine` creates
 switch-engine-probe.nro. Copy it into the SD `/switch/` folder and launch from
 Homebrew Menu using title override (R while launching a game).
 
-- The probe runs automatically; A repeats it, + quits.
-- A plain-text report is written to `/switch/switch-browser/engine-report.txt`.
-- A separate **virtual address reservation only** check asks libnx for a 4 GiB
+- The 0.1.1 probe opens a menu without executing tests. Up/Down select a case;
+  A runs only that case and selects the next. Y runs the full suite; + quits.
+  The first device-only case checks compiler TLS, followed by scalar arithmetic.
+  Each selected case gets a fresh runtime, so failures are easier to localize.
+- A plain-text report is appended to `/switch/switch-browser/engine-report.txt`.
+- Press − for a separate **virtual address reservation only** check that asks libnx for a 4 GiB
   address range and immediately releases it. No 4 GiB physical allocation or
   growth capability is inferred from a pass.
 - Optionally put the supplied client at
@@ -94,3 +97,14 @@ an unknown live thread; exit the probe before retrying.
    check does not supply rendering.
 5. Integrate the viable runtime/graphics path with resource loading, authentication,
    input and audio, then test character creation and in-world gameplay separately.
+
+## Device crash investigation (0.1.1)
+
+The user reported the original probe terminated with a system error. The stage
+and cause are not established. Version 0.1.1 removes automatic suite/VA execution
+at startup, presents the console before running WAMR, flushes pre-operation
+checkpoints to SD, and keeps earlier crash evidence instead of truncating it.
+The Switch toolchain now explicitly uses the SDK's local-exec TLS model. These
+changes improve diagnosis and remove an unsafe startup sequence; they do not
+establish that the device crash is resolved. The saved report's final BEGIN
+line identifies the operation to investigate if the process still terminates.

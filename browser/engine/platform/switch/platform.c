@@ -97,6 +97,15 @@ typedef struct {
     void *arg, *result;
 } SwitchThread;
 static __thread SwitchThread *current_worker;
+static __thread volatile uintptr_t tls_probe_value;
+int engine_platform_tls_test(void) {
+    uintptr_t saved = tls_probe_value;
+    uintptr_t expected = (uintptr_t)&saved;
+    tls_probe_value = expected;
+    int ok = tls_probe_value == expected;
+    tls_probe_value = saved;
+    return ok;
+}
 static void entry(void *arg) {
     SwitchThread *t = arg;
     current_worker = t;
