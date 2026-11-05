@@ -39,11 +39,12 @@ a system update on the user's Switch before opening any URL and was retired.
 The user confirmed direct HTTPS to Keldurn returns HTTP 200 on their Switch,
 without an update prompt. Earlier graphical builds exited to the text fallback:
 `romfsInit: 0x00001559`. Inspection of the published NRO found no asset header
-or embedded RomFS. The build now invokes `elf2nro` with the RomFS path
-explicitly, and CI checks that the font resource is present. The text fallback
-still cannot render Cyrillic correctly; the graphical font path needs a new
-hardware check. Gameplay still
-needs a modern browser engine with the APIs listed in
+or embedded RomFS. The installed `elf2nro` ignores `--romfsdir` alone when
+deciding whether to write an asset header, so the build now also supplies an
+NACP metadata file. CI checks that the font RomFS is actually present in the
+NRO. The text fallback still cannot render Cyrillic correctly; the graphical
+font path needs a new hardware check. Gameplay still needs a modern browser
+engine with the APIs listed in
 [ENGINE_PATH.md](ENGINE_PATH.md).
 
 Host parser and JavaScript check:

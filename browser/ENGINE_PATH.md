@@ -18,8 +18,10 @@ SDL2 and a bundled DejaVu Sans font that supports Cyrillic. Its Unicode display
 and navigation still need a real-Switch check. It is not yet game-capable.
 The user's next hardware photo showed HTTP 200 from Keldurn in the text fallback
 and `romfsInit: 0x00001559` before SDL started. The downloaded NRO had no asset
-header at all. Packaging now explicitly embeds RomFS and CI verifies its size;
-the graphical path must be checked on the target Switch again.
+header at all. `elf2nro` ignores a lone `--romfsdir` when deciding whether to
+write asset data. Packaging now also supplies NACP metadata, forcing the asset
+header, and CI verifies the RomFS size; the graphical path must be checked on
+the target Switch again.
 
 The next block embeds QuickJS and runs bounded inline classic scripts on pages
 without a CSP header. The bridge currently covers only title, body text and
