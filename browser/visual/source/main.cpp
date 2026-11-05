@@ -1,4 +1,5 @@
 #include "container.h"
+#include "diagnostics.h"
 #include "interaction.h"
 extern "C" {
 #include "profile.h"
@@ -64,7 +65,8 @@ struct Browser {
         }
         auto fragment = next.find('#');
         if (fragment != std::string::npos &&
-            next.substr(0, fragment) == url.substr(0, url.find('#'))) {
+            (next.substr(0, fragment) == url.substr(0, url.find('#')) ||
+             next.substr(0, fragment) == container.base.substr(0, container.base.find('#')))) {
             jump(next.substr(fragment + 1));
             return;
         }
@@ -140,10 +142,15 @@ struct Browser {
             view.content_height = std::max(636.f, float(document->height()));
             view.clamp();
             notice.clear();
+            visual::diagnostic("layout.ready",
+                               "width=" + std::to_string(int(view.content_width)) +
+                                   " height=" + std::to_string(int(view.content_height)) +
+                                   " resources=" + std::to_string(resources.count()));
             built_revision = resources.revision;
             rebuild = false;
         } catch (const std::exception &e) {
             notice = e.what();
+            visual::diagnostic("layout.failed", notice);
             document.reset();
             rebuild = false;
             built_revision = resources.revision;
@@ -240,13 +247,10 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
+    visual::diagnostic("boot", "0.1.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
-        consoleInit(nullptr);
-        printf("RomFS failed: 0x%08x\n", romfs);
-        consoleUpdate(nullptr);
-        svcSleepThread(3000000000LL);
-        consoleExit(nullptr);
+        visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
         return 1;
     }
     root = "romfs:/visual";
@@ -263,7 +267,11 @@ int main(int argc, char **argv) {
     ca = "";
 #endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) || TTF_Init()) {
-        fprintf(stderr, "SDL: %s / %s\n", SDL_GetError(), TTF_GetError());
+        std::string error =
+            std::string("SDL/font init: ") + SDL_GetError() + " / " + TTF_GetError();
+        TTF_Quit();
+        SDL_Quit();
+        visual::fatal_screen(error);
         return 1;
     }
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
@@ -288,8 +296,9 @@ int main(int argc, char **argv) {
     if (!renderer && window)
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     int result = 0;
+    std::string fatal;
     if (!renderer) {
-        fprintf(stderr, "Renderer: %s\n", SDL_GetError());
+        fatal = std::string("Renderer: ") + SDL_GetError();
         result = 1;
     } else
         try {
@@ -425,6 +434,9 @@ int main(int argc, char **argv) {
                     if (app.view.y <= 0)
                         throw std::runtime_error(
                             "painted anchor hit-test/fragment navigation failed");
+                    app.paint();
+                    if (app.container.painted_images < 1)
+                        throw std::runtime_error("below-fold JPEG paint failed");
                     printf("PASS external CSS, flex layout, Russian text, PNG/JPEG paint, "
                            "scrolling and anchor hit testing\n");
                     quit = true;
@@ -434,7 +446,7 @@ int main(int argc, char **argv) {
                 SDL_Delay(10);
             }
         } catch (const std::exception &e) {
-            fprintf(stderr, "Visual browser: %s\n", e.what());
+            fatal = e.what();
             result = 1;
         }
     if (renderer)
@@ -446,6 +458,8 @@ int main(int argc, char **argv) {
     IMG_Quit();
     TTF_Quit();
     SDL_Quit();
+    if (!fatal.empty())
+        visual::fatal_screen(fatal);
 #ifdef __SWITCH__
     if (sockets)
         socketExit();

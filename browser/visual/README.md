@@ -45,13 +45,17 @@ switch-sdl2_image and CMake, then `make -C browser/visual`. Copy
 `switch-visual-browser.nro` to `/switch/` and launch through a game with R.
 It opens the visual demo automatically. Tap the page or use X to enter an HTTPS
 address; B goes back, Y reloads and + exits. Tap the demo link to check a link
-below the first screen. This build never invokes Nintendo's WebApplet/update.
+below the first screen. This build never invokes Nintendo's WebApplet/update. Startup/layout failures
+are appended to `/switch/switch-visual-browser/visual-report.txt`; native graphics
+initialization failures keep a console message on screen until + is pressed.
 
 ## Verification and boundaries
 
 Host tests exercise CSS-driven column positions, document overflow, actual
 PNG/JPEG paint calls, Russian glyph rendering, painted-link fragment navigation,
-and gesture state/coordinate behavior. CI saves the host frame as a BMP and
+and gesture state/coordinate behavior. A loopback TLS fixture verifies asynchronous
+resource loading, shared cookies, hostname/expiry/unknown-root failures, HTTPS
+downgrade refusal, quotas, transfer cancellation and reuse. CI saves the host frame as a BMP and
 cross-builds a separate NRO. A build/host pass does not prove device input,
 font rendering, frame rate or compatibility with arbitrary websites.
 

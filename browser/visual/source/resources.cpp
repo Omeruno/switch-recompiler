@@ -121,8 +121,14 @@ void Resources::start(Resource &r) {
     auto *ctx = new std::pair<Resources *, Resource *>(this, &r);
     curl_easy_setopt(r.handle, CURLOPT_PRIVATE, ctx);
     curl_easy_setopt(r.handle, CURLOPT_URL, r.url.c_str());
+#if LIBCURL_VERSION_NUM >= 0x075500
     curl_easy_setopt(r.handle, CURLOPT_PROTOCOLS_STR, "https");
     curl_easy_setopt(r.handle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+#else
+    curl_easy_setopt(r.handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+    curl_easy_setopt(r.handle, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+#endif
+    curl_easy_setopt(r.handle, CURLOPT_DISALLOW_USERNAME_IN_URL, 1L);
     curl_easy_setopt(r.handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(r.handle, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(r.handle, CURLOPT_CONNECTTIMEOUT, 5L);
