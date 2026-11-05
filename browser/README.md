@@ -136,3 +136,9 @@ Host parser and JavaScript check:
 ```sh
 sh browser/tests/run_host_tests.sh
 ```
+
+## Engine compatibility work
+
+The separate [engine probe](engine/README.md) builds a pinned WAMR candidate
+for host and libnx ARM64 and executes the client's relevant WASM feature tests.
+It is an engineering diagnostic, not the game engine behind this page reader.

@@ -69,6 +69,21 @@ module/resource graph and Horizon
 engine/backend feasibility remain unresolved. The reader cannot execute this
 client by simply raising resource limits.
 
+## Engine compatibility implementation
+
+`browser/engine` now contains a separately pinned WAMR compatibility candidate,
+an interpreter-only libnx platform layer and an executable host/Switch probe.
+The supplied client uses legacy `try`/`catch`, which this WAMR mode supports.
+Twelve host probes execute features (including a real two-thread shared-memory
+counter), and WAMR successfully loads the actual client without instantiating it.
+See [the build, device checks and boundaries](engine/README.md).
+
+This is not a final engine selection. Classic interpreter performance is not
+sufficiently characterized, host results do not establish libnx behavior, and
+the Switch memory shim only backs small reservations. A 4 GiB VA reservation
+probe is separate from physical commit/growth; neither supplies WebGPU, the JS
+binding graph or gameplay. Those remain explicit implementation gates.
+
 ## Independent-browser requirements
 
 Keldurn gameplay must be checked against its actual game client, not only its

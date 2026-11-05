@@ -1,0 +1,56 @@
+name: Switch Browser Engine
+on:
+  push:
+    paths:
+      - browser/engine/**
+      - .github/workflows/browser-engine.yml
+  pull_request:
+    paths:
+      - browser/engine/**
+      - .github/workflows/browser-engine.yml
+  workflow_dispatch:
+jobs:
+  engine-host:
+    name: WASM feature execution and native threads (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned runtime and verify embedded fixtures
+        run: |
+          python3 browser/engine/tools/fetch_wamr.py browser/engine/build/wamr
+          python3 browser/engine/tools/embed_fixtures.py
+          git diff --exit-code -- browser/engine/src/fixtures.c
+      - name: Build and execute compatibility probes
+        run: |
+          cmake -S browser/engine -B browser/engine/build/host -DWAMR_ROOT_DIR="$GITHUB_WORKSPACE/browser/engine/build/wamr" -DCMAKE_BUILD_TYPE=Release
+          cmake --build browser/engine/build/host -j4
+          ctest --test-dir browser/engine/build/host --output-on-failure
+          browser/engine/build/host/engine-host > browser/engine/build/host-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-host-report
+          path: browser/engine/build/host-report.txt
+          if-no-files-found: warn
+  engine-switch:
+    name: Engine probe NRO (libnx ARM64)
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure CMake
+        run: |
+          if ! command -v cmake; then
+            apt-get update
+            apt-get install -y --no-install-recommends cmake
+          fi
+      - name: Build engine probe
+        run: make -C browser/engine
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-engine-probe
+          if-no-files-found: error
+          path: |
+            browser/engine/switch-engine-probe.nro
+            browser/engine/README.md
+            browser/engine/licenses/WAMR-LICENSE

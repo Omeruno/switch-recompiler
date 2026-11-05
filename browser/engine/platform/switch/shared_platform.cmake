@@ -1,0 +1,4 @@
+set(PLATFORM_SHARED_DIR ${CMAKE_CURRENT_LIST_DIR})
+add_definitions(-DBH_PLATFORM_SWITCH)
+include_directories(${PLATFORM_SHARED_DIR} ${SHARED_DIR}/platform/include)
+set(PLATFORM_SHARED_SOURCE ${PLATFORM_SHARED_DIR}/platform.c)

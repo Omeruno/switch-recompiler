@@ -1,0 +1,91 @@
+[
+  {
+    "name": "atomic_wait",
+    "wasm": "atomic_wait.wasm",
+    "sha256": "9ed55e00d774812db520b4579ca241496f2f5e4126b31ef8e3f4edd7ce0daeab",
+    "expected": [
+      2
+    ],
+    "trap": false
+  },
+  {
+    "name": "atomics",
+    "wasm": "atomics.wasm",
+    "sha256": "8a5cdfae8aa90ceea3bea47a489ac9922d9c2e02f9d90d3b6d53283edd660b3d",
+    "expected": [
+      12
+    ],
+    "trap": false
+  },
+  {
+    "name": "bounds_trap",
+    "wasm": "bounds_trap.wasm",
+    "sha256": "9ad63c4ad76b71d059a9d8790b74c1b63bf409009ada2c08432d9343644447ab",
+    "expected": [],
+    "trap": true
+  },
+  {
+    "name": "bulk_memory",
+    "wasm": "bulk_memory.wasm",
+    "sha256": "7a8331cafdbff1848d12a4b710bfb9419ec9d8bc301f71bb24b9a97f2e3a5476",
+    "expected": [
+      42
+    ],
+    "trap": false
+  },
+  {
+    "name": "extended_const",
+    "wasm": "extended_const.wasm",
+    "sha256": "4186c9cd1afd6515bec11aade6b73def1784de88b65d755f60249e679f75283b",
+    "expected": [
+      42
+    ],
+    "trap": false
+  },
+  {
+    "name": "legacy_exception",
+    "wasm": "legacy_exception.wasm",
+    "sha256": "14d843f767c5256e77133888407064c7ef4ba166d484ddbb1c086e3582e0649e",
+    "expected": [
+      42
+    ],
+    "trap": false
+  },
+  {
+    "name": "multivalue",
+    "wasm": "multivalue.wasm",
+    "sha256": "232bc1df646e27a809ea46ad7c73697403bf39cc7e6885e234e42becbac18231",
+    "expected": [
+      7,
+      9
+    ],
+    "trap": false
+  },
+  {
+    "name": "references",
+    "wasm": "references.wasm",
+    "sha256": "b5deca6592ba09fba699744ba457ba1ae2546fa182095d2f8d62a2f808b9b5f7",
+    "expected": [
+      1
+    ],
+    "trap": false
+  },
+  {
+    "name": "scalar",
+    "wasm": "scalar.wasm",
+    "sha256": "8127e6ce4a234d54d2fb2d29385c377455f3d61d8828c7c1797d7ac6c7c4cbd3",
+    "expected": [
+      42
+    ],
+    "trap": false
+  },
+  {
+    "name": "shared_growth",
+    "wasm": "shared_growth.wasm",
+    "sha256": "f3faf99d2fc3bc6f1be3b119702b5434a1b951b9ce72bbc3ddbce30323cbf3bc",
+    "expected": [
+      2
+    ],
+    "trap": false
+  }
+]

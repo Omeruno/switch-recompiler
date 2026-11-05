@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/bytecodealliance/wasm-micro-runtime.git",
+  "commit": "3a6fb9a8e7871f20471c48592390b9d2342287b1",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "purpose": "Interpreter compatibility candidate; not a selected production game engine"
+}
