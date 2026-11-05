@@ -1,0 +1,525 @@
+{
+  "analysis": "structural metadata only; function bodies are not validated or executed",
+  "bytes": 84164297,
+  "sha256": "c8cf2c4b1ec64bc1cbf243b2d91de923cfccf8fb2c582eb70ef57fdeafd86407",
+  "sections": [
+    {
+      "name": "type",
+      "bytes": 3616,
+      "count": 386
+    },
+    {
+      "name": "import",
+      "bytes": 56619,
+      "count": 1041
+    },
+    {
+      "name": "function",
+      "bytes": 167191,
+      "count": 166879
+    },
+    {
+      "name": "table",
+      "bytes": 13,
+      "count": 2
+    },
+    {
+      "name": "tag",
+      "bytes": 3,
+      "count": 1
+    },
+    {
+      "name": "global",
+      "bytes": 27,
+      "count": 4
+    },
+    {
+      "name": "export",
+      "bytes": 4797,
+      "count": 68
+    },
+    {
+      "name": "element",
+      "bytes": 649621,
+      "count": 1
+    },
+    {
+      "name": "data_count",
+      "bytes": 1,
+      "count": 4
+    },
+    {
+      "name": "code",
+      "bytes": 67124121,
+      "count": 166879
+    },
+    {
+      "name": "data",
+      "bytes": 16158048,
+      "count": 4
+    },
+    {
+      "name": "custom",
+      "bytes": 193,
+      "custom_name": "target_features"
+    }
+  ],
+  "imports_total": 1041,
+  "imports_by_kind": {
+    "function": 1040,
+    "memory": 1
+  },
+  "imports_by_module": {
+    "./keldurn_bg.js": 1020,
+    "./snippets/keldurn-app-1826881576016968/inline0.js": 3,
+    "wasi_snapshot_preview1": 18
+  },
+  "defined_functions": 166879,
+  "exports_total": 68,
+  "exports": [
+    {
+      "name": "__tls_base",
+      "kind": "global",
+      "index": 1
+    },
+    {
+      "name": "start",
+      "kind": "function",
+      "index": 49576
+    },
+    {
+      "name": "engineKernelStats",
+      "kind": "function",
+      "index": 94410
+    },
+    {
+      "name": "engineOverlapStats",
+      "kind": "function",
+      "index": 94409
+    },
+    {
+      "name": "enginePhaseStats",
+      "kind": "function",
+      "index": 94408
+    },
+    {
+      "name": "__wbg_wasmaudioprocessor_free",
+      "kind": "function",
+      "index": 44514
+    },
+    {
+      "name": "wasmaudioprocessor_pack",
+      "kind": "function",
+      "index": 49632
+    },
+    {
+      "name": "wasmaudioprocessor_process",
+      "kind": "function",
+      "index": 28843
+    },
+    {
+      "name": "wasmaudioprocessor_unpack",
+      "kind": "function",
+      "index": 59368
+    },
+    {
+      "name": "__wbg_get_streamconfig_buffer_size",
+      "kind": "function",
+      "index": 90329
+    },
+    {
+      "name": "__wbg_get_streamconfig_channels",
+      "kind": "function",
+      "index": 93095
+    },
+    {
+      "name": "__wbg_get_streamconfig_sample_rate",
+      "kind": "function",
+      "index": 93096
+    },
+    {
+      "name": "__wbg_set_streamconfig_buffer_size",
+      "kind": "function",
+      "index": 90330
+    },
+    {
+      "name": "__wbg_set_streamconfig_channels",
+      "kind": "function",
+      "index": 93428
+    },
+    {
+      "name": "__wbg_set_streamconfig_sample_rate",
+      "kind": "function",
+      "index": 93429
+    },
+    {
+      "name": "__wbg_streamconfig_free",
+      "kind": "function",
+      "index": 53766
+    },
+    {
+      "name": "engineSelfTest",
+      "kind": "function",
+      "index": 162497
+    },
+    {
+      "name": "engineThreadBench",
+      "kind": "function",
+      "index": 93070
+    },
+    {
+      "name": "engineThreadStats",
+      "kind": "function",
+      "index": 94411
+    },
+    {
+      "name": "initComputePool",
+      "kind": "function",
+      "index": 158830
+    },
+    {
+      "name": "keldurn_helper_fault",
+      "kind": "function",
+      "index": 166844
+    },
+    {
+      "name": "setEngineThreads",
+      "kind": "function",
+      "index": 163054
+    },
+    {
+      "name": "__wbg_wbg_rayon_poolbuilder_free",
+      "kind": "function",
+      "index": 41845
+    },
+    {
+      "name": "initThreadPool",
+      "kind": "function",
+      "index": 158831
+    },
+    {
+      "name": "wbg_rayon_poolbuilder_build",
+      "kind": "function",
+      "index": 54855
+    },
+    {
+      "name": "wbg_rayon_poolbuilder_mainJS",
+      "kind": "function",
+      "index": 158832
+    },
+    {
+      "name": "wbg_rayon_poolbuilder_numThreads",
+      "kind": "function",
+      "index": 77136
+    },
+    {
+      "name": "wbg_rayon_poolbuilder_receiver",
+      "kind": "function",
+      "index": 78001
+    },
+    {
+      "name": "wbg_rayon_start_worker",
+      "kind": "function",
+      "index": 60039
+    },
+    {
+      "name": "__stack_alloc",
+      "kind": "global",
+      "index": 2
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___f64______true_",
+      "kind": "function",
+      "index": 96099
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___alloc_9644702623f404a5___string__String__alloc_9644702623f404a5___string__String__alloc_9644702623f404a5___string__String__wasm_bindgen_ad318e28d47f1410___JsValue__true_",
+      "kind": "function",
+      "index": 95514
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___alloc_9644702623f404a5___string__String__alloc_9644702623f404a5___string__String__u32__u32__true_",
+      "kind": "function",
+      "index": 62736
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue__core_2dd864f4fe5fa53___result__Result_____wasm_bindgen_ad318e28d47f1410___JsError___true_",
+      "kind": "function",
+      "index": 93069
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___js_sys_cf7f0cc4e5d90636___Array__web_sys_d0777401f55c8843___features__gen_ResizeObserver__ResizeObserver______true_",
+      "kind": "function",
+      "index": 95515
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___alloc_9644702623f404a5___string__String______true_",
+      "kind": "function",
+      "index": 80042
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___js_sys_cf7f0cc4e5d90636___Function_fn_wasm_bindgen_ad318e28d47f1410___JsValue_____wasm_bindgen_ad318e28d47f1410___sys__Undefined___js_sys_cf7f0cc4e5d90636___Function_fn_wasm_bindgen_ad318e28d47f1410___JsValue_____wasm_bindgen_ad318e28d47f1410___sys__Undefined_______true_",
+      "kind": "function",
+      "index": 95516
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__1_",
+      "kind": "function",
+      "index": 128599
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__2_",
+      "kind": "function",
+      "index": 128600
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___js_sys_cf7f0cc4e5d90636___futures__task__wait_async_polyfill__MessageEvent______true_",
+      "kind": "function",
+      "index": 128601
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true_",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__7",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___web_sys_d0777401f55c8843___features__gen_CloseEvent__CloseEvent______true_",
+      "kind": "function",
+      "index": 128603
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__1__9",
+      "kind": "function",
+      "index": 128599
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__10",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__11",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__12",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___web_sys_d0777401f55c8843___features__gen_CloseEvent__CloseEvent______true__13",
+      "kind": "function",
+      "index": 128603
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__14",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__15",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___wasm_bindgen_ad318e28d47f1410___JsValue______true__16",
+      "kind": "function",
+      "index": 128602
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___core_2dd864f4fe5fa53___option__Option_web_sys_d0777401f55c8843___features__gen_Blob__Blob_______true_",
+      "kind": "function",
+      "index": 93915
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke___alloc_9644702623f404a5___string__String__true_",
+      "kind": "function",
+      "index": 93388
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke_______true__1_",
+      "kind": "function",
+      "index": 100964
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke_______true__2_",
+      "kind": "function",
+      "index": 101546
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke_______true__3_",
+      "kind": "function",
+      "index": 101565
+    },
+    {
+      "name": "wasm_bindgen_ad318e28d47f1410___convert__closures_____invoke_______true_",
+      "kind": "function",
+      "index": 99985
+    },
+    {
+      "name": "memory",
+      "kind": "memory",
+      "index": 0
+    },
+    {
+      "name": "__wbindgen_malloc",
+      "kind": "function",
+      "index": 88364
+    },
+    {
+      "name": "__wbindgen_realloc",
+      "kind": "function",
+      "index": 91235
+    },
+    {
+      "name": "__externref_table_alloc",
+      "kind": "function",
+      "index": 36292
+    },
+    {
+      "name": "__wbindgen_externrefs",
+      "kind": "table",
+      "index": 1
+    },
+    {
+      "name": "__wbindgen_exn_store",
+      "kind": "function",
+      "index": 114690
+    },
+    {
+      "name": "__wbindgen_free",
+      "kind": "function",
+      "index": 128570
+    },
+    {
+      "name": "__wbindgen_destroy_closure",
+      "kind": "function",
+      "index": 90271
+    },
+    {
+      "name": "__externref_table_dealloc",
+      "kind": "function",
+      "index": 64094
+    },
+    {
+      "name": "__wbindgen_thread_destroy",
+      "kind": "function",
+      "index": 64585
+    },
+    {
+      "name": "__wbindgen_start",
+      "kind": "function",
+      "index": 63314
+    }
+  ],
+  "memories": [
+    {
+      "module": "./keldurn_bg.js",
+      "name": "memory",
+      "kind": "memory",
+      "minimum": 266,
+      "maximum": 65536,
+      "shared": true,
+      "memory64": false,
+      "minimum_bytes": 17432576,
+      "maximum_bytes": 4294967296
+    }
+  ],
+  "tables": [
+    {
+      "element": "funcref",
+      "minimum": 218327,
+      "maximum": 218327
+    },
+    {
+      "element": "externref",
+      "minimum": 1024,
+      "maximum": null
+    }
+  ],
+  "declared_target_features": [
+    {
+      "prefix": "+",
+      "name": "atomics"
+    },
+    {
+      "prefix": "+",
+      "name": "mutable-globals"
+    },
+    {
+      "prefix": "+",
+      "name": "nontrapping-fptoint"
+    },
+    {
+      "prefix": "+",
+      "name": "bulk-memory"
+    },
+    {
+      "prefix": "+",
+      "name": "sign-ext"
+    },
+    {
+      "prefix": "+",
+      "name": "exception-handling"
+    },
+    {
+      "prefix": "+",
+      "name": "reference-types"
+    },
+    {
+      "prefix": "+",
+      "name": "multivalue"
+    },
+    {
+      "prefix": "+",
+      "name": "extended-const"
+    },
+    {
+      "prefix": "+",
+      "name": "bulk-memory-opt"
+    },
+    {
+      "prefix": "+",
+      "name": "call-indirect-overlong"
+    }
+  ],
+  "non_function_imports": [
+    {
+      "module": "./keldurn_bg.js",
+      "name": "memory",
+      "kind": "memory",
+      "minimum": 266,
+      "maximum": 65536,
+      "shared": true,
+      "memory64": false,
+      "minimum_bytes": 17432576,
+      "maximum_bytes": 4294967296
+    }
+  ],
+  "wasi_imports": [
+    "environ_get",
+    "environ_sizes_get",
+    "clock_time_get",
+    "fd_close",
+    "fd_fdstat_get",
+    "fd_fdstat_set_flags",
+    "fd_prestat_get",
+    "fd_prestat_dir_name",
+    "fd_read",
+    "fd_renumber",
+    "fd_seek",
+    "fd_write",
+    "path_open",
+    "path_remove_directory",
+    "path_rename",
+    "path_unlink_file",
+    "proc_exit",
+    "sched_yield"
+  ]
+}

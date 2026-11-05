@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+python3 browser/tests/inspect_wasm_test.py
+
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT HUP INT TERM
 qjs_dir=browser/third_party/quickjs

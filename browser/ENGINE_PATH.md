@@ -51,6 +51,17 @@ HTTPS-to-HTTP rejection on the host. Native libnx root import and SD persistence
 still require a console check. Authentication remains limited by the reader's
 missing form, navigation and cross-origin APIs.
 
+## Actual client inspection
+
+The uploaded 2026-11-05 WASM client is now inspected and validated statically.
+See [the evidence and next gates](research/KELDURN_CLIENT.md) and its reproducible
+JSON summary. It has 1,041 imports, shared 32-bit memory, exception tags,
+reference tables and both WebGPU/WebGL bindings. Its module minimum is 16.625 MiB
+of linear memory; 4 GiB is its maximum, not a measured RAM requirement. This
+version validates without SIMD. The real wasm-bindgen loader, GPU selection,
+worker/WASI wiring and total working set remain to be established before engine
+selection. The reader cannot execute it by simply raising resource limits.
+
 ## Independent-browser requirements
 
 Keldurn gameplay must be checked against its actual game client, not only its
