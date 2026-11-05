@@ -1,5 +1,6 @@
 #include "probe.h"
 #include "fixtures.h"
+#include "memory_port.h"
 #include "platform_api_extension.h"
 #include "platform_api_vmcore.h"
 #include "wasm_export.h"
@@ -118,7 +119,10 @@ static int run_fixture(const EngineFixture *fixture, FILE *report) {
     uint64 started = os_time_get_boot_us();
     Loaded x = {0};
     char error[256] = {0};
+    EngineMemoryStats before, during, after;
+    engine_platform_memory_stats(&before);
     int ok = load(fixture, &x, error, report);
+    void *original_base = ok ? wasm_runtime_addr_app_to_native(x.instance, 0) : NULL;
     if (ok) {
         wasm_function_inst_t function = wasm_runtime_lookup_function(x.instance, "run");
         uint32_t results[4] = {0};
@@ -139,9 +143,40 @@ static int run_fixture(const EngineFixture *fixture, FILE *report) {
                              fixture->expected[i]);
                 }
     }
-    record(report, fixture->name, ok, error, os_time_get_boot_us() - started);
+    if (ok && (!strcmp(fixture->name, "client_memory_growth") ||
+               !strcmp(fixture->name, "unshared_growth"))) {
+        engine_platform_memory_stats(&during);
+        void *grown_base = wasm_runtime_addr_app_to_native(x.instance, 0);
+        ok = original_base && original_base == grown_base &&
+             during.reserved - before.reserved == (!strcmp(fixture->name, "client_memory_growth")
+                                                       ? ENGINE_MEMORY_MAX_RESERVE
+                                                       : 64u * 1024u * 1024u) &&
+             during.committed - before.committed == 282u * ENGINE_MEMORY_GRANULE;
+        snprintf(error, sizeof(error), "stable_base=%d reserved=%zu backed=%zu quota=%u",
+                 original_base == grown_base, during.reserved - before.reserved,
+                 during.committed - before.committed, ENGINE_MEMORY_COMMIT_LIMIT);
+        engine_probe_checkpoint(report, "memory.grown", error);
+    }
+    if (!ok) {
+        EngineMemoryStats failed;
+        char detail[192];
+        engine_platform_memory_stats(&failed);
+        snprintf(detail, sizeof(detail), "error=%s native=0x%08x reserved=%zu backed=%zu",
+                 engine_memory_error_name(failed.error), failed.native_error, failed.reserved,
+                 failed.committed);
+        engine_probe_checkpoint(report, "memory.failure", detail);
+    }
     engine_probe_checkpoint(report, "fixture.cleanup", fixture->name);
     unload(&x);
+    engine_platform_memory_stats(&after);
+    if (after.reserved != before.reserved || after.committed != before.committed ||
+        after.quarantined != before.quarantined) {
+        ok = 0;
+        snprintf(error, sizeof(error),
+                 "cleanup mismatch reserved=%zu backed=%zu quarantined=%zu native=0x%08x",
+                 after.reserved, after.committed, after.quarantined, after.native_error);
+    }
+    record(report, fixture->name, ok, error, os_time_get_boot_us() - started);
     return ok;
 }
 typedef struct {
@@ -231,6 +266,8 @@ static const char *ordered_cases[] = {"scalar",
                                       "references",
                                       "legacy_exception",
                                       "shared_growth",
+                                      "client_memory_growth",
+                                      "unshared_growth",
                                       "atomics",
                                       "atomic_wait",
                                       "native_condition_timeout",

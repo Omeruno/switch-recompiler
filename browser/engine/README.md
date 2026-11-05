@@ -7,12 +7,12 @@ check**; its web imports are not bound and its game startup is not called.
 
 ## What executes
 
-The same C harness on host and Switch embeds ten small, owned WASM modules and
+The same C harness on host and Switch embeds twelve small, owned WASM modules and
 checks actual results: arithmetic, multivalue, bulk memory, extended constants,
 externref tables, legacy exceptions, shared atomics, zero-timeout atomic.wait,
 shared memory.grow and a required out-of-bounds trap. Two native threads then
 execute the same shared-memory WASM counter and must produce exactly 20,000.
-A native condition-variable timeout checks lock reacquisition. Twelve passes
+A native condition-variable timeout checks lock reacquisition. Fourteen passes
 are needed for a successful host run; Switch adds a compiler-TLS case. No positive game-readiness status is
 inferred from these results.
 
@@ -47,9 +47,10 @@ Requires devkitA64/libnx and CMake/Python/Git. `make -C browser/engine` creates
 switch-engine-probe.nro. Copy it into the SD `/switch/` folder and launch from
 Homebrew Menu using title override (R while launching a game).
 
-- The 0.1.1 probe opens a menu without executing tests. Up/Down select a case;
+- The 0.2.0 probe opens a menu without executing tests. Up/Down select a case;
   A runs only that case and selects the next. Y runs the full suite; + quits.
-  The first device-only case checks compiler TLS, followed by scalar arithmetic.
+  The initially selected case is `client_memory_growth`: press A to run the new
+  memory test. The prior device-only TLS and scalar cases remain available.
   Each selected case gets a fresh runtime, so failures are easier to localize.
 - A plain-text report is appended to `/switch/switch-browser/engine-report.txt`.
 - Press − for a separate **virtual address reservation only** check that asks libnx for a 4 GiB
@@ -74,11 +75,25 @@ an unknown live thread; exit the probe before retrying.
 - Software WASM bounds checks are enabled. libnx mutexes, conditions, joinable
   threads, TLS and stack boundaries replace Linux's platform layer. Detached
   workers are explicitly unsupported, and read/write locks serialize readers.
-- The memory-map shim eagerly backs small read/write reservations and caps their
-  aggregate at 64 MiB. It rejects executable, fixed-address, file-backed and
-  larger mappings. Its mprotect operation checks range/permissions for this
-  software-bounds mode; it does not install OS page protection. It cannot back
-  the client's 4 GiB shared-memory maximum, even if VA reservation succeeds.
+- Linear memory reserves up to 4 GiB of virtual address space and commits only
+  the current prefix in 64 KiB units. The aggregate backing quota is 256 MiB,
+  a conservative policy limit rather than a measured game requirement or RSS.
+  libnx may already have allocated the process heap. Switch uses heap pages
+  aliased into a reserved stack-region address window via svcMapMemory and
+  svcUnmapMemory, following libnx's thread-stack mechanism. Mapping permissions
+  and sufficient stack VA must be verified on the device; no firmware update is
+  involved. Host uses PROT_NONE reservations and mprotect for the same policy.
+- Failed commits preserve previous memory. Partial unmap failures quarantine the
+  reservation and retain still-mapped backing for a safe retry. Executable,
+  fixed-address and file-backed mappings are rejected. Small mappings reserve
+  64 MiB of VA slack for unshared growth, which can fail beyond that capacity.
+- `client_memory_growth` uses the client's exact memory limits (266 initial and
+  65,536 maximum pages), rejects an over-quota grow, then grows by 16 pages and
+  checks old data, zero initialization, stable native address, exact accounting
+  and cleanup. It uses our own micro-module, not game code. `unshared_growth`
+  verifies failed growth also preserves an unshared instance. Failure-injection
+  host tests cover quota across ranges, commit failure, partial unmap, quarantine,
+  retry, virtual-release failure, overflow, invalid pointers and slot exhaustion.
 - A passing host run does not verify this libnx platform layer. ARM64 compilation
   is a separate CI gate; execution, repeated-run cleanup and timings require the
   target console. No physical-page mapping privileges are assumed.
@@ -87,9 +102,10 @@ an unknown live thread; exit the probe before retrying.
 
 ## Next implementation gates
 
-1. Run the NRO on firmware 21.1.0 and inspect the saved feature/memory report.
-2. Implement/test a stable shared-linear-memory reservation/commit/growth strategy
-   under real Horizon permissions, with quota/accounting and failure tests.
+1. Baseline device features passed in 0.1.1 (see evidence below).
+2. Verify the new 0.2.0 memory backend on Horizon with `client_memory_growth`;
+   implementation and host failure tests are complete. Repeat the new case to
+   check release/reuse. Full game memory consumption remains unknown.
 3. Establish an acceleration strategy compatible with legacy exceptions. The
    interpreter is the correctness baseline, not a promised performance solution.
 4. Develop genuine WebGPU and JS/WASM host bridges, with GPU limit/shader probes;
@@ -123,3 +139,13 @@ The displayed tens-of-milliseconds durations include synchronous SD checkpoints
 and console frame updates. They must not be interpreted as raw WASM execution
 times. Neither the 4 GiB VA reservation nor real client load-only appears in
 this device report, and no game execution or GPU result can be inferred.
+
+## Memory milestone — 0.2.0
+
+The existing device report proves the old baseline, not this new mapping backend.
+The new NRO selects the client-sized memory test at startup, with pre-operation
+checkpoints and native Result diagnostics saved in the same report. Host CI runs
+14 feature cases plus allocator failure tests. Switch now has 15 feature cases.
+A passing new device case would establish reservation/commit/growth/cleanup for
+this allocation shape; it would not establish Keldurn startup, performance or
+rendering. The browser remains a separate reader NRO at version 0.3.2.

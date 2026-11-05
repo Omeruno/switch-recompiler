@@ -132,3 +132,13 @@ The report does not cover 4 GiB reservation/commit, full game instantiation,
 GPU execution or performance. Checkpoint I/O/frame updates contaminate timings.
 Browser 0.3.2 corrects a separate SDL_ttf bug: MeasureUTF8 returns a character
 count, which was previously treated as bytes and could split Cyrillic strings.
+
+### 0.2.0: shared linear-memory implementation
+
+The engine now has a stable 4 GiB virtual reservation, incremental 64 KiB heap
+backing (256 MiB aggregate quota), rollback-safe commit and quarantined partial
+release. Host tests exercise client-sized shared memory, unshared failed growth
+and injected allocator errors. The libnx implementation maps heap backing into
+reserved stack VA with svcMapMemory/svcUnmapMemory; ARM64 build and a new device
+run are separate gates. The 13 successful 0.1.1 device cases do not validate this
+new backend. No JS host imports or GPU implementation is supplied by this step.

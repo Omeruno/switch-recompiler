@@ -87,5 +87,23 @@
       2
     ],
     "trap": false
+  },
+  {
+    "name": "client_memory_growth",
+    "wasm": "client_memory_growth.wasm",
+    "sha256": "51fb4b103c1ca692c1d7dc2ab65a16e03a689780bfa7ca1ba54250d293f3e166",
+    "expected": [
+      282
+    ],
+    "trap": false
+  },
+  {
+    "name": "unshared_growth",
+    "wasm": "unshared_growth.wasm",
+    "sha256": "ab1839a2c6ead27c6fad14b389f93ba9a13cbca3d7428db1bce64e0860ac575e",
+    "expected": [
+      282
+    ],
+    "trap": false
   }
 ]

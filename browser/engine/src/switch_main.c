@@ -1,5 +1,7 @@
+#include "memory_port.h"
 #include "probe.h"
 #include <stdio.h>
+#include <string.h>
 #include <switch.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -11,7 +13,7 @@ static FILE *open_report(void) {
     return fopen("sdmc:/switch/switch-browser/engine-report.txt", "a");
 }
 static void menu(unsigned index) {
-    printf("\nSwitch Engine Probe 0.1.1 - staged diagnostics\n");
+    printf("\nSwitch Engine Probe 0.2.0 - staged diagnostics\n");
     printf("No tests run automatically.\n");
     printf("Selected: %u/%u %s\n", index + 1, engine_probe_case_count(),
            engine_probe_case_name(index));
@@ -22,14 +24,10 @@ static void menu(unsigned index) {
 }
 static void reserve_probe(FILE *report) {
     engine_probe_checkpoint(report, "va.find", "4 GiB address space only");
-    virtmemLock();
-    void *address = virtmemFindAslr((size_t)1 << 32, 4096);
-    VirtmemReservation *reservation =
-        address ? virtmemAddReservation(address, (size_t)1 << 32) : NULL;
-    int ok = reservation != NULL;
-    if (reservation)
-        virtmemRemoveReservation(reservation);
-    virtmemUnlock();
+    EngineMemory m;
+    engine_memory_init(&m, engine_memory_backend(), ENGINE_MEMORY_COMMIT_LIMIT, 0);
+    void *address = engine_memory_reserve(&m, ENGINE_MEMORY_MAX_RESERVE);
+    int ok = address && engine_memory_release(&m, address);
     printf("%s reserve_4GiB_virtual_only (no physical allocation)\n", ok ? "PASS" : "FAIL");
     engine_probe_checkpoint(report, "va.finished", ok ? "PASS" : "FAIL");
 }
@@ -38,7 +36,7 @@ int main(void) {
     printf("BOOT console ready\n");
     consoleUpdate(NULL);
     FILE *report = open_report();
-    engine_probe_checkpoint(report, "boot.console_ready", "0.1.1");
+    engine_probe_checkpoint(report, "boot.console_ready", "0.2.0");
     Thread *self = threadGetSelf();
     if (report) {
         fprintf(report, "APPLET type=%u main_stack_bytes=%zu\n", (unsigned)appletGetAppletType(),
@@ -52,6 +50,9 @@ int main(void) {
     PadState pad;
     padInitializeDefault(&pad);
     unsigned selected = 0;
+    for (unsigned i = 0; i < engine_probe_case_count(); ++i)
+        if (!strcmp(engine_probe_case_name(i), "client_memory_growth"))
+            selected = i;
     menu(selected);
     while (appletMainLoop()) {
         padUpdate(&pad);

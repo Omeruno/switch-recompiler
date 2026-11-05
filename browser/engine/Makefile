@@ -5,7 +5,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET := switch-engine-probe
 APP_TITLE := Switch Engine Probe
 APP_AUTHOR := switch-recompiler
-APP_VERSION := 0.1.1
+APP_VERSION := 0.2.0
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mno-outline-atomics -mtp=soft -ftls-model=local-exec -fPIE
 CMAKE ?= cmake
 .PHONY: all runtime clean
