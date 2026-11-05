@@ -12,15 +12,14 @@ The x86 runtime and main NRO are untouched. All work stays on
 ## Build and use
 
 Install devkitPro, devkitA64, libnx, `switch-curl` and `switch-sdl2_ttf`;
-run `make -C browser`.
+install Python 3 for embedding the DOM source, then run `make -C browser`.
 Copy `browser/switch-browser.nro` to `/switch/` on the SD card, then launch it
 through Homebrew Menu with title override for full memory. Connect the Switch
 to Wi-Fi before opening a site. The NRO does not invoke Horizon update services.
 
 - Home: D-pad selects Keldurn, its game URL, a typed HTTPS address or an offline
-  JavaScript demo; A opens. The demo should show a Russian title and text that
-  JavaScript wrote after loading.
-- Page: Up/Down scroll; ZL/ZR select a link; A follows it; B goes back; X edits
+  JavaScript demo; A opens. The demo updates a counter and adds text while open.
+- Page: Up/Down scroll; ZL/ZR select a link or button; A activates it; B goes back; X edits
   the address; Y reloads; + quits.
 
 TLS verification is enabled. Only HTTPS pages and HTTPS redirects are accepted.
@@ -28,28 +27,49 @@ Responses are capped at 2 MiB and requests time out after 25 seconds. The page
 screen reports the HTTP status or TLS/network error, which is useful for the
 first real-Switch test on firmware 21.1.0.
 
-## Current limit
+## Runtime and DOM
 
-This build extracts text and links from HTML and runs bounded classic JavaScript.
-It fetches up to eight same-origin HTTPS scripts in document order, with a
-16 KiB limit per script, no redirects and a 10-second timeout. A `script-src
-'self'` policy permits these files and blocks inline scripts. It exposes
-`document.title`, `document.body.textContent` and `console.log`. The navigation
-bridge adds `URL` (hostname, pathname, search, searchParams.get/set), `location`,
-the HTML language, and `navigator.language/languages` with a Russian preference.
-Anchor queries support `a` and `a[href^="prefix"]`; script changes to their
-HTTPS addresses are copied back to the browser's link list. Other selectors
-return no matches. Event listeners are placeholders and are not dispatched;
-cookies and storage are not persisted. A small `Intl.DateTimeFormat` subset
-formats numeric dates, short months/weekdays and 24-hour time in Russian or
-English. Only UTC is supported. `Intl.RelativeTimeFormat` supports minutes,
-hours and days, Russian plural forms and `numeric: 'auto'`. Other Intl classes,
-timezone conversion and full locale formatting are not provided. Timers are
-not implemented; scripts using `setInterval` still stop there. ES modules,
-a real DOM, WebAssembly, WebGL,
-video and the Keldurn game are not implemented. Basic CSP script directives
-control execution. Each script has a 300 ms execution budget; the runtime
-has a 16 MiB memory limit. The older WebApplet NRO requested
+The graphical browser keeps one QuickJS session alive until navigation, reload,
+return to Home, or exit. The main loop pumps timers and Promise jobs, then
+updates layout when text, titles, button labels or link addresses change.
+The offline demo includes a second counter, a clickable button, DOMContentLoaded
+and a delayed element insertion. ZL/ZR select links or buttons; A dispatches a
+cancelable click, including bubbling to document, before following a link.
+
+The bounded reader DOM supports element/text creation, append/prepend,
+replaceChildren/remove, textContent, attributes, dataset, classList, closest,
+querySelector(All), getElementById, and basic tag, ID, class and attribute
+selectors (including comma lists). It parses up to 128 KiB of source with a
+2048-node allocation budget per turn. It does not implement the HTML parsing
+standard, CSS layout, innerHTML, forms, images or video rendering. Detached
+nodes and event callbacks are reclaimed with the page's entire runtime on
+navigation; they do not survive into the next page.
+
+setTimeout/setInterval, clearTimeout/clearInterval and requestAnimationFrame
+run on the main loop with at most 64 registered timers. Callbacks must be
+functions. Delayed intervals coalesce rather than replaying missed ticks.
+Event listeners support once/removal, bubbling and preventDefault; capture,
+keyboard/pointer events and full browser event semantics remain unimplemented.
+Only 64 Promise jobs are drained per turn. Initial scripts have 300 ms budgets;
+timer turns have an 8 ms interrupt budget, clicks have 30 ms, and the QuickJS
+heap is capped at 16 MiB. These are reader limits, not a game execution budget.
+
+Up to eight same-origin classic HTTPS script files are fetched, limited to
+16 KiB each with a 10-second timeout and no redirects. Basic CSP directives
+control script execution; nonce/hash policies are not implemented. URL parsing,
+query parameters, location, document language and Russian navigator preferences
+are exposed. Cookies and storage are not persisted. Intl.DateTimeFormat and
+Intl.RelativeTimeFormat provide a limited ru/en subset using UTC only.
+
+## Remaining engine work
+
+ES modules, standards-compliant DOM/CSS, WebAssembly, WebGL, media, WebRTC,
+storage and the Keldurn game are not implemented. A host probe of the Russian
+landing page executed all three scripts and pumped its interval without an
+exception. This confirms the page reader APIs; it does not verify gameplay or
+Switch performance. The graphics path still needs a hardware check.
+
+The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
 The user confirmed direct HTTPS to Keldurn returns HTTP 200 on their Switch,
 without an update prompt. Earlier graphical builds exited to the text fallback:

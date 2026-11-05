@@ -322,6 +322,11 @@ static void extract_scripts(BrowserPage *page, const char *html, size_t size) {
 
 int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
     if (!page || !html) return 0;
+    size_t copy = size < sizeof(page->html) - 1 ? size : sizeof(page->html) - 1;
+    while (copy && copy < size && ((unsigned char)html[copy] & 0xc0) == 0x80) --copy;
+    memcpy(page->html, html, copy);
+    page->html[copy] = 0;
+    page->dom_truncated = copy < size;
     page->text[0] = 0;
     page->title[0] = 0;
     snprintf(page->language, sizeof(page->language), "en");

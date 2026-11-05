@@ -24,11 +24,13 @@ typedef struct {
     TTF_Font *font;
     TTF_Font *heading;
     BrowserPage *page;
+    BrowserJS *js;
     VisualLine lines[MAX_LINES];
     size_t line_count, scroll, link, history_count;
     char history[HISTORY_MAX][BROWSER_URL_MAX];
     char address[BROWSER_URL_MAX];
     char status[192];
+    char last_js_notice[192];
     char startup_error[256];
     bool romfs_ready, sdl_ready, ttf_ready;
     bool loaded, network_ready, local_demo;
@@ -159,11 +161,11 @@ static void render(App *app) {
         rect(app, 24, 586, 1232, 69, (SDL_Color){25, 39, 60, 255});
         if (app->page->link_count) {
             char counter[80];
-            snprintf(counter, sizeof(counter), "Ссылка %u/%u",
+            snprintf(counter, sizeof(counter), "Элемент %u/%u",
                      (unsigned)(app->link + 1), (unsigned)app->page->link_count);
             label(app, app->font, 40, 592, counter, accent, 1160);
-            label(app, app->font, 40, 621, app->page->links[app->link].url, white, 1160);
-        } else label(app, app->font, 40, 605, "Ссылок нет", muted, 1160);
+            label(app, app->font, 40, 621, app->page->links[app->link].label, white, 1160);
+        } else label(app, app->font, 40, 605, "Нет ссылок или кнопок", muted, 1160);
         label(app, app->font, 27, 666,
               "Up/Down: прокрутка   ZL/ZR: ссылка   A: открыть   B: назад   X: адрес   Y: обновить   +: выход",
               muted, 1220);
@@ -175,8 +177,9 @@ static void render(App *app) {
 static void load_page(App *app, const char *url) {
     snprintf(app->status, sizeof(app->status), "Загрузка: %.130s", url);
     render(app);
+    browser_js_destroy(app->js); app->js = NULL;
     int ok = browser_fetch(app->page, url);
-    if (ok) browser_js_apply(app->page);
+    if (ok) app->js = browser_js_start(app->page);
     if (ok && app->page->js_notice[0])
         snprintf(app->status, sizeof(app->status), "JS %u/%u | download errors %u: %.100s",
                  (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
@@ -194,14 +197,21 @@ static void load_page(App *app, const char *url) {
 }
 
 static void load_demo(App *app) {
-    static const char html[] = "<title>До JavaScript</title><p>Исходный текст.</p>"
-        "<script>document.title='JavaScript на Switch';"
-        "document.body.textContent='Привет! Русский текст изменён JavaScript прямо на консоли.';"
-        "console.log('JS OK')</script>";
+    browser_js_destroy(app->js); app->js = NULL;
+    static const char html[] = "<html lang='ru'><head><title>Живая страница</title></head><body>"
+        "<h1>Автономная проверка браузера</h1><p id='clock'>Таймер запускается…</p>"
+        "<button id='counter'>Нажатий: 0</button><p id='ready'>Ожидание DOM</p>"
+        "<a href='https://keldurn.com/ru/'>Открыть Keldurn</a>"
+        "<script>let seconds=0,clicks=0;"
+        "setInterval(()=>document.getElementById('clock').textContent='Прошло секунд: '+(++seconds),1000);"
+        "document.getElementById('counter').addEventListener('click',function(){this.textContent='Нажатий: '+(++clicks)});"
+        "document.addEventListener('DOMContentLoaded',()=>document.getElementById('ready').textContent='DOM готов. Выберите кнопку ZL/ZR и нажмите A.');"
+        "setTimeout(()=>{const p=document.createElement('p');p.textContent='Отложенное обновление работает';document.body.append(p)},2000);"
+        "</script></body></html>";
     memset(app->page, 0, sizeof(*app->page));
-    strcpy(app->page->url, "browser://local-js-demo");
+    strcpy(app->page->url, "https://browser.invalid/offline-demo");
     browser_parse_html(app->page, html, sizeof(html) - 1);
-    browser_js_apply(app->page);
+    app->js = browser_js_start(app->page);
     snprintf(app->status, sizeof(app->status), "JS %u/%u: %.125s",
              (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
              app->page->js_notice);
@@ -362,7 +372,7 @@ int main(void) {
                     char previous[BROWSER_URL_MAX];
                     strcpy(previous, app->history[--app->history_count]);
                     load_page(app, previous);
-                } else app->loaded = false;
+                } else { app->loaded = false; browser_js_destroy(app->js); app->js = NULL; }
                 dirty = true;
             } else if (pressed & HidNpadButton_Y) {
                 if (app->local_demo) load_demo(app);
@@ -383,15 +393,35 @@ int main(void) {
             } else if (pressed & HidNpadButton_A && app->page->link_count) {
                 char next[BROWSER_URL_MAX];
                 strcpy(next, app->page->links[app->link].url);
-                if (app->history_count < HISTORY_MAX)
-                    strcpy(app->history[app->history_count++], app->page->url);
-                load_page(app, next); dirty = true;
+                bool follow = browser_js_click(app->js, app->link, next);
+                if (follow && browser_valid_url(next)) {
+                    if (!app->local_demo && app->history_count < HISTORY_MAX)
+                        strcpy(app->history[app->history_count++], app->page->url);
+                    load_page(app, next);
+                } else {
+                    layout_text(app);
+                    if (app->link >= app->page->link_count) app->link = 0;
+                }
+                dirty = true;
             }
+        }
+        if (app->loaded && browser_js_tick(app->js, browser_js_clock_ms())) {
+            size_t scroll = app->scroll;
+            layout_text(app);
+            app->scroll = scroll < app->line_count ? scroll : 0;
+            if (app->link >= app->page->link_count) app->link = 0;
+            dirty = true;
+        }
+        if (app->loaded && strcmp(app->last_js_notice, app->page->js_notice)) {
+            snprintf(app->last_js_notice, sizeof(app->last_js_notice), "%s", app->page->js_notice);
+            if (app->page->js_notice[0]) snprintf(app->status, sizeof(app->status), "JS: %.180s", app->page->js_notice);
+            dirty = true;
         }
         if (dirty) { render(app); dirty = false; }
         SDL_Delay(16);
     }
 done:
+    browser_js_destroy(app->js);
     if (app->network_ready) curl_global_cleanup();
     if (R_SUCCEEDED(socket_result)) socketExit();
     TTF_CloseFont(app->heading);

@@ -23,24 +23,24 @@ write asset data. Packaging now also supplies NACP metadata, forcing the asset
 header, and CI verifies the RomFS size; the graphical path must be checked on
 the target Switch again.
 
-The next block embeds QuickJS and runs bounded classic scripts. Small
-same-origin HTTPS scripts are now downloaded and executed in document order;
-basic CSP directives distinguish them from blocked inline scripts. The bridge
-currently covers only title, body text
-and console output. A local demo exercises this on real hardware. Modules,
-DOM APIs, WASM, graphics, audio and media remain open; this milestone
-does not imply that Keldurn can run.
-An HTTPS host probe of `https://keldurn.com/ru/` returned HTTP 200 and fetched
-all three same-origin scripts (`acquisition.js`, `mega.js`, `lang.js`) with zero
-download failures. Its `script-src 'self'` policy correctly blocks inline code.
-The navigation bridge now exposes URL parsing, query parameters, anchor-prefix
-queries, link address changes, the document language and Russian navigator
-preferences. A host probe executed two of the three landing-page scripts;
-`mega.js` now passes Intl initialization using a limited ru/en UTC formatter
-and stops at `ReferenceError: 'setInterval' is not defined`. Time selectors
-also remain unsupported. The next runtime step needs a persistent JavaScript
-context and bounded timers driven by the main loop. General DOM mutation,
-events and the game engine APIs remain unimplemented.
+The reader now owns a persistent QuickJS runtime per page, with a bounded DOM,
+timers, animation-frame callbacks, Promise jobs and click dispatch. Text and
+interactive element changes propagate back to SDL layout between frames.
+Navigation destroys the runtime and its callbacks before overwriting the page.
+A ru/en UTC Intl subset supports the landing page's calendar functions.
+
+A host probe of `https://keldurn.com/ru/` returned HTTP 200, fetched all three
+same-origin scripts, executed all three without exceptions and pumped the
+calendar interval. Its `script-src 'self'` policy blocks inline scripts while
+allowing same-origin external files. The offline demo and host integration tests
+cover delayed updates, button clicks, lifecycle events, Promise continuations,
+cancellation, navigation cleanup and interruption/heap limits. These checks do
+not establish that the actual game client can execute.
+
+The next engine stages need standards-level HTML/CSS and DOM behavior, module
+loading, storage/network APIs, WASM and GPU rendering. The page reader remains
+text-based and cannot run WoW or a cloud gaming video client. Hardware rendering
+and input latency must still be verified on the target console.
 
 ## Independent-browser requirements
 

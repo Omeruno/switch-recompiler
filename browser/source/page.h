@@ -8,6 +8,7 @@
 #define BROWSER_LINK_MAX 64
 #define BROWSER_SCRIPT_MAX 8
 #define BROWSER_SCRIPT_BYTES 16384
+#define BROWSER_DOM_HTML_MAX 131072
 
 typedef struct {
     char url[BROWSER_URL_MAX];
@@ -19,6 +20,8 @@ typedef struct {
     char url[BROWSER_URL_MAX];
     char title[256];
     char language[16];
+    char html[BROWSER_DOM_HTML_MAX];
+    int dom_truncated;
     char text[BROWSER_TEXT_MAX];
     BrowserLink links[BROWSER_LINK_MAX];
     size_t link_count;

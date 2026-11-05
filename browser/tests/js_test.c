@@ -68,7 +68,7 @@ int main(void) {
     assert(navigation.js_ran == 1);
     assert(strcmp(navigation.title, "ru:example.test") == 0);
     assert(strcmp(navigation.links[0].url, "https://example.test/start?from=ru&utm_source=switch") == 0);
-    assert(strcmp(navigation.links[1].url, "https://example.test/about") == 0);
+    assert(navigation.links[1].url[0] == 0);
 
     BrowserPage intl = {0};
     strcpy(intl.url, "https://example.test/");

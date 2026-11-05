@@ -29,7 +29,10 @@ $(TARGET).elf: $(OFILES)
 	$(CC) $(LDFLAGS) $(OFILES) -L$(PORTLIBS)/lib -L$(DEVKITPRO)/libnx/lib $(PORT_LIBS) -lm -lnx -o $@
 $(BUILD)/%.o: source/%.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(DEVKITPRO)/libnx/include -isystem $(QJS_DIR) $(PORT_CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -I$(BUILD) -I$(DEVKITPRO)/libnx/include -isystem $(QJS_DIR) $(PORT_CFLAGS) -MMD -MP -c $< -o $@
+$(BUILD)/js_runtime.o: $(BUILD)/dom_js.h
+$(BUILD)/dom_js.h: source/dom.js tools/embed_js.py
+	python3 tools/embed_js.py $< $@
 $(BUILD)/qjs_%.o: $(QJS_DIR)/%.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -fwrapv -D_GNU_SOURCE -D__SWITCH__ -DCONFIG_VERSION='"2026-06-04"' -I$(QJS_DIR) -MMD -MP -c $< -o $@

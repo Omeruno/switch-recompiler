@@ -1,6 +1,7 @@
 #include "js_runtime.h"
 #include "js_web_apis.h"
 #include "js_intl.h"
+#include "dom_js.h"
 #include "quickjs.h"
 #include <curl/curl.h>
 #include <stdint.h>
@@ -8,7 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <time.h>
 
 #define JS_MEMORY_LIMIT (16u * 1024u * 1024u)
 #define JS_STACK_LIMIT (512u * 1024u)
@@ -16,28 +17,44 @@
 
 typedef struct { uint64_t deadline; unsigned checks; } ScriptBudget;
 typedef union { max_align_t alignment; size_t size; } Allocation;
+struct BrowserJS {
+    JSRuntime *runtime;
+    JSContext *context;
+    JSValue global;
+    BrowserPage *page;
+    ScriptBudget budget;
+    uint64_t clock;
+};
 
 static void *js_alloc(JSMallocState *state, size_t size) {
-    (void)state;
-    if (size > SIZE_MAX - sizeof(Allocation)) return NULL;
+    if (size > SIZE_MAX - sizeof(Allocation) || state->malloc_size > state->malloc_limit ||
+        size + sizeof(Allocation) > state->malloc_limit - state->malloc_size) return NULL;
     Allocation *block = malloc(sizeof(Allocation) + size);
     if (!block) return NULL;
     block->size = size;
+    ++state->malloc_count;
+    state->malloc_size += size + sizeof(Allocation);
     return block + 1;
 }
 
 static void js_dealloc(JSMallocState *state, void *pointer) {
-    (void)state;
-    if (pointer) free((Allocation *)pointer - 1);
+    if (pointer) {
+        --state->malloc_count;
+        state->malloc_size -= ((Allocation *)pointer - 1)->size + sizeof(Allocation);
+        free((Allocation *)pointer - 1);
+    }
 }
 
 static void *js_resize(JSMallocState *state, void *pointer, size_t size) {
     if (!pointer) return js_alloc(state, size);
     if (!size) { js_dealloc(state, pointer); return NULL; }
-    if (size > SIZE_MAX - sizeof(Allocation)) return NULL;
+    size_t old = ((Allocation *)pointer - 1)->size;
+    if (size > SIZE_MAX - sizeof(Allocation) || (size > old &&
+        (state->malloc_size > state->malloc_limit || size - old > state->malloc_limit - state->malloc_size))) return NULL;
     Allocation *block = realloc((Allocation *)pointer - 1, sizeof(Allocation) + size);
     if (!block) return NULL;
     block->size = size;
+    state->malloc_size = state->malloc_size - old + size;
     return block + 1;
 }
 
@@ -85,10 +102,20 @@ static JSValue url_part(JSContext *context, JSValueConst this_value,
     return result;
 }
 
-static uint64_t now_ms(void) {
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    return (uint64_t)time.tv_sec * 1000u + (uint64_t)time.tv_usec / 1000u;
+uint64_t browser_js_clock_ms(void) {
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    return (uint64_t)time.tv_sec * 1000u + (uint64_t)time.tv_nsec / 1000000u;
+}
+#define now_ms browser_js_clock_ms
+static JSValue clock_read(JSContext *context, JSValueConst self, int argc, JSValueConst *argv) {
+    (void)self; (void)argc; (void)argv;
+    BrowserJS *session = JS_GetRuntimeOpaque(JS_GetRuntime(context));
+    return JS_NewFloat64(context, (double)session->clock);
+}
+static void reset_budget(BrowserJS *session, unsigned milliseconds) {
+    session->budget.deadline = now_ms() + milliseconds;
+    session->budget.checks = 0;
 }
 
 static int interrupted(JSRuntime *runtime, void *opaque) {
@@ -123,7 +150,10 @@ static void copy_js_string(JSContext *context, JSValueConst value,
     size_t length = 0;
     const char *text = JS_ToCStringLen(context, &length, value);
     if (!text) return;
-    if (length >= capacity) length = capacity - 1;
+    if (length >= capacity) {
+        length = capacity - 1;
+        while (length && ((unsigned char)text[length] & 0xc0) == 0x80) --length;
+    }
     memcpy(target, text, length);
     target[length] = 0;
     JS_FreeCString(context, text);
@@ -144,31 +174,41 @@ static void report_exception(JSContext *context, BrowserPage *page) {
     JS_FreeValue(context, exception);
 }
 
-void browser_js_apply(BrowserPage *page) {
-    if (!page) return;
-    page->js_ran = 0;
-    page->js_notice[0] = 0;
-    if (!page->script_count) return;
+static int sync_page(BrowserJS *session);
+static void drain_jobs(BrowserJS *session) {
+    for (unsigned i = 0; i < 64 && now_ms() < session->budget.deadline; ++i) {
+        JSContext *context = NULL;
+        int result = JS_ExecutePendingJob(session->runtime, &context);
+        if (result < 0) { report_exception(context ? context : session->context, session->page); break; }
+        if (!result) break;
+    }
+}
+static JSValue call_global(BrowserJS *session, const char *name, int argc, JSValue *args) {
+    JSValue fn = JS_GetPropertyStr(session->context, session->global, name);
+    JSValue result = JS_Call(session->context, fn, session->global, argc, args);
+    JS_FreeValue(session->context, fn);
+    if (JS_IsException(result)) report_exception(session->context, session->page);
+    return result;
+}
+BrowserJS *browser_js_start(BrowserPage *page) {
+    if (!page) return NULL;
+    page->js_ran = 0; page->js_notice[0] = 0;
     if (!page->inline_allowed && !page->external_allowed) {
-        snprintf(page->js_notice, sizeof(page->js_notice), "Scripts blocked by site CSP");
-        return;
+        if (page->script_count) snprintf(page->js_notice,sizeof(page->js_notice),"Scripts blocked by site CSP");
+        return NULL;
     }
-
-    JSRuntime *runtime = JS_NewRuntime2(&js_allocator, NULL);
-    if (!runtime) {
-        snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript runtime allocation failed");
-        return;
-    }
-    JS_SetMemoryLimit(runtime, JS_MEMORY_LIMIT);
-    JS_SetMaxStackSize(runtime, JS_STACK_LIMIT);
-    ScriptBudget budget = {now_ms() + JS_TIME_LIMIT_MS, 0};
-    JS_SetInterruptHandler(runtime, interrupted, &budget);
-    JSContext *context = JS_NewContext(runtime);
-    if (!context) {
-        snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript context allocation failed");
-        JS_FreeRuntime(runtime);
-        return;
-    }
+    BrowserJS *session = calloc(1,sizeof(*session));
+    if (!session) return NULL;
+    session->page = page; session->clock = now_ms();
+    JSRuntime *runtime = session->runtime = JS_NewRuntime2(&js_allocator,NULL);
+    if (!runtime) { free(session); return NULL; }
+    JS_SetRuntimeOpaque(runtime,session);
+    JS_SetMemoryLimit(runtime,JS_MEMORY_LIMIT);
+    JS_SetMaxStackSize(runtime,JS_STACK_LIMIT);
+    reset_budget(session,JS_TIME_LIMIT_MS);
+    JS_SetInterruptHandler(runtime,interrupted,&session->budget);
+    JSContext *context = session->context = JS_NewContext(runtime);
+    if (!context) { JS_FreeRuntime(runtime); free(session); return NULL; }
     JS_SetContextOpaque(context, page);
     JSValue global = JS_GetGlobalObject(context);
     JSValue document = JS_NewObject(context);
@@ -198,82 +238,115 @@ void browser_js_apply(BrowserPage *page) {
     JS_SetPropertyUint32(context, languages, 0, JS_NewString(context, "ru-RU"));
     JS_SetPropertyStr(context, navigator, "languages", languages);
     JS_SetPropertyStr(context, global, "navigator", navigator);
-    JSValue links = JS_NewArray(context);
-    for (size_t i = 0; i < page->link_count; ++i) {
-        JSValue link = JS_NewObject(context);
-        JS_SetPropertyStr(context, link, "href", JS_NewString(context, page->links[i].url));
-        JS_SetPropertyStr(context, link, "rawHref", JS_NewString(context, page->links[i].href));
-        JS_SetPropertyUint32(context, links, (uint32_t)i, link);
+    session->global = JS_DupValue(context,global);
+    JS_SetPropertyStr(context,global,"__clock",JS_NewCFunction(context,clock_read,"__clock",0));
+    JS_SetPropertyStr(context,global,"__startedAt",JS_NewFloat64(context,(double)session->clock));
+    JS_SetPropertyStr(context,global,"__sourceHTML",JS_NewString(context,page->html));
+    const char *sources[] = {browser_web_apis,browser_intl,browser_dom};
+    int boot_ok = 1;
+    for (unsigned i = 0; i < 3; ++i) {
+        JSValue result = JS_Eval(context,sources[i],strlen(sources[i]),"<browser-bootstrap>",JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(result)) { report_exception(context,page); boot_ok = 0; }
+        JS_FreeValue(context,result);
+        if (!boot_ok) break;
     }
-    JS_SetPropertyStr(context, global, "__browserLinks", JS_DupValue(context, links));
-    JSValue bootstrap = JS_Eval(context, browser_web_apis, strlen(browser_web_apis),
-                                "<browser-apis>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(bootstrap)) {
-        report_exception(context, page);
-        JS_FreeValue(context, bootstrap);
-        goto cleanup;
-    }
-    JS_FreeValue(context, bootstrap);
-    bootstrap = JS_Eval(context, browser_intl, strlen(browser_intl), "<intl>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(bootstrap)) {
-        report_exception(context, page);
-        JS_FreeValue(context, bootstrap);
-        goto cleanup;
-    }
-    JS_FreeValue(context, bootstrap);
-
+    JS_FreeValue(context,document); JS_FreeValue(context,global);
+    if (!boot_ok) { browser_js_destroy(session); return NULL; }
     for (size_t i = 0; i < page->script_count; ++i) {
         if (page->script_urls[i][0] ? !page->external_allowed : !page->inline_allowed) continue;
         if (!page->scripts[i][0]) continue;
-        budget.deadline = now_ms() + JS_TIME_LIMIT_MS;
-        budget.checks = 0;
-        JSValue result = JS_Eval(context, page->scripts[i], strlen(page->scripts[i]),
-                                 page->script_urls[i][0] ? page->script_urls[i] : "<inline>",
-                                 JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(result)) {
-            report_exception(context, page);
-            JS_FreeValue(context, result);
-            continue;
-        }
-        JS_FreeValue(context, result);
-        ++page->js_ran;
+        reset_budget(session,JS_TIME_LIMIT_MS);
+        JSValue result = JS_Eval(context,page->scripts[i],strlen(page->scripts[i]),
+                                page->script_urls[i][0] ? page->script_urls[i] : "<inline>",JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(result)) report_exception(context,page); else ++page->js_ran;
+        JS_FreeValue(context,result);
+        drain_jobs(session);
     }
-    for (int i = 0; i < 64 && now_ms() < budget.deadline; ++i) {
-        JSContext *job_context = NULL;
-        int result = JS_ExecutePendingJob(runtime, &job_context);
-        if (result <= 0) break;
+    reset_budget(session,JS_TIME_LIMIT_MS);
+    JSValue ready = call_global(session,"__ready",0,NULL); JS_FreeValue(context,ready);
+    drain_jobs(session);
+    reset_budget(session,30);
+    sync_page(session);
+    return session;
+}
+static int sync_page(BrowserJS *session) {
+    JSContext *context = session->context;
+    BrowserPage *page = session->page;
+    JSValue snapshot = call_global(session,"__snapshot",0,NULL);
+    if (JS_IsException(snapshot) || JS_IsNull(snapshot)) { JS_FreeValue(context,snapshot); return 0; }
+    int changed = 0;
+    const char *names[] = {"title","text"};
+    char *targets[] = {page->title,page->text};
+    size_t sizes[] = {sizeof(page->title),sizeof(page->text)};
+    for (unsigned i = 0; i < 2; ++i) {
+        JSValue value = JS_GetPropertyStr(context,snapshot,names[i]);
+        const char *text = JS_ToCString(context,value);
+        if (text && strncmp(targets[i],text,sizes[i]-1)) { copy_js_string(context,value,targets[i],sizes[i]); changed = 1; }
+        if (text) JS_FreeCString(context,text);
+        JS_FreeValue(context,value);
     }
-    JSValue title = JS_GetPropertyStr(context, document, "title");
-    copy_js_string(context, title, page->title, sizeof(page->title));
-    JS_FreeValue(context, title);
-    JSValue new_body = JS_GetPropertyStr(context, document, "body");
-    if (JS_IsObject(new_body)) {
-        JSValue body_text = JS_GetPropertyStr(context, new_body, "textContent");
-        copy_js_string(context, body_text, page->text, sizeof(page->text));
-        JS_FreeValue(context, body_text);
+    JSValue links = JS_GetPropertyStr(context,snapshot,"links");
+    JSValue length = JS_GetPropertyStr(context,links,"length");
+    uint32_t count = 0; JS_ToUint32(context,&count,length); JS_FreeValue(context,length);
+    if (count > BROWSER_LINK_MAX) count = BROWSER_LINK_MAX;
+    if (page->link_count != count) changed = 1;
+    page->link_count = count;
+    for (uint32_t i = 0; i < count; ++i) {
+        JSValue link = JS_GetPropertyUint32(context,links,i);
+        JSValue href = JS_GetPropertyStr(context,link,"href");
+        char candidate[BROWSER_URL_MAX] = {0}; copy_js_string(context,href,candidate,sizeof(candidate));
+        if (!browser_valid_url(candidate)) candidate[0] = 0;
+        if (strcmp(candidate,page->links[i].url)) changed = 1;
+        snprintf(page->links[i].url,sizeof(page->links[i].url),"%s",candidate);
+        JSValue label = JS_GetPropertyStr(context,link,"label");
+        char label_text[96] = {0}; copy_js_string(context,label,label_text,sizeof(label_text));
+        if (strcmp(label_text,page->links[i].label)) changed = 1;
+        snprintf(page->links[i].label,sizeof(page->links[i].label),"%s",label_text);
+        JS_FreeValue(context,label); JS_FreeValue(context,href); JS_FreeValue(context,link);
     }
-    JS_FreeValue(context, new_body);
-    for (size_t i = 0; i < page->link_count; ++i) {
-        JSValue link = JS_GetPropertyUint32(context, links, (uint32_t)i);
-        JSValue args[] = {JS_GetPropertyStr(context, link, "href"), JS_NewString(context, page->url)};
-        JSValue resolved = url_resolve(context, JS_UNDEFINED, 2, args);
-        if (!JS_IsException(resolved)) {
-            char candidate[BROWSER_URL_MAX] = {0};
-            copy_js_string(context, resolved, candidate, sizeof(candidate));
-            if (browser_valid_url(candidate))
-                snprintf(page->links[i].url, sizeof(page->links[i].url), "%s", candidate);
-        } else {
-            JSValue exception = JS_GetException(context);
-            JS_FreeValue(context, exception);
-        }
-        JS_FreeValue(context, resolved);
-        JS_FreeValue(context, args[0]); JS_FreeValue(context, args[1]);
-        JS_FreeValue(context, link);
+    JS_FreeValue(context,links); JS_FreeValue(context,snapshot);
+    return changed;
+}
+int browser_js_tick(BrowserJS *session, uint64_t clock) {
+    if (!session) return 0;
+    if (clock > session->clock) session->clock = clock;
+    reset_budget(session,8);
+    JSValue arg = JS_NewFloat64(session->context,(double)session->clock);
+    JSValue result = call_global(session,"__pump",1,&arg);
+    if (JS_IsException(result)) {
+        reset_budget(session,8);
+        JSValue canceled = call_global(session,"__cancelAll",0,NULL);
+        JS_FreeValue(session->context,canceled);
     }
-cleanup:
-    JS_FreeValue(context, links);
-    JS_FreeValue(context, document);
-    JS_FreeValue(context, global);
-    JS_FreeContext(context);
-    JS_FreeRuntime(runtime);
+    JS_FreeValue(session->context,result); JS_FreeValue(session->context,arg);
+    drain_jobs(session);
+    // Snapshot has its own small budget; a timed-out callback cannot freeze rendering.
+    reset_budget(session,8);
+    return sync_page(session);
+}
+int browser_js_click(BrowserJS *session, size_t index, char target[BROWSER_URL_MAX]) {
+    if (!session) return 1;
+    reset_budget(session,30);
+    JSValue arg = JS_NewUint32(session->context,(uint32_t)index);
+    JSValue result = call_global(session,"__click",1,&arg);
+    int follow = 0;
+    if (!JS_IsException(result)) {
+        JSValue allowed = JS_GetPropertyStr(session->context,result,"follow");
+        JSValue href = JS_GetPropertyStr(session->context,result,"href");
+        if (target) { target[0] = 0; copy_js_string(session->context,href,target,BROWSER_URL_MAX); }
+        follow = JS_ToBool(session->context,allowed) > 0 && target && browser_valid_url(target);
+        JS_FreeValue(session->context,allowed); JS_FreeValue(session->context,href);
+    }
+    JS_FreeValue(session->context,result); JS_FreeValue(session->context,arg);
+    drain_jobs(session); reset_budget(session,8); sync_page(session);
+    return follow;
+}
+void browser_js_destroy(BrowserJS *session) {
+    if (!session) return;
+    JS_FreeValue(session->context,session->global);
+    JS_FreeContext(session->context); JS_FreeRuntime(session->runtime); free(session);
+}
+void browser_js_apply(BrowserPage *page) {
+    BrowserJS *session = browser_js_start(page);
+    browser_js_destroy(session);
 }

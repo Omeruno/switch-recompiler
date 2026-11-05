@@ -35,16 +35,6 @@ static const char browser_web_apis[] =
     "location.pathname = __urlPart(location.href, 1);\n"
     "location.search = __urlPart(location.href, 2);\n"
     "if (location.search) location.search = '?' + location.search;\n"
-    "document.querySelectorAll = function(selector) {\n"
-    "  if (selector === 'a') return __browserLinks;\n"
-    "  const prefixes = [];\n"
-    "  const pattern = /a\\[href\\^=[\"']([^\"']+)[\"']\\]/g;\n"
-    "  let match;\n"
-    "  while ((match = pattern.exec(String(selector))) !== null) prefixes.push(match[1]);\n"
-    "  return prefixes.length ? __browserLinks.filter(link => prefixes.some(prefix => link.rawHref.startsWith(prefix))) : [];\n"
-    "};\n"
-    "document.querySelector = function(selector) { return this.querySelectorAll(selector)[0] || null; };\n"
-    "document.getElementById = function() { return null; };\n"
-    "document.addEventListener = function() {};\n";
+    "";
 
 #endif
