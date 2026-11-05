@@ -150,3 +150,14 @@ They must not wait for the entire WASM/game pipeline. The current flattened-text
 renderer is an intermediate reader. See [the visual browser delivery plan](VISUAL_BROWSER_PLAN.md)
 for engine feasibility, document/layout/paint/hit testing, images/forms, direct
 touch interaction, modern CSS/gestures and separate game-integration criteria.
+
+### Native visual candidate
+
+`browser/visual` now has a pinned litehtml/Gumbo HTML/CSS renderer and SDL2 paint
+adapter with an independent `switch-visual-browser.nro`. The offline fixture uses
+external CSS, flex layout, Russian text and PNG/JPEG images. Tap hit testing,
+drag/inertial scrolling and anchored pinch zoom share the rendered document's
+coordinates; HTTPS resources use nonblocking libcurl-multi. The reader's QuickJS
+DOM is not attached to this document tree. Refer to the visual README for the
+supported painting subset and host/device verification boundary. This candidate
+does not settle final browser-engine selection or supply gameplay.

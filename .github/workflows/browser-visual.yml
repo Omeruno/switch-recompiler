@@ -1,0 +1,58 @@
+name: Switch Visual Browser
+on:
+  push:
+    paths:
+      - browser/visual/**
+      - browser/source/profile.*
+      - browser/source/ca_bundle.*
+      - browser/romfs/**
+      - .github/workflows/browser-visual.yml
+  pull_request:
+    paths:
+      - browser/visual/**
+      - browser/source/profile.*
+      - browser/source/ca_bundle.*
+      - browser/romfs/**
+      - .github/workflows/browser-visual.yml
+  workflow_dispatch:
+jobs:
+  visual-host:
+    name: HTML CSS painting and touch behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install graphics development libraries
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev libcurl4-openssl-dev
+      - name: Fetch pinned engine and build
+        run: |
+          python3 browser/visual/tools/fetch_litehtml.py browser/visual/build/litehtml
+          cmake -S browser/visual -B browser/visual/build/host -DLITEHTML_ROOT_DIR="$GITHUB_WORKSPACE/browser/visual/build/litehtml" -DCMAKE_BUILD_TYPE=Release
+          cmake --build browser/visual/build/host -j4
+          ctest --test-dir browser/visual/build/host --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-browser-preview
+          path: browser/visual/build/host/visual-preview.bmp
+          if-no-files-found: error
+  visual-switch:
+    name: Visual browser NRO (ARM64)
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install graphics dependencies
+        run: |
+          dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf switch-sdl2_image
+          if ! command -v cmake; then apt-get update && apt-get install -y --no-install-recommends cmake; fi
+      - name: Build and verify font assets
+        run: |
+          make -C browser/visual
+          python3 browser/tests/check_nro_romfs.py browser/visual/switch-visual-browser.nro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-visual-browser
+          path: |
+            browser/visual/switch-visual-browser.nro
+            browser/visual/README.md
+            browser/visual/licenses/**
+          if-no-files-found: error

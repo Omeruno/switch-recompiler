@@ -79,3 +79,15 @@ of the visual milestone. Record the actual supported web features, engine,
 reference fixtures, build results and device results. Keep unverified capabilities
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
+
+## Implemented candidate — visual 0.1.0
+
+`browser/visual` now ports pinned litehtml/Gumbo layout to SDL text/background/
+border/image drawing. It supplies an independent NRO with offline CSS fixtures,
+async HTTPS resource loading, link hit testing, touch scroll/inertia/pinch and
+controller input. Host layout/gesture tests and an actual painted-frame artifact
+are part of its CI. See its README for precise rendering limits. litehtml is
+not selected as the final full-browser/game engine; DOM/JavaScript synchronization,
+web forms, complete CSS and WebGPU remain unimplemented. This is the first
+native visual-rendering feasibility candidate, not completion of every item in
+milestone 2.
