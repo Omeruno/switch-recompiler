@@ -39,6 +39,17 @@ int main(void) {
     assert(blocked.js_ran == 0);
     assert(strcmp(blocked.title, "Old") == 0);
 
+    BrowserPage csp_external = {0};
+    strcpy(csp_external.url, "https://example.test/");
+    strcpy(csp_external.csp, "default-src 'none'; script-src 'self'");
+    const char *external_html = "<script src='/first.js'></script>"
+        "<script>document.title = 'blocked'</script>";
+    assert(browser_parse_html(&csp_external, external_html, strlen(external_html)));
+    strcpy(csp_external.scripts[0], "document.title = 'external ran'");
+    browser_js_apply(&csp_external);
+    assert(csp_external.js_ran == 1);
+    assert(strcmp(csp_external.title, "external ran") == 0);
+
     BrowserPage looping = {0};
     strcpy(looping.url, "https://example.test/");
     const char *loop_html = "<script>while(true){}</script>";

@@ -95,8 +95,8 @@ void browser_js_apply(BrowserPage *page) {
     page->js_ran = 0;
     page->js_notice[0] = 0;
     if (!page->script_count) return;
-    if (!page->inline_allowed) {
-        snprintf(page->js_notice, sizeof(page->js_notice), "Inline JS blocked by site CSP");
+    if (!page->inline_allowed && !page->external_allowed) {
+        snprintf(page->js_notice, sizeof(page->js_notice), "Scripts blocked by site CSP");
         return;
     }
 
@@ -129,6 +129,7 @@ void browser_js_apply(BrowserPage *page) {
     JS_SetPropertyStr(context, global, "window", JS_DupValue(context, global));
 
     for (size_t i = 0; i < page->script_count; ++i) {
+        if (page->script_urls[i][0] ? !page->external_allowed : !page->inline_allowed) continue;
         if (!page->scripts[i][0]) continue;
         budget.deadline = now_ms() + JS_TIME_LIMIT_MS;
         budget.checks = 0;
@@ -142,7 +143,7 @@ void browser_js_apply(BrowserPage *page) {
                 snprintf(page->js_notice, sizeof(page->js_notice), "JavaScript interrupted or threw");
             JS_FreeValue(context, exception);
             JS_FreeValue(context, result);
-            break;
+            continue;
         }
         JS_FreeValue(context, result);
         ++page->js_ran;

@@ -23,12 +23,17 @@ write asset data. Packaging now also supplies NACP metadata, forcing the asset
 header, and CI verifies the RomFS size; the graphical path must be checked on
 the target Switch again.
 
-The next block embeds QuickJS and runs bounded classic scripts on pages
-without a CSP header. Small same-origin HTTPS scripts are now downloaded and
-executed in document order. The bridge currently covers only title, body text
+The next block embeds QuickJS and runs bounded classic scripts. Small
+same-origin HTTPS scripts are now downloaded and executed in document order;
+basic CSP directives distinguish them from blocked inline scripts. The bridge
+currently covers only title, body text
 and console output. A local demo exercises this on real hardware. Modules,
 DOM APIs, WASM, graphics, audio and media remain open; this milestone
 does not imply that Keldurn can run.
+An HTTPS host probe of `https://keldurn.com/ru/` returned HTTP 200 and fetched
+all three same-origin scripts (`acquisition.js`, `mega.js`, `lang.js`) with zero
+download failures. Its `script-src 'self'` policy correctly blocks inline code.
+Execution still needs browser DOM APIs that this prototype does not provide.
 
 ## Independent-browser requirements
 

@@ -69,7 +69,7 @@ done:
 }
 
 static void fetch_scripts(BrowserPage *page) {
-    if (!page->inline_allowed) return;
+    if (!page->external_allowed) return;
     for (size_t i = 0; i < page->script_count; ++i) {
         if (!page->script_urls[i][0]) continue;
         CURLU *url = curl_url();
@@ -110,11 +110,49 @@ static void fetch_scripts(BrowserPage *page) {
     }
 }
 
+static int csp_sources(const char *csp, const char *directive) {
+    const char *section = csp;
+    while (*section) {
+        const char *end = strchr(section, ';');
+        if (!end) end = section + strlen(section);
+        const char *p = section;
+        while (p < end && isspace((unsigned char)*p)) ++p;
+        const char *name = p;
+        while (p < end && !isspace((unsigned char)*p)) ++p;
+        if ((size_t)(p - name) == strlen(directive) &&
+            strncasecmp(name, directive, (size_t)(p - name)) == 0) {
+            int permissions = 0;
+            while (p < end) {
+                while (p < end && isspace((unsigned char)*p)) ++p;
+                const char *token = p;
+                while (p < end && !isspace((unsigned char)*p)) ++p;
+                if ((size_t)(p - token) == 6 && strncasecmp(token, "'self'", 6) == 0)
+                    permissions |= 2;
+                if ((size_t)(p - token) == 15 && strncasecmp(token, "'unsafe-inline'", 15) == 0)
+                    permissions |= 1;
+                if (p - token == 1 && *token == '*') permissions |= 2;
+            }
+            return permissions;
+        }
+        section = *end ? end + 1 : end;
+    }
+    return -1;
+}
+
+static void set_script_permissions(BrowserPage *page) {
+    int permissions = csp_sources(page->csp, "script-src-elem");
+    if (permissions < 0) permissions = csp_sources(page->csp, "script-src");
+    if (permissions < 0) permissions = csp_sources(page->csp, "default-src");
+    if (permissions < 0) permissions = 3;
+    page->inline_allowed = (permissions & 1) != 0;
+    page->external_allowed = (permissions & 2) != 0;
+}
+
 static int same(const char *s, size_t n, const char *word) {
     size_t expected = strlen(word);
     if (n != expected) return 0;
     for (size_t i = 0; i < n; ++i)
-        if (tolower((unsigned char)s[i]) != (unsigned char)word[i]) return 0;
+        if (tolower((unsigned char)s[i]) != tolower((unsigned char)word[i])) return 0;
     return 1;
 }
 
@@ -290,7 +328,7 @@ int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
     page->script_fetch_failed = 0;
     memset(page->script_urls, 0, sizeof(page->script_urls));
     memset(page->scripts, 0, sizeof(page->scripts));
-    page->inline_allowed = page->csp[0] == 0;
+    set_script_permissions(page);
     extract_scripts(page, html, size);
     size_t text_used = 0, title_used = 0;
     int in_title = 0, skip = 0;

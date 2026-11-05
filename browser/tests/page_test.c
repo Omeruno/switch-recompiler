@@ -36,6 +36,11 @@ int main(void) {
     assert(strcmp(scripts.script_urls[0], "/acquisition.js") == 0);
     assert(strstr(scripts.scripts[1], "after external"));
     assert(strcmp(scripts.script_urls[2], "https://other.test/foreign.js") == 0);
+
+    BrowserPage csp = {0};
+    strcpy(csp.csp, "default-src 'none'; script-src 'self'; style-src 'self'");
+    assert(browser_parse_html(&csp, ordered, strlen(ordered)));
+    assert(!csp.inline_allowed && csp.external_allowed);
     puts("browser page parser: PASS");
     return 0;
 }

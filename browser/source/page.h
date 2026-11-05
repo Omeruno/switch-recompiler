@@ -26,6 +26,7 @@ typedef struct {
     size_t script_fetch_failed;
     char csp[512];
     int inline_allowed;
+    int external_allowed;
     size_t js_ran;
     char js_notice[192];
     long http_status;
