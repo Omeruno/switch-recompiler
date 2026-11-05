@@ -142,3 +142,11 @@ and injected allocator errors. The libnx implementation maps heap backing into
 reserved stack VA with svcMapMemory/svcUnmapMemory; ARM64 build and a new device
 run are separate gates. The 13 successful 0.1.1 device cases do not validate this
 new backend. No JS host imports or GPU implementation is supplied by this step.
+
+## Visual browser priority
+
+Website CSS/images and touchscreen interaction are required product features.
+They must not wait for the entire WASM/game pipeline. The current flattened-text
+renderer is an intermediate reader. See [the visual browser delivery plan](VISUAL_BROWSER_PLAN.md)
+for engine feasibility, document/layout/paint/hit testing, images/forms, direct
+touch interaction, modern CSS/gestures and separate game-integration criteria.
