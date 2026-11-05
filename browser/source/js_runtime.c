@@ -1,5 +1,6 @@
 #include "js_runtime.h"
 #include "js_web_apis.h"
+#include "js_intl.h"
 #include "quickjs.h"
 #include <curl/curl.h>
 #include <stdint.h>
@@ -207,6 +208,13 @@ void browser_js_apply(BrowserPage *page) {
     JS_SetPropertyStr(context, global, "__browserLinks", JS_DupValue(context, links));
     JSValue bootstrap = JS_Eval(context, browser_web_apis, strlen(browser_web_apis),
                                 "<browser-apis>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(bootstrap)) {
+        report_exception(context, page);
+        JS_FreeValue(context, bootstrap);
+        goto cleanup;
+    }
+    JS_FreeValue(context, bootstrap);
+    bootstrap = JS_Eval(context, browser_intl, strlen(browser_intl), "<intl>", JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(bootstrap)) {
         report_exception(context, page);
         JS_FreeValue(context, bootstrap);

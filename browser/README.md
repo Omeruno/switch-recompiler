@@ -40,7 +40,12 @@ the HTML language, and `navigator.language/languages` with a Russian preference.
 Anchor queries support `a` and `a[href^="prefix"]`; script changes to their
 HTTPS addresses are copied back to the browser's link list. Other selectors
 return no matches. Event listeners are placeholders and are not dispatched;
-cookies and storage are not persisted. ES modules,
+cookies and storage are not persisted. A small `Intl.DateTimeFormat` subset
+formats numeric dates, short months/weekdays and 24-hour time in Russian or
+English. Only UTC is supported. `Intl.RelativeTimeFormat` supports minutes,
+hours and days, Russian plural forms and `numeric: 'auto'`. Other Intl classes,
+timezone conversion and full locale formatting are not provided. Timers are
+not implemented; scripts using `setInterval` still stop there. ES modules,
 a real DOM, WebAssembly, WebGL,
 video and the Keldurn game are not implemented. Basic CSP script directives
 control execution. Each script has a 300 ms execution budget; the runtime

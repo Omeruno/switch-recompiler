@@ -36,7 +36,10 @@ download failures. Its `script-src 'self'` policy correctly blocks inline code.
 The navigation bridge now exposes URL parsing, query parameters, anchor-prefix
 queries, link address changes, the document language and Russian navigator
 preferences. A host probe executed two of the three landing-page scripts;
-`mega.js` stops at `ReferenceError: 'Intl' is not defined`. General DOM mutation,
+`mega.js` now passes Intl initialization using a limited ru/en UTC formatter
+and stops at `ReferenceError: 'setInterval' is not defined`. Time selectors
+also remain unsupported. The next runtime step needs a persistent JavaScript
+context and bounded timers driven by the main loop. General DOM mutation,
 events and the game engine APIs remain unimplemented.
 
 ## Independent-browser requirements

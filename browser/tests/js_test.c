@@ -70,6 +70,25 @@ int main(void) {
     assert(strcmp(navigation.links[0].url, "https://example.test/start?from=ru&utm_source=switch") == 0);
     assert(strcmp(navigation.links[1].url, "https://example.test/about") == 0);
 
+    BrowserPage intl = {0};
+    strcpy(intl.url, "https://example.test/");
+    const char *intl_html = "<script>"
+        "const r = new Intl.RelativeTimeFormat('ru-RU',{numeric:'auto'});"
+        "const expected = ['через 1 минуту','через 2 минуты','через 5 минут','через 11 минут','через 21 минуту','через 22 минуты'];"
+        "[1,2,5,11,21,22].forEach((n,i)=>{if(r.format(n,'minutes')!==expected[i])throw 'plural:'+n});"
+        "if(r.format(-2,'hour')!=='2 часа назад'||r.format(0,'day')!=='сегодня'||r.format(1,'day')!=='завтра')throw 'relative';"
+        "const d = new Intl.DateTimeFormat('ru',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'});"
+        "if(d.format(Date.UTC(2026,10,5,9,7))!=='чт 5 нояб. 09:07')throw d.format(Date.UTC(2026,10,5,9,7));"
+        "if(d.resolvedOptions().timeZone!=='UTC')throw 'timezone';"
+        "let rejected=false;try{new Intl.DateTimeFormat('ru',{timeZone:'Europe/Moscow'})}catch(e){rejected=e instanceof RangeError}"
+        "if(!rejected)throw 'unsupported timezone accepted';"
+        "if(new Intl.RelativeTimeFormat('en').format(-1,'day')!=='1 day ago')throw 'english';"
+        "document.title='Форматирование OK';</script>";
+    assert(browser_parse_html(&intl, intl_html, strlen(intl_html)));
+    browser_js_apply(&intl);
+    assert(intl.js_ran == 1);
+    assert(strcmp(intl.title, "Форматирование OK") == 0);
+
     BrowserPage looping = {0};
     strcpy(looping.url, "https://example.test/");
     const char *loop_html = "<script>while(true){}</script>";
