@@ -5,6 +5,8 @@ python3 browser/tests/inspect_wasm_test.py
 
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT HUP INT TERM
+cc -std=gnu11 -Wall -Wextra -Werror -Ibrowser/source browser/tests/text_test.c browser/source/text.c -o "$test_dir/text-test"
+"$test_dir/text-test"
 qjs_dir=browser/third_party/quickjs
 python3 browser/tools/embed_js.py browser/source/dom.js "$test_dir/dom_js.h"
 for part in quickjs dtoa libregexp libunicode cutils; do

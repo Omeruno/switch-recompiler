@@ -9,6 +9,7 @@
 #include "page.h"
 #include "js_runtime.h"
 #include "profile.h"
+#include "text.h"
 #include <sys/stat.h>
 
 #define SCREEN_W 1280
@@ -53,12 +54,13 @@ static void rect(App *app, int x, int y, int w, int h, SDL_Color color) {
 static void label(App *app, TTF_Font *font, int x, int y, const char *text,
                   SDL_Color color, int max_width) {
     if (!font || !text || !*text) return;
-    int measured = 0, bytes = 0;
-    if (TTF_MeasureUTF8(font, text, max_width, &measured, &bytes) != 0 || bytes <= 0) return;
-    if (bytes > 2047) bytes = 2047;
+    int measured = 0, characters = 0;
+    if (TTF_MeasureUTF8(font, text, max_width, &measured, &characters) != 0 || characters <= 0) return;
     char clipped[2048];
-    memcpy(clipped, text, (size_t)bytes);
-    clipped[bytes] = 0;
+    size_t bytes=browser_utf8_prefix(text,(size_t)characters,sizeof(clipped)-1);
+    if(!bytes)return;
+    memcpy(clipped,text,bytes);
+    clipped[bytes]=0;
     SDL_Surface *surface = TTF_RenderUTF8_Blended(font, clipped, color);
     if (!surface) return;
     SDL_Texture *texture = SDL_CreateTextureFromSurface(app->renderer, surface);
@@ -110,18 +112,16 @@ static void layout_text(App *app) {
         sample[end - pos] = 0;
         int extent = 0, count = 0;
         if (TTF_MeasureUTF8(app->font, sample, 1152, &extent, &count) != 0 || count <= 0)
-            count = (unsigned char)sample[0] < 0x80 ? 1 :
-                    ((unsigned char)sample[0] & 0xe0) == 0xc0 ? 2 :
-                    ((unsigned char)sample[0] & 0xf0) == 0xe0 ? 3 : 4;
-        size_t length = (size_t)count;
-        if (length > end - pos) length = end - pos;
+            count = 1;
+        size_t length = browser_utf8_prefix(sample,(size_t)count,end-pos);
+        if(!length)length=browser_utf8_prefix(sample,1,end-pos);
         if (length < end - pos) {
             size_t space = length;
             while (space > 0 && text[pos + space - 1] != ' ') --space;
             if (space > length / 2) length = space;
         }
         while (length && text[pos + length - 1] == ' ') --length;
-        if (!length) length = (size_t)count;
+        if (!length) length = browser_utf8_prefix(sample,(size_t)count,end-pos);
         add_line(app, pos, length);
         pos += length;
         while (text[pos] == ' ') ++pos;
@@ -134,7 +134,7 @@ static void render(App *app) {
     SDL_RenderClear(app->renderer);
     rect(app, 0, 0, SCREEN_W, 76, (SDL_Color){18, 29, 47, 255});
     label(app, app->heading, 30, 18, "Switch Browser", white, 400);
-    label(app, app->font, 950, 27, "Native HTTPS", accent, 290);
+    label(app, app->font, 950, 27, "Режим чтения", accent, 290);
 
     if (!app->loaded) {
         label(app, app->heading, 46, 110, "Open a page on this Switch", white, 1100);
@@ -164,13 +164,15 @@ static void render(App *app) {
         rect(app, 24, 586, 1232, 69, (SDL_Color){25, 39, 60, 255});
         if (app->page->link_count) {
             char counter[80];
-            snprintf(counter, sizeof(counter), "Элемент %u/%u",
-                     (unsigned)(app->link + 1), (unsigned)app->page->link_count);
-            label(app, app->font, 40, 592, counter, accent, 1160);
-            label(app, app->font, 40, 621, app->page->links[app->link].label, white, 1160);
+            BrowserLink *selected=&app->page->links[app->link];
+            snprintf(counter,sizeof(counter),"%s %u/%u",selected->url[0]?"Ссылка":"Кнопка",
+                     (unsigned)(app->link+1),(unsigned)app->page->link_count);
+            label(app,app->font,40,592,counter,accent,250);
+            label(app,app->font,300,592,selected->label,white,930);
+            label(app,app->font,40,621,selected->url[0]?selected->url:"A: нажать кнопку",muted,1160);
         } else label(app, app->font, 40, 605, "Нет ссылок или кнопок", muted, 1160);
         label(app, app->font, 27, 666,
-              "Up/Down: прокрутка   ZL/ZR: ссылка   A: открыть   B: назад   X: адрес   Y: обновить   +: выход",
+              "Up/Down: прокрутка   ZL/ZR: элемент   A: выбрать   B: назад   X: адрес   Y: обновить   +: выход",
               muted, 1220);
     }
     label(app, app->font, 28, 694, app->status, muted, 1200);

@@ -70,8 +70,8 @@ SHA-256, extraction date and certificate count; host tests validate it offline,
 and CI checks that the exact CA bundle and font are embedded in the NRO. The
 Switch libnx TLS backend imports PEM roots in batches of up to 16 into its context;
 its system roots may also apply. Other backends use CAINFO. Peer and hostname
-checks remain enabled, including on errors. Native certificate import requires
-a real-Switch test; host TLS tests use OpenSSL and do not validate that service.
+checks remain enabled, including on errors. The user reports the repaired native CA import no longer fails; negative TLS
+checks still use host OpenSSL and do not validate Horizon’s verification behavior.
 Each PEM IPC payload includes its final NUL byte. Batching keeps the 118 roots
 within Horizon’s limit of 71 imported PKI objects (eight objects for this bundle).
 A missing/unimportable bundle does not trigger a retry with verification off.
@@ -118,7 +118,8 @@ ES modules, standards-compliant DOM/CSS, WebAssembly, WebGL, media, WebRTC,
 IndexedDB, resource caching and the Keldurn game are not implemented. A host probe of the Russian
 landing page executed all three scripts and pumped its interval without an
 exception. This confirms the page reader APIs; it does not verify gameplay or
-Switch performance. The graphics path still needs a hardware check.
+Switch performance. The user has observed the graphical text/link reader on the console; full site
+rendering and game graphics remain absent.
 
 The older WebApplet NRO requested
 a system update on the user's Switch before opening any URL and was retired.
@@ -149,5 +150,12 @@ Version 0.3.1 repairs the native CA importer after a device returned SSL result
 0x0001B47B. The old code passed a PEM length excluding NUL and attempted 118
 individual imports despite the SDK's 71-object limit. The corrected path uses
 eight NUL-terminated batches and reports the failing root range/object/native
-result. Mock tests enforce those IPC constraints; native confirmation remains
-pending.
+result. Mock and cryptographic payload tests enforce those IPC constraints. The user
+subsequently reported the CA failure is gone on the console.
+
+Version 0.3.2 fixes clipping/wrapping units: SDL_ttf MeasureUTF8 reports characters,
+so the renderer now converts that count to UTF-8 byte boundaries before copying.
+Mixed Cyrillic/Latin/emoji strings are covered by host tests. Unsupported site
+icon fonts and missing glyphs still require font/resource rendering work; this
+reader does not reproduce website CSS, images or graphical layout. The selected
+action now displays its link/button type, label and target address.

@@ -1,0 +1,40 @@
+{
+  "source": "user-provided engine-report.txt",
+  "source_sha256": "b974fb598df4770b42ef91232719ae1ecc4a03c78bb4096e1bffbbddb4ed8301",
+  "probe_version": "0.1.1",
+  "runtime_commit": "3a6fb9a8e7871f20471c48592390b9d2342287b1",
+  "observed_environment": {
+    "applet_type_numeric": 0,
+    "main_thread_stack_bytes": 1048576
+  },
+  "distinct_cases_passed": 13,
+  "case_pass_counts": {
+    "native_tls_roundtrip": 1,
+    "scalar": 1,
+    "multivalue": 1,
+    "bounds_trap": 1,
+    "bulk_memory": 1,
+    "extended_const": 1,
+    "references": 1,
+    "legacy_exception": 1,
+    "shared_growth": 1,
+    "atomics": 1,
+    "atomic_wait": 1,
+    "native_condition_timeout": 1,
+    "two_native_threads_shared_wasm_atomics": 2
+  },
+  "failure_rows_in_new_session": [],
+  "summary_row_present": false,
+  "timing_limit": "Reported case durations include console frame updates and SD checkpoints; not interpreter benchmarks or FPS estimates.",
+  "client_load_only_observed": false,
+  "four_gib_va_reservation_observed": false,
+  "not_established": [
+    "root cause of the original crash",
+    "4 GiB physical commit/growth",
+    "game WASM instantiation",
+    "game performance",
+    "WebGPU rendering",
+    "JS/WASM bridge"
+  ],
+  "browser_feedback": "User reports CA error disappeared and text/link selector are visible. Full site CSS/images/icons are not rendered; no HTTP status captured."
+}

@@ -121,3 +121,14 @@ idle menu with per-case operation checkpoints and explicit local-exec TLS.
 Browser 0.3.1 uses NUL-terminated multi-certificate batches instead of exceeding
 Horizon's 71 PKI-object limit. Host tests and compilation cannot substitute for
 retesting these changes on the user's console.
+
+## Confirmed device baseline — 2026-11-05
+
+The 0.1.1 device report now confirms all 13 distinct small execution cases;
+the shared WASM counter with two native threads passed twice. The browser's CA
+error is gone according to the user, and its graphical text/link selector is
+visible. The graphics are a reader UI, not site CSS/image/WebGPU rendering.
+The report does not cover 4 GiB reservation/commit, full game instantiation,
+GPU execution or performance. Checkpoint I/O/frame updates contaminate timings.
+Browser 0.3.2 corrects a separate SDL_ttf bug: MeasureUTF8 returns a character
+count, which was previously treated as bytes and could split Cyrillic strings.

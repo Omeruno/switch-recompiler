@@ -108,3 +108,18 @@ The Switch toolchain now explicitly uses the SDK's local-exec TLS model. These
 changes improve diagnosis and remove an unsafe startup sequence; they do not
 establish that the device crash is resolved. The saved report's final BEGIN
 line identifies the operation to investigate if the process still terminates.
+
+## Observed device result — 2026-11-05
+
+The user's 0.1.1 report contains PASS records for all 13 distinct device cases,
+including native TLS, shared-memory growth, legacy exceptions, externref tables,
+the bounds trap and the two-thread WASM atomic counter. The two-thread case
+passed twice. There is no FAIL or suite SUMMARY in that session; these are
+individual case records. See device-evidence-2026-11-05.json for the summarized
+evidence and source digest. The original crash was not reproduced in this
+report; its exact cause remains unproven.
+
+The displayed tens-of-milliseconds durations include synchronous SD checkpoints
+and console frame updates. They must not be interpreted as raw WASM execution
+times. Neither the 4 GiB VA reservation nor real client load-only appears in
+this device report, and no game execution or GPU result can be inferred.
