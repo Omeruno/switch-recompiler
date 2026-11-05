@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #define HTML_LIMIT (2u * 1024u * 1024u)
 
@@ -30,6 +31,83 @@ static size_t receive_body(char *data, size_t unit, size_t count, void *context)
     body->size += bytes;
     body->data[body->size] = 0;
     return bytes;
+}
+
+typedef struct { char *data; size_t size; int overflow; } ScriptBody;
+
+static size_t receive_script(char *data, size_t unit, size_t count, void *context) {
+    ScriptBody *body = (ScriptBody *)context;
+    if (unit && count > SIZE_MAX / unit) return 0;
+    size_t bytes = unit * count;
+    if (bytes >= BROWSER_SCRIPT_BYTES - body->size) { body->overflow = 1; return 0; }
+    memcpy(body->data + body->size, data, bytes);
+    body->size += bytes;
+    body->data[body->size] = 0;
+    return bytes;
+}
+
+static int same_origin(const char *base_url, const char *candidate_url) {
+    CURLU *base = curl_url(), *candidate = curl_url();
+    char *base_host = NULL, *host = NULL, *base_port = NULL, *port = NULL;
+    char *user = NULL, *password = NULL;
+    int result = 0;
+    if (!base || !candidate || !browser_valid_url(candidate_url) ||
+        curl_url_set(base, CURLUPART_URL, base_url, 0) != CURLUE_OK ||
+        curl_url_set(candidate, CURLUPART_URL, candidate_url, 0) != CURLUE_OK ||
+        curl_url_get(base, CURLUPART_HOST, &base_host, 0) != CURLUE_OK ||
+        curl_url_get(candidate, CURLUPART_HOST, &host, 0) != CURLUE_OK ||
+        curl_url_get(base, CURLUPART_PORT, &base_port, CURLU_DEFAULT_PORT) != CURLUE_OK ||
+        curl_url_get(candidate, CURLUPART_PORT, &port, CURLU_DEFAULT_PORT) != CURLUE_OK) goto done;
+    if (curl_url_get(candidate, CURLUPART_USER, &user, 0) == CURLUE_OK ||
+        curl_url_get(candidate, CURLUPART_PASSWORD, &password, 0) == CURLUE_OK) goto done;
+    result = strcasecmp(base_host, host) == 0 && strcmp(base_port, port) == 0;
+done:
+    curl_free(base_host); curl_free(host); curl_free(base_port); curl_free(port);
+    curl_free(user); curl_free(password);
+    curl_url_cleanup(base); curl_url_cleanup(candidate);
+    return result;
+}
+
+static void fetch_scripts(BrowserPage *page) {
+    if (!page->inline_allowed) return;
+    for (size_t i = 0; i < page->script_count; ++i) {
+        if (!page->script_urls[i][0]) continue;
+        CURLU *url = curl_url();
+        char *resolved = NULL;
+        int valid = url && curl_url_set(url, CURLUPART_URL, page->url, 0) == CURLUE_OK &&
+                    curl_url_set(url, CURLUPART_URL, page->script_urls[i], 0) == CURLUE_OK &&
+                    curl_url_get(url, CURLUPART_URL, &resolved, 0) == CURLUE_OK &&
+                    same_origin(page->url, resolved);
+        if (!valid) { ++page->script_fetch_failed; curl_free(resolved); curl_url_cleanup(url); continue; }
+        CURL *curl = curl_easy_init();
+        ScriptBody body = {page->scripts[i], 0, 0};
+        long status = 0;
+        if (curl) {
+            curl_easy_setopt(curl, CURLOPT_URL, resolved);
+#if LIBCURL_VERSION_NUM >= 0x075500
+            curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
+#else
+            curl_easy_setopt(curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+#endif
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+            curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receive_script);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+            CURLcode result = curl_easy_perform(curl);
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+            if (result != CURLE_OK || body.overflow || status != 200 || !body.size) {
+                page->scripts[i][0] = 0;
+                ++page->script_fetch_failed;
+            }
+            curl_easy_cleanup(curl);
+        } else ++page->script_fetch_failed;
+        curl_free(resolved);
+        curl_url_cleanup(url);
+    }
 }
 
 static int same(const char *s, size_t n, const char *word) {
@@ -185,15 +263,19 @@ static void extract_scripts(BrowserPage *page, const char *html, size_t size) {
         while (close + 8 < size &&
                !(html[close] == '<' && prefix(html + close + 1, size - close - 1, "/script"))) ++close;
         if (close + 8 >= size) break;
-        char type[80], src[80];
+        char type[80], src[BROWSER_URL_MAX];
         int has_type = attribute(html + i + 7, tag_end - i - 7, "type", type, sizeof(type));
         int has_src = attribute(html + i + 7, tag_end - i - 7, "src", src, sizeof(src));
         size_t length = close - tag_end - 1;
-        if (!has_src && (!has_type || same(type, strlen(type), "text/javascript") ||
-                         same(type, strlen(type), "application/javascript")) &&
-            length > 0 && length < BROWSER_SCRIPT_BYTES) {
-            memcpy(page->scripts[page->script_count], html + tag_end + 1, length);
-            page->scripts[page->script_count++][length] = 0;
+        if ((!has_type || same(type, strlen(type), "text/javascript") ||
+                          same(type, strlen(type), "application/javascript")) &&
+            ((has_src && src[0]) || (!has_src && length > 0 && length < BROWSER_SCRIPT_BYTES))) {
+            size_t slot = page->script_count++;
+            if (has_src) snprintf(page->script_urls[slot], sizeof(page->script_urls[slot]), "%s", src);
+            else {
+                memcpy(page->scripts[slot], html + tag_end + 1, length);
+                page->scripts[slot][length] = 0;
+            }
         }
         i = close + 8;
     }
@@ -205,6 +287,9 @@ int browser_parse_html(BrowserPage *page, const char *html, size_t size) {
     page->title[0] = 0;
     page->link_count = 0;
     page->script_count = 0;
+    page->script_fetch_failed = 0;
+    memset(page->script_urls, 0, sizeof(page->script_urls));
+    memset(page->scripts, 0, sizeof(page->scripts));
     page->inline_allowed = page->csp[0] == 0;
     extract_scripts(page, html, size);
     size_t text_used = 0, title_used = 0;
@@ -300,6 +385,7 @@ int browser_fetch(BrowserPage *page, const char *url) {
         snprintf(page->error, sizeof(page->error), "HTTP %ld", page->http_status);
     } else {
         browser_parse_html(page, body.data, body.size);
+        fetch_scripts(page);
     }
     curl_easy_cleanup(curl);
     free(body.data);

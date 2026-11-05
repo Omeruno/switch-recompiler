@@ -24,6 +24,18 @@ int main(void) {
     assert(page.script_count == 1);
     assert(page.link_count == 1);
     assert(strcmp(page.links[0].url, "https://keldurn.com/play") == 0);
+
+    BrowserPage scripts = {0};
+    strcpy(scripts.url, "https://keldurn.com/ru/");
+    const char *ordered = "<script src='/acquisition.js'></script>"
+        "<script>document.title='after external'</script>"
+        "<script type='module' src='/module.js'></script>"
+        "<script src='https://other.test/foreign.js'></script>";
+    assert(browser_parse_html(&scripts, ordered, strlen(ordered)));
+    assert(scripts.script_count == 3);
+    assert(strcmp(scripts.script_urls[0], "/acquisition.js") == 0);
+    assert(strstr(scripts.scripts[1], "after external"));
+    assert(strcmp(scripts.script_urls[2], "https://other.test/foreign.js") == 0);
     puts("browser page parser: PASS");
     return 0;
 }

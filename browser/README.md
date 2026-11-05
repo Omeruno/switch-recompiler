@@ -2,7 +2,8 @@
 
 This NRO makes direct HTTPS requests with libcurl/libnx and draws a bounded
 page view with SDL2 and DejaVu Sans. A bounded QuickJS runtime runs inline
-classic scripts when the page has no CSP header. It never calls Nintendo's
+classic scripts and small same-origin HTTPS script files when the page has no
+CSP header. It never calls Nintendo's
 WebApplet. It is the networking, navigation, Unicode and JavaScript foundation
 for a browser that runs on the Switch itself.
 The x86 runtime and main NRO are untouched. All work stays on
@@ -29,9 +30,11 @@ first real-Switch test on firmware 21.1.0.
 
 ## Current limit
 
-This build extracts text and links from HTML and runs only bounded inline
-classic JavaScript. It exposes `document.title`, `document.body.textContent`
-and `console.log`. External scripts, ES modules, a real DOM, WebAssembly, WebGL,
+This build extracts text and links from HTML and runs bounded classic JavaScript.
+It fetches up to eight same-origin HTTPS scripts in document order, with a
+16 KiB limit per script, no redirects and a 10-second timeout. It exposes
+`document.title`, `document.body.textContent` and `console.log`. ES modules,
+a real DOM, WebAssembly, WebGL,
 video and the Keldurn game are not implemented. A CSP header conservatively
 blocks inline execution. Each script has a 300 ms execution budget; the runtime
 has a 16 MiB memory limit. The older WebApplet NRO requested

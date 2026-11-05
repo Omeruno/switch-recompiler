@@ -178,12 +178,14 @@ static void load_page(App *app, const char *url) {
     int ok = browser_fetch(app->page, url);
     if (ok) browser_js_apply(app->page);
     if (ok && app->page->js_notice[0])
-        snprintf(app->status, sizeof(app->status), "JS %u/%u: %.125s",
+        snprintf(app->status, sizeof(app->status), "JS %u/%u | download errors %u: %.100s",
                  (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
+                 (unsigned)app->page->script_fetch_failed,
                  app->page->js_notice);
     else if (ok)
-        snprintf(app->status, sizeof(app->status), "HTTPS OK | JS %u/%u",
-                 (unsigned)app->page->js_ran, (unsigned)app->page->script_count);
+        snprintf(app->status, sizeof(app->status), "HTTPS OK | JS %u/%u | download errors %u",
+                 (unsigned)app->page->js_ran, (unsigned)app->page->script_count,
+                 (unsigned)app->page->script_fetch_failed);
     else snprintf(app->status, sizeof(app->status), "%s", app->page->error);
     app->link = 0;
     layout_text(app);
@@ -334,7 +336,7 @@ int main(void) {
             if (pressed & HidNpadButton_Down) { app->selection = (app->selection + 1) % 4; dirty = true; }
             if (pressed & HidNpadButton_A) {
                 const char *next = app->selection == 0 ? "https://keldurn.com/ru/" :
-                                   app->selection == 1 ? "https://play.keldurn.com/" : app->address;
+                                   app->selection == 1 ? "https://keldurn.com/play" : app->address;
                 bool accepted = app->selection != 2 || enter_url(app->address);
                 if (app->selection == 3) load_demo(app);
                 else if (accepted && app->network_ready) load_page(app, next);

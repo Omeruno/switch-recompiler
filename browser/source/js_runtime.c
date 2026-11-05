@@ -129,10 +129,12 @@ void browser_js_apply(BrowserPage *page) {
     JS_SetPropertyStr(context, global, "window", JS_DupValue(context, global));
 
     for (size_t i = 0; i < page->script_count; ++i) {
+        if (!page->scripts[i][0]) continue;
         budget.deadline = now_ms() + JS_TIME_LIMIT_MS;
         budget.checks = 0;
         JSValue result = JS_Eval(context, page->scripts[i], strlen(page->scripts[i]),
-                                 "<inline>", JS_EVAL_TYPE_GLOBAL);
+                                 page->script_urls[i][0] ? page->script_urls[i] : "<inline>",
+                                 JS_EVAL_TYPE_GLOBAL);
         if (JS_IsException(result)) {
             JSValue exception = JS_GetException(context);
             copy_js_string(context, exception, page->js_notice, sizeof(page->js_notice));

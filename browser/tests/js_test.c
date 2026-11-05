@@ -21,6 +21,16 @@ int main(void) {
     assert(strcmp(page.text, "Привет, Switch") == 0);
     assert(strcmp(page.js_notice, "script ran") == 0);
 
+    BrowserPage ordered = {0};
+    strcpy(ordered.url, "https://example.test/");
+    const char *ordered_html = "<script src='/first.js'></script>"
+        "<script>document.title += ' two'</script>";
+    assert(browser_parse_html(&ordered, ordered_html, strlen(ordered_html)));
+    strcpy(ordered.scripts[0], "document.title = 'one'"); // stand-in for fetched HTTPS script
+    browser_js_apply(&ordered);
+    assert(ordered.js_ran == 2);
+    assert(strcmp(ordered.title, "one two") == 0);
+
     BrowserPage blocked = {0};
     strcpy(blocked.url, "https://example.test/");
     strcpy(blocked.csp, "script-src 'self'");
