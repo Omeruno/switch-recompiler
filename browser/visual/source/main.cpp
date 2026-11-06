@@ -223,7 +223,26 @@ struct Browser {
             built_revision = resources.revision;
         }
     }
+    void apply_script_scroll() {
+        if (container.scroll_requested) {
+            container.scroll_requested = false;
+            gestures.stop_inertia();
+            view.x = container.scroll_x;
+            view.y = container.scroll_y;
+            // Geometry reads may already have flushed a larger/smaller document.
+            if (document) {
+                view.content_width =
+                    std::max(float(container.viewport_width), float(document->width()));
+                view.content_height =
+                    std::max(container.viewport_height, float(document->height()));
+            }
+            view.clamp();
+            container.scroll_x = view.x;
+            container.scroll_y = view.y;
+        }
+    }
     bool apply_script_navigation() {
+        apply_script_scroll();
         if (!scripts)
             return false;
         auto form = scripts->submission();
@@ -249,6 +268,7 @@ struct Browser {
         return false;
     }
     void pump() {
+        apply_script_scroll();
         if (container.prune_focus())
             rebuild = true;
         container.scroll_x = view.x;
@@ -725,7 +745,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.7.1 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.8.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -835,7 +855,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.7.1");
+    visual::diagnostic("boot", "0.8.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));

@@ -107,6 +107,19 @@ int main(int argc, char **argv) {
             "failure');},0);setTimeout(()=>trace.push('survived'),0);");
         js.poll(start + 600);
         run("if(trace[0]!=='survived')throw Error('timer failure stopped queue');");
+        // A yielded rAF microtask checkpoint must finish before resize delivery.
+        run("globalThis.frameJobs=0;globalThis.observerCalls=0;globalThis.premature=false;"
+            "globalThis.checkpointObserver=new "
+            "ResizeObserver(()=>{observerCalls++;premature=frameJobs!==200;});checkpointObserver."
+            "observe(document.getElementById('box'));requestAnimationFrame(()=>{function "
+            "chain(){if(++frameJobs<200)queueMicrotask(chain);}queueMicrotask(chain);});");
+        js.render_frame(start + 700);
+        run("if(observerCalls)throw Error('observer jumped unfinished frame checkpoint');");
+        for (int i = 0; i < 10; i++)
+            js.poll(start + 710 + i);
+        js.render_frame(start + 740);
+        run("if(frameJobs!==200||observerCalls!==1||premature)throw Error('observer checkpoint "
+            "continuation');checkpointObserver.disconnect();");
     }
     SDL_DestroyRenderer(renderer);
     SDL_FreeSurface(surface);

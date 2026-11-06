@@ -55,7 +55,7 @@ index 365453a..3f59db1 100644
          bool is_text() const override
          {
 diff --git a/include/litehtml/element.h b/include/litehtml/element.h
-index ca9fc38..b2258a5 100644
+index ca9fc38..5f2e4a3 100644
 --- a/include/litehtml/element.h
 +++ b/include/litehtml/element.h
 @@ -45,6 +45,8 @@ namespace litehtml
@@ -67,6 +67,22 @@ index ca9fc38..b2258a5 100644
  
          const css_properties& css() const;
          css_properties&       css();
+@@ -244,11 +246,12 @@ namespace litehtml
+ 
+     inline std::shared_ptr<render_item> element::get_render_item()
+     {
+-        if(m_renders.empty())
++        while(!m_renders.empty())
+         {
+-            return nullptr;
++            if(auto ri = m_renders.front().lock()) return ri;
++            m_renders.pop_front();
+         }
+-        return m_renders.front().lock();
++        return nullptr;
+     }
+ } // namespace litehtml
+ 
 diff --git a/include/litehtml/flex_line.h b/include/litehtml/flex_line.h
 index 8ffa194..bf042c5 100644
 --- a/include/litehtml/flex_line.h
@@ -227,6 +243,20 @@ index 315749a..eb6eaf7 100644
      }
  
      void document::dump(dumper& cout)
+diff --git a/src/element.cpp b/src/element.cpp
+index db445a9..e278417 100644
+--- a/src/element.cpp
++++ b/src/element.cpp
+@@ -193,6 +193,9 @@ namespace litehtml
+ 
+     void element::add_render(const std::shared_ptr<render_item>& ri)
+     {
++        // Native DOM restyling replaces the render tree. Do not retain stale
++        // weak slots across refreshes or return an expired first renderer.
++        m_renders.remove_if([](const std::weak_ptr<render_item>& old) { return old.expired(); });
+         m_renders.push_back(ri);
+     }
+ 
 diff --git a/src/flex_line.cpp b/src/flex_line.cpp
 index b8511c2..2ac16eb 100644
 --- a/src/flex_line.cpp

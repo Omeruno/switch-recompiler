@@ -1,0 +1,3 @@
+Chromium 151.0.7922.34
+SHA256 d5c15a7629f62c8b8b236ccebdbc01a137c0c969dc71250a2bed9bfecbd3a316
+entry-descriptors|resize-boxes|resize-lifecycle|intersection-thresholds|root-clipping|root-margins|scroll-visibility|fixed-geometry|rect-types|media-types|media-resize-changes

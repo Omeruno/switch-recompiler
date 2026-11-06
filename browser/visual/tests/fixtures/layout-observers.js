@@ -1,0 +1,54 @@
+// Shared behavioral fixture: native retained layout and Chromium, no service code.
+(async()=>{
+  const check=(ok,label)=>{if(!ok)throw Error(label);},wait=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(resolve,0))));
+  for(const [ctor,property] of [[ResizeObserverEntry,'contentRect'],[ResizeObserverSize,'inlineSize'],[IntersectionObserverEntry,'isIntersecting']]){
+    const descriptor=Object.getOwnPropertyDescriptor(ctor.prototype,property);check(descriptor&&typeof descriptor.get==='function','observer prototype feature detection');let invalid=false;try{descriptor.get.call({});}catch(e){invalid=e instanceof TypeError;}check(invalid,'observer entry receiver');
+  }
+  const stage=document.createElement('div');stage.id='observer-stage';
+  stage.style.cssText='position:relative;width:600px;height:2400px;margin:0;padding:0;';
+  document.body.style.margin='0';
+  stage.innerHTML='<div id="observed" style="position:absolute;left:20px;top:40px;width:100px;height:60px;padding:10px;border:2px solid black;box-sizing:content-box;display:block"></div><div id="clip-root" style="position:absolute;left:20px;top:200px;width:200px;height:100px;overflow:hidden;border:4px solid black"><div id="clipped" style="position:absolute;left:0;top:50px;width:100px;height:100px"></div></div><div id="far-target" style="position:absolute;left:0;top:900px;width:100px;height:100px"></div>';
+  document.body.appendChild(stage);
+  const target=document.getElementById('observed'),a=[],b=[],phases=[];
+  let ro;ro=new ResizeObserver(function(entries,observer){check(this===ro&&observer===ro,'resize receiver');check(entries.length===1,'resize batch');const e=entries[0];check(e instanceof ResizeObserverEntry&&e.target===target&&e.contentRect instanceof DOMRectReadOnly,'resize entry');a.push(e);phases.push('resize');});
+  const border=new ResizeObserver(entries=>b.push(entries[0]));
+  requestAnimationFrame(()=>phases.push('frame'));ro.observe(target);border.observe(target,{box:'border-box'});
+  check(!a.length&&!b.length,'resize observe must be asynchronous');await wait();
+  check(a.length===1&&b.length===1&&phases[0]==='frame','initial resize/order '+a.length+'/'+b.length+'/'+phases.join(','));
+  check(a[0].contentRect.width===100&&a[0].contentRect.height===60&&a[0].contentRect.x===10,'content geometry');
+  check(a[0].contentBoxSize[0].inlineSize===100&&a[0].borderBoxSize[0].inlineSize===124&&target.getBoundingClientRect().width===124,'border geometry');
+  target.style.padding='20px';await wait();check(a.length===1&&b.length===2&&b[1].borderBoxSize[0].inlineSize===144,'selected box detection '+a.length+'/'+b.length+'/'+b[b.length-1]?.borderBoxSize[0].inlineSize);
+  target.style.width='140px';await wait();check(a.length===2&&b.length===3,'resize change');
+  ro.unobserve(target);target.style.width='150px';await wait();check(a.length===2&&b.length===4,'unobserve');
+  ro.observe(target);await wait();check(a.length===3&&a[2].contentRect.width===150,'reobserve');
+  target.style.display='none';await wait();check(a[a.length-1].contentRect.width===0&&b[b.length-1].borderBoxSize[0].inlineSize===0,'hidden size');
+  target.style.display='block';await wait();check(a[a.length-1].contentRect.width===150,'shown size');
+  target.remove();await wait();check(a[a.length-1].contentRect.width===0,'detached size');stage.appendChild(target);await wait();check(a[a.length-1].contentRect.width===150,'reconnected size');
+  ro.disconnect();border.disconnect();const count=a.length;target.style.width='160px';await wait();check(a.length===count,'disconnect');
+  const clip=document.getElementById('clip-root'),child=document.getElementById('clipped'),intersections=[];
+  let io;io=new IntersectionObserver(function(entries,observer){check(this===io&&observer===io,'intersection receiver');for(const e of entries){check(e instanceof IntersectionObserverEntry&&e.boundingClientRect instanceof DOMRectReadOnly&&Number.isFinite(e.time),'intersection entry');intersections.push(e);}},{root:clip,threshold:[1,.5,0,.5]});
+  check(io.root===clip&&io.rootMargin==='0px 0px 0px 0px'&&io.thresholds.join(',')==='0,0.5,0.5,1','intersection configuration');
+  io.observe(child);check(!intersections.length,'intersection observe synchronous');await wait();
+  check(intersections.length===1&&intersections[0].isIntersecting&&intersections[0].intersectionRatio===.5,'root clipping');
+  child.style.top='60px';await wait();check(intersections.length===2&&Math.abs(intersections[1].intersectionRatio-.4)<1e-6,'down threshold');
+  child.style.top='40px';await wait();check(intersections.length===3&&Math.abs(intersections[2].intersectionRatio-.6)<1e-6,'up threshold');
+  child.style.top='30px';await wait();check(intersections.length===3,'no crossing');
+  child.style.top='100px';await wait();check(intersections[intersections.length-1].isIntersecting&&intersections[intersections.length-1].intersectionRatio===0,'edge contact');
+  child.style.top='101px';await wait();check(!intersections[intersections.length-1].isIntersecting,'outside root');io.disconnect();
+  child.style.top='110px';const margins=[];
+  const marginObserver=new IntersectionObserver(entries=>margins.push(entries[0]),{root:clip,rootMargin:'20px 0px'});marginObserver.observe(child);await wait();
+  check(margins.length===1&&margins[0].isIntersecting&&Math.abs(margins[0].intersectionRatio-.1)<1e-6&&margins[0].rootBounds.height===140,'pixel root margin');marginObserver.disconnect();
+  child.style.top='50px';const ancestorClips=[];const clipObserver=new IntersectionObserver(entries=>ancestorClips.push(entries[0]));clipObserver.observe(child);await wait();check(ancestorClips.length===1&&ancestorClips[0].intersectionRatio===.5,'ancestor overflow clipping');clipObserver.disconnect();
+  const far=document.getElementById('far-target'),visible=[];
+  const viewportObserver=new IntersectionObserver(entries=>visible.push(entries[0].isIntersecting));viewportObserver.observe(far);await wait();check(visible.join(',')==='false','initial viewport visibility');
+  scrollTo({top:600,left:0,behavior:'instant'});await wait();check(scrollY===600&&pageYOffset===600&&visible.join(',')==='false,true','scroll visibility');
+  scrollBy(0,-600);await wait();check(scrollY===0&&visible.join(',')==='false,true,false','relative scroll visibility');viewportObserver.disconnect();
+  const fixed=document.createElement('div');fixed.style.cssText='position:fixed;left:12px;top:30px;width:20px;height:20px';document.body.appendChild(fixed);await wait();
+  check(fixed.getBoundingClientRect().top===30,'fixed initial geometry');scrollTo(0,100);await wait();check(fixed.getBoundingClientRect().top===30,'fixed scroll geometry');scrollTo(0,0);fixed.remove();await wait();
+  const rect=new DOMRect(10,20,-5,-8);check(rect.left===5&&rect.top===12&&rect.toJSON().right===10,'DOMRect signed edges');rect.width=7;check(rect.right===17&&DOMRectReadOnly.fromRect({width:3}).width===3,'DOMRect construction');
+  globalThis.mediaChanges=[];globalThis.resizeEvents=0;globalThis.scrollEvents=0;
+  globalThis.fixtureMedia=matchMedia('(min-width: 900px)');check(fixtureMedia instanceof MediaQueryList&&fixtureMedia.matches,'media interface');
+  fixtureMedia.onchange=e=>{check(e instanceof MediaQueryListEvent&&e.media===fixtureMedia.media,'media event');mediaChanges.push(e.matches);};
+  addEventListener('resize',()=>resizeEvents++);addEventListener('scroll',()=>scrollEvents++);
+  globalThis.layoutFixtureResult='entry-descriptors|resize-boxes|resize-lifecycle|intersection-thresholds|root-clipping|root-margins|scroll-visibility|fixed-geometry|rect-types|media-types';
+})().catch(error=>{globalThis.layoutFixtureError=String(error);});

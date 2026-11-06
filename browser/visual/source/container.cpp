@@ -54,6 +54,7 @@ class SourceElement : public litehtml::html_tag {
 };
 } // namespace
 void Container::reset() {
+    scroll_requested = false;
     style_passes = layout_passes = 0;
     focus({});
     for (auto &kv : images)

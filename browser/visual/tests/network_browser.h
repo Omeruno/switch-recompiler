@@ -80,6 +80,25 @@ void browser_network_checks(Browser &app, const std::string &base) {
           "task mutations not coalesced");
     check(app.document == doc && field->value() == "Сохранённый ввод",
           "late updates replaced DOM/input");
+    eval("const "
+         "tall=document.createElement('div');tall.style.height='1800px';tall.style.width='100px';"
+         "document.body.appendChild(tall);globalThis.browserResize=0;new "
+         "ResizeObserver(()=>browserResize++).observe(tall);");
+    for (int i = 0; i < 12; i++) {
+        app.pump();
+        SDL_Delay(2);
+    }
+    eval("if(!browserResize)throw Error('browser resize integration');scrollTo(0,80);");
+    app.pump();
+    check(app.view.y == 80 && app.container.scroll_y == 80,
+          "script scroll did not reach native view");
+    eval("scrollBy(0,100);");
+    app.pump();
+    check(app.view.y == 180, "relative script scroll did not reach view");
+    eval("scrollTo(0,0);new "
+         "ResizeObserver(()=>localStorage.setItem('layout_leak','resize')).observe(tall);new "
+         "IntersectionObserver(()=>localStorage.setItem('layout_leak','intersection')).observe("
+         "tall);");
     eval("setTimeout(()=>localStorage.setItem('old_callback','timer'),16);fetch('/"
          "loop-image2.png?cancel=1').then(()=>localStorage.setItem('old_callback','fetch'));");
     app.resources.pump(); // Start the delayed transfer, then cancel the old realm/page.
@@ -91,6 +110,8 @@ void browser_network_checks(Browser &app, const std::string &base) {
     }
     check(!browser_storage_get(base.c_str(), 0, "old_callback"),
           "old realm callback survived navigation");
+    check(!browser_storage_get(base.c_str(), 0, "layout_leak"),
+          "layout observer survived navigation");
     puts("PASS delayed async/defer/classic scripts, timer during load, DCL/load order, JSON "
          "without layout, image-only relayout, late CSS and coalesced DOM changes");
 }

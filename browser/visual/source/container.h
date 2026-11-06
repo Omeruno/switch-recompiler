@@ -50,6 +50,7 @@ class Container final : public litehtml::document_container {
     int viewport_width = 1280;
     float viewport_height = 636;
     float zoom = 1, scroll_x = 0, scroll_y = 0;
+    bool scroll_requested = false;
     std::string page_url = "demo:/index.html", form_notice;
     std::string base = "demo:/index.html", caption, anchor, cursor;
     unsigned unsupported = 0, painted_text = 0, painted_images = 0, painted_gradients = 0;

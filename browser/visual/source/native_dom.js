@@ -130,7 +130,7 @@
     querySelectorAll(s){return query(this._key,s);}querySelector(s){return this.querySelectorAll(s)[0]||null;}
     matches(s){return selectorParts(s).some(p=>bridge('matches',this._key,p));}
     closest(s){for(let n=this;n&&n.nodeType===1;n=n.parentNode)if(n.matches(s))return n;return null;}
-    getBoundingClientRect(){return bridge('rect',this._key);}
+    getBoundingClientRect(){return DOMRect.fromRect(bridge('rect',this._key));}
     get offsetWidth(){return this.getBoundingClientRect().width;}get offsetHeight(){return this.getBoundingClientRect().height;}
     focus(){setFocus(this);}
     blur(){if(currentFocus()===this)setFocus(null);}
@@ -237,7 +237,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.7.1'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.8.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -343,6 +343,126 @@
       state.records.push(record);recordCosts.set(record,cost);observerBytes+=cost;++observerRecords;scheduleObservers(observer);
     }
   }
+  // Geometry comes from the retained renderer; no parallel JS layout tree.
+  const rectData=new WeakMap();
+  class DOMRectReadOnly {
+    constructor(x=0,y=0,width=0,height=0){rectData.set(this,{x:Number(x),y:Number(y),width:Number(width),height:Number(height)});}
+    get x(){return rectData.get(this).x;}get y(){return rectData.get(this).y;}
+    get width(){return rectData.get(this).width;}get height(){return rectData.get(this).height;}
+    get top(){return Math.min(this.y,this.y+this.height);}get left(){return Math.min(this.x,this.x+this.width);}
+    get bottom(){return Math.max(this.y,this.y+this.height);}get right(){return Math.max(this.x,this.x+this.width);}
+    toJSON(){return {x:this.x,y:this.y,width:this.width,height:this.height,top:this.top,right:this.right,bottom:this.bottom,left:this.left};}
+    static fromRect(r={}){return new DOMRectReadOnly(r.x,r.y,r.width,r.height);}
+  }
+  class DOMRect extends DOMRectReadOnly {
+    get x(){return super.x;}set x(v){rectData.get(this).x=Number(v);}get y(){return super.y;}set y(v){rectData.get(this).y=Number(v);}
+    get width(){return super.width;}set width(v){rectData.get(this).width=Number(v);}get height(){return super.height;}set height(v){rectData.get(this).height=Number(v);}
+    static fromRect(r={}){return new DOMRect(r.x,r.y,r.width,r.height);}
+  }
+  const readonlyRect=r=>new DOMRectReadOnly(r.x,r.y,r.width,r.height);
+  const geometry=target=>bridge('geometry',target._key);
+  const roStates=new WeakMap(),ioStates=new WeakMap(),resizeObservers=new Set(),intersectionObservers=new Set(),intersectionPending=new Set();
+  let layoutTargets=0,intersectionRecords=0;
+  const layoutLimit=code=>bridge('layoutObserverLimit',0,code);
+  const targetElement=target=>{if(!elementBrand.has(target))throw new TypeError('Expected Element');};
+  function addLayoutTarget(active,observer,state,target,value){
+    targetElement(target);if(!state.targets.has(target)){
+      if(layoutTargets>=128||(!active.has(observer)&&resizeObservers.size+intersectionObservers.size>=32)){layoutLimit('targets');throw new RangeError('Layout observer limit');}
+      ++layoutTargets;
+    }
+    state.targets.set(target,value);active.add(observer);
+  }
+  function removeLayoutTarget(active,observer,state,target){if(state.targets.delete(target))--layoutTargets;if(!state.targets.size)active.delete(observer);}
+  function clearLayoutTargets(active,observer,state){layoutTargets-=state.targets.size;state.targets.clear();active.delete(observer);}
+  const entryToken=Symbol(),resizeSizes=new WeakMap(),resizeEntries=new WeakMap(),intersectionEntries=new WeakMap();
+  function readonlyFields(ctor,state,names){for(const name of names)Object.defineProperty(ctor.prototype,name,{enumerable:true,configurable:true,get(){const values=state.get(this);if(!values)throw new TypeError('Illegal invocation');return values[name];}});}
+  class ResizeObserverSize {constructor(w,h,token){if(token!==entryToken)throw new TypeError('Illegal constructor');resizeSizes.set(this,{inlineSize:w,blockSize:h});}}
+  readonlyFields(ResizeObserverSize,resizeSizes,['inlineSize','blockSize']);
+  class ResizeObserverEntry {
+    constructor(target,g,token){if(token!==entryToken)throw new TypeError('Illegal constructor');
+      resizeEntries.set(this,{target,contentRect:readonlyRect(g.content),
+        contentBoxSize:Object.freeze([new ResizeObserverSize(g.content.width,g.content.height,entryToken)]),
+        borderBoxSize:Object.freeze([new ResizeObserverSize(g.border.width,g.border.height,entryToken)])});
+    }
+  }
+  readonlyFields(ResizeObserverEntry,resizeEntries,['target','contentRect','contentBoxSize','borderBoxSize']);
+  class ResizeObserver {
+    constructor(callback){if(typeof callback!=='function')throw new TypeError('Expected callback');roStates.set(this,{callback,targets:new Map()});}
+    observe(target,options={}){options=options??{};targetElement(target);const box=String(options.box??'content-box');if(!['content-box','border-box'].includes(box))throw new TypeError('Unsupported ResizeObserver box');
+      const state=roStates.get(this),old=state.targets.get(target);if(old?.box===box)return;
+      addLayoutTarget(resizeObservers,this,state,target,{box,last:[0,0]});
+    }
+    unobserve(target){targetElement(target);removeLayoutTarget(resizeObservers,this,roStates.get(this),target);}
+    disconnect(){clearLayoutTargets(resizeObservers,this,roStates.get(this));}
+  }
+  let resizeQueue=[],resizeDepth=0,resizeNextDepth=0,resizeRounds=0,resizeDone=true,resizeSkipped=false;
+  const resized=(record,g)=>{const r=record.box==='border-box'?g.border:g.content;return record.last[0]!==r.width||record.last[1]!==r.height;};
+  function resizeLoopError(){layoutLimit('resize-loop');const event=new Event('error',{cancelable:true});event.message='ResizeObserver loop completed with undelivered notifications.';globalThis.dispatchEvent(event);}
+  function resizeTask(){
+    if(resizeDone)return false;
+    if(!resizeQueue.length){
+      resizeDepth=resizeNextDepth;resizeNextDepth=Infinity;resizeSkipped=false;
+      for(const observer of [...resizeObservers]){const state=roStates.get(observer),entries=[];
+        for(const [target,record] of state.targets){const g=geometry(target);if(!resized(record,g))continue;if(g.depth<=resizeDepth){resizeSkipped=true;continue;}
+          entries.push({target,record,g});resizeNextDepth=Math.min(resizeNextDepth,g.depth);
+        }
+        if(entries.length)resizeQueue.push({observer,entries});
+      }
+      if(!resizeQueue.length||++resizeRounds>8){resizeDone=true;if(resizeSkipped||resizeQueue.length)resizeLoopError();resizeQueue=[];return false;}
+    }
+    const {observer,entries}=resizeQueue.shift(),state=roStates.get(observer),deliver=[];
+    for(const {target,record} of entries){if(state.targets.get(target)!==record)continue;const g=geometry(target),r=record.box==='border-box'?g.border:g.content;record.last=[r.width,r.height];deliver.push(new ResizeObserverEntry(target,g,entryToken));}
+    if(deliver.length)try{Reflect.apply(state.callback,observer,[deliver,observer]);}catch(e){bridge('report',0,String(e));}
+    return true;
+  }
+  const marginParts=value=>{
+    const text=String(value);if(text.length>512)throw new RangeError('rootMargin length');const tokens=text.trim().split(/\s+/);if(tokens.length<1||tokens.length>4)throw new SyntaxError('Invalid rootMargin');
+    const parts=tokens.map(t=>{if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|%)$/.test(t))throw new SyntaxError('Expected px or % rootMargin');return {n:Number.parseFloat(t),unit:t.endsWith('%')?'%':'px'};});
+    if(parts.some(p=>!Number.isFinite(p.n)||Math.abs(p.n)>100000))throw new RangeError('rootMargin limit');
+    return [parts[0],parts[1]||parts[0],parts[2]||parts[0],parts[3]||parts[1]||parts[0]];
+  };
+  class IntersectionObserverEntry {
+    constructor(target,time,bounds,root,intersection,intersecting,token){if(token!==entryToken)throw new TypeError('Illegal constructor');const area=bounds.width*bounds.height;
+      intersectionEntries.set(this,{target,time,boundingClientRect:readonlyRect(bounds),rootBounds:readonlyRect(root),intersectionRect:readonlyRect(intersection),isIntersecting:intersecting,intersectionRatio:area?intersection.width*intersection.height/area:intersecting?1:0});
+    }
+  }
+  readonlyFields(IntersectionObserverEntry,intersectionEntries,['target','time','boundingClientRect','rootBounds','intersectionRect','isIntersecting','intersectionRatio']);
+  class IntersectionObserver {
+    constructor(callback,options={}){
+      options=options??{};if(typeof callback!=='function')throw new TypeError('Expected callback');const root=options.root??null;if(root!==null&&root!==document)targetElement(root);
+      if(options.trackVisibility||(options.delay!==undefined&&Number(options.delay)!==0)||options.scrollMargin!==undefined)throw new TypeError('Unsupported intersection option');
+      const margins=marginParts(options.rootMargin??'0px');let thresholds=options.threshold??0;
+      if(thresholds!==null&&typeof thresholds==='object'&&typeof thresholds[Symbol.iterator]==='function'){const values=[];for(const value of thresholds){if(values.length>=64)throw new RangeError('Threshold limit');values.push(value);}thresholds=values;}else thresholds=[thresholds];if(thresholds.length>64)throw new RangeError('Threshold limit');
+      thresholds=thresholds.map(Number).sort((a,b)=>a-b);if(thresholds.some(v=>!Number.isFinite(v)||v<0||v>1))throw new RangeError('Invalid threshold');if(!thresholds.length)thresholds=[0];
+      ioStates.set(this,{callback,root,margins,thresholds,targets:new Map(),records:[]});
+    }
+    get root(){return ioStates.get(this).root;}get rootMargin(){return ioStates.get(this).margins.map(p=>p.n+p.unit).join(' ');}get thresholds(){return Object.freeze([...ioStates.get(this).thresholds]);}
+    observe(target){const state=ioStates.get(this);targetElement(target);if(!state.targets.has(target))addLayoutTarget(intersectionObservers,this,state,target,{index:-1,intersecting:false});}
+    unobserve(target){targetElement(target);removeLayoutTarget(intersectionObservers,this,ioStates.get(this),target);}
+    disconnect(){clearLayoutTargets(intersectionObservers,this,ioStates.get(this));}
+    takeRecords(){return takeIntersections(this);}
+  }
+  function intersect(a,b){const x=Math.max(a.x,b.x),y=Math.max(a.y,b.y),right=Math.min(a.x+a.width,b.x+b.width),bottom=Math.min(a.y+a.height,b.y+b.height);return {x,y,width:Math.max(0,right-x),height:Math.max(0,bottom-y),touches:right>=x&&bottom>=y};}
+  function sampleIntersections(time){
+    for(const observer of [...intersectionObservers]){const state=ioStates.get(observer);
+      for(const [target,record] of state.targets){const g=bridge('intersection',target._key,state.root&&state.root!==document?state.root._key:-1),r=g.root,m=state.margins.map(p=>p.unit==='%'?p.n*r.width/100:p.n);
+        const root={x:r.x-m[3],y:r.y-m[0],width:r.width+m[1]+m[3],height:r.height+m[0]+m[2]};
+        let area=intersect(g.border,root),visible=g.rendered&&g.descendant&&root.width>=0&&root.height>=0&&area.touches;
+        for(const clip of g.clips){const next=intersect(area,clip);visible=visible&&next.touches;area=next;}
+        if(!visible)area={x:0,y:0,width:0,height:0};const entry=new IntersectionObserverEntry(target,time,g.border,root,area,visible,entryToken);
+        const index=state.thresholds.findIndex(t=>t>entry.intersectionRatio),thresholdIndex=index<0?state.thresholds.length:index;
+        if(record.index===thresholdIndex&&record.intersecting===visible)continue;
+        if(state.records.length>=128||intersectionRecords>=512){layoutLimit('intersection-records');continue;}
+        record.index=thresholdIndex;record.intersecting=visible;state.records.push(entry);++intersectionRecords;intersectionPending.add(observer);
+      }
+    }
+  }
+  function takeIntersections(observer){const state=ioStates.get(observer),records=state.records;state.records=[];intersectionRecords-=records.length;intersectionPending.delete(observer);return records;}
+  let preferIntersection=true;
+  function intersectionTask(){for(const observer of intersectionPending){const state=ioStates.get(observer),records=takeIntersections(observer);if(records.length)try{Reflect.apply(state.callback,observer,[records,observer]);}catch(e){bridge('report',0,String(e));}return true;}return false;}
+  for(const [name,ctor] of Object.entries({DOMRectReadOnly,DOMRect,ResizeObserver,ResizeObserverEntry,ResizeObserverSize,IntersectionObserver,IntersectionObserverEntry})){
+    Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;
+  }
   const timers=new Map(), frames=new Map();let nextTimer=0,nextFrame=0,frameIDs=[],frameTime=0;
   function timer(fn,delay,repeat,args){if(typeof fn!=='function')throw new TypeError('Timer requires function');if(timers.size>=64)throw new RangeError('Timer limit');let ms=Number(delay);ms=Number.isFinite(ms)?Math.max(0,Math.min(2147483647,ms)):0;const id=++nextTimer;timers.set(id,{fn,args,due:bridge('now',0)+ms,repeat:repeat?Math.max(4,ms):0});return id;}
   globalThis.setTimeout=(fn,delay,...args)=>timer(fn,delay,false,args);globalThis.setInterval=(fn,delay,...args)=>timer(fn,delay,true,args);
@@ -353,8 +473,31 @@
   Object.defineProperties(globalThis,{
     innerWidth:{get:()=>bridge('viewport',0).width},innerHeight:{get:()=>bridge('viewport',0).height},devicePixelRatio:{get:()=>bridge('viewport',0).ratio},scrollX:{get:()=>bridge('viewport',0).scrollX},scrollY:{get:()=>bridge('viewport',0).scrollY}
   });
-  const mediaLists=new Set();let lastViewport=bridge('viewport',0);
-  globalThis.matchMedia=query=>{query=String(query);if(mediaLists.size>=32)throw new RangeError('Media query quota');const result={...eventMethods,media:query,_previous:bridge('media',0,query),get matches(){return bridge('media',0,query);},addListener(fn){this.addEventListener('change',fn);},removeListener(fn){this.removeEventListener('change',fn);}};mediaLists.add(result);return result;};
+  function scrollWindow(relative,x,y){if(x!==null&&typeof x==='object'){const options=x;if(options.behavior&& !['auto','instant'].includes(options.behavior))throw new TypeError('Smooth scrolling unavailable');x=options.left??(relative?0:globalThis.scrollX);y=options.top??(relative?0:globalThis.scrollY);}else{x=Number(x)||0;y=Number(y)||0;}bridge('scroll',0,Number(x)+(relative?globalThis.scrollX:0),Number(y)+(relative?globalThis.scrollY:0));}
+  globalThis.scroll=globalThis.scrollTo=(x,y)=>scrollWindow(false,x,y);globalThis.scrollBy=(x,y)=>scrollWindow(true,x,y);
+  Object.defineProperties(globalThis,{pageXOffset:{get:()=>globalThis.scrollX},pageYOffset:{get:()=>globalThis.scrollY}});
+  const mediaLists=new Set(),mediaStates=new WeakMap();let lastViewport=bridge('viewport',0);
+  class MediaQueryListEvent extends Event {constructor(type,options={}){super(type,options);Object.defineProperties(this,{matches:{value:!!options.matches,enumerable:true},media:{value:String(options.media??''),enumerable:true}});}}
+  const mediaToken=Symbol();
+  function trackMedia(list){const state=mediaStates.get(list),active=!!state.onchange||!!listeners.get(list)?.get('change')?.length;
+    if(active&&!mediaLists.has(list)){if(mediaLists.size>=32)throw new RangeError('Media query listener quota');state.previous=list.matches;mediaLists.add(list);}else if(!active)mediaLists.delete(list);
+  }
+  class MediaQueryList extends EventTarget {
+    constructor(query,token){super();if(token!==mediaToken)throw new TypeError('Illegal constructor');mediaStates.set(this,{query,onchange:null,previous:bridge('media',0,query)});}
+    get media(){return mediaStates.get(this).query;}get matches(){return bridge('media',0,this.media);}
+    get onchange(){return mediaStates.get(this).onchange;}set onchange(fn){const state=mediaStates.get(this),old=state.onchange;state.onchange=typeof fn==='function'?fn:null;try{trackMedia(this);}catch(e){state.onchange=old;throw e;}}
+    addEventListener(type,fn,options){super.addEventListener(type,fn,options);try{trackMedia(this);}catch(e){super.removeEventListener(type,fn,options);throw e;}}
+    removeEventListener(type,fn,options){super.removeEventListener(type,fn,options);trackMedia(this);}
+    addListener(fn){this.addEventListener('change',fn);}removeListener(fn){this.removeEventListener('change',fn);}
+  }
+  for(const [name,ctor] of Object.entries({MediaQueryList,MediaQueryListEvent})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  globalThis.matchMedia=query=>{query=String(query);if(query.length>512)throw new RangeError('Media query length');return new MediaQueryList(query,mediaToken);};
+  function viewportEvents(){const viewport=bridge('viewport',0),previous=lastViewport;lastViewport=viewport;
+    if(viewport.width!==previous.width||viewport.height!==previous.height||viewport.ratio!==previous.ratio){globalThis.dispatchEvent(new Event('resize'));
+      for(const media of [...mediaLists]){const state=mediaStates.get(media),matches=media.matches;if(matches!==state.previous){state.previous=matches;media.dispatchEvent(new MediaQueryListEvent('change',{matches,media:media.media}));}trackMedia(media);}
+    }
+    if(viewport.scrollX!==previous.scrollX||viewport.scrollY!==previous.scrollY)document.dispatchEvent(new Event('scroll',{bubbles:true}));
+  }
   globalThis.getComputedStyle=el=>new Proxy({getPropertyValue:key=>bridge('computed',el._key,String(key))},{get(o,key){if(key in o)return o[key];return o.getPropertyValue(String(key).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()));}});
   let fetchID=0;const fetches=new Map();
   globalThis.fetch=(url,options={})=>{
@@ -367,8 +510,12 @@
     mutated:mutation,
     focus(id){setFocus(id?wrap(id):null);},
     rejected(promise,reason,handled){const event=new Event(handled?'rejectionhandled':'unhandledrejection',{cancelable:!handled});event.promise=promise;event.reason=reason;return globalThis.dispatchEvent(event);},
-    viewport(){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}},
-    task(now){let selected=null,due=Infinity;for(const [id,t] of timers){if(t.due<=now&&t.due<due){selected=id;due=t.due;}}if(selected===null)return false;const t=timers.get(selected);if(t.repeat)t.due=now+t.repeat;else timers.delete(selected);try{Reflect.apply(t.fn,globalThis,t.args);}catch(e){bridge('report',0,String(e));}return true;},
+    viewport:viewportEvents,
+    beginObservers(){resizeQueue=[];resizeNextDepth=0;resizeRounds=0;resizeDone=false;resizeSkipped=false;},
+    resize:resizeTask,
+    endObservers(){if(!resizeDone){let pending=false;for(const observer of resizeObservers)for(const [target,record] of roStates.get(observer).targets)if(resized(record,geometry(target)))pending=true;if(pending)resizeLoopError();resizeQueue=[];resizeDone=true;}},
+    intersections:sampleIntersections,
+    task(now){let selected=null,due=Infinity;for(const [id,t] of timers){if(t.due<=now&&t.due<due){selected=id;due=t.due;}}if(intersectionPending.size&&(preferIntersection||selected===null)){preferIntersection=false;return intersectionTask();}if(selected===null)return false;preferIntersection=true;const t=timers.get(selected);if(t.repeat)t.due=now+t.repeat;else timers.delete(selected);try{Reflect.apply(t.fn,globalThis,t.args);}catch(e){bridge('report',0,String(e));}return true;},
     beginFrame(now){frameTime=now;frameIDs=[...frames.keys()];},
     frame(){while(frameIDs.length){const id=frameIDs.shift(),fn=frames.get(id);if(!fn)continue;frames.delete(id);try{Reflect.apply(fn,globalThis,[frameTime]);}catch(e){bridge('report',0,String(e));}return true;}return false;},
     interactive(){readyState='interactive';document.dispatchEvent(new Event('readystatechange'));},

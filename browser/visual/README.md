@@ -1,4 +1,4 @@
-# Switch visual browser — 0.7.1
+# Switch visual browser — 0.8.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -384,3 +384,57 @@ A shared own interface/prototype fixture passes in native QuickJS/DOM and Chromi
 regressions also check unsupported capability reporting and noscript behavior.
 All fourteen existing host suites remain part of the release gate. Actual Switch
 verification of 0.7.1, Google sign-in and the site's security check remains pending.
+
+## Layout observers and responsive events — 0.8.0
+
+ResizeObserver and IntersectionObserver use the retained renderer, after animation
+callbacks and their microtasks. Geometry reads now return DOMRect border boxes
+rather than content-only plain objects, including padding/borders and fixed-position
+scroll coordinates. Repeated restyling prunes expired renderer references; this
+fixes zero geometry after a style change and prevents those weak slots accumulating.
+
+- ResizeObserver supports content-box and border-box, contentRect, contentBoxSize
+  and borderBoxSize, with branded readonly prototype accessors for loader feature
+  detection. Initial nonzero sizes, display:none, detach/reconnect,
+  unobserve and disconnect are covered. Callbacks run after rAF; size changes loop
+  through increasing tree depths, with at most 8 rounds/64 callbacks and a soft
+  8 ms quantum. Undelivered changes resume on a later frame and issue a window
+  error with the standard loop message, plus a bounded diagnostic category.
+- IntersectionObserver supports viewport/document or element roots, px/% rootMargin,
+  sorted thresholds (including duplicates), edge contact, geometric intersection
+  ratio, overflow ancestors, asynchronous task delivery and takeRecords. Records
+  are sampled after resize delivery and delivered in a subsequent task; timer tasks
+  and intersection tasks alternate when both sources have work.
+- MediaQueryList/MediaQueryListEvent provide typed change events, onchange and legacy
+  addListener/removeListener. Only lists with listeners are retained; removing the
+  last listener releases their registry slot. Queries use litehtml's existing media
+  parser and its supported features, not a separate full CSS media implementation.
+- Viewport resize and document scroll events are coalesced at rendering opportunities.
+  scrollTo/scrollBy (numeric or options with auto/instant behavior) clamp to the native
+  document and update the actual touch/controller view. pageXOffset/pageYOffset alias
+  scrollX/scrollY. Smooth scrolling is rejected rather than simulated.
+
+There are at most 32 active layout observers and 128 observed targets shared across
+both observer types. Intersection queues hold at most 128 records per observer,
+512 total. Disconnect releases target capacity; realm destruction drops all callbacks.
+At most 32 active media lists with listeners are retained. Limits appear in the core
+report without element text, field values or URLs beyond the existing origin policy.
+
+This is an HTML, horizontal writing, single-box layout subset. SVG, transformed and
+fragmented box geometry, subframes, shadow trees, device-pixel-content-box, intersection
+visibility/occlusion tracking, delay and scrollMargin are not supplied. ResizeObserver
+on a non-replaced inline element reports zero sizes. This block does not add Grid,
+modules/workers, XHR/WebSocket, media/GPU or prove account/security-check compatibility.
+
+The shared own layout-observers fixture runs in Chromium 151.0.7922.34 and native DOM;
+reference provenance is recorded beside it. It covers content/border size selection,
+visibility/detachment, thresholds, ancestor clips, pixel root margins, fixed coordinates,
+scrolling, rectangle types and media/resize changes. A separate normative percentage
+margin check follows the [IntersectionObserver specification](https://w3c.github.io/IntersectionObserver/):
+all percentages use root width. Chromium 151 instead resolved vertical percentages
+against root height in this experiment; that known difference is excluded from the
+shared equality assertion. See also the [ResizeObserver delivery algorithm](https://drafts.csswg.org/resize-observer/).
+Native tests cover loop protection, takeRecords, quota/release, repeated CSS refresh,
+and the real Browser view plus cancellation of both observers on navigation.
+The complete release gate now contains fifteen host suites; actual Switch behavior
+of 0.8.0 remains to be verified. The offline demo includes «Размеры и видимость».

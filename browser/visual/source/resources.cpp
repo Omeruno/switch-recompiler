@@ -218,7 +218,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.7.1");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.8.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();

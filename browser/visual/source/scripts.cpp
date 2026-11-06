@@ -7,10 +7,12 @@ extern "C" {
 #include "native_dom_js.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <litehtml/el_text.h>
+#include <litehtml/render_item.h>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -392,6 +394,56 @@ struct Scripts::Impl {
             return;
         container.restyle(doc);
         dirty = false;
+    }
+    struct Box {
+        litehtml::position border, content, padding;
+        unsigned depth = 1;
+        bool rendered = false;
+    };
+    Box box(const litehtml::element::ptr &el) {
+        Box b;
+        bool connected = false, hidden = false, fixed = false;
+        for (auto n = el; n; n = n->parent()) {
+            ++b.depth;
+            connected |= n == doc->root();
+        }
+        // Newly created detached nodes have not computed their CSS yet.
+        if (!connected)
+            return b;
+        for (auto n = el; n; n = n->parent()) {
+            hidden |= n->css().get_display() == litehtml::display_none;
+            fixed |= n->css().get_position() == litehtml::element_position_fixed;
+        }
+        auto ri = el->get_render_item();
+        if (!connected || hidden || !ri)
+            return b;
+        b.rendered = true;
+        auto content = ri->get_placement();
+        if (!fixed) {
+            content.x -= container.scroll_x;
+            content.y -= container.scroll_y;
+        }
+        b.content = {ri->padding_left(), ri->padding_top(), content.width, content.height};
+        b.padding = {content.x - ri->padding_left(), content.y - ri->padding_top(),
+                     content.width + ri->padding_left() + ri->padding_right(),
+                     content.height + ri->padding_top() + ri->padding_bottom()};
+        b.border = {b.padding.x - ri->border_left(), b.padding.y - ri->border_top(),
+                    b.padding.width + ri->border_left() + ri->border_right(),
+                    b.padding.height + ri->border_top() + ri->border_bottom()};
+        return b;
+    }
+    JSValue rect(const litehtml::position &p) {
+        auto out = JS_NewObject(context);
+        for (auto pair : {std::pair<const char *, float>{"x", float(p.x)},
+                          {"y", float(p.y)},
+                          {"left", float(p.x)},
+                          {"top", float(p.y)},
+                          {"right", float(p.right())},
+                          {"bottom", float(p.bottom())},
+                          {"width", float(p.width)},
+                          {"height", float(p.height)}})
+            JS_SetPropertyStr(context, out, pair.first, JS_NewFloat64(context, pair.second));
+        return out;
     }
     bool allowed(const std::string &directive, const std::string &url, bool inline_code,
                  const std::string &keyword = "'unsafe-inline'") const {
@@ -849,6 +901,15 @@ struct Scripts::Impl {
             observing = argc > 2 && JS_ToBool(context, a[2]) > 0;
             return JS_UNDEFINED;
         }
+        if (op == "layoutObserverLimit") {
+            auto code = str(2, 32);
+            issue_log.add("limit",
+                          code == "resize-loop"            ? "resize-observer-loop"
+                          : code == "intersection-records" ? "intersection-records"
+                                                           : "layout-observer-targets",
+                          origin(container.page_url));
+            return JS_UNDEFINED;
+        }
         if (op == "observerLimit") {
             issue_log.add("limit", "mutation-observer", origin(container.page_url));
             return JS_UNDEFINED;
@@ -857,6 +918,24 @@ struct Scripts::Impl {
             return current_script ? JS_NewInt32(context, int(handle(current_script))) : JS_NULL;
         if (op == "now")
             return JS_NewFloat64(context, double(now - origin_time));
+        if (op == "scroll") {
+            flush_layout();
+            double x = 0, y = 0;
+            if (argc > 2)
+                JS_ToFloat64(context, &x, a[2]);
+            if (argc > 3)
+                JS_ToFloat64(context, &y, a[3]);
+            if (!std::isfinite(x))
+                x = 0;
+            if (!std::isfinite(y))
+                y = 0;
+            container.scroll_x = float(std::clamp(
+                x, 0.0, std::max(0.0, double(float(doc->width())) - container.viewport_width)));
+            container.scroll_y = float(std::clamp(
+                y, 0.0, std::max(0.0, double(float(doc->height())) - container.viewport_height)));
+            container.scroll_requested = true;
+            return JS_UNDEFINED;
+        }
         if (op == "viewport") {
             auto out = JS_NewObject(context);
             for (auto pair :
@@ -1396,19 +1475,50 @@ struct Scripts::Impl {
                 return js(std::to_string(float(p.height)) + "px");
             return js("");
         }
-        if (op == "rect") {
+        if (op == "rect" || op == "geometry" || op == "intersection") {
             flush_layout();
-            auto p = el->get_placement();
+            auto b = box(el);
+            if (op == "rect")
+                return rect(b.border);
             auto out = JS_NewObject(context);
-            for (auto pair : {std::pair<const char *, float>{"x", float(p.x) - container.scroll_x},
-                              {"y", float(p.y) - container.scroll_y},
-                              {"left", float(p.x) - container.scroll_x},
-                              {"top", float(p.y) - container.scroll_y},
-                              {"right", float(p.right()) - container.scroll_x},
-                              {"bottom", float(p.bottom()) - container.scroll_y},
-                              {"width", float(p.width)},
-                              {"height", float(p.height)}})
-                JS_SetPropertyStr(context, out, pair.first, JS_NewFloat64(context, pair.second));
+            JS_SetPropertyStr(context, out, "border", rect(b.border));
+            JS_SetPropertyStr(context, out, "rendered", JS_NewBool(context, b.rendered));
+            if (op == "geometry") {
+                // Non-replaced inline elements do not generate ResizeObserver sizes.
+                if (b.rendered && el->css().get_display() == litehtml::display_inline &&
+                    std::string(el->get_tagName()) != "img") {
+                    b.border = litehtml::position{};
+                    b.content = litehtml::position{};
+                    JS_SetPropertyStr(context, out, "border", rect(b.border));
+                }
+                JS_SetPropertyStr(context, out, "content", rect(b.content));
+                JS_SetPropertyStr(context, out, "depth", JS_NewInt32(context, int(b.depth)));
+            } else {
+                auto root_id = integer(2);
+                Element root = root_id >= 0 ? node(root_id) : Element{};
+                litehtml::position bounds{0, 0, container.viewport_width,
+                                          container.viewport_height};
+                if (root) {
+                    auto rb = box(root);
+                    bounds = rb.rendered && root->css().get_overflow() > litehtml::overflow_visible
+                                 ? rb.padding
+                                 : rb.border;
+                }
+                auto clips = JS_NewArray(context);
+                unsigned index = 0;
+                bool descendant = !root;
+                for (auto n = b.rendered ? el->parent() : Element{}; n; n = n->parent()) {
+                    if (n == root) {
+                        descendant = true;
+                        break;
+                    }
+                    if (n->css().get_overflow() > litehtml::overflow_visible)
+                        JS_SetPropertyUint32(context, clips, index++, rect(box(n).padding));
+                }
+                JS_SetPropertyStr(context, out, "descendant", JS_NewBool(context, descendant));
+                JS_SetPropertyStr(context, out, "root", rect(bounds));
+                JS_SetPropertyStr(context, out, "clips", clips);
+            }
             return out;
         }
         throw std::runtime_error("Unsupported DOM operation");
@@ -1619,9 +1729,36 @@ struct Scripts::Impl {
             auto result = call("frame", {});
             bool ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
             JS_FreeValue(context, result);
-            if (!ran || !drain())
+            if (!ran)
+                break;
+            if (!drain())
+                return;
+        }
+        budget(50);
+        auto observers = call("beginObservers", {});
+        JS_FreeValue(context, observers);
+        uint64_t observer_end = Scripts::clock_ms() + 8;
+        for (unsigned callback = 0; callback < 64; ++callback) {
+            budget(50);
+            auto result = call("resize", {});
+            bool ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+            JS_FreeValue(context, result);
+            if (!ran)
+                break;
+            if (!drain())
+                return;
+            if (Scripts::clock_ms() >= observer_end)
                 break;
         }
+        budget(50);
+        auto end = call("endObservers", {});
+        JS_FreeValue(context, end);
+        if (!drain())
+            return;
+        budget(50);
+        auto intersections =
+            call("intersections", {JS_NewFloat64(context, double(now - origin_time))});
+        JS_FreeValue(context, intersections);
     }
 };
 Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,

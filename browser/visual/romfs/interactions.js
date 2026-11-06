@@ -32,6 +32,18 @@ document.addEventListener('DOMContentLoaded',()=>{
     script.onerror=()=>{document.getElementById('dynamic-status').textContent='Ошибка загрузки';script.remove();};
     document.head.appendChild(script);
   });
+  const layoutTarget=document.getElementById('layout-target');let wide=false;
+  new ResizeObserver(entries=>{
+    const box=entries[0].contentRect;
+    document.getElementById('layout-size').textContent='Размер содержимого: '+Math.round(box.width)+' × '+Math.round(box.height);
+  }).observe(layoutTarget);
+  new IntersectionObserver(entries=>{
+    document.getElementById('layout-visible').textContent=entries[0].isIntersecting?'Блок на экране':'Блок за экраном';
+  }).observe(layoutTarget);
+  document.getElementById('layout-resize').addEventListener('click',()=>{wide=!wide;layoutTarget.style.width=wide?'320px':'200px';});
+  const layoutMedia=matchMedia('(min-width: 900px)');
+  function updateLayoutMedia(){document.getElementById('layout-media').textContent=layoutMedia.matches?'Широкий режим':'Узкий режим';}
+  layoutMedia.addEventListener('change',updateLayoutMedia);updateLayoutMedia();
   document.getElementById('js-fetch').addEventListener('click',()=>{
     document.getElementById('fetch-result').textContent='Загрузка…';
     fetch('state.json').then(response=>response.json()).then(data=>{

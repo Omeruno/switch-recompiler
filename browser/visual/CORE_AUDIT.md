@@ -27,11 +27,11 @@ Chromium/Blink, Firefox/Gecko и WebKit разделяют несколько з
 | Подсистема | Реализовано | Чего существенно не хватает |
 |---|---|---|
 | Сеть | curl-multi, HTTPS/CA, cookies, GET, навигационные POST, ограничения CSP | полный Fetch/CORS, POST fetch, XHR, WebSocket, HTTP-кэш, MIME/charset-политики |
-| Документ | Gumbo + удерживаемый native DOM litehtml | стандартные интерфейсы/прототипы DOM, полный CSSOM, iframe, editing/selection/accessibility |
+| Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, iframe, editing/selection/accessibility |
 | CSS/layout | каскад, обычный поток, таблицы, flex, media queries, размеры и поля | Grid, полное современное intrinsic sizing, дополнительные правила текста, transforms |
 | Paint | SDL, DejaVu, PNG/JPEG/WebP, заливки, часть границ и градиентов | SVG, web fonts/shaping/fallback, полные тени/outline/clip, display list/compositor |
-| JS | QuickJS, native DOM bridge, события, таймеры, Promise, ограниченный GET fetch | модули, workers, полная загрузка async/defer, observers и множество Web API |
-| Планирование | общий UI-цикл, асинхронная сеть, ограничение времени JS | соответствующий стандарту порядок задач/microtasks/rAF, точечные dirty-флаги/инвалидация |
+| JS | QuickJS, native DOM bridge, события, таймеры, Promise, GET fetch, classic async/defer, Mutation/Resize/IntersectionObserver | модули, workers, множество остальных Web API |
+| Планирование | раздельные задачи/microtasks/rAF, асинхронная сеть, бюджеты JS/observer и типизированные resource revisions | потоковая загрузка/parser scheduling, полная очередность стандарта, точечная style/layout-инвалидация |
 | Игры/медиа | отдельный WASM probe | JS/WASM game imports, WebGPU/WebGL, видео/аудио, MSE/WebRTC, игровые события |
 | Изоляция | квоты и интерпретаторы | полноценные границы процессов/песочницы, модель безопасности современного браузера |
 
@@ -204,3 +204,24 @@ descriptors и Document factories. Одна общая Node-обёртка бо�
 Для включённого JS noscript скрывается, а скрипты внутри него остаются неактивными.
 Полный HTML scripting tokenizer и остальные браузерные API остаются за рамками
 этой правки. Успешный вход Google/проверка безопасности на устройстве не заявляются.
+
+## Адаптивная вёрстка — 0.8.0
+
+Добавлены ResizeObserver (content/border boxes, очередь после rAF, ограниченный
+цикл по глубине дерева) и IntersectionObserver (экран/элемент, пороги, rootMargin,
+overflow, отдельная очередь задач). Расширены MediaQueryList, resize/scroll и
+прокрутка из JS с передачей координат в настоящий Browser view. Старые ссылки
+на объекты вёрстки очищаются при обновлении CSS: найденный дефект давал нулевую
+геометрию после первой смены стиля. BoundingClientRect теперь включает рамки и
+отступы. В локальном демо появился раздел для проверки без сети.
+
+Сценарий сравнения с Chromium проверяет размеры, скрытие/удаление/возврат,
+пороги/обрезку, пиксельные поля корня, фиксированные координаты и media events.
+Процентные rootMargin проверяются отдельно по спецификации (база — ширина корня);
+эксперимент с Chromium 151 показал базу-высоту для вертикальных процентов. Это
+расхождение явно сохранено в README, полного совпадения не заявляем. Дополнительно
+проверяются лимиты, takeRecords, циклы и уничтожение callback при навигации.
+
+SVG/transform/multifragment, device pixel box, intersection visibility/occlusion,
+scrollMargin и smooth scrolling не реализованы. Наблюдатели не закрывают Grid,
+модульный JS, сети, GPU/медиа и вход на защищённые сайты.
