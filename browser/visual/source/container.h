@@ -39,6 +39,9 @@ class Container final : public litehtml::document_container {
   public:
     static constexpr int width = 1280, height = 720, toolbar = 84;
     Forms forms;
+    unsigned style_passes = 0, layout_passes = 0;
+    void restyle(const litehtml::document::ptr &);
+    void relayout(const litehtml::document::ptr &);
     std::weak_ptr<litehtml::element> focused_node;
     litehtml::element::ptr focused() const;
     bool focus(const litehtml::element::ptr &);

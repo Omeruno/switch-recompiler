@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 def openssl(*args):
@@ -64,6 +65,30 @@ extendedKeyUsage=serverAuth
         def log_message(self,*args):
             pass
         def do_GET(self):
+            route=urllib.parse.urlsplit(self.path).path
+            loop_scripts={
+                '/loop-async.js':"globalThis.trace=globalThis.trace||[];trace.push('async');",
+                '/loop-ordered.js':"if(document.currentScript.id!=='ordered')throw Error('currentScript');trace.push('ordered');",
+                '/loop-defer1.js':"states.push(document.readyState);trace.push('defer1');",
+                '/loop-defer2.js':"states.push(document.readyState);trace.push('defer2');",
+            }
+            if route.startswith('/loop-'):
+                if route=='/loop-ordered.js':time.sleep(.25)
+                if route=='/loop-defer1.js':time.sleep(.15)
+                if route=='/loop-image.png':time.sleep(.65)
+                if route=='/loop-image2.png':time.sleep(.15)
+                mime='text/javascript'
+                if route in loop_scripts:body=loop_scripts[route].encode()
+                elif route=='/loop-page':
+                    mime='text/html';body=b"""<!doctype html><head><link rel=stylesheet href=/loop-style.css><script>globalThis.trace=globalThis.trace||[];globalThis.states=[];trace.push('inline');setTimeout(()=>trace.push('during-wait'),0);document.addEventListener('DOMContentLoaded',()=>trace.push('dom'));addEventListener('load',()=>trace.push('load'));addEventListener('load',()=>trace.push('window-capture'),true);</script><script id=ordered src=/loop-ordered.js></script><script async src=/loop-async.js></script><script defer src=/loop-defer1.js></script><script defer src=/loop-defer2.js></script></head><body><input id=field><div id=marker>Marker</div><img src=/loop-image.png></body>"""
+                elif route=='/loop-clean':mime='text/html';body=b'<!doctype html><p>Clean page</p>'
+                elif route in ('/loop-image.png','/loop-image2.png'):
+                    mime='image/png';body=(Path(__file__).resolve().parents[1]/'visual/romfs/landscape.png').read_bytes()
+                elif route in ('/loop-style.css','/loop-late.css'):
+                    mime='text/css';body=b'#marker{width:231px}' if route=='/loop-late.css' else b'#marker{width:123px}img{display:block}'
+                else:mime='application/json';body=b'{"ok":true}'
+                self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+
             cookies=self.headers.get('Cookie','')
             if self.path in ('/forms-final','/forms-count','/forbidden'):
                 if self.path=='/forbidden':self.form_counts['forbidden']+=1
@@ -104,7 +129,7 @@ extendedKeyUsage=serverAuth
             threading.Thread(target=server.serve_forever,daemon=True).start();servers.append(server)
         port,expired=[s.server_port for s in servers]
         env=dict(os.environ,NO_PROXY='localhost,127.0.0.1',no_proxy='localhost,127.0.0.1')
-        subprocess.run([sys.argv[1],str(root/'profile'),f'https://localhost:{port}',f'https://127.0.0.1:{port}/',f'https://localhost:{expired}/',str(root/'ca.pem'),str(root/'wrong.pem')],check=True,env=env)
+        subprocess.run([sys.argv[1],*sys.argv[2:],str(root/'profile'),f'https://localhost:{port}',f'https://127.0.0.1:{port}/',f'https://localhost:{expired}/',str(root/'ca.pem'),str(root/'wrong.pem')],check=True,env=env)
     finally:
         for server in servers:
             server.shutdown();server.server_close()

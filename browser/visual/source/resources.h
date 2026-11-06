@@ -16,7 +16,7 @@ struct Resource {
     std::vector<std::string> policies;
     size_t header_bytes = 0;
     long http_status = 0;
-    bool transfer_ok = false, critical = false, stylesheet = false;
+    bool transfer_ok = false, critical = false, stylesheet = false, image = false;
     CURLcode result = CURLE_OK;
     bool byte_limit = false, policy_blocked = false;
     CURL *handle = nullptr;
@@ -32,10 +32,11 @@ class Resources {
     static size_t receive(char *, size_t, size_t, void *);
     static size_t header(char *, size_t, size_t, void *);
     void start(Resource &);
+    void completed(Resource &);
 
   public:
     static constexpr size_t total_limit = 16u * 1024u * 1024u;
-    unsigned revision = 0;
+    unsigned revision = 0, style_revision = 0, image_revision = 0;
     explicit Resources(std::string root);
     ~Resources();
     Resources(const Resources &) = delete;
@@ -48,6 +49,7 @@ class Resources {
     bool pump();
     bool pending() const;
     bool pending_styles() const;
+    bool pending_load() const;
     size_t count() const { return items.size(); }
     struct Failures {
         unsigned http = 0, tls = 0, transport = 0, limits = 0, policy = 0;

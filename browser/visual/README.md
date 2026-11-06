@@ -1,4 +1,4 @@
-# Switch visual browser — 0.5.0
+# Switch visual browser — 0.6.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -143,12 +143,18 @@ VPN support is deferred at the user's request.
 
 ## JavaScript bridge — 0.3.0
 
-Classic scripts use one QuickJS realm per navigation. Inline and external sources
-are scheduled in document order after initial stylesheets settle (images do not block startup). This is not
-full browser parser-blocking/async/defer/module scheduling. Up to 16 sources,
+Classic scripts use one QuickJS realm per navigation. Preparation starts after
+initial stylesheets settle (images do not block startup). Initial external async
+scripts run when ready; ordinary classic scripts retain source order, and external
+defer scripts run in source order after the interactive transition. Inline async/defer
+attributes do not change inline ordering. This is scheduling on an already-parsed
+native DOM, not a streaming HTML parser or full parser-blocking/module implementation. Up to 16 sources,
 128 KiB/source, 32 MiB JS heap, 256 KiB JS stack, 64 timers and 256 listeners are
-allowed. Script evaluation has a 50 ms interrupt budget; timer/job turns use 8 ms
-and drain at most 32 jobs. A navigation destroys the realm before its document,
+allowed. Initial scripts and scheduled callbacks have a 50 ms interrupt budget;
+UI task/frame batches have an 8 ms soft quantum and stop between callbacks. Host
+interrupts use thread CPU time where available; Switch uses monotonic elapsed time.
+Checkpoints execute at most 32 jobs before yielding, preserving pending jobs before
+starting another task. Expensive native calls cannot be preempted by the JS hook. A navigation destroys the realm before its document,
 resources or profile can be replaced.
 
 The facade directly delegates to native nodes: selectors, IDs, reflected attributes,
@@ -262,3 +268,40 @@ and non-accumulating paint counters. This is a narrow reference suite, not WPT c
 
 Device testing of 0.5.0 is pending. This release does not establish VK/YouTube/game
 compatibility or select a replacement full browser engine.
+
+## Scheduling and invalidation — 0.6.0
+
+- Timers and rAF use separate queues. Each timer/fetch task and rAF callback is
+  followed by a QuickJS microtask checkpoint. Native queueMicrotask uses the job
+  queue directly. A bounded unfinished checkpoint resumes before the next task.
+  Timer callbacks receive window as this and retain extra arguments.
+- A render opportunity snapshots rAF callbacks; cancellation works between
+  callbacks, newly requested callbacks wait for a later frame, and callbacks in
+  the same batch receive the same timestamp relative to the realm's time origin.
+  Opportunities are throttled to at most one every 16 ms; this is not proof of
+  60 FPS or a dedicated compositor.
+- document.currentScript identifies executing initial classic scripts and is null
+  in their microtasks. readyState becomes interactive before defer; DOMContentLoaded
+  follows ordered/defer scripts, while complete/load additionally wait for async
+  scripts and registered image/stylesheet requests. Script load/error does not bubble
+  into window load. Timers/fetch continue while external scripts are pending.
+- The host rejection tracker defers unhandledrejection until a checkpoint finishes,
+  suppresses it for early catch handlers, supports preventDefault and emits
+  rejectionhandled for tracked late handlers. At most 32 rejected promises/reasons
+  are retained per realm; overflow is reported. Values are freed at navigation.
+  This supplies Event.promise/reason, not full PromiseRejectionEvent interfaces.
+- Typed resource completion counters distinguish styles/images from scripts/JSON.
+  Images rerun layout without discarding CSS/fonts; nonvisual completions do not
+  rebuild the document. DOM/style changes coalesce at the end of a turn. Explicit
+  geometry/style reads still force a synchronous refresh when dirty. The core
+  report now shows cumulative CSS and layout pass counts for the current document.
+
+Twelve host suites cover the previous renderer, task/microtask/frame ordering,
+cancellation, lifecycle and delayed loopback HTTPS script/image/CSS responses.
+The actual Browser test verifies preserved native DOM/input, no layout for JSON,
+image-only relayout, late stylesheet application, coalesced mutations and navigation
+cancellation of the old realm. Function-only timers, coarse timer clamps, bounded
+checkpoints/callbacks, post-parse script discovery, missing dynamic script execution,
+workers/modules/observers and incomplete lifecycle/load-blocking remain limitations.
+The same native document still needs a full style refresh for generic DOM mutations;
+this does not add fine-grained style dependency tracking.

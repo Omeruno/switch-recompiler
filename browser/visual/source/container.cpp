@@ -24,6 +24,16 @@ size_t Container::failed_images() const {
             ++count;
     return count;
 }
+void Container::relayout(const litehtml::document::ptr &doc) {
+    doc->render(viewport_width);
+    ++layout_passes;
+}
+void Container::restyle(const litehtml::document::ptr &doc) {
+    invalidate_text();
+    doc->refresh_native_dom();
+    ++style_passes;
+    relayout(doc);
+}
 void Container::invalidate_text() {
     for (auto &kv : texts)
         SDL_DestroyTexture(kv.second.texture);
@@ -44,6 +54,7 @@ class SourceElement : public litehtml::html_tag {
 };
 } // namespace
 void Container::reset() {
+    style_passes = layout_passes = 0;
     focus({});
     for (auto &kv : images)
         if (kv.second.texture)
@@ -294,6 +305,8 @@ Container::Image *Container::image(const char *src, const char *baseurl) {
     if (old != images.end())
         return &old->second;
     Resource *r = resources.request(url, 8u * 1024u * 1024u);
+    if (r)
+        r->image = true;
     if (!r || r->state != Resource::ready)
         return nullptr;
     Image out;

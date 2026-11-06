@@ -60,7 +60,7 @@ struct Browser {
         bool post = false;
     };
     std::vector<History> history;
-    unsigned built_revision = 0;
+    unsigned built_revision = 0, built_style_revision = 0, built_image_revision = 0;
     bool rebuild = true, js_failed = false, js_reported = false;
     int viewport_mode = 0;
     TTF_Font *ui = nullptr;
@@ -194,14 +194,14 @@ struct Browser {
                 if (!document)
                     throw std::runtime_error("HTML parse failed");
                 submission_rules = visual::form_policies(document, r->policies);
-                document->render(container.viewport_width);
+                ++container.style_passes;
+                container.relayout(document);
             } else if (scripts && scripts->changed())
                 scripts->flush();
-            else {
-                container.invalidate_text();
-                document->refresh_native_dom();
-                document->render(container.viewport_width);
-            }
+            else if (rebuild || built_style_revision != resources.style_revision)
+                container.restyle(document);
+            else
+                container.relayout(document);
             view.content_width =
                 std::max(float(container.viewport_width), float(document->width()));
             view.content_height = std::max(container.viewport_height, float(document->height()));
@@ -211,6 +211,8 @@ struct Browser {
                                    " height=" + std::to_string(int(view.content_height)) +
                                    " resources=" + std::to_string(resources.count()));
             built_revision = resources.revision;
+            built_style_revision = resources.style_revision;
+            built_image_revision = resources.image_revision;
             rebuild = false;
         } catch (const std::exception &e) {
             notice = e.what();
@@ -252,7 +254,9 @@ struct Browser {
         container.scroll_x = view.x;
         container.scroll_y = view.y;
         resources.pump();
-        if (rebuild || built_revision != resources.revision)
+        if (rebuild || (!document && built_revision != resources.revision) ||
+            (document && (built_style_revision != resources.style_revision ||
+                          built_image_revision != resources.image_revision)))
             build();
         if (!document)
             return;
@@ -271,9 +275,15 @@ struct Browser {
         }
         if (scripts) {
             try {
-                scripts->poll(visual::Scripts::clock_ms());
-                if (scripts->changed()) {
+                unsigned layouts_before = container.layout_passes;
+                auto turn_time = visual::Scripts::clock_ms();
+                scripts->poll(turn_time);
+                if (apply_script_navigation())
+                    return;
+                scripts->render_frame(turn_time);
+                if (scripts->changed())
                     scripts->flush();
+                if (container.layout_passes != layouts_before) {
                     view.content_width =
                         std::max(float(container.viewport_width), float(document->width()));
                     view.content_height =
@@ -715,7 +725,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.5.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.6.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -723,6 +733,8 @@ struct Browser {
             "Изображения: загружено " + std::to_string(container.decoded_images()) +
                 " · не декодировано " + std::to_string(container.failed_images()),
             "Рисование: пропусков за последний кадр " + std::to_string(container.unsupported),
+            "CSS-проходов: " + std::to_string(container.style_passes) +
+                " · расчётов раскладки: " + std::to_string(container.layout_passes),
             "JS: " + std::string(
                          scripts ? (scripts->ready() ? "начальные скрипты обработаны" : "загрузка")
                                  : "не запущен"),
@@ -816,11 +828,14 @@ struct Browser {
         }
     }
 };
+#ifndef __SWITCH__
+#include "../tests/network_browser.h"
+#endif
 } // namespace
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.5.0");
+    visual::diagnostic("boot", "0.6.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -859,7 +874,10 @@ int main(int argc, char **argv) {
     PadState pad;
     padInitializeDefault(&pad);
 #else
-    browser_profile_open(nullptr, nullptr);
+    if (argc >= 10 && std::string(argv[3]) == "--network-test")
+        browser_profile_open(argv[4], argv[8]);
+    else
+        browser_profile_open(nullptr, nullptr);
 #endif
     SDL_Window *window = SDL_CreateWindow("Switch visual browser", SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED, 1280, 720, 0);
@@ -880,15 +898,21 @@ int main(int argc, char **argv) {
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             Browser app(renderer, root, font);
 #ifndef __SWITCH__
+            bool network_test = argc >= 10 && std::string(argv[3]) == "--network-test";
+            if (network_test)
+                browser_network_checks(app, argv[5]);
             bool test = argc >= 5 && std::string(argv[3]) == "--test";
             bool capture = argc >= 6 && std::string(argv[3]) == "--capture";
             uint32_t capture_start = SDL_GetTicks();
             if (capture)
                 app.navigate(argv[4]);
-            else if (argc >= 4 && !test)
+            else if (argc >= 4 && !test && !network_test)
                 app.navigate(argv[3]);
 #endif
             bool quit = false;
+#ifndef __SWITCH__
+            quit = network_test;
+#endif
             uint32_t previous = SDL_GetTicks();
             while (!quit) {
 #ifdef __SWITCH__

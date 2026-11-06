@@ -30,7 +30,7 @@
       if(!(event instanceof Event))throw new TypeError('Expected Event');
       event._stop=event._immediate=false;event.target=this;
       const path=[this];let p=this;
-      for(let i=0;i<256;i++){p=p===document?globalThis:p===globalThis?null:p.parentNode;if(!p)break;path.push(p);}
+      for(let i=0;i<256;i++){p=p===document?(event.type==='load'?null:globalThis):p===globalThis?null:p.parentNode;if(!p)break;path.push(p);}
       const invoke=(node,capture,phase)=>{
         event.currentTarget=node;event.eventPhase=phase;event._immediate=false;
         for(const entry of [...(listeners.get(node)?.get(event.type)||[])]){
@@ -146,6 +146,7 @@
   Object.defineProperties(document,{
     documentElement:{get:()=>wrap(bridge('root',0))},body:{get:()=>document.querySelector('body')},head:{get:()=>document.querySelector('head')},
     title:{get:()=>document.querySelector('title')?.textContent||'',set:v=>{const t=document.querySelector('title');if(t)t.textContent=v;}},
+    currentScript:{get:()=>{const key=bridge('currentScript',0);return key===null?null:wrap(key);}},
     readyState:{get:()=>readyState},activeElement:{get:()=>currentFocus()||document.body},
     cookie:{get:()=>bridge('cookie',0),set:v=>bridge('cookie',0,String(v))},
     referrer:{get:()=>''},
@@ -154,7 +155,7 @@
   Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.5.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.6.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -185,11 +186,13 @@
   }
   globalThis.URL=URL;
   for(const [name,session] of [['localStorage',false],['sessionStorage',true]])globalThis[name]={get length(){return bridge('storageLength',0,session);},key(i){return bridge('storageKey',0,session,i);},getItem(k){return bridge('storageGet',0,session,String(k));},setItem(k,v){bridge('storageSet',0,session,String(k),String(v));},removeItem(k){bridge('storageRemove',0,session,String(k));},clear(){bridge('storageClear',0,session);}};
-  const timers=new Map();let nextTimer=0;
-  function timer(fn,delay,repeat,args){if(typeof fn!=='function')throw new TypeError('Timer requires function');if(timers.size>=64)throw new RangeError('Timer limit');const id=++nextTimer;timers.set(id,{fn,args,due:bridge('now',0)+Math.max(0,Number(delay)||0),repeat:repeat?Math.max(16,Number(delay)||0):0});return id;}
+  const timers=new Map(), frames=new Map();let nextTimer=0,nextFrame=0,frameIDs=[],frameTime=0;
+  function timer(fn,delay,repeat,args){if(typeof fn!=='function')throw new TypeError('Timer requires function');if(timers.size>=64)throw new RangeError('Timer limit');let ms=Number(delay);ms=Number.isFinite(ms)?Math.max(0,Math.min(2147483647,ms)):0;const id=++nextTimer;timers.set(id,{fn,args,due:bridge('now',0)+ms,repeat:repeat?Math.max(4,ms):0});return id;}
   globalThis.setTimeout=(fn,delay,...args)=>timer(fn,delay,false,args);globalThis.setInterval=(fn,delay,...args)=>timer(fn,delay,true,args);
-  globalThis.clearTimeout=globalThis.clearInterval=id=>timers.delete(id);
-  globalThis.requestAnimationFrame=fn=>setTimeout(()=>fn(bridge('now',0)),16);globalThis.cancelAnimationFrame=clearTimeout;
+  globalThis.clearTimeout=globalThis.clearInterval=id=>timers.delete(Number(id));
+  globalThis.queueMicrotask=fn=>{if(typeof fn!=='function')throw new TypeError('Microtask requires function');bridge('microtask',0,fn);};
+  globalThis.requestAnimationFrame=fn=>{if(typeof fn!=='function')throw new TypeError('Frame requires function');if(frames.size>=64)throw new RangeError('Frame limit');const id=++nextFrame;frames.set(id,fn);return id;};
+  globalThis.cancelAnimationFrame=id=>frames.delete(Number(id));
   Object.defineProperties(globalThis,{
     innerWidth:{get:()=>bridge('viewport',0).width},innerHeight:{get:()=>bridge('viewport',0).height},devicePixelRatio:{get:()=>bridge('viewport',0).ratio},scrollX:{get:()=>bridge('viewport',0).scrollX},scrollY:{get:()=>bridge('viewport',0).scrollY}
   });
@@ -205,9 +208,16 @@
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
     focus(id){setFocus(id?wrap(id):null);},
-    tick(now){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}let count=0;for(const [id,t] of [...timers]){if(count>=32)break;if(t.due>now||!timers.has(id))continue;if(t.repeat)t.due=now+t.repeat;else timers.delete(id);++count;try{t.fn(...t.args);}catch(e){bridge('report',0,String(e));}}},
-    ready(){readyState='interactive';document.dispatchEvent(new Event('DOMContentLoaded',{bubbles:true}));readyState='complete';document.dispatchEvent(new Event('readystatechange'));globalThis.dispatchEvent(new Event('load'));},
-    event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
+    rejected(promise,reason,handled){const event=new Event(handled?'rejectionhandled':'unhandledrejection',{cancelable:!handled});event.promise=promise;event.reason=reason;return globalThis.dispatchEvent(event);},
+    viewport(){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}},
+    task(now){let selected=null,due=Infinity;for(const [id,t] of timers){if(t.due<=now&&t.due<due){selected=id;due=t.due;}}if(selected===null)return false;const t=timers.get(selected);if(t.repeat)t.due=now+t.repeat;else timers.delete(selected);try{Reflect.apply(t.fn,globalThis,t.args);}catch(e){bridge('report',0,String(e));}return true;},
+    beginFrame(now){frameTime=now;frameIDs=[...frames.keys()];},
+    frame(){while(frameIDs.length){const id=frameIDs.shift(),fn=frames.get(id);if(!fn)continue;frames.delete(id);try{Reflect.apply(fn,globalThis,[frameTime]);}catch(e){bridge('report',0,String(e));}return true;}return false;},
+    interactive(){readyState='interactive';document.dispatchEvent(new Event('readystatechange'));},
+    domReady(){document.dispatchEvent(new Event('DOMContentLoaded',{bubbles:true}));},
+    complete(){readyState='complete';document.dispatchEvent(new Event('readystatechange'));},
+    loaded(){globalThis.dispatchEvent(new Event('load'));},
+    event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur','load','error'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched(id,ok,status,url,body,error){const f=fetches.get(id);if(!f)return;fetches.delete(id);if(error){f.reject(new TypeError(error));return;}f.resolve({ok,status,url,text:()=>Promise.resolve(body),json:()=>Promise.resolve().then(()=>JSON.parse(body))});},
     blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])Object.defineProperty(Object.getPrototypeOf(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}

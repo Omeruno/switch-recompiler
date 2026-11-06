@@ -40,8 +40,10 @@ int main(int argc, char **argv) {
         uint64_t now = visual::Scripts::clock_ms();
         s.poll(now);
         s.flush();
-        s.poll(now + 1);
-        s.flush();
+        for (int turn = 1; turn < 10 && !s.ready(); ++turn) {
+            s.poll(now + turn);
+            s.flush();
+        }
         CHECK(s.ready());
         CHECK(original == doc->root()->select_one("#label"));
         std::string text;

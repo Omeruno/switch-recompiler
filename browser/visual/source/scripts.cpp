@@ -142,25 +142,36 @@ struct Scripts::Impl {
     struct Job {
         std::string source, url;
         Resource *resource = nullptr;
-        bool external = false;
+        enum Mode { ordered, asynchronous, deferred } mode = ordered;
+        bool external = false, done = false;
+        litehtml::element::ptr element;
     };
     std::vector<Job> jobs;
-    size_t job = 0;
+    litehtml::element::ptr current_script;
     struct Fetch {
         int id;
         Resource *resource;
         std::string url;
     };
     std::vector<Fetch> fetches;
+    struct Rejection {
+        JSValue promise, reason;
+        bool reported = false, handled = false;
+    };
+    std::vector<Rejection> rejections;
+    bool rejection_overflow = false;
     std::vector<std::string> policies;
     std::string last_error, next_url, source_origin;
     Issues issue_log;
     Submission next_form;
     bool next_reload = false;
-    uint64_t now = 0, deadline = 0;
+    uint64_t now = 0, deadline = 0, origin_time = 0;
     unsigned checks = 0, created = 0;
     size_t mutated_bytes = 0;
-    bool dirty = false, loaded = false, usable_runtime = false;
+    bool dirty = false, interactive = false, dom_ready = false, complete = false, loaded = false,
+         usable_runtime = false;
+    uint64_t previous_frame = 0;
+    bool fetch_turn = false;
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
          std::vector<std::string> policy)
         : doc(d), container(c), resources(r), policies(std::move(policy)) {
@@ -173,7 +184,7 @@ struct Scripts::Impl {
     }
     void initialize() {
         descendants(doc->root());
-        now = Scripts::clock_ms();
+        now = origin_time = Scripts::clock_ms();
         const JSMallocFunctions allocator = {alloc, dealloc, resize, usable};
         runtime = JS_NewRuntime2(&allocator, nullptr);
         if (!runtime)
@@ -181,6 +192,7 @@ struct Scripts::Impl {
         JS_SetMemoryLimit(runtime, 32u * 1024u * 1024u);
         JS_SetMaxStackSize(runtime, 256u * 1024u);
         JS_SetInterruptHandler(runtime, interrupt, this);
+        JS_SetHostPromiseRejectionTracker(runtime, rejection_tracker, this);
         context = JS_NewContext(runtime);
         if (!context) {
             JS_FreeRuntime(runtime);
@@ -227,6 +239,7 @@ struct Scripts::Impl {
             }
             std::string src = el->get_attr("src", "");
             Job entry;
+            entry.element = el;
             if (src.empty()) {
                 el->get_text(entry.source);
                 if (entry.source.size() > 128u * 1024u) {
@@ -246,6 +259,9 @@ struct Scripts::Impl {
                     continue;
                 }
                 entry.external = true;
+                entry.mode = el->get_attr("async")   ? Job::asynchronous
+                             : el->get_attr("defer") ? Job::deferred
+                                                     : Job::ordered;
                 entry.resource = resources.request(entry.url, 128u * 1024u);
                 if (entry.resource)
                     entry.resource->critical = true;
@@ -257,7 +273,14 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        if (runtime)
+            JS_SetHostPromiseRejectionTracker(runtime, nullptr, nullptr);
         if (context) {
+            for (auto &r : rejections) {
+                JS_FreeValue(context, r.promise);
+                JS_FreeValue(context, r.reason);
+            }
+            rejections.clear();
             JS_FreeValue(context, hooks);
             JS_FreeContext(context);
             context = nullptr;
@@ -268,13 +291,78 @@ struct Scripts::Impl {
             runtime = nullptr;
         }
     }
+    static void rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+                                  JS_BOOL handled, void *opaque) noexcept {
+        auto *self = static_cast<Impl *>(opaque);
+        for (auto &r : self->rejections)
+            if (JS_VALUE_GET_PTR(r.promise) == JS_VALUE_GET_PTR(promise)) {
+                r.handled = handled;
+                return;
+            }
+        if (handled)
+            return;
+        if (self->rejections.size() >= 32) {
+            self->rejection_overflow = true;
+            return;
+        }
+        auto saved_promise = JS_DupValue(ctx, promise), saved_reason = JS_DupValue(ctx, reason);
+        try {
+            self->rejections.push_back({saved_promise, saved_reason});
+        } catch (...) {
+            JS_FreeValue(ctx, saved_promise);
+            JS_FreeValue(ctx, saved_reason);
+            self->rejection_overflow = true;
+        }
+    }
+    bool report_rejection() {
+        if (rejection_overflow) {
+            issue_log.add("limit", "promise-rejections", origin(container.page_url));
+            rejection_overflow = false;
+        }
+        for (size_t i = 0; i < rejections.size();) {
+            auto &r = rejections[i];
+            if (r.handled && !r.reported) {
+                JS_FreeValue(context, r.promise);
+                JS_FreeValue(context, r.reason);
+                rejections.erase(rejections.begin() + i);
+                continue;
+            }
+            if (!r.reported || r.handled) {
+                bool handled = r.handled;
+                auto promise = JS_DupValue(context, r.promise),
+                     reason = JS_DupValue(context, r.reason);
+                r.reported = true;
+                if (handled) {
+                    JS_FreeValue(context, r.promise);
+                    JS_FreeValue(context, r.reason);
+                    rejections.erase(rejections.begin() + i);
+                }
+                // Listeners can attach catch handlers and mutate the tracker; retain no iterator.
+                auto result = call("rejected", {promise, reason, JS_NewBool(context, handled)});
+                if (!handled && !JS_IsException(result) && JS_ToBool(context, result) > 0)
+                    issue_log.add("promise", "unhandled", origin(container.page_url));
+                JS_FreeValue(context, result);
+                return true;
+            }
+            ++i;
+        }
+        return false;
+    }
+    static uint64_t execution_ms() {
+#if defined(CLOCK_THREAD_CPUTIME_ID) && !defined(__SWITCH__)
+        timespec t{};
+        if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t) == 0)
+            return uint64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
+#endif
+        return Scripts::clock_ms();
+    }
     void budget(unsigned ms) {
-        deadline = Scripts::clock_ms() + ms;
+        deadline = execution_ms() + ms;
         checks = 0;
     }
     static int interrupt(JSRuntime *, void *opaque) {
         auto *s = static_cast<Impl *>(opaque);
-        return ++s->checks > 100000 || Scripts::clock_ms() >= s->deadline;
+        return ++s->checks > 100000 || execution_ms() >= s->deadline;
     }
     void exception() {
         auto ex = JS_GetException(context);
@@ -323,8 +411,11 @@ struct Scripts::Impl {
             exception();
         return v;
     }
-    void drain() {
-        for (unsigned i = 0; i < 32 && Scripts::clock_ms() < deadline; i++) {
+    static JSValue microtask_job(JSContext *ctx, int, JSValueConst *args) {
+        return JS_Call(ctx, args[0], JS_UNDEFINED, 0, nullptr);
+    }
+    bool drain() {
+        for (unsigned i = 0; i < 32 && execution_ms() < deadline; i++) {
             JSContext *ctx = nullptr;
             int rc = JS_ExecutePendingJob(runtime, &ctx);
             if (rc < 0) {
@@ -334,6 +425,13 @@ struct Scripts::Impl {
             if (!rc)
                 break;
         }
+        return !JS_IsJobPending(runtime);
+    }
+    void flush_layout() {
+        if (!dirty)
+            return;
+        container.restyle(doc);
+        dirty = false;
     }
     bool allowed(const std::string &directive, const std::string &url, bool inline_code,
                  const std::string &keyword = "'unsafe-inline'") const {
@@ -481,8 +579,17 @@ struct Scripts::Impl {
         auto js = [&](const std::string &text) {
             return JS_NewStringLen(context, text.data(), text.size());
         };
+        if (op == "microtask") {
+            if (argc < 3 || !JS_IsFunction(context, a[2]))
+                return JS_ThrowTypeError(context, "Microtask requires function");
+            if (JS_EnqueueJob(context, microtask_job, 1, a + 2) < 0)
+                return JS_EXCEPTION;
+            return JS_UNDEFINED;
+        }
+        if (op == "currentScript")
+            return current_script ? JS_NewInt32(context, int(handle(current_script))) : JS_NULL;
         if (op == "now")
-            return JS_NewFloat64(context, double(now));
+            return JS_NewFloat64(context, double(now - origin_time));
         if (op == "viewport") {
             auto out = JS_NewObject(context);
             for (auto pair :
@@ -949,12 +1056,7 @@ struct Scripts::Impl {
             return JS_NewInt32(context, 0);
         }
         if (op == "computed") {
-            if (dirty) {
-                container.invalidate_text();
-                doc->refresh_native_dom();
-                doc->render(container.viewport_width);
-                dirty = false;
-            }
+            flush_layout();
             auto key = str(2, 96);
             auto &css = el->css();
             if (key == "color")
@@ -977,12 +1079,7 @@ struct Scripts::Impl {
             return js("");
         }
         if (op == "rect") {
-            if (dirty) {
-                container.invalidate_text();
-                doc->refresh_native_dom();
-                doc->render(container.viewport_width);
-                dirty = false;
-            }
+            flush_layout();
             auto p = el->get_placement();
             auto out = JS_NewObject(context);
             for (auto pair : {std::pair<const char *, float>{"x", float(p.x) - container.scroll_x},
@@ -1002,7 +1099,7 @@ struct Scripts::Impl {
                const litehtml::element::ptr &submitter = {}) {
         if (!usable_runtime)
             return true;
-        budget(30);
+        budget(50);
         if (el && allowed("script-src-attr", "", true)) {
             for (auto n = el; n; n = n->parent()) {
                 const char *source = n->get_attr(("on" + type).c_str());
@@ -1030,56 +1127,42 @@ struct Scripts::Impl {
         drain();
         return ok;
     }
-    bool poll(uint64_t time) {
-        if (!usable_runtime)
-            return dirty;
-        if (container.prune_focus())
-            dirty = true;
-        now = time;
-        budget(8);
-        if (!loaded) {
-            while (job < jobs.size()) {
-                auto &j = jobs[job];
-                if (j.resource && (j.resource->state == Resource::queued ||
-                                   j.resource->state == Resource::loading))
-                    return dirty;
-                if (j.external) {
-                    if (j.resource->state != Resource::ready ||
-                        !allowed("script-src", j.resource->effective, false)) {
-                        last_error = "Script request failed or was blocked";
-                        issue_log.add("script-load", "failed", origin(j.url));
-                        ++job;
-                        continue;
-                    }
-                    j.source.assign(j.resource->data.begin(), j.resource->data.end());
-                }
-                budget(50);
-                evaluate(j.source.c_str(), j.source.size(), j.url.substr(0, j.url.find('?')));
-                ++job;
-                drain();
-                return dirty;
+    bool runnable(const Job &j) const {
+        return !j.resource ||
+               (j.resource->state != Resource::queued && j.resource->state != Resource::loading);
+    }
+    void execute(Job &j) {
+        j.done = true;
+        if (j.external) {
+            if (j.resource->state != Resource::ready ||
+                !allowed("script-src", j.resource->effective, false)) {
+                last_error = "Script request failed or was blocked";
+                issue_log.add("script-load", "failed", origin(j.url));
+                event(j.element, "error", false);
+                return;
             }
-            loaded = true;
-            budget(30);
-            auto result = call("ready", {});
-            JS_FreeValue(context, result);
-            drain();
+            j.source.assign(j.resource->data.begin(), j.resource->data.end());
         }
-        budget(8);
-        auto tick = call("tick", {JS_NewFloat64(context, double(now))});
-        JS_FreeValue(context, tick);
-        drain();
-        for (auto it = fetches.begin(); it != fetches.end();) {
+        budget(50);
+        current_script = j.element;
+        evaluate(j.source.c_str(), j.source.size(), j.url.substr(0, j.url.find('?')));
+        current_script.reset();
+        bool checkpoint = drain();
+        // load events are queued separately so they cannot jump a pending checkpoint.
+        if (j.external)
+            pending_script_events.push_back(j.element);
+        (void)checkpoint;
+    }
+    std::vector<litehtml::element::ptr> pending_script_events;
+    bool settle_fetch() {
+        for (auto it = fetches.begin(); it != fetches.end(); ++it) {
             auto *r = it->resource;
-            if (r->state == Resource::queued || r->state == Resource::loading) {
-                ++it;
+            if (r->state == Resource::queued || r->state == Resource::loading)
                 continue;
-            }
             bool ok = r->transfer_ok && r->data.size() <= 512u * 1024u &&
                       origin(r->effective) == origin(container.page_url) &&
                       allowed("connect-src", r->effective, false);
             std::string body = ok ? std::string(r->data.begin(), r->data.end()) : "";
-            budget(8);
             auto result =
                 call("fetched",
                      {JS_NewInt32(context, it->id),
@@ -1089,10 +1172,119 @@ struct Scripts::Impl {
                       JS_NewStringLen(context, body.data(), body.size()),
                       JS_NewString(context, ok ? "" : "Fetch failed or redirected across origin")});
             JS_FreeValue(context, result);
-            it = fetches.erase(it);
+            fetches.erase(it);
+            return true;
+        }
+        return false;
+    }
+    bool poll(uint64_t time) {
+        if (!usable_runtime)
+            return dirty;
+        if (container.prune_focus())
+            dirty = true;
+        now = std::max(time, origin_time);
+        budget(50);
+        if (!drain())
+            return dirty;
+        if (report_rejection()) {
             drain();
+            return dirty;
+        }
+        if (!pending_script_events.empty()) {
+            auto target = pending_script_events.front();
+            pending_script_events.erase(pending_script_events.begin());
+            event(target, "load", false);
+            return dirty;
+        }
+        Job *ordered = nullptr, *deferred = nullptr, *async = nullptr;
+        bool all_done = true;
+        for (auto &j : jobs) {
+            if (j.done)
+                continue;
+            all_done = false;
+            if (j.mode == Job::ordered && !ordered)
+                ordered = &j;
+            if (j.mode == Job::deferred && !deferred)
+                deferred = &j;
+            if (j.mode == Job::asynchronous && !async && runnable(j))
+                async = &j;
+        }
+        if (async) {
+            execute(*async);
+            return dirty;
+        }
+        if (ordered && runnable(*ordered)) {
+            execute(*ordered);
+            return dirty;
+        }
+        const char *phase = nullptr;
+        if (!ordered && !interactive) {
+            interactive = true;
+            phase = "interactive";
+        } else if (!ordered && deferred && runnable(*deferred)) {
+            execute(*deferred);
+            return dirty;
+        } else if (!ordered && !deferred && !dom_ready) {
+            dom_ready = true;
+            phase = "domReady";
+        } else if (dom_ready && all_done && !resources.pending_load() && !complete) {
+            complete = true;
+            phase = "complete";
+        } else if (complete && !loaded && !resources.pending_load()) {
+            loaded = true;
+            phase = "loaded";
+        }
+        if (phase) {
+            budget(50);
+            auto result = call(phase, {});
+            JS_FreeValue(context, result);
+            drain();
+            return dirty;
+        }
+        // One callback per task, with a checkpoint after each; fetch and timer task
+        // sources alternate when both are ready. Waiting scripts do not freeze them.
+        uint64_t turn_end = Scripts::clock_ms() + 8;
+        for (unsigned task = 0; task < 8 && Scripts::clock_ms() < turn_end; ++task) {
+            budget(50);
+            bool ran = false;
+            if (fetch_turn)
+                ran = settle_fetch();
+            if (!ran) {
+                auto result = call("task", {JS_NewFloat64(context, double(now - origin_time))});
+                ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+                JS_FreeValue(context, result);
+            }
+            if (!ran && !fetch_turn)
+                ran = settle_fetch();
+            fetch_turn = !fetch_turn;
+            if (!ran || !drain())
+                break;
         }
         return dirty;
+    }
+    void render_frame(uint64_t time) {
+        if (!usable_runtime || (previous_frame && time < previous_frame + 16))
+            return;
+        now = std::max(time, origin_time);
+        budget(50);
+        if (!drain())
+            return;
+        previous_frame = time;
+        uint64_t frame_end = Scripts::clock_ms() + 8;
+        auto resize = call("viewport", {});
+        JS_FreeValue(context, resize);
+        if (!drain())
+            return;
+        auto begin = call("beginFrame", {JS_NewFloat64(context, double(now - origin_time))});
+        JS_FreeValue(context, begin);
+        for (unsigned frame = 0; frame < 64 && Scripts::clock_ms() < frame_end; ++frame) {
+            budget(50);
+            auto result = call("frame", {});
+            bool ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+            JS_FreeValue(context, result);
+            if (!ran || !drain())
+                break;
+        }
     }
 };
 Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,
@@ -1105,7 +1297,7 @@ void Scripts::focus(const litehtml::element::ptr &el) {
         impl->container.focus(el);
         return;
     }
-    impl->budget(30);
+    impl->budget(50);
     auto result = impl->call("focus", {JS_NewInt32(impl->context, el ? int(impl->handle(el)) : 0)});
     JS_FreeValue(impl->context, result);
     impl->drain();
@@ -1121,14 +1313,9 @@ bool Scripts::eval(const std::string &source, unsigned ms) {
     return result;
 }
 bool Scripts::changed() const { return impl->dirty; }
-void Scripts::flush() {
-    if (!impl->dirty)
-        return;
-    impl->container.invalidate_text();
-    impl->doc->refresh_native_dom();
-    impl->doc->render(impl->container.viewport_width);
-    impl->dirty = false;
-}
+void Scripts::flush() { impl->flush_layout(); }
+void Scripts::render_frame(uint64_t now) { impl->render_frame(now); }
+
 std::string Scripts::navigation() {
     auto url = std::move(impl->next_url);
     impl->next_url.clear();

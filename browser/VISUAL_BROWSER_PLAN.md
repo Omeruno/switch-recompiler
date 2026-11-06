@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.5.0, 2026-11-06
+## Current status — visual 0.6.0, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,7 +16,7 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.5.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.6.0 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
@@ -99,7 +99,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.5.0
+## Implemented candidate — visual 0.1.0–0.6.0
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -133,3 +133,13 @@ Full browser engine evaluation now has explicit Horizon build, surface/input,
 HTTPS, mutation, RAM/frame and GPU/media acceptance gates; no alternative engine
 is selected or claimed to work on Switch. Further work prioritizes reproducible
 site failures, event-loop/script scheduling and targeted DOM/network coverage.
+
+## Scheduling block — 0.6.0
+
+Separate task/microtask/rAF phases, initial async/defer scheduling on the fully
+parsed DOM, lifecycle transitions, currentScript and tracked Promise rejection
+events are implemented. CSS/image/nonvisual resource revisions prevent unrelated
+completions from rebuilding CSS. Native DOM/input identity is tested through
+late images/styles and navigation. See the visual README and core audit for
+budgets and limits: streaming parser scheduling, dynamic scripts, observers,
+modules/workers and fine-grained style invalidation remain open.

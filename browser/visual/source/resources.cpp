@@ -103,7 +103,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
                 r.transfer_ok = true;
             }
         }
-        ++revision;
+        completed(r);
     } else if (resolve("", key).empty()) {
         r.state = Resource::failed;
         r.error = "Only HTTPS URLs are supported";
@@ -189,7 +189,7 @@ void Resources::start(Resource &r) {
         r.error = "curl initialization failed";
         r.result = CURLE_FAILED_INIT;
         wipe_payload(r);
-        ++revision;
+        completed(r);
         return;
     }
     auto *ctx = new std::pair<Resources *, Resource *>(this, &r);
@@ -218,7 +218,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.5.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.6.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();
@@ -228,7 +228,7 @@ void Resources::start(Resource &r) {
         r.handle = nullptr;
         wipe_payload(r);
         delete ctx;
-        ++revision;
+        completed(r);
         return;
     }
     r.state = Resource::loading;
@@ -279,7 +279,7 @@ bool Resources::pump() {
                     r.error = "Переход после формы заблокирован или превышен лимит";
                     r.policy_blocked = true;
                     wipe_payload(r);
-                    ++revision;
+                    completed(r);
                     continue;
                 }
                 ++r.redirects;
@@ -314,9 +314,25 @@ bool Resources::pump() {
             wipe_payload(r);
             delete ctx;
             --active;
-            ++revision;
+            completed(r);
         }
     return old != revision;
+}
+void Resources::completed(Resource &r) {
+    ++revision;
+    if (r.stylesheet)
+        ++style_revision;
+    if (r.image)
+        ++image_revision;
+}
+bool Resources::pending_load() const {
+    for (const auto &kv : items) {
+        const auto &r = kv.second;
+        if ((r.stylesheet || r.image) &&
+            (r.state == Resource::queued || r.state == Resource::loading))
+            return true;
+    }
+    return false;
 }
 bool Resources::pending_styles() const {
     for (const auto &kv : items)
