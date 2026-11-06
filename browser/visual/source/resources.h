@@ -17,6 +17,8 @@ struct Resource {
     size_t header_bytes = 0;
     long http_status = 0;
     bool transfer_ok = false, critical = false, stylesheet = false;
+    CURLcode result = CURLE_OK;
+    bool byte_limit = false, policy_blocked = false;
     CURL *handle = nullptr;
     size_t limit = 0;
 };
@@ -26,6 +28,7 @@ class Resources {
     std::map<std::string, Resource> items;
     size_t received = 0;
     unsigned active = 0, next_navigation = 0;
+    bool request_limit = false;
     static size_t receive(char *, size_t, size_t, void *);
     static size_t header(char *, size_t, size_t, void *);
     void start(Resource &);
@@ -46,6 +49,10 @@ class Resources {
     bool pending() const;
     bool pending_styles() const;
     size_t count() const { return items.size(); }
+    struct Failures {
+        unsigned http = 0, tls = 0, transport = 0, limits = 0, policy = 0;
+    };
+    Failures failures() const;
     std::string status() const;
 };
 } // namespace visual

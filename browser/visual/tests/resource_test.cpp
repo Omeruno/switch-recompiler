@@ -55,11 +55,15 @@ int main(int argc, char **argv) {
         auto *expired = r.request(argv[4], 4096);
         complete(r);
         CHECK(expired->state == visual::Resource::failed);
+        auto failures = r.failures();
+        CHECK(failures.tls == 2 && failures.policy == 1 && failures.http == 0);
+        CHECK(r.failures().tls == failures.tls); // Observing a failure does not recount it.
         r.clear();
         CHECK(r.count() == 0 && !r.pending());
         auto *small = r.request(base + "/set", 8);
         complete(r);
         CHECK(small->state == visual::Resource::failed && small->data.empty());
+        CHECK(r.failures().limits == 1 && r.failures().transport == 0);
         r.clear();
         for (int i = 0; i < 8; i++)
             CHECK(r.request(base + "/set?n=" + std::to_string(i), 4096));
@@ -73,6 +77,8 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 64; i++)
             CHECK(r.request(base + "/set?quota=" + std::to_string(i), 4096));
         CHECK(!r.request(base + "/set?quota=64", 4096));
+        CHECK(!r.request(base + "/set?quota=64", 4096));
+        CHECK(r.failures().limits == 1);
     }
     browser_profile_close();
     CHECK(browser_profile_open(nullptr, argv[6]));

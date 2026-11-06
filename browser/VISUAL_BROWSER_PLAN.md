@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.4.1, 2026-11-06
+## Current status — visual 0.5.0, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,15 +16,15 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.4.1 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.5.0 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
   events, timers and bounded same-origin GET fetch. Version 0.4.1 adds native field
   frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
   See the visual README for limits.
-- Nine host suites cover 0.4.1 field geometry, pixel visibility, focus and existing
-  forms/resources/JS behavior. ARM64 CI supplies the NRO;
+- Ten host suites cover the existing browser and 0.5.0 flex gaps/geometry, independently
+  compared to 120 Chromium rectangles, plus categorized core diagnostics. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
 - Still required for general browsing: broader DOM/events and JavaScript APIs,
   Grid and additional CSS, navigation/focus/selection work, modules/workers,
@@ -99,7 +99,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.4.1
+## Implemented candidate — visual 0.1.0–0.5.0
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -122,3 +122,14 @@ selection; complete CSS/DOM, modern web APIs, GPU and media remain substantial w
 There is no evidence-based completion percentage or fixed finish date for the
 full game browser. Native visual browsing is implemented in a limited subset;
 the GPU/media/runtime portions still require implementation and device proof.
+
+## Architecture audit — 0.5.0
+
+See [visual/CORE_AUDIT.md](visual/CORE_AUDIT.md) for the researched architecture and
+coverage matrix. Confirmed defects fixed: missing flex gaps, unregistered flex DOM
+geometry, auto-margin distribution and accumulating paint counters. L/status tap
+opens a bounded core report for HTTP/TLS/transport/limits/JS/image/paint categories.
+Full browser engine evaluation now has explicit Horizon build, surface/input,
+HTTPS, mutation, RAM/frame and GPU/media acceptance gates; no alternative engine
+is selected or claimed to work on Switch. Further work prioritizes reproducible
+site failures, event-loop/script scheduling and targeted DOM/network coverage.

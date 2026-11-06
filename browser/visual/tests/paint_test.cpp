@@ -44,6 +44,16 @@ int main(int argc, char **argv) {
         CHECK(pixel(1180, 200).blue > 220 && pixel(1180, 200).red < 35);
         CHECK(pixel(640, 200).red > 115 && pixel(640, 200).blue > 115);
         CHECK(pixel(640, 20) == litehtml::web_color(255, 255, 255));
+        litehtml::borders unsupported;
+        unsupported.top.width = 2;
+        unsupported.top.color = {0, 0, 0};
+        unsupported.top.style = litehtml::border_style_dashed;
+        for (int frame = 0; frame < 3; ++frame) {
+            clear();
+            c.draw_borders(0, unsupported, {20, 20, 100, 100}, false);
+            CHECK(c.unsupported == 1);
+            c.end_paint();
+        }
         linear.color_points = {{0, {255, 0, 0, 255}}, {1, {0, 0, 255, 0}}};
         clear();
         c.draw_linear_gradient(0, layer, linear);

@@ -32,6 +32,7 @@ void Resources::clear() {
         wipe_payload(kv.second);
     items.clear();
     active = 0;
+    request_limit = false;
     received = 0;
     ++revision;
 }
@@ -69,6 +70,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
     auto found = items.find(key);
     if (found != items.end())
         return &found->second;
+    if (items.size() >= 64)
+        request_limit = true;
     if (key.empty() || items.size() >= 64 || (!multi && key.rfind("demo:/", 0) != 0))
         return nullptr;
     Resource r;
@@ -109,6 +112,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
 }
 Resource *Resources::navigate_form(const Submission &form, const std::string &source,
                                    const std::vector<std::string> &policies, size_t limit) {
+    if (items.size() >= 64)
+        request_limit = true;
     if (!multi || items.size() >= 64 || form.body.size() > 65536 ||
         (form.method != "GET" && form.method != "POST") ||
         !form_action_allowed(policies, source, form.url))
@@ -133,6 +138,7 @@ size_t Resources::receive(char *data, size_t unit, size_t count, void *ctx) {
     size_t bytes = unit * count;
     if (bytes > r.limit - r.data.size() || bytes > total_limit - self.received) {
         r.error = "Resource byte quota exceeded";
+        r.byte_limit = true;
         return 0;
     }
     r.data.insert(r.data.end(), data, data + bytes);
@@ -181,6 +187,7 @@ void Resources::start(Resource &r) {
     if (!r.handle) {
         r.state = Resource::failed;
         r.error = "curl initialization failed";
+        r.result = CURLE_FAILED_INIT;
         wipe_payload(r);
         ++revision;
         return;
@@ -211,10 +218,11 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.4.1");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.5.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();
+        r.result = code != CURLE_OK ? code : CURLE_FAILED_INIT;
         r.state = Resource::failed;
         curl_easy_cleanup(r.handle);
         r.handle = nullptr;
@@ -269,6 +277,7 @@ bool Resources::pump() {
                     r.state = Resource::failed;
                     r.transfer_ok = false;
                     r.error = "Переход после формы заблокирован или превышен лимит";
+                    r.policy_blocked = true;
                     wipe_payload(r);
                     ++revision;
                     continue;
@@ -287,6 +296,7 @@ bool Resources::pump() {
                 continue;
             }
             r.http_status = http;
+            r.result = msg->data.result;
             r.transfer_ok = msg->data.result == CURLE_OK && http > 0;
             r.state = msg->data.result == CURLE_OK && http >= 200 && http < 300 ? Resource::ready
                                                                                 : Resource::failed;
@@ -321,12 +331,37 @@ bool Resources::pending() const {
             return true;
     return false;
 }
+Resources::Failures Resources::failures() const {
+    Failures out;
+    if (request_limit)
+        ++out.limits;
+    for (const auto &kv : items) {
+        auto &r = kv.second;
+        if (r.state != Resource::failed)
+            continue;
+        if (r.byte_limit)
+            ++out.limits;
+        else if (r.policy_blocked || r.result == CURLE_UNSUPPORTED_PROTOCOL)
+            ++out.policy;
+        else if (r.result == CURLE_PEER_FAILED_VERIFICATION ||
+                 r.result == CURLE_SSL_CACERT_BADFILE || r.result == CURLE_SSL_CONNECT_ERROR ||
+                 r.result == CURLE_SSL_CERTPROBLEM)
+            ++out.tls;
+        else if (r.result != CURLE_OK)
+            ++out.transport;
+        else if (r.http_status >= 300)
+            ++out.http;
+        else
+            ++out.policy;
+    }
+    return out;
+}
 std::string Resources::status() const {
     unsigned errors = 0;
     for (const auto &kv : items)
         if (kv.second.state == Resource::failed)
             ++errors;
-    return std::to_string(items.size()) + " ресурсов · ошибок: " + std::to_string(errors) +
+    return std::to_string(items.size()) + " ресурсов · сбоев загрузки: " + std::to_string(errors) +
            (pending() ? " · загрузка" : "");
 }
 } // namespace visual

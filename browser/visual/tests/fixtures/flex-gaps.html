@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8"><style>
+html{font-size:18px}body{margin:0} .case{display:flex;width:300px;align-items:flex-start;align-content:flex-start;margin-bottom:12px;gap:10px 20px}
+.case>div{width:80px;height:30px;flex:none;background:#26819e}.case>div:nth-child(2n){background:#ad7438}
+#wrap,#wraprev{width:190px;flex-wrap:wrap}#wraprev{flex-wrap:wrap-reverse}
+#reverse{flex-direction:row-reverse}#grow>div{flex:1 1 0;min-width:0}
+#shrink>div{width:150px;flex:0 1 auto;min-width:0}#auto>div:last-child{margin-left:auto}
+#between{justify-content:space-between}#column,#colrev{flex-direction:column;width:200px;height:130px}
+#colrev{flex-direction:column-reverse}#colauto{flex-direction:column;width:200px;row-gap:12px}
+#colwrap{flex-flow:column wrap;width:240px;height:75px}
+#percent{height:100px;gap:10% 5%;flex-wrap:wrap;width:200px}
+#cyclic{flex-direction:column;row-gap:50%;width:200px}
+#units{font-size:20px;gap:1em 2em}#normal{gap:normal}
+#cascade{gap:30px 5px;column-gap:15px;gap:-1px}#cascade>div{width:75px}
+#edges{width:320px;padding:10px;box-sizing:border-box}#edges>div{width:80px;padding:2px;border:2px solid black;box-sizing:border-box}
+#crossbetween{width:190px;height:160px;flex-wrap:wrap;align-content:space-between}
+#responsive{gap:10px}@media(max-width:700px){#responsive{gap:24px 40px;width:200px;flex-wrap:wrap}}
+</style>
+<section class="case" id="row"><div id="row0" data-test></div><div id="row1" data-test></div><div id="row2" data-test></div></section>
+<section class="case" id="wrap"><div id="wrap0" data-test></div><div id="wrap1" data-test></div><div id="wrap2" data-test></div></section>
+<section class="case" id="wraprev"><div id="wraprev0" data-test></div><div id="wraprev1" data-test></div><div id="wraprev2" data-test></div></section>
+<section class="case" id="reverse"><div id="reverse0" data-test></div><div id="reverse1" data-test></div><div id="reverse2" data-test></div></section>
+<section class="case" id="grow"><div id="grow0" data-test></div><div id="grow1" data-test></div><div id="grow2" data-test></div></section>
+<section class="case" id="shrink"><div id="shrink0" data-test></div><div id="shrink1" data-test></div><div id="shrink2" data-test></div></section>
+<section class="case" id="auto"><div id="auto0" data-test></div><div id="auto1" data-test></div><div id="auto2" data-test></div></section>
+<section class="case" id="between"><div id="between0" data-test></div><div id="between1" data-test></div><div id="between2" data-test></div></section>
+<section class="case" id="column"><div id="column0" data-test></div><div id="column1" data-test></div><div id="column2" data-test></div></section>
+<section class="case" id="colrev"><div id="colrev0" data-test></div><div id="colrev1" data-test></div><div id="colrev2" data-test></div></section>
+<section class="case" id="colauto"><div id="colauto0" data-test></div><div id="colauto1" data-test></div><div id="colauto2" data-test></div></section>
+<section class="case" id="colwrap"><div id="colwrap0" data-test></div><div id="colwrap1" data-test></div><div id="colwrap2" data-test></div></section>
+<section class="case" id="percent"><div id="percent0" data-test></div><div id="percent1" data-test></div><div id="percent2" data-test></div></section>
+<section class="case" id="cyclic"><div id="cyclic0" data-test></div><div id="cyclic1" data-test></div><div id="cyclic2" data-test></div></section>
+<section class="case" id="units"><div id="units0" data-test></div><div id="units1" data-test></div><div id="units2" data-test></div></section>
+<section class="case" id="normal"><div id="normal0" data-test></div><div id="normal1" data-test></div><div id="normal2" data-test></div></section>
+<section class="case" id="cascade"><div id="cascade0" data-test></div><div id="cascade1" data-test></div><div id="cascade2" data-test></div></section>
+<section class="case" id="edges"><div id="edges0" data-test></div><div id="edges1" data-test></div><div id="edges2" data-test></div></section>
+<section class="case" id="crossbetween"><div id="crossbetween0" data-test></div><div id="crossbetween1" data-test></div><div id="crossbetween2" data-test></div></section>
+<section class="case" id="responsive"><div id="responsive0" data-test></div><div id="responsive1" data-test></div><div id="responsive2" data-test></div></section>

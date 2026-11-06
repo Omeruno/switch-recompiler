@@ -45,6 +45,11 @@ struct Browser {
     litehtml::document::ptr document;
     std::unique_ptr<visual::Scripts> scripts;
     std::unique_ptr<visual::Choices> choices;
+    bool report_open = false, report_saved = false;
+    std::vector<std::string> report_lines;
+    int report_page = 0;
+    visual::View report_view;
+    visual::Gestures report_gestures{report_view};
     visual::Resource *root_resource = nullptr;
     std::vector<std::string> submission_rules;
     visual::View view;
@@ -62,12 +67,14 @@ struct Browser {
     int pointer_x = 640, pointer_y = 318;
     Browser(SDL_Renderer *r, const std::string &root, const std::string &font)
         : renderer(r), resources(root), container(r, resources, font), gestures(view) {
+        report_gestures.zoom_enabled = false;
         ui = TTF_OpenFont(font.c_str(), 18);
         if (!ui)
             throw std::runtime_error(TTF_GetError());
         navigate(url, false);
     }
     ~Browser() {
+        report_open = false;
         choices.reset();
         scripts.reset();
         document.reset();
@@ -94,6 +101,7 @@ struct Browser {
             if (history.size() > 16)
                 history.erase(history.begin());
         }
+        report_open = false;
         choices.reset();
         scripts.reset();
         document.reset();
@@ -118,6 +126,10 @@ struct Browser {
             notice = "Не удалось подготовить загрузку страницы";
     }
     void back() {
+        if (report_open) {
+            report_open = false;
+            return;
+        }
         if (choices) {
             choices.reset();
             return;
@@ -310,6 +322,18 @@ struct Browser {
         }
     }
     void click(visual::Point p) {
+        if (report_open) {
+            if (p.y < 70)
+                report_open = false;
+            else
+                report_page = std::clamp(report_page + (p.x >= 640 ? 1 : -1), 0,
+                                         std::max(0, (int(report_lines.size()) - 1) / 11));
+            return;
+        }
+        if (p.y < 0 && p.y >= -42) {
+            toggle_report();
+            return;
+        }
         if (choices) {
             int index = choices->hit(p);
             if (index >= 0) {
@@ -450,23 +474,37 @@ struct Browser {
             choices.reset();
     }
     void cancel_input() {
+        report_gestures.cancel();
         gestures.cancel();
         if (choices)
             choices->gestures.cancel();
     }
     void touch_down(int64_t id, visual::Point p, uint32_t now) {
+        if (report_open) {
+            report_gestures.down(id, p, now);
+            return;
+        }
         if (choices)
             choices->gestures.down(id, choices->local(p), now);
         else
             gestures.down(id, p, now);
     }
     void touch_move(int64_t id, visual::Point p, uint32_t now) {
+        if (report_open) {
+            report_gestures.move(id, p, now);
+            return;
+        }
         if (choices)
             choices->gestures.move(id, choices->local(p), now);
         else
             gestures.move(id, p, now);
     }
     void touch_up(int64_t id, visual::Point p, uint32_t now) {
+        if (report_open) {
+            if (report_gestures.up(id, p, now))
+                click(p);
+            return;
+        }
         if (choices) {
             auto tap = choices->gestures.up(id, choices->local(p), now);
             if (tap)
@@ -478,6 +516,13 @@ struct Browser {
         }
     }
     void scroll(float dx, float dy) {
+        if (report_open) {
+            report_page = std::clamp(report_page + (dy < 0   ? 1
+                                                    : dy > 0 ? -1
+                                                             : 0),
+                                     0, std::max(0, (int(report_lines.size()) - 1) / 11));
+            return;
+        }
         if (choices)
             choices->scroll(dy);
         else
@@ -582,6 +627,7 @@ struct Browser {
             notice = "Этот тип элемента пока не подключён";
     }
     void edit_address() {
+        report_open = false;
         choices.reset();
 #ifdef __SWITCH__
         gestures.cancel();
@@ -657,6 +703,79 @@ struct Browser {
              choices->control->multiple() ? "Готово · B — закрыть" : "B — закрыть · A — выбрать",
              {20, 88, 117, 255}, 860);
     }
+    void toggle_report() {
+        if (report_open) {
+            report_open = false;
+            return;
+        }
+        choices.reset();
+        cancel_input();
+        report_page = 0;
+        auto failures = resources.failures();
+        char site[384] = {};
+        browser_origin(container.page_url.c_str(), site, sizeof(site));
+        report_lines = {
+            "Switch visual browser 0.5.0 · " + std::string(site[0] ? site : "offline"),
+            "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
+                std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
+            "Лимиты загрузки: " + std::to_string(failures.limits) +
+                " · блокировки: " + std::to_string(failures.policy),
+            "Изображения: загружено " + std::to_string(container.decoded_images()) +
+                " · не декодировано " + std::to_string(container.failed_images()),
+            "Рисование: пропусков за последний кадр " + std::to_string(container.unsupported),
+            "JS: " + std::string(
+                         scripts ? (scripts->ready() ? "начальные скрипты обработаны" : "загрузка")
+                                 : "не запущен"),
+            "Ниже — группы сбоев JavaScript; xN означает число повторов."};
+        if (scripts) {
+            for (const auto &issue : scripts->issues().entries())
+                report_lines.push_back(issue.category + " / " + issue.code + " · x" +
+                                       std::to_string(issue.count) + " · " + issue.origin);
+            if (scripts->issues().truncated())
+                report_lines.push_back("Достигнут лимит: 24 группы JavaScript.");
+        }
+        report_lines.push_back("Известные пробелы: Grid, полный DOM/CSSOM, модули, workers.");
+        report_lines.push_back(
+            "Также отсутствуют: WebSocket/XHR, полный CORS, GPU, видео и аудио.");
+        report_lines.push_back(
+            "Счётчики не определяют причину отказа сайта без дальнейшей проверки.");
+        std::string report;
+        for (const auto &line : report_lines)
+            report += line + "\n";
+        report_saved = visual::write_core_report(report);
+        report_open = true;
+    }
+    void paint_report() {
+        if (!report_open)
+            return;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+        SDL_Rect shade = {0, 84, 1280, 636};
+        SDL_RenderFillRect(renderer, &shade);
+        SDL_SetRenderDrawColor(renderer, 246, 249, 253, 255);
+        SDL_Rect panel = {24, 102, 1232, 590};
+        SDL_RenderFillRect(renderer, &panel);
+        text(renderer, ui, 44, 119, "Отчёт ядра · L / B / коснитесь заголовка — закрыть",
+             {24, 42, 66, 255});
+        for (int i = 0; i < 11; ++i) {
+            size_t index = size_t(report_page * 11 + i);
+            if (index >= report_lines.size())
+                break;
+            text(renderer, ui, 44, 165 + i * 37, report_lines[index], {24, 42, 66, 255}, 1170);
+        }
+        text(renderer, ui, 44, 597,
+             "← → коснитесь половины окна · страница " + std::to_string(report_page + 1) + "/" +
+                 std::to_string((report_lines.size() + 10) / 11),
+             {20, 88, 117, 255});
+        text(renderer, ui, 44, 645,
+             report_saved ? "SD: /switch/switch-visual-browser/core-report.txt" :
+#ifdef __SWITCH__
+                          "Не удалось сохранить отчёт на SD"
+#else
+                          "Предпросмотр отчёта (F1)"
+#endif
+             ,
+             {20, 88, 117, 255});
+    }
     void paint() {
         SDL_SetRenderDrawColor(renderer, 245, 247, 250, 255);
         SDL_RenderClear(renderer);
@@ -675,7 +794,7 @@ struct Browser {
         text(renderer, ui, 280, 10, url, {230, 238, 250, 255}, 840);
         text(renderer, ui, 1135, 10, "Адрес X", {112, 220, 235, 255}, 135);
         text(renderer, ui, 16, 46,
-             notice.empty() ? "HTML/CSS · " + resources.status() + " · масштаб " +
+             notice.empty() ? "Отчёт L · " + resources.status() + " · масштаб " +
                                   std::to_string(int(view.zoom * 100)) + "% · " +
                                   std::string(viewport_mode == 0   ? "ПК"
                                               : viewport_mode == 1 ? "Планшет"
@@ -688,7 +807,8 @@ struct Browser {
         if (!document && notice.empty())
             text(renderer, ui, 40, 140, "Загрузка страницы…", {25, 40, 60, 255});
         paint_choices();
-        if (document && !gestures.active()) {
+        paint_report();
+        if (document && !gestures.active() && !report_open) {
             SDL_SetRenderDrawColor(renderer, 15, 100, 160, 200);
             SDL_RenderDrawLine(renderer, pointer_x - 7, pointer_y + 84, pointer_x + 7,
                                pointer_y + 84);
@@ -700,7 +820,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.4.1");
+    visual::diagnostic("boot", "0.5.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -786,6 +906,8 @@ int main(int argc, char **argv) {
                     app.back();
                 if (down & HidNpadButton_Y)
                     app.reload();
+                if (down & HidNpadButton_L)
+                    app.toggle_report();
                 if (down & HidNpadButton_A) {
                     if (app.choices && app.choices->pad_navigation)
                         app.choose_option(app.choices->hover);
@@ -816,9 +938,9 @@ int main(int argc, char **argv) {
                     app.choices->pad_navigation = false;
                 app.pointer_x = std::clamp(app.pointer_x + stick.x / 4096, 0, 1279);
                 app.pointer_y = std::clamp(app.pointer_y - stick.y / 4096, 0, 635);
-                if (!app.choices && (down & HidNpadButton_ZR))
+                if (!app.report_open && !app.choices && (down & HidNpadButton_ZR))
                     app.view.pinch({640, 318}, {640, 318}, 1.2f);
-                if (!app.choices && (down & HidNpadButton_ZL))
+                if (!app.report_open && !app.choices && (down & HidNpadButton_ZL))
                     app.view.pinch({640, 318}, {640, 318}, 1 / 1.2f);
 #endif
                 SDL_Event event;
@@ -860,6 +982,8 @@ int main(int argc, char **argv) {
                     else if (event.type == SDL_KEYDOWN) {
                         if (event.key.keysym.sym == SDLK_ESCAPE)
                             quit = true;
+                        else if (event.key.keysym.sym == SDLK_F1)
+                            app.toggle_report();
                         else if (event.key.keysym.sym == SDLK_BACKSPACE)
                             app.back();
                         else if (event.key.keysym.sym == SDLK_m)
@@ -1091,6 +1215,31 @@ int main(int argc, char **argv) {
                     if (!widget("demo-check")->checked() || !widget("demo-radio-a")->checked() ||
                         widget("demo-select")->value() != "ru")
                         throw std::runtime_error("native reset failed");
+                    float before_report_scroll = app.view.y;
+                    app.toggle_report();
+                    if (!app.report_open || app.report_lines.size() < 10)
+                        throw std::runtime_error("core report not available");
+                    app.paint();
+                    SDL_Surface *report_shot =
+                        SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);
+                    if (!report_shot ||
+                        SDL_RenderReadPixels(renderer, nullptr, report_shot->format->format,
+                                             report_shot->pixels, report_shot->pitch) ||
+                        SDL_SaveBMP(report_shot, (std::string(argv[4]) + ".report.bmp").c_str()))
+                        throw std::runtime_error(SDL_GetError());
+                    SDL_FreeSurface(report_shot);
+                    app.touch_down(51, {800, 200}, 15000);
+                    app.touch_move(51, {800, 100}, 15100);
+                    app.touch_up(51, {800, 100}, 15200);
+                    if (!app.report_open || app.view.y != before_report_scroll)
+                        throw std::runtime_error("core report gesture leaked into page");
+                    app.back();
+                    if (app.report_open)
+                        throw std::runtime_error("core report did not close");
+                    app.click({400, -20});
+                    if (!app.report_open)
+                        throw std::runtime_error("status bar report tap failed");
+                    app.back();
                     app.reload();
                     for (int i = 0; i < 5; i++)
                         app.pump();

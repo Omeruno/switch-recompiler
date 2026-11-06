@@ -63,6 +63,7 @@ int main(int argc, char **argv) {
         CHECK(downgrade->state == visual::Resource::failed && !downgrade->transfer_ok);
         auto *loop = post("/forms-loop");
         CHECK(loop->state == visual::Resource::failed && loop->redirects == 5);
+        CHECK(resources.failures().http == 1 && resources.failures().policy == 3);
         CHECK(!resources.navigate_form({base + "/forms-echo", "POST", payload}, base + "/form",
                                        {"form-action 'none'"}));
         for (int i = 0; i < 10; i++)

@@ -21,6 +21,24 @@ inline void diagnostic(const char *stage, const std::string &detail) {
     }
 #endif
 }
+inline bool write_core_report(const std::string &report) {
+#ifdef __SWITCH__
+    mkdir("sdmc:/switch", 0700);
+    mkdir("sdmc:/switch/switch-visual-browser", 0700);
+    FILE *f = fopen("sdmc:/switch/switch-visual-browser/core-report.txt", "w");
+    if (!f)
+        return false;
+    bool ok = fwrite(report.data(), 1, report.size(), f) == report.size();
+    if (fflush(f) != 0 || fsync(fileno(f)) != 0)
+        ok = false;
+    if (fclose(f) != 0)
+        ok = false;
+    return ok;
+#else
+    (void)report;
+    return false;
+#endif
+}
 inline void fatal_screen(const std::string &detail) {
     diagnostic("fatal", detail);
 #ifdef __SWITCH__

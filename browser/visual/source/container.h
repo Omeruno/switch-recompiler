@@ -53,6 +53,7 @@ class Container final : public litehtml::document_container {
     Container(SDL_Renderer *, Resources &, std::string font);
     ~Container() override;
     size_t decoded_images() const;
+    size_t failed_images() const;
     void reset();
     void invalidate_text();
     void begin_paint();

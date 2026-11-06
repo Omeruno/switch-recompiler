@@ -1,4 +1,4 @@
-# Switch visual browser — 0.4.1
+# Switch visual browser — 0.5.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -13,7 +13,10 @@ path; it is not a production engine selection or a playable Keldurn client.
   identity, handlers and JavaScript state. A checksum-locked renderer patch rebuilds
   CSS/render state without replacing the document or accumulating old font caches.
 - Retained HTML document, external/inline CSS, engine cascade and layout,
-  flex layout, font metrics and engine link hit testing.
+  flex layout (including gap/row-gap/column-gap), font metrics and engine link hit testing.
+  Flex gaps participate in wrapping, flexible lengths and alignment; row/column,
+  reverse, wrapped lines, length units and definite-base percentages are covered.
+  Grid/multicol gaps and complete intrinsic-sizing/calc cases are not implemented.
 - Cyrillic DejaVu text, solid backgrounds with rounded fills, rectangular solid
   borders, rectangular nested clipping and PNG/JPEG/WebP resources.
 - Cached linear, radial and conic gradient tiles (premultiplied sRGB, bounded
@@ -234,3 +237,28 @@ they are not complete CSS outline/box-shadow rendering. Textarea editing still
 uses the system keyboard, without a full inline editor or internal text scrollbar.
 Host Google captures do not prove that a different server response on Switch is
 fixed. No VK, YouTube or media compatibility improvement is claimed by this release.
+
+## Core audit and diagnostics — 0.5.0
+
+Read [CORE_AUDIT.md](CORE_AUDIT.md) for the Russian architecture review, primary
+sources, coverage matrix, engine migration gates and remaining work.
+
+Press **L** (host: F1), or tap the status line, to open a frozen core report.
+Tap either half to change pages; B or the heading closes it. On Switch opening
+also overwrites `/switch/switch-visual-browser/core-report.txt`. The report separates
+HTTP/TLS/transport/limit/policy failures, failed image decodes, skipped paint operations
+in the last frame and up to 24 JS issue groups (saturating repeat counts).
+JS groups contain only category/class and origin, never message/stack, URL path/query,
+HTML, cookie, input values or POST body. Repeated failures can share a group and
+these counters alone do not identify a site's precise compatibility failure.
+
+Ten host suites now include 120 geometry rectangles from 20 own flex-gap cases
+at 1280/640 CSS px, independently generated with Chromium 151.0.7922.34 and compared
+within 0.1 CSS px. Expected coordinates, browser version and fixture SHA are checked
+in; optional regeneration: `python3 browser/visual/tools/reference_flex.py` with
+Playwright/Chromium installed. Tests also cover native flex geometry registration,
+auto margins, report interaction, error categorization, bounded JS issue grouping
+and non-accumulating paint counters. This is a narrow reference suite, not WPT conformance.
+
+Device testing of 0.5.0 is pending. This release does not establish VK/YouTube/game
+compatibility or select a replacement full browser engine.

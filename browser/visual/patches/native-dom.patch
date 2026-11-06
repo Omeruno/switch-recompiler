@@ -1,3 +1,24 @@
+diff --git a/include/litehtml/css_properties.h b/include/litehtml/css_properties.h
+index a1d4833..84cf43e 100644
+--- a/include/litehtml/css_properties.h
++++ b/include/litehtml/css_properties.h
+@@ -86,6 +86,7 @@ namespace litehtml
+         float                m_flex_grow   = 0;
+         float                m_flex_shrink = 1;
+         css_length           m_flex_basis;
++        css_length           m_row_gap, m_column_gap;
+         flex_direction       m_flex_direction       = flex_direction_row;
+         flex_wrap            m_flex_wrap            = flex_wrap_nowrap;
+         flex_justify_content m_flex_justify_content = flex_justify_content_flex_start;
+@@ -232,6 +233,8 @@ namespace litehtml
+         float                get_flex_grow() const;
+         float                get_flex_shrink() const;
+         const css_length&    get_flex_basis() const;
++        const css_length& get_row_gap() const { return m_row_gap; }
++        const css_length& get_column_gap() const { return m_column_gap; }
+         flex_direction       get_flex_direction() const;
+         flex_wrap            get_flex_wrap() const;
+         flex_justify_content get_flex_justify_content() const;
 diff --git a/include/litehtml/document.h b/include/litehtml/document.h
 index ea27155..3403d02 100644
 --- a/include/litehtml/document.h
@@ -44,6 +65,19 @@ index ca9fc38..b2258a5 100644
  
          const css_properties& css() const;
          css_properties&       css();
+diff --git a/include/litehtml/flex_line.h b/include/litehtml/flex_line.h
+index 8ffa194..bf042c5 100644
+--- a/include/litehtml/flex_line.h
++++ b/include/litehtml/flex_line.h
+@@ -14,6 +14,8 @@ namespace litehtml
+         pixel_t                               cross_start = 0; // for row direction: top. for column direction: left
+         pixel_t  main_size  = 0; // sum of all items main size, initially the sum of hypothetical main sizes
+         pixel_t  cross_size = 0; // sum of all items cross size
++        pixel_t  gap = 0_px;
++        pixel_t gap_size() const { return items.empty() ? 0_px : gap * int(items.size() - 1); }
+         pixel_t  base_size  = 0;
+         int      num_auto_margin_main_start = 0; // number of items with auto margin left/top
+         int      num_auto_margin_main_end   = 0; // number of items with auto margin right/bottom
 diff --git a/include/litehtml/html_tag.h b/include/litehtml/html_tag.h
 index 779d423..2a38bac 100644
 --- a/include/litehtml/html_tag.h
@@ -57,6 +91,46 @@ index 779d423..2a38bac 100644
  
          bool is_white_space() const override;
          bool is_body() const override;
+diff --git a/include/litehtml/render_flex.h b/include/litehtml/render_flex.h
+index e104922..f4244a4 100644
+--- a/include/litehtml/render_flex.h
++++ b/include/litehtml/render_flex.h
+@@ -10,6 +10,7 @@ namespace litehtml
+     class render_item_flex : public render_item_block
+     {
+         std::list<flex_line> m_lines;
++        pixel_t m_main_gap = 0_px, m_cross_gap = 0_px;
+ 
+         std::list<flex_line> get_lines(const containing_block_context& self_size, formatting_context* fmt_ctx,
+                                        bool is_row_direction, pixel_t container_main_size, bool single_line);
+diff --git a/include/litehtml/string_id.h b/include/litehtml/string_id.h
+index a2d4ebf..429239d 100644
+--- a/include/litehtml/string_id.h
++++ b/include/litehtml/string_id.h
+@@ -87,7 +87,7 @@ namespace litehtml
+         _z_index_, _float_, _clear_, _text_indent_, _top_, _right_, _bottom_, _left_, _cursor_, _content_,
+         _border_collapse_, _text_transform_,
+ 
+-        _flex_, _flex_flow_, _flex_direction_, _flex_wrap_, _justify_content_, _align_items_, _align_content_,
++        _flex_, _flex_flow_, _gap_, _row_gap_, _column_gap_, _flex_direction_, _flex_wrap_, _justify_content_, _align_items_, _align_content_,
+         _align_self_, _flex_grow_, _flex_shrink_, _flex_basis_,
+ 
+         _caption_side_, _order_,
+diff --git a/src/css_properties.cpp b/src/css_properties.cpp
+index 5b03ba4..7bc2de9 100644
+--- a/src/css_properties.cpp
++++ b/src/css_properties.cpp
+@@ -581,6 +581,10 @@ void litehtml::css_properties::compute_flex(const html_tag* el, const document::
+ {
+     if(m_display == display_flex || m_display == display_inline_flex)
+     {
++        m_row_gap = el->get_property<css_length>(_row_gap_, false, css_length::predef_value(0), offset(m_row_gap));
++        m_column_gap = el->get_property<css_length>(_column_gap_, false, css_length::predef_value(0), offset(m_column_gap));
++        doc->cvt_units(m_row_gap, m_font_metrics, 0_px);
++        doc->cvt_units(m_column_gap, m_font_metrics, 0_px);
+         m_flex_direction = static_cast<flex_direction>(
+             el->get_property<int>(_flex_direction_, false, flex_direction_row, offset(m_flex_direction)));
+         m_flex_wrap =
 diff --git a/src/document.cpp b/src/document.cpp
 index 315749a..67a2eae 100644
 --- a/src/document.cpp
@@ -121,6 +195,106 @@ index 315749a..67a2eae 100644
      void document::append_children_from_string(element& parent, const char* str, bool replace_existing)
      {
          // parent must belong to this document
+diff --git a/src/flex_line.cpp b/src/flex_line.cpp
+index b8511c2..2ac16eb 100644
+--- a/src/flex_line.cpp
++++ b/src/flex_line.cpp
+@@ -288,61 +288,29 @@ bool litehtml::flex_line::fix_min_max_violations()
+ 
+ bool litehtml::flex_line::distribute_main_auto_margins(pixel_t free_main_size)
+ {
+-    if(free_main_size > 0_px && (num_auto_margin_main_start || num_auto_margin_main_end))
+-    {
+-        pixel_t add = free_main_size / static_cast<int>(items.size() * 2);
+-        for(auto& item : items)
+-        {
+-            if(!item->auto_margin_main_start.is_default())
+-            {
+-                item->auto_margin_main_start  = add;
+-                item->main_size              += add;
+-                main_size                    += add;
+-                free_main_size               -= add;
+-            }
+-            if(!item->auto_margin_main_end.is_default())
+-            {
+-                item->auto_margin_main_end  = add;
+-                item->main_size            += add;
+-                main_size                  += add;
+-                free_main_size             -= add;
++    int remaining = num_auto_margin_main_start + num_auto_margin_main_end;
++    if(free_main_size <= 0_px || !remaining) return false;
++    for(auto& item : items) {
++        for(auto margin : {&item->auto_margin_main_start, &item->auto_margin_main_end}) {
++            if(!margin->is_default()) {
++                pixel_t add = free_main_size / remaining--;
++                *margin = add;
++                item->main_size += add;
++                main_size += add;
++                free_main_size -= add;
+             }
+         }
+-
+-        pixel_t ditribute_step = 1_px;
+-        while(free_main_size > 0_px)
+-        {
+-            for(auto& item : items)
+-            {
+-                if(!item->auto_margin_main_start.is_default())
+-                {
+-                    item->auto_margin_main_start  = pixel_t(item->auto_margin_main_start) + ditribute_step;
+-                    free_main_size               -= ditribute_step;
+-                    if(free_main_size < ditribute_step)
+-                    {
+-                        break;
+-                    }
+-                }
+-                if(!item->auto_margin_main_end.is_default())
+-                {
+-                    item->auto_margin_main_end  = pixel_t(item->auto_margin_main_end) + ditribute_step;
+-                    free_main_size             -= ditribute_step;
+-                    if(free_main_size < ditribute_step)
+-                    {
+-                        break;
+-                    }
+-                }
+-            }
+-        }
+-        return true;
+     }
+-    return false;
++    return true;
+ }
+ 
+ void litehtml::flex_line::init(pixel_t container_main_size, bool fit_container, bool is_row_direction,
+                                const litehtml::containing_block_context& self_size,
+                                litehtml::formatting_context*             fmt_ctx)
+ {
++    // Flexible length distribution operates only on item space; gutters cannot shrink.
++    container_main_size -= gap_size();
++    main_size -= gap_size();
+     first_baseline.set(0_px, baseline::baseline_type_none);
+     last_baseline.set(0_px, baseline::baseline_type_none);
+ 
+@@ -515,6 +483,7 @@ void litehtml::flex_line::init(pixel_t container_main_size, bool fit_container,
+             cross_size = max_cross_size;
+         }
+     }
++    main_size += gap_size();
+ }
+ 
+ litehtml::pixel_t litehtml::flex_line::calculate_items_position(pixel_t                         container_main_size,
+@@ -612,8 +581,11 @@ litehtml::pixel_t litehtml::flex_line::calculate_items_position(pixel_t
+     pixel_t height = 0_px;
+ 
+     pixel_t distribute_step = 1_px;
++    bool first_item = true;
+     for(auto& item : items)
+     {
++        if(!first_item) main_pos += gap;
++        first_item = false;
+         main_pos += add_before_item;
+         if(add_before_item > 0_px && item_remainder > 0_px)
+         {
 diff --git a/src/html_tag.cpp b/src/html_tag.cpp
 index a32b90f..a7793dc 100644
 --- a/src/html_tag.cpp
@@ -170,11 +344,141 @@ index a32b90f..a7793dc 100644
      void litehtml::html_tag::refresh_styles()
      {
          for(auto& el : m_children)
+diff --git a/src/render_flex.cpp b/src/render_flex.cpp
+index 1d05bf1..65f5d73 100644
+--- a/src/render_flex.cpp
++++ b/src/render_flex.cpp
+@@ -30,6 +30,14 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
+         break;
+     }
+ 
++    // Cyclic percentage gaps resolve to zero in flex layout. Width is definite;
++    // auto height has no percentage base even after content height is known.
++    pixel_t gap_height = self_size.height.type == containing_block_context::cbc_value_type_auto ? 0_px :
++                         std::max(0_px, self_size.height.value - box_sizing_height());
++    pixel_t row_gap = css().get_row_gap().is_predefined() ? 0_px : css().get_row_gap().calc_percent(gap_height);
++    pixel_t column_gap = css().get_column_gap().is_predefined() ? 0_px : css().get_column_gap().calc_percent(self_size.render_width);
++    m_main_gap = is_row_direction ? column_gap : row_gap;
++    m_cross_gap = is_row_direction ? row_gap : column_gap;
+     bool single_line   = css().get_flex_wrap() == flex_wrap_nowrap;
+     bool fit_container = false;
+ 
+@@ -63,7 +71,7 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
+     /////////////////////////////////////////////////////////////////
+     m_lines = get_lines(self_size, fmt_ctx, is_row_direction, container_main_size, single_line);
+ 
+-    pixel_t sum_cross_size = 0_px;
++    pixel_t sum_cross_size = m_lines.empty() ? 0_px : m_cross_gap * int(m_lines.size() - 1);
+     pixel_t sum_main_size  = 0_px;
+     pixel_t ret_width      = 0_px;
+ 
+@@ -135,7 +143,7 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
+     /////////////////////////////////////////////////////////////////
+     /// Distribute free cross size for align-content: stretch
+     /////////////////////////////////////////////////////////////////
+-    if(css().get_flex_align_content() == flex_align_content_stretch && free_cross_size > 0_px)
++    if(!m_lines.empty() && css().get_flex_align_content() == flex_align_content_stretch && free_cross_size > 0_px)
+     {
+         pixel_t add = free_cross_size / pixel_t(static_cast<int>(m_lines.size()));
+         if(add > 0_px)
+@@ -205,8 +213,11 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
+         }
+         break;
+     }
++    bool first_line = true;
+     for(auto& ln : m_lines)
+     {
++        if(!first_line) line_pos += m_cross_gap;
++        first_line = false;
+         line_pos       += add_before_line;
+         ln.cross_start  = line_pos;
+         line_pos       += ln.cross_size + add_after_line;
+@@ -301,13 +312,19 @@ std::list<litehtml::flex_line> litehtml::render_item_flex::get_lines(
+         });
+     }
+ 
++    line.gap = m_main_gap;
+     // Add flex items to lines
+     for(auto& item : items)
+     {
+-        if(!line.items.empty() && !single_line && line.main_size + item->main_size > container_main_size)
++        if(!line.items.empty() && !single_line && line.main_size + line.gap + item->main_size > container_main_size)
+         {
+             lines.emplace_back(line);
+             line = flex_line(reverse_main, reverse_cross);
++            line.gap = m_main_gap;
++        }
++        if(!line.items.empty()) {
++            line.base_size += line.gap;
++            line.main_size += line.gap;
+         }
+         line.base_size += item->base_size;
+         line.main_size += item->main_size;
+@@ -396,6 +413,8 @@ std::shared_ptr<litehtml::render_item> litehtml::render_item_flex::init()
+     }
+     convert_inlines();
+     children() = new_children;
++    // Keep native DOM geometry connected to this flex render item as well.
++    src_el()->add_render(shared_from_this());
+ 
+     return shared_from_this();
+ }
+@@ -497,6 +516,17 @@ void litehtml::render_item_flex::calc_intrinsic_size()
+         }
+     }
+ 
++    // Percent gaps have a cyclic base during intrinsic sizing and contribute zero.
++    auto main_gap = is_row_direction ? css().get_column_gap() : css().get_row_gap();
++    pixel_t intrinsic_gap = main_gap.is_predefined() || main_gap.units() == css_units_percentage ? 0_px : main_gap.calc_percent(0_px);
++    pixel_t gaps = m_children.empty() ? 0_px : intrinsic_gap * int(m_children.size() - 1);
++    if(is_row_direction) {
++        m_intrinsic_min_size.width += gaps;
++        m_intrinsic_max_size.width += gaps;
++    } else {
++        m_intrinsic_min_size.height += gaps;
++        m_intrinsic_max_size.height += gaps;
++    }
+     // Add the container's own offsets (padding, borders, margins)
+     m_intrinsic_min_size.width  += content_offset_width();
+     m_intrinsic_max_size.width  += content_offset_width();
 diff --git a/src/style.cpp b/src/style.cpp
-index fc87b2d..feb1f66 100644
+index fc87b2d..20f2527 100644
 --- a/src/style.cpp
 +++ b/src/style.cpp
-@@ -1546,7 +1546,7 @@ namespace litehtml
+@@ -99,6 +99,7 @@ namespace litehtml
+           _border_bottom_color_, _border_left_color_}                                                                 },
+ 
+         {_flex_,            {_flex_grow_, _flex_shrink_, _flex_basis_}                                                },
++        {_gap_,             {_row_gap_, _column_gap_}},
+         {_flex_flow_,       {_flex_direction_, _flex_wrap_}                                                           },
+ 
+         {_text_decoration_,
+@@ -308,6 +309,24 @@ namespace litehtml
+ 
+         //  normal | <number [0,∞]> | <length-percentage [0,∞]>
+         //  https://developer.mozilla.org/en-US/docs/Web/CSS/line-height#formal_syntax
++        case _gap_:
++            {
++                if(value.size() < 1 || value.size() > 2) return;
++                constexpr auto normal_val = split_css_values<1>("normal");
++                css_length row, column;
++                if(!row.from_token(value[0], f_length_percentage | f_positive, normal_val) ||
++                   !column.from_token(value.size() == 2 ? value[1] : value[0],
++                                      f_length_percentage | f_positive, normal_val)) return;
++                add_parsed_property(_row_gap_, property_value(row, important));
++                add_parsed_property(_column_gap_, property_value(column, important));
++            }
++            break;
++        case _row_gap_:
++        case _column_gap_:
++            {
++                constexpr auto normal_val = split_css_values<1>("normal");
++                return add_length_property(name, val, normal_val, f_length_percentage | f_positive, important);
++            }
+         case _line_height_:
+             {
+                 constexpr auto normal_val = split_css_values<1>("normal");
+@@ -1546,7 +1565,7 @@ namespace litehtml
              if(token.type == IDENT)
              {
                  auto idx = css_values(style_text_decoration_line_strings).value_index(token.ident());
@@ -183,7 +487,7 @@ index fc87b2d..feb1f66 100644
                  {
                      val |= 1 << (idx.value() - 1);
                  }
-@@ -1598,7 +1598,7 @@ namespace litehtml
+@@ -1598,7 +1617,7 @@ namespace litehtml
              if(token.type == IDENT)
              {
                  auto idx = css_values(style_text_emphasis_position_strings).value_index(token.ident());

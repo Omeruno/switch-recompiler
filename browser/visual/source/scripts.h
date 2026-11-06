@@ -1,5 +1,6 @@
 #pragma once
 #include "container.h"
+#include "issues.h"
 #include <cstdint>
 #include <memory>
 namespace visual {
@@ -25,6 +26,7 @@ class Scripts {
     Submission submission();
     bool reload_requested();
     std::string error() const;
+    const Issues &issues() const;
     bool ready() const;
 };
 } // namespace visual

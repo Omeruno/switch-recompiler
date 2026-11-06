@@ -153,7 +153,8 @@ struct Scripts::Impl {
     };
     std::vector<Fetch> fetches;
     std::vector<std::string> policies;
-    std::string last_error, next_url;
+    std::string last_error, next_url, source_origin;
+    Issues issue_log;
     Submission next_form;
     bool next_reload = false;
     uint64_t now = 0, deadline = 0;
@@ -214,12 +215,14 @@ struct Scripts::Impl {
             std::string type = lower(el->get_attr("type", ""));
             if (type == "module") {
                 last_error = "JavaScript modules are not implemented";
+                issue_log.add("unsupported", "module", origin(container.page_url));
                 continue;
             }
             if (!type.empty() && type != "text/javascript" && type != "application/javascript")
                 continue;
             if (jobs.size() >= 16) {
                 last_error = "Script count quota exceeded";
+                issue_log.add("limit", "script-count", origin(container.page_url));
                 break;
             }
             std::string src = el->get_attr("src", "");
@@ -228,15 +231,20 @@ struct Scripts::Impl {
                 el->get_text(entry.source);
                 if (entry.source.size() > 128u * 1024u) {
                     last_error = "Script byte quota exceeded";
+                    issue_log.add("limit", "script-bytes", origin(container.page_url));
                     continue;
                 }
-                if (!allowed("script-src", "", true))
+                if (!allowed("script-src", "", true)) {
+                    issue_log.add("policy", "inline-script", origin(container.page_url));
                     continue;
+                }
                 entry.url = "inline";
             } else {
                 entry.url = Resources::resolve(container.base, src);
-                if (!allowed("script-src", entry.url, false))
+                if (!allowed("script-src", entry.url, false)) {
+                    issue_log.add("policy", "external-script", origin(entry.url));
                     continue;
+                }
                 entry.external = true;
                 entry.resource = resources.request(entry.url, 128u * 1024u);
                 if (entry.resource)
@@ -270,6 +278,22 @@ struct Scripts::Impl {
     }
     void exception() {
         auto ex = JS_GetException(context);
+        // Class only: messages/stacks may contain form values or access tokens.
+        std::string kind = "Error";
+        if (JS_IsObject(ex)) {
+            auto value = JS_GetPropertyStr(context, ex, "name");
+            const char *name = JS_ToCString(context, value);
+            if (name) {
+                for (auto known : {"TypeError", "ReferenceError", "SyntaxError", "RangeError",
+                                   "InternalError", "EvalError"})
+                    if (std::strcmp(name, known) == 0)
+                        kind = known;
+                JS_FreeCString(context, name);
+            }
+            JS_FreeValue(context, value);
+        }
+        issue_log.add("exception", kind,
+                      source_origin.empty() ? origin(container.page_url) : source_origin);
         const char *s = JS_ToCString(context, ex);
         last_error = s ? s : "JavaScript exception";
         if (s)
@@ -279,10 +303,13 @@ struct Scripts::Impl {
             last_error.resize(192);
     }
     bool evaluate(const char *source, size_t n, const std::string &name) {
+        auto previous = source_origin;
+        source_origin = name.rfind("https://", 0) == 0 ? origin(name) : origin(container.page_url);
         JSValue v = JS_Eval(context, source, n, name.c_str(), JS_EVAL_TYPE_GLOBAL);
         bool ok = !JS_IsException(v);
         if (!ok)
             exception();
+        source_origin = std::move(previous);
         JS_FreeValue(context, v);
         return ok;
     }
@@ -477,6 +504,7 @@ struct Scripts::Impl {
             return js(container.page_url);
         if (op == "report") {
             last_error = str(2, 192);
+            issue_log.add("callback", "Error", origin(container.page_url));
             return JS_UNDEFINED;
         }
         if (op == "resolve")
@@ -1019,6 +1047,7 @@ struct Scripts::Impl {
                     if (j.resource->state != Resource::ready ||
                         !allowed("script-src", j.resource->effective, false)) {
                         last_error = "Script request failed or was blocked";
+                        issue_log.add("script-load", "failed", origin(j.url));
                         ++job;
                         continue;
                     }
@@ -1115,6 +1144,7 @@ bool Scripts::reload_requested() {
     impl->next_reload = false;
     return result;
 }
+const Issues &Scripts::issues() const { return impl->issue_log; }
 std::string Scripts::error() const { return impl->last_error; }
 bool Scripts::ready() const { return impl->loaded; }
 } // namespace visual

@@ -17,6 +17,13 @@ size_t Container::decoded_images() const {
             ++count;
     return count;
 }
+size_t Container::failed_images() const {
+    size_t count = 0;
+    for (const auto &kv : images)
+        if (!kv.second.texture)
+            ++count;
+    return count;
+}
 void Container::invalidate_text() {
     for (auto &kv : texts)
         SDL_DestroyTexture(kv.second.texture);
@@ -125,7 +132,7 @@ void Container::apply_clip() {
     SDL_RenderSetClipRect(renderer, &r);
 }
 void Container::begin_paint() {
-    painted_text = painted_images = painted_gradients = 0;
+    painted_text = painted_images = painted_gradients = unsupported = 0;
     clips.clear();
     apply_clip();
 }

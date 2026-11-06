@@ -150,6 +150,27 @@ int main(int argc, char **argv) {
         run(s, "if(!globalThis.scriptRan||globalThis.handlerRan!==undefined)throw Error('CSP "
                "handler scope bypass');");
     }
+    {
+        visual::Resources resources(argv[1]);
+        visual::Container c(renderer, resources, argv[2]);
+        c.base = c.page_url = "https://example.test/path?access_token=DO_NOT_REPORT";
+        auto doc = litehtml::document::createFromString("<script type=module>ignored</script>", &c);
+        doc->render(1280);
+        visual::Scripts s(doc, c, resources);
+        CHECK(!s.eval("throw new TypeError('PRIVATE_FORM_VALUE')"));
+        CHECK(!s.eval("throw new TypeError('PRIVATE_FORM_VALUE')"));
+        CHECK(s.issues().entries().size() == 2);
+        auto issue = s.issues().entries().back();
+        CHECK(issue.category == "exception" && issue.code == "TypeError" && issue.count == 2 &&
+              issue.origin == "https://example.test");
+        visual::Issues bounded;
+        for (int i = 0; i < 40; ++i)
+            bounded.add("exception", "TypeError", std::to_string(i));
+        CHECK(bounded.entries().size() == 24 && bounded.truncated());
+        for (int i = 0; i < 70000; ++i)
+            bounded.add("exception", "TypeError", "0");
+        CHECK(bounded.entries().front().count == 65535);
+    }
     SDL_DestroyRenderer(renderer);
     SDL_FreeSurface(surface);
     browser_profile_close();
