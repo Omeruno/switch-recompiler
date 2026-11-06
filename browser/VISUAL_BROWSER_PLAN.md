@@ -7,13 +7,26 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Verified starting point
+## Current status — visual 0.4.0, 2026-11-06
 
-- HTTPS, bounded JavaScript, cookies/storage and Russian UI text exist.
-- The current page renderer lays out a flattened text buffer and a link list.
-- Site CSS, image layout, forms and pointer/touch events are not implemented.
-- The separate WASM probe checks runtime features and memory. It does not add
-  website rendering, WebGPU or game compatibility to the reader.
+- The reader remains a separate 0.3.2 diagnostic browser; visual pages use
+  `browser/visual` and its independent `switch-visual-browser.nro`.
+- The user verified visual 0.1.0 on Switch: Google and Keldurn root/ru pages load;
+  touchscreen gestures and left-stick pointer work. Later additions await device checks.
+- Visual 0.4.0 retains the native document through HTML/CSS layout and QuickJS
+  mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
+  width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
+  checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
+  events, timers and bounded same-origin GET fetch. See the visual README for limits.
+- Eight host suites and ASan/UBSan checks pass for 0.4.0. ARM64 CI supplies the NRO;
+  host results do not establish device performance or arbitrary-site compatibility.
+- Still required for general browsing: broader DOM/events and JavaScript APIs,
+  Grid and additional CSS, navigation/focus/selection work, modules/workers,
+  broader network APIs and media. VK/YouTube compatibility is not established.
+- The separate WASM probe's original feature tests passed on Switch. Its new
+  stable-memory backend needs device verification. WebGPU and the game bridge
+  are still missing; neither creating a character nor entering the world works
+  in this browser yet.
 
 ## Delivery order
 
@@ -80,14 +93,26 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0
+## Implemented candidate — visual 0.1.0–0.4.0
 
-`browser/visual` now ports pinned litehtml/Gumbo layout to SDL text/background/
-border/image drawing. It supplies an independent NRO with offline CSS fixtures,
-async HTTPS resource loading, link hit testing, touch scroll/inertia/pinch and
-controller input. Host layout/gesture tests and an actual painted-frame artifact
-are part of its CI. See its README for precise rendering limits. litehtml is
-not selected as the final full-browser/game engine; DOM/JavaScript synchronization,
-web forms, complete CSS and WebGPU remain unimplemented. This is the first
-native visual-rendering feasibility candidate, not completion of every item in
-milestone 2.
+`browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
+QuickJS directly to that retained native tree. Host rendering, input, DOM and
+HTTPS form/resource fixtures accompany the independent NRO. The reviewed renderer
+patch and hashes are checked during builds. See its README for exact API and CSS
+coverage. litehtml is a feasibility candidate, not a final full-browser/game engine
+selection; complete CSS/DOM, modern web APIs, GPU and media remain substantial work.
+
+### Next acceptance gates
+
+1. Check the new controls, POST/redirect behavior, right-stick scrolling and
+   viewport modes on Switch when the user is available; record failures precisely.
+2. Expand layout/API compatibility with reproducible fixtures for the specific
+   Google/Keldurn/VK/YouTube failures. A changed user agent alone is not a fix.
+3. Evaluate the missing modules/workers/network/media stack against device memory
+   and the rendering-engine choice before claiming general modern-site support.
+4. Continue the separate WASM/shared-memory and WebGPU integration gates, then
+   measure character creation and world entry separately on hardware.
+
+There is no evidence-based completion percentage or fixed finish date for the
+full game browser. Native visual browsing is implemented in a limited subset;
+the GPU/media/runtime portions still require implementation and device proof.
