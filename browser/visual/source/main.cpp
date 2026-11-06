@@ -1,6 +1,7 @@
 #include "choices.h"
 #include "container.h"
 #include "diagnostics.h"
+#include "document_source.h"
 #include "interaction.h"
 #include "scripts.h"
 extern "C" {
@@ -121,7 +122,7 @@ struct Browser {
         built_revision = 0;
         rebuild = true;
         root_resource = form ? resources.navigate_form(*form, source, policies)
-                             : resources.request(url, 1024u * 1024u);
+                             : resources.navigate_document(url);
         if (!root_resource)
             notice = "Не удалось подготовить загрузку страницы";
     }
@@ -186,7 +187,7 @@ struct Browser {
         try {
             if (!document) {
                 container.reset();
-                std::string html(r->data.begin(), r->data.end());
+                auto html = visual::document_source(*r);
                 if (std::count(html.begin(), html.end(), '<') > 8192)
                     throw std::runtime_error("Превышен лимит сложности страницы");
                 document = litehtml::document::createFromString(
@@ -745,7 +746,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.11.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.11.1 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -759,6 +760,20 @@ struct Browser {
                          scripts ? (scripts->ready() ? "начальные скрипты обработаны" : "загрузка")
                                  : "не запущен"),
             "Ниже — группы сбоев JavaScript; xN означает число повторов."};
+        if (root_resource) {
+            const auto &r = *root_resource;
+            char final_origin[384] = {};
+            browser_origin(r.effective.c_str(), final_origin, sizeof(final_origin));
+            report_lines.push_back(
+                "Ответ: " + std::string(final_origin[0] ? final_origin : "offline") +
+                " · переходов " + std::to_string(r.redirects));
+            report_lines.push_back("Документ: HTTP " + std::to_string(r.http_status) + " · CURL " +
+                                   std::to_string(int(r.result)) + " · байт " +
+                                   std::to_string(r.body_bytes));
+            report_lines.push_back("Завершён: " + std::string(r.transfer_ok ? "да" : "нет") +
+                                   " · время " + std::to_string(r.elapsed_ms) + " мс");
+        }
+        report_lines.push_back("WebGPU и JS↔WASM: не реализованы; игровая графика недоступна.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
                 report_lines.push_back(issue.category + " / " + issue.code + " · x" +
@@ -767,8 +782,7 @@ struct Browser {
                 report_lines.push_back("Достигнут лимит: 24 группы JavaScript.");
         }
         report_lines.push_back("Известные пробелы: Grid, полный DOM/CSSOM, import maps, workers.");
-        report_lines.push_back(
-            "Также отсутствуют: полный CORS, GPU, видео и аудио.");
+        report_lines.push_back("Также отсутствуют: полный CORS, GPU, видео и аудио.");
         report_lines.push_back(
             "Счётчики не определяют причину отказа сайта без дальнейшей проверки.");
         std::string report;
@@ -836,8 +850,17 @@ struct Browser {
                                                       : "JS: ожидание")
                             : notice,
              {174, 190, 211, 255}, 1250);
-        if (!document && notice.empty())
-            text(renderer, ui, 40, 140, "Загрузка страницы…", {25, 40, 60, 255});
+        if (!document) {
+            text(renderer, ui, 40, 140,
+                 notice.empty() ? "Загрузка страницы…" : "Не удалось открыть страницу",
+                 {25, 40, 60, 255});
+            if (!notice.empty()) {
+                text(renderer, ui, 40, 190, notice, {65, 80, 100, 255}, 1180);
+                text(renderer, ui, 40, 240,
+                     "Y — повторить · B — назад · X — другой адрес · L — отчёт", {25, 85, 120, 255},
+                     1180);
+            }
+        }
         paint_choices();
         paint_report();
         if (document && !gestures.active() && !report_open) {
@@ -855,7 +878,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.11.0");
+    visual::diagnostic("boot", "0.11.1");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -868,7 +891,7 @@ int main(int argc, char **argv) {
 #else
     if (argc < 3) {
         fprintf(stderr, "Usage: visual-host ASSET_ROOT FONT [--test SCREENSHOT.bmp | --capture "
-                        "HTTPS_URL SCREENSHOT.bmp | HTTPS_URL]\n");
+                        "HTTPS_URL SCREENSHOT.bmp [WAIT_MS] | HTTPS_URL]\n");
         return 1;
     }
     root = argv[1];
@@ -930,6 +953,8 @@ int main(int argc, char **argv) {
             bool test = argc >= 5 && std::string(argv[3]) == "--test";
             bool capture = argc >= 6 && std::string(argv[3]) == "--capture";
             uint32_t capture_start = SDL_GetTicks();
+            uint32_t capture_delay =
+                capture && argc >= 7 ? unsigned(std::clamp(std::atoi(argv[6]), 0, 10000)) : 0;
             if (capture)
                 app.navigate(argv[4]);
             else if (argc >= 4 && !test && !network_test)
@@ -1055,7 +1080,8 @@ int main(int argc, char **argv) {
                 app.pump();
                 app.paint();
 #ifndef __SWITCH__
-                if (capture && !app.resources.pending() && app.scripts && app.scripts->ready()) {
+                if (capture && !app.resources.pending() && app.scripts && app.scripts->ready() &&
+                    SDL_GetTicks() - capture_start >= capture_delay) {
                     if (!app.document)
                         throw std::runtime_error(app.notice.empty() ? "No rendered document"
                                                                     : app.notice);
@@ -1072,6 +1098,15 @@ int main(int argc, char **argv) {
                             app.view.content_height, app.resources.count(),
                             app.container.decoded_images(), app.container.painted_text,
                             app.container.unsupported);
+                    fprintf(stderr,
+                            "CAPTURE source bytes=%zu scripts=%zu styles=%zu paragraphs=%zu\n",
+                            app.root_resource ? app.root_resource->body_bytes : 0,
+                            app.document->root()->select_all("script").size(),
+                            app.document->root()->select_all("style").size(),
+                            app.document->root()->select_all("p").size());
+                    for (const auto &issue : app.scripts->issues().entries())
+                        fprintf(stderr, "CAPTURE issue %s/%s x%u\n", issue.category.c_str(),
+                                issue.code.c_str(), issue.count);
                     quit = true;
                 }
                 if (capture && SDL_GetTicks() - capture_start > 30000)

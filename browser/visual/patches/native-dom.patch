@@ -34,13 +34,13 @@ index ea27155..6789614 100644
 @@ -126,7 +127,9 @@ namespace litehtml
              return m_over_element;
          }
- 
+
 -        void append_children_from_string(element& parent, const char* str, bool replace_existing);
 +        void refresh_native_dom();
 +
 +        void append_children_from_string(element& parent, const char* str, bool replace_existing, bool defer_styles = false);
          void dump(dumper& cout);
- 
+
          // see doc/document_createFromString.txt
 diff --git a/include/litehtml/el_text.h b/include/litehtml/el_text.h
 index 365453a..3f59db1 100644
@@ -48,7 +48,7 @@ index 365453a..3f59db1 100644
 +++ b/include/litehtml/el_text.h
 @@ -19,6 +19,7 @@ namespace litehtml
          el_text(const char* text, const document::ptr& doc);
- 
+
          void get_text(std::string& text) const override;
 +        void set_native_text(const std::string& text) { m_text = text; }
          void compute_styles(bool recursive) override;
@@ -64,11 +64,11 @@ index ca9fc38..5f2e4a3 100644
          virtual ~element() = default;
 +        virtual bool is_checked() const { return get_attr("checked") || get_attr("selected"); }
 +        virtual bool is_disabled() const { return get_attr("disabled") != nullptr; }
- 
+
          const css_properties& css() const;
          css_properties&       css();
 @@ -244,11 +246,12 @@ namespace litehtml
- 
+
      inline std::shared_ptr<render_item> element::get_render_item()
      {
 -        if(m_renders.empty())
@@ -82,7 +82,7 @@ index ca9fc38..5f2e4a3 100644
 +        return nullptr;
      }
  } // namespace litehtml
- 
+
 diff --git a/include/litehtml/flex_line.h b/include/litehtml/flex_line.h
 index 8ffa194..bf042c5 100644
 --- a/include/litehtml/flex_line.h
@@ -106,7 +106,7 @@ index 779d423..2a38bac 100644
          void        refresh_styles() override;
 +        void        reset_native_styles();
 +        const string_map& native_attributes() const { return m_attrs; }
- 
+
          bool is_white_space() const override;
          bool is_body() const override;
 diff --git a/include/litehtml/render_flex.h b/include/litehtml/render_flex.h
@@ -118,7 +118,7 @@ index e104922..f4244a4 100644
      {
          std::list<flex_line> m_lines;
 +        pixel_t m_main_gap = 0_px, m_cross_gap = 0_px;
- 
+
          std::list<flex_line> get_lines(const containing_block_context& self_size, formatting_context* fmt_ctx,
                                         bool is_row_direction, pixel_t container_main_size, bool single_line);
 diff --git a/include/litehtml/string_id.h b/include/litehtml/string_id.h
@@ -128,11 +128,11 @@ index a2d4ebf..429239d 100644
 @@ -87,7 +87,7 @@ namespace litehtml
          _z_index_, _float_, _clear_, _text_indent_, _top_, _right_, _bottom_, _left_, _cursor_, _content_,
          _border_collapse_, _text_transform_,
- 
+
 -        _flex_, _flex_flow_, _flex_direction_, _flex_wrap_, _justify_content_, _align_items_, _align_content_,
 +        _flex_, _flex_flow_, _gap_, _row_gap_, _column_gap_, _flex_direction_, _flex_wrap_, _justify_content_, _align_items_, _align_content_,
          _align_self_, _flex_grow_, _flex_shrink_, _flex_basis_,
- 
+
          _caption_side_, _order_,
 diff --git a/src/css_properties.cpp b/src/css_properties.cpp
 index 5b03ba4..7bc2de9 100644
@@ -150,7 +150,7 @@ index 5b03ba4..7bc2de9 100644
              el->get_property<int>(_flex_direction_, false, flex_direction_row, offset(m_flex_direction)));
          m_flex_wrap =
 diff --git a/src/document.cpp b/src/document.cpp
-index 315749a..eb6eaf7 100644
+index 315749a..70d3522 100644
 --- a/src/document.cpp
 +++ b/src/document.cpp
 @@ -105,6 +105,8 @@ namespace litehtml
@@ -159,13 +159,33 @@ index 315749a..eb6eaf7 100644
          m_finalized = true;
 +        m_native_master_source = master_styles;
 +        m_native_user_source = user_styles;
- 
+
          m_root = root;
- 
-@@ -1134,7 +1136,51 @@ namespace litehtml
+
+@@ -274,7 +276,9 @@ namespace litehtml
+         // Instead, we parse entire file and then handle <meta> tags.
+
+         // Using gumbo_parse_with_options to pass string length (m_text may contain NUL chars).
+-        GumboOutput* output = gumbo_parse_with_options(&kGumboDefaultOptions, m_text.data(), m_text.size());
++        GumboOptions options = kGumboDefaultOptions;
++        options.scripting_enabled = true;
++        GumboOutput* output = gumbo_parse_with_options(&options, m_text.data(), m_text.size());
+
+         if(str.confidence == confidence::certain)
+         {
+@@ -302,7 +306,7 @@ namespace litehtml
+                 {
+                     decode(str, new_encoding, m_text);
+                 }
+-                output = gumbo_parse_with_options(&kGumboDefaultOptions, m_text.data(), m_text.size());
++                output = gumbo_parse_with_options(&options, m_text.data(), m_text.size());
+             }
+         }
+
+@@ -1134,7 +1138,51 @@ namespace litehtml
          }
      }
- 
+
 -    void document::append_children_from_string(element& parent, const char* str, bool replace_existing)
 +    void document::refresh_native_dom()
 +    {
@@ -215,40 +235,48 @@ index 315749a..eb6eaf7 100644
      {
          // parent must belong to this document
          if(parent.get_document().get() != this)
-@@ -1162,7 +1208,7 @@ namespace litehtml
+@@ -1143,6 +1191,7 @@ namespace litehtml
+         }
+
+         GumboOptions opts = kGumboDefaultOptions;
++        opts.scripting_enabled = true;
+         // This is require to prevent creating html, head, body tags around the fragment
+         // Although Gumbo always creates html tag anyway. We have to ignore it in create_node.
+         opts.fragment_context = GUMBO_TAG_BODY;
+@@ -1162,7 +1211,7 @@ namespace litehtml
          if(replace_existing)
          {
              parent.clearRecursive();
 -            parent_render->children().clear();
 +            if(parent_render) parent_render->children().clear();
          }
- 
+
          // Let's process created elements tree
-@@ -1170,6 +1216,9 @@ namespace litehtml
+@@ -1170,6 +1219,9 @@ namespace litehtml
          {
              // Add the child element to parent
              parent.appendChild(child);
 +            // Native DOM edits are styled together later; detached parents do not
 +            // have computed inherited font properties or render items yet.
 +            if(defer_styles) continue;
- 
+
              // apply master CSS
              child->apply_stylesheet(m_master_css);
-@@ -1200,7 +1249,7 @@ namespace litehtml
+@@ -1200,7 +1252,7 @@ namespace litehtml
          // Now the m_tabular_elements is filled with tabular elements.
          // We have to check the tabular elements for missing table elements
          // and create the anonymous boxes in visual table layout
 -        fix_tables_layout();
 +        if(!defer_styles) fix_tables_layout();
      }
- 
+
      void document::dump(dumper& cout)
 diff --git a/src/element.cpp b/src/element.cpp
 index db445a9..e278417 100644
 --- a/src/element.cpp
 +++ b/src/element.cpp
 @@ -193,6 +193,9 @@ namespace litehtml
- 
+
      void element::add_render(const std::shared_ptr<render_item>& ri)
      {
 +        // Native DOM restyling replaces the render tree. Do not retain stale
@@ -256,13 +284,13 @@ index db445a9..e278417 100644
 +        m_renders.remove_if([](const std::weak_ptr<render_item>& old) { return old.expired(); });
          m_renders.push_back(ri);
      }
- 
+
 diff --git a/src/flex_line.cpp b/src/flex_line.cpp
 index b8511c2..2ac16eb 100644
 --- a/src/flex_line.cpp
 +++ b/src/flex_line.cpp
 @@ -288,61 +288,29 @@ bool litehtml::flex_line::fix_min_max_violations()
- 
+
  bool litehtml::flex_line::distribute_main_auto_margins(pixel_t free_main_size)
  {
 -    if(free_main_size > 0_px && (num_auto_margin_main_start || num_auto_margin_main_end))
@@ -326,7 +354,7 @@ index b8511c2..2ac16eb 100644
 -    return false;
 +    return true;
  }
- 
+
  void litehtml::flex_line::init(pixel_t container_main_size, bool fit_container, bool is_row_direction,
                                 const litehtml::containing_block_context& self_size,
                                 litehtml::formatting_context*             fmt_ctx)
@@ -336,18 +364,18 @@ index b8511c2..2ac16eb 100644
 +    main_size -= gap_size();
      first_baseline.set(0_px, baseline::baseline_type_none);
      last_baseline.set(0_px, baseline::baseline_type_none);
- 
+
 @@ -515,6 +483,7 @@ void litehtml::flex_line::init(pixel_t container_main_size, bool fit_container,
              cross_size = max_cross_size;
          }
      }
 +    main_size += gap_size();
  }
- 
+
  litehtml::pixel_t litehtml::flex_line::calculate_items_position(pixel_t                         container_main_size,
 @@ -612,8 +581,11 @@ litehtml::pixel_t litehtml::flex_line::calculate_items_position(pixel_t
      pixel_t height = 0_px;
- 
+
      pixel_t distribute_step = 1_px;
 +    bool first_item = true;
      for(auto& item : items)
@@ -357,11 +385,81 @@ index b8511c2..2ac16eb 100644
          main_pos += add_before_item;
          if(add_before_item > 0_px && item_remainder > 0_px)
          {
+diff --git a/src/gumbo/src/gumbo.h b/src/gumbo/src/gumbo.h
+index 9f0f960..e694f40 100644
+--- a/src/gumbo/src/gumbo.h
++++ b/src/gumbo/src/gumbo.h
+@@ -628,6 +628,9 @@ typedef struct GumboInternalOptions {
+    * Default: GUMBO_NAMESPACE_HTML
+    */
+   GumboNamespaceEnum fragment_namespace;
++
++  /** HTML parser scripting flag. Default: false (upstream behavior). */
++  bool scripting_enabled;
+ } GumboOptions;
+
+ /** Default options struct; use this with gumbo_parse_with_options. */
+diff --git a/src/gumbo/src/parser.c b/src/gumbo/src/parser.c
+index b16c951..1ae7ef8 100644
+--- a/src/gumbo/src/parser.c
++++ b/src/gumbo/src/parser.c
+@@ -100,7 +100,7 @@ static void* malloc_wrapper(void* unused, size_t size) { return malloc(size); }
+ static void free_wrapper(void* unused, void* ptr) { free(ptr); }
+
+ const GumboOptions kGumboDefaultOptions = {&malloc_wrapper, &free_wrapper, NULL,
+-    8, false, -1, GUMBO_TAG_LAST, GUMBO_NAMESPACE_HTML};
++    8, false, -1, GUMBO_TAG_LAST, GUMBO_NAMESPACE_HTML, false};
+
+ static const GumboStringPiece kDoctypeHtml = GUMBO_STRING("html");
+ static const GumboStringPiece kPublicIdHtml4_0 =
+@@ -2515,6 +2515,10 @@ static bool handle_in_head(GumboParser* parser, GumboToken* token) {
+     run_generic_parsing_algorithm(parser, token, GUMBO_LEX_RAWTEXT);
+     return true;
+   } else if (tag_is(token, kStartTag, GUMBO_TAG_NOSCRIPT)) {
++    if (parser->_options->scripting_enabled) {
++      run_generic_parsing_algorithm(parser, token, GUMBO_LEX_RAWTEXT);
++      return true;
++    }
+     insert_element_from_token(parser, token);
+     set_insertion_mode(parser, GUMBO_INSERTION_MODE_IN_HEAD_NOSCRIPT);
+     return true;
+@@ -3282,7 +3286,9 @@ static bool handle_in_body(GumboParser* parser, GumboToken* token) {
+     set_frameset_not_ok(parser);
+     run_generic_parsing_algorithm(parser, token, GUMBO_LEX_RAWTEXT);
+     return true;
+-  } else if (tag_is(token, kStartTag, GUMBO_TAG_NOEMBED)) {
++  } else if (tag_is(token, kStartTag, GUMBO_TAG_NOEMBED) ||
++      (parser->_options->scripting_enabled &&
++       tag_is(token, kStartTag, GUMBO_TAG_NOSCRIPT))) {
+     run_generic_parsing_algorithm(parser, token, GUMBO_LEX_RAWTEXT);
+     return true;
+   } else if (tag_is(token, kStartTag, GUMBO_TAG_SELECT)) {
+@@ -4385,8 +4391,8 @@ static void fragment_parser_init(GumboParser* parser, GumboTag fragment_ctx,
+         break;
+
+       case GUMBO_TAG_NOSCRIPT:
+-        /* scripting is disabled in Gumbo, so leave the tokenizer
+-         * in the default data state */
++        if (parser->_options->scripting_enabled)
++          gumbo_tokenizer_set_state(parser, GUMBO_LEX_RAWTEXT);
+         break;
+
+       case GUMBO_TAG_PLAINTEXT:
 diff --git a/src/html_tag.cpp b/src/html_tag.cpp
-index a32b90f..a7793dc 100644
+index a32b90f..adf8875 100644
 --- a/src/html_tag.cpp
 +++ b/src/html_tag.cpp
-@@ -675,13 +675,13 @@ namespace litehtml
+@@ -144,6 +144,9 @@ namespace litehtml
+         auto attr = m_attrs.find(name);
+         if(attr != m_attrs.end())
+         {
++            // Nonce values are available through the DOM property, not attribute
++            // selectors or serialization. Prevent CSS nonce-value extraction.
++            if(!strcmp(name, "nonce")) return "";
+             return attr->second.c_str();
+         }
+         return def;
+@@ -675,13 +678,13 @@ namespace litehtml
          case _checked_:
              // Form state: matches either the dynamic pseudo-class (set_pseudo_class)
              // or the standard HTML checked attribute.
@@ -377,10 +475,10 @@ index a32b90f..a7793dc 100644
              {
                  return select_no_match;
              }
-@@ -1474,6 +1474,28 @@ namespace litehtml
+@@ -1474,6 +1477,28 @@ namespace litehtml
          handle_counter_properties();
      }
- 
+
 +    void litehtml::html_tag::reset_native_styles()
 +    {
 +        std::sort(m_pseudo_classes.begin(), m_pseudo_classes.end());
@@ -413,7 +511,7 @@ index 1d05bf1..65f5d73 100644
 @@ -30,6 +30,14 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
          break;
      }
- 
+
 +    // Cyclic percentage gaps resolve to zero in flex layout. Width is definite;
 +    // auto height has no percentage base even after content height is known.
 +    pixel_t gap_height = self_size.height.type == containing_block_context::cbc_value_type_auto ? 0_px :
@@ -424,16 +522,16 @@ index 1d05bf1..65f5d73 100644
 +    m_cross_gap = is_row_direction ? row_gap : column_gap;
      bool single_line   = css().get_flex_wrap() == flex_wrap_nowrap;
      bool fit_container = false;
- 
+
 @@ -63,7 +71,7 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
      /////////////////////////////////////////////////////////////////
      m_lines = get_lines(self_size, fmt_ctx, is_row_direction, container_main_size, single_line);
- 
+
 -    pixel_t sum_cross_size = 0_px;
 +    pixel_t sum_cross_size = m_lines.empty() ? 0_px : m_cross_gap * int(m_lines.size() - 1);
      pixel_t sum_main_size  = 0_px;
      pixel_t ret_width      = 0_px;
- 
+
 @@ -135,7 +143,7 @@ litehtml::pixel_t litehtml::render_item_flex::_render_content(pixel_t x, pixel_t
      /////////////////////////////////////////////////////////////////
      /// Distribute free cross size for align-content: stretch
@@ -458,7 +556,7 @@ index 1d05bf1..65f5d73 100644
 @@ -301,13 +312,19 @@ std::list<litehtml::flex_line> litehtml::render_item_flex::get_lines(
          });
      }
- 
+
 +    line.gap = m_main_gap;
      // Add flex items to lines
      for(auto& item : items)
@@ -482,13 +580,13 @@ index 1d05bf1..65f5d73 100644
      children() = new_children;
 +    // Keep native DOM geometry connected to this flex render item as well.
 +    src_el()->add_render(shared_from_this());
- 
+
      return shared_from_this();
  }
 @@ -497,6 +516,17 @@ void litehtml::render_item_flex::calc_intrinsic_size()
          }
      }
- 
+
 +    // Percent gaps have a cyclic base during intrinsic sizing and contribute zero.
 +    auto main_gap = is_row_direction ? css().get_column_gap() : css().get_row_gap();
 +    pixel_t intrinsic_gap = main_gap.is_predefined() || main_gap.units() == css_units_percentage ? 0_px : main_gap.calc_percent(0_px);
@@ -509,14 +607,14 @@ index fc87b2d..20f2527 100644
 +++ b/src/style.cpp
 @@ -99,6 +99,7 @@ namespace litehtml
            _border_bottom_color_, _border_left_color_}                                                                 },
- 
+
          {_flex_,            {_flex_grow_, _flex_shrink_, _flex_basis_}                                                },
 +        {_gap_,             {_row_gap_, _column_gap_}},
          {_flex_flow_,       {_flex_direction_, _flex_wrap_}                                                           },
- 
+
          {_text_decoration_,
 @@ -308,6 +309,24 @@ namespace litehtml
- 
+
          //  normal | <number [0,∞]> | <length-percentage [0,∞]>
          //  https://developer.mozilla.org/en-US/docs/Web/CSS/line-height#formal_syntax
 +        case _gap_:

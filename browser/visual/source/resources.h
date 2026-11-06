@@ -16,7 +16,10 @@ struct Resource {
     std::string url, effective, error;
     std::string method = "GET", current_url, location, post_body, form_source;
     std::vector<std::string> form_rules;
-    bool form_navigation = false;
+    bool form_navigation = false, document_navigation = false;
+    unsigned navigation_timeout_ms = 45000;
+    size_t body_bytes = 0;
+    uint64_t elapsed_ms = 0;
     unsigned redirects = 0;
     bool web_request = false, preflight = false, cors_tainted = false;
     WebRequest web;
@@ -61,6 +64,7 @@ class Resources {
     void clear();
     static std::string resolve(const std::string &base, const std::string &reference);
     Resource *request(const std::string &, size_t limit);
+    Resource *navigate_document(const std::string &, unsigned timeout_ms = 45000);
     Resource *navigate_form(const Submission &, const std::string &source,
                             const std::vector<std::string> &policies, size_t limit = 1024u * 1024u);
     Resource *network(const std::string &url, const std::string &method, std::string body,

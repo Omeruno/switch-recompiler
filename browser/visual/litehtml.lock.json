@@ -3,7 +3,7 @@
   "commit": "ab7caef1d54f2265f919c299d29c135863675d96",
   "patch": {
     "file": "patches/native-dom.patch",
-    "sha256": "1752d47b2001b007502cd1fe5d4814bb4689676827a04594aca6b70872cbde22",
+    "sha256": "68fc77413d011eccc5c8974e841f1cf1c83ec7cdc2910560056deb0532e57ce3",
     "files": {
       "include/litehtml/css_properties.h": "7d8a5d3cb20262cfe282076b319855225a5a486dfb45aa6557cea732fd68e1e0",
       "include/litehtml/document.h": "c2254798176f20a7244ddf16891035b04e93c96c635277a7951d338ecf4e7924",
@@ -14,10 +14,12 @@
       "include/litehtml/render_flex.h": "dea29897532c494c66c0531dbd960e4f113bd4b663e5be159d3975e909fbf842",
       "include/litehtml/string_id.h": "6561834a6718c1bbd498cfc6c7490e8ad10a29be1c77d72cef6196f23d8b0e0d",
       "src/css_properties.cpp": "cbea4a975388b2ab309a1568c8857148fa523c96c232b9e8dba3540abef088b5",
-      "src/document.cpp": "b84f9c2380de7ee6a2b72c502b1b52f75d22c561a0a8e8d83f094eab9caf96b5",
+      "src/document.cpp": "980725ca89aebb5c87e8108977693ec125e5c5a77f6aba709f67ff50fb7e3ddc",
       "src/element.cpp": "61bf7b0fd9c6e45f37218bc373049df1a3e474eeefd0117e347ba19945a0e666",
       "src/flex_line.cpp": "817144beade8f200c527c37794f8c607dd285fa5edf5ad517c333cb7e0bd1b4b",
-      "src/html_tag.cpp": "b518fddd2d3fda1bdb24b4a650eac40273c7dff86ad0fa99fd6741fa8a3cffe3",
+      "src/gumbo/src/gumbo.h": "41c0b56275927a9fd37029b3b33ef94ae2605142ad3b0340a1065fe2abc6ed16",
+      "src/gumbo/src/parser.c": "60cf6672feb4b5e512f60aae49a0e31558f54a3efebb72083b0324f04a3e7b63",
+      "src/html_tag.cpp": "bf48e4eeb8b8839ca28963b12565340ee70f8155c972199a6e3e616b67b945a9",
       "src/render_flex.cpp": "cb64beb2b3ef206f63d2b31e15dce047ea5f5730d2697863780fe6dc02c53ca4",
       "src/style.cpp": "3761fa523fadb550785065e11a020f54fa6e65e9f572df8a49b2552bb9e99b4c"
     }

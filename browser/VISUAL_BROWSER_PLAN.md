@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.11.0, 2026-11-06
+## Current status — visual 0.11.1, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,14 +16,14 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.11.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.11.1 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
   events, timers, buffered Fetch/body requests, asynchronous XHR, anonymous CORS, TLS WebSocket and buffered Blob. Version 0.4.1 adds native field
   frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
   See the visual README for limits.
-- Nineteen host suites now cover rendering/forms, scheduling, dynamic scripts and
+- Twenty host suites now cover rendering/forms, scheduling, dynamic scripts and
   observers. Flex geometry has 120 Chromium reference rectangles; the shared
   dynamic DOM fixture also runs in Chromium. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
@@ -216,3 +216,15 @@ Remaining large gates: broader DOM/CSS and service compatibility, Worker plus
 JS-to-WASM imports/shared memory, GPU rendering (WebGPU/WebGL), media/audio, input
 mapping and hardware performance/memory validation. Completing sockets does not
 establish account/security-check compatibility or a playable game client.
+
+
+## Device regression follow-up — 0.11.1
+
+Fixed scripting-aware noscript parsing, HTTP HTML charset propagation and classic
+CSP nonce sources with attribute/selector hiding. Added bounded primary navigation
+timeout/error UI and final-origin/bytes/completion diagnostics. Twenty host suites
+cover parser, charset, negative CSP and partial TLS response cases. Google no longer
+reproduces as blank in the cloud check, but redirects to a service traffic check;
+normal search/CAPTCHA and restored jutsu.ru access await device validation. Keldurn
+fails its actual WebGPU capability check; implementing GPU and JS↔WASM remains
+required rather than changing Horizon or claiming a supported graphics adapter.

@@ -37,6 +37,18 @@ int main(int argc, char **argv) {
     CHECK(visual::Resources::resolve(base, "https://user:secret@example.com/").empty());
     {
         visual::Resources r("");
+        auto *partial = r.navigate_document(base + "/partial-document", 100);
+        complete(r);
+        CHECK(partial->state == visual::Resource::failed &&
+              partial->result == CURLE_OPERATION_TIMEDOUT);
+        CHECK(partial->http_status == 200 && partial->body_bytes == 3 && partial->data.empty() &&
+              !partial->transfer_ok && partial->elapsed_ms >= 90);
+        CHECK(partial->error.find("Сервер") != std::string::npos);
+        r.clear();
+        auto *slow = r.navigate_document(base + "/partial-document", 1000);
+        complete(r);
+        CHECK(slow->transfer_ok && slow->data.size() == 100 && slow->body_bytes == 100);
+        r.clear();
         auto *page = r.request(base + "/set", 4096);
         CHECK(page && page->state == visual::Resource::queued);
         complete(r);

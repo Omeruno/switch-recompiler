@@ -170,6 +170,14 @@ extendedKeyUsage=serverAuth
             if self.websocket():return
             if self.api():return
             route=urllib.parse.urlsplit(self.path).path
+            if route=='/nonce-source.js':
+                body=b'globalThis.nonceExternal=true;';self.send_response(200);self.send_header('Content-Length',str(len(body)));self.send_header('Content-Type','text/javascript');self.end_headers();self.wfile.write(body);return
+            if route=='/partial-document':
+                self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length','100');self.end_headers()
+                self.wfile.write(b'<p>');self.wfile.flush();time.sleep(.3)
+                try:self.wfile.write(b'x'*97)
+                except (BrokenPipeError,ConnectionError,ssl.SSLError):pass
+                return
             if route.startswith('/dyn-'):
                 mime='text/javascript';status=200
                 if route in ('/dyn-slow.js','/dyn-leak.js'):time.sleep(.25)

@@ -79,6 +79,54 @@ int main(int argc, char **argv) {
         drive();
         run(s, "if(!cross||!downgrade)throw Error('fetch policy failed');");
     }
+    for (int mode = 0; mode < 4; ++mode) {
+        visual::Resources resources(TEST_ASSETS);
+        visual::Container c(renderer, resources, TEST_FONT);
+        c.base = c.page_url = std::string(argv[2]) + "/nonce-page";
+        const std::string policy =
+            "script-src 'nonce-dGVzdA==' 'strict-dynamic' https: 'unsafe-inline' 'unsafe-eval'";
+        std::vector<std::string> policies{mode == 3 ? "script-src 'Nonce-dGVzdA=='" : policy};
+        if (mode == 1)
+            policies.push_back("script-src 'nonce-b3RoZXI='");
+        if (mode == 2)
+            policies = {"script-src 'STRICT-DYNAMIC' https: 'unsafe-inline'"};
+        const char *markup =
+            R"HTML(<!doctype html><html><head><style>script[nonce="dGVzdA=="]{background-image:url('/nonce-should-not-leak')}</style></head><body>
+          <script id="trusted" nonce="dGVzdA==">globalThis.trusted=1;try{globalThis.evalAllowed=eval('40+2')===42;}catch(e){globalThis.evalAllowed=false;}
+          const denied=document.createElement('script');denied.text='globalThis.untrustedDynamic=true';document.body.appendChild(denied);
+          const child=document.createElement('script');child.nonce=document.currentScript.nonce;child.text='globalThis.trustedDynamic=true';document.body.appendChild(child);
+          </script>
+          <script nonce="wrong">globalThis.wrongNonce=true;</script><script>globalThis.noNonce=true;</script>
+          <script nonce="dGVzdA==" src="/nonce-source.js"></script>
+          <button id="event" nonce="dGVzdA==" onclick="globalThis.inlineEvent=true">Test</button>
+        </body></html>)HTML";
+        auto doc = litehtml::document::createFromString(markup, &c);
+        doc->render(1280);
+        visual::Scripts js(doc, c, resources, policies);
+        auto until = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        do {
+            resources.pump();
+            js.poll(visual::Scripts::clock_ms());
+            js.flush();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        } while ((!js.ready() || resources.pending()) && std::chrono::steady_clock::now() < until);
+        CHECK(js.ready() && !resources.pending());
+        js.dispatch(doc->root()->select_one("#event"), "click", true);
+        run(js, "if(globalThis.wrongNonce||globalThis.noNonce||globalThis.untrustedDynamic||"
+                "globalThis.inlineEvent)throw Error('CSP nonce "
+                "bypass');if(document.getElementById('trusted').nonce!=='dGVzdA=='||document."
+                "getElementById('trusted').getAttribute('nonce')!==''||document.querySelector('"
+                "script[nonce=\"dGVzdA==\"]')||document.body.innerHTML.includes('dGVzdA=='))throw "
+                "Error('nonce visibility');");
+        if (mode == 0 || mode == 3)
+            run(js, std::string("if(!globalThis.trusted||!globalThis.trustedDynamic||!globalThis."
+                                "nonceExternal||globalThis.evalAllowed!==") +
+                        (mode == 0 ? "true" : "false") +
+                        ")throw Error('nonce authorization/eval');");
+        else
+            run(js, "if(globalThis.trusted||globalThis.trustedDynamic||globalThis.nonceExternal)"
+                    "throw Error('multiple policy/strict-dynamic bypass');");
+    }
     SDL_DestroyRenderer(renderer);
     SDL_FreeSurface(surface);
     browser_profile_close();

@@ -1,4 +1,4 @@
-# Switch visual browser — 0.11.0
+# Switch visual browser — 0.11.1
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -655,3 +655,49 @@ protocol failures. It explicitly accounts for anonymous cross-origin cookies,
 native quotas and certificate rejection. Chromium's CSP failure is checked via
 its error event because that path does not deliver close in the reference build.
 Chromium 151.0.7922.34 passed this scenario; it is not a general compatibility test.
+
+
+## Navigation and parser corrections — 0.11.1
+
+- Gumbo receives a scripting-enabled flag for documents and fragments. `noscript`
+  in head/body is raw text, so its fallback style/link/image/meta/script markup
+  does not become active. This fixes a reproduced case where Google's noscript
+  stylesheet hid div/span/p content while JavaScript was enabled. The bundled
+  fixture matches Chromium's visible-content behavior. It does not implement a
+  user-selectable JavaScript-disabled parsing mode.
+- HTML parsing honors the HTTP Content-Type charset through litehtml's encoding
+  input. A BOM still takes precedence; an unknown/absent transport charset falls
+  back to the existing meta/default sniffing. This includes Windows-1251 pages.
+  The change does not add full charset handling to external CSS or Fetch decoding.
+- Classic scripts support CSP nonce sources, including explicitly nonced scripts
+  in a strict-dynamic policy. All enforced policies must match. Nonces do not
+  permit inline event attributes or eval; eval needs its own unsafe-eval keyword.
+  Nonce/hash sources disable unsafe-inline fallback. Nonces are snapshotted when
+  preparing each script and rechecked before execution; the native nonce value
+  is hidden from attribute selectors/serialization, with an HTMLElement.nonce
+  property for loaders. Attribute hiding also applies to detached native elements.
+  Hash/SRI execution, nonce-authorized modules and strict-dynamic trust propagation
+  remain unsupported; scripts depending on those paths are rejected.
+- Primary GET/form navigation has a 45-second overall budget (including form
+  redirect hops), a 5-second connect deadline and 20-second low-speed window.
+  Other resources keep their 15-second budget. Incomplete failed documents are
+  discarded, with a localized error and retry/back/address/report controls shown
+  in the content area. A 200 response alone does not mark a complete document.
+- Reports add the final origin/redirect count, HTTP/curl result, received body bytes,
+  elapsed transfer time and completion status. Redirected response origins are
+  logged without paths or queries. Cookies, search terms, form values, CSP nonce
+  values and message bodies are not added to diagnostics.
+
+Device reports from 0.11.0 establish a jutsu.ru document timeout (HTTP 200,
+curl 28), before script startup. The public www.jutsu.ru endpoint redirected to
+jutsucdn.ru during diagnosis. The cause/device recovery is not established by a
+cloud request or the longer deadline. Google search's cloud reproduction now
+renders Google's Russian suspicious-traffic/check page instead of a blank page;
+normal search results and CAPTCHA compatibility are not established. The Keldurn
+message is its actual navigator.gpu capability failure: WebGPU is absent, and a
+Horizon update is not a fix. No graphics-capability flag is fabricated.
+
+Twenty host suites cover the changes, including real TLS partial-document timeout
+and successful completion, nonce positive/negative/multiple-policy/eval checks,
+parser fallback inertness, delayed content and transport/meta/BOM precedence.
+Uploaded account/cookie/storage data is not copied into the repository or fixtures.

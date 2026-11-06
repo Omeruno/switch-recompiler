@@ -144,6 +144,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
                 r.error = "Demo asset unavailable or over quota";
             } else {
                 received += r.data.size();
+                r.body_bytes = r.data.size();
                 r.state = Resource::ready;
                 r.http_status = 200;
                 r.transfer_ok = true;
@@ -155,6 +156,15 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         r.error = "Only HTTPS URLs are supported";
     }
     return &items.emplace(key, std::move(r)).first->second;
+}
+Resource *Resources::navigate_document(const std::string &url, unsigned timeout_ms) {
+    auto *resource = request(url, 1024u * 1024u);
+    if (resource) {
+        resource->document_navigation = true;
+        resource->critical = true;
+        resource->navigation_timeout_ms = std::clamp(timeout_ms, 100u, 60000u);
+    }
+    return resource;
 }
 Resource *Resources::navigate_form(const Submission &form, const std::string &source,
                                    const std::vector<std::string> &policies, size_t limit) {
@@ -443,6 +453,7 @@ size_t Resources::receive(char *data, size_t unit, size_t count, void *ctx) {
     }
     r.data.insert(r.data.end(), data, data + bytes);
     self.received += bytes;
+    r.body_bytes += bytes;
     return bytes;
 }
 size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
@@ -522,6 +533,10 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
     return bytes;
 }
 void Resources::start(Resource &r) {
+    if (!r.started_ms)
+        r.started_ms = network_clock();
+    if ((r.document_navigation || r.form_navigation) && !r.deadline_ms)
+        r.deadline_ms = r.started_ms + r.navigation_timeout_ms;
     r.web_header_bytes = 0;
     r.handle = curl_easy_init();
     if (!r.handle) {
@@ -604,12 +619,19 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(r.handle, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(r.handle, CURLOPT_TIMEOUT, 15L);
+    if (r.document_navigation || r.form_navigation) {
+        auto now = network_clock();
+        curl_easy_setopt(r.handle, CURLOPT_TIMEOUT_MS,
+                         long(r.deadline_ms > now ? r.deadline_ms - now : 1));
+        curl_easy_setopt(r.handle, CURLOPT_LOW_SPEED_LIMIT, 64L);
+        curl_easy_setopt(r.handle, CURLOPT_LOW_SPEED_TIME, 20L);
+    }
     curl_easy_setopt(r.handle, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(r.handle, CURLOPT_HEADERFUNCTION, header);
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.11.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.11.1");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;
@@ -664,12 +686,18 @@ bool Resources::pump() {
             std::pair<Resources *, Resource *> *ctx = nullptr;
             curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &ctx);
             Resource &r = *ctx->second;
+            r.elapsed_ms = network_clock() - r.started_ms;
             long http = 0;
             char *effective = nullptr;
             curl_easy_getinfo(r.handle, CURLINFO_RESPONSE_CODE, &http);
             curl_easy_getinfo(r.handle, CURLINFO_EFFECTIVE_URL, &effective);
             if (effective)
                 r.effective = effective;
+            if (!r.web_request && !r.form_navigation) {
+                long redirects = 0;
+                curl_easy_getinfo(r.handle, CURLINFO_REDIRECT_COUNT, &redirects);
+                r.redirects = unsigned(std::max(0L, redirects));
+            }
             if (r.web_request) {
                 browser_profile_log(r.current_url.c_str(), "web", http, msg->data.result);
                 r.http_status = http;
@@ -739,10 +767,25 @@ bool Resources::pump() {
                 r.error = msg->data.result == CURLE_OK ? "HTTP " + std::to_string(http)
                                                        : curl_easy_strerror(msg->data.result);
             if (!r.transfer_ok) {
-                received -= r.data.size();
-                r.data.clear();
+                if (r.document_navigation || r.form_navigation) {
+                    if (r.byte_limit)
+                        r.error = "Превышен лимит размера страницы";
+                    else if (r.result == CURLE_OPERATION_TIMEDOUT)
+                        r.error = "Сервер не завершил загрузку за отведённое время";
+                    else if (r.result == CURLE_COULDNT_RESOLVE_HOST)
+                        r.error = "Не удалось найти сервер (DNS)";
+                    else if (r.result == CURLE_COULDNT_CONNECT)
+                        r.error = "Не удалось соединиться с сервером";
+                    else if (r.result == CURLE_PEER_FAILED_VERIFICATION ||
+                             r.result == CURLE_SSL_CONNECT_ERROR ||
+                             r.result == CURLE_SSL_CACERT_BADFILE)
+                        r.error = "Не удалось проверить защищённое соединение (TLS)";
+                }
+                discard(r);
             }
             browser_profile_log(r.url.c_str(), "visual", http, msg->data.result);
+            if (r.redirects)
+                browser_profile_log(r.effective.c_str(), "visual-final", http, msg->data.result);
             curl_multi_remove_handle(multi, r.handle);
             curl_easy_cleanup(r.handle);
             r.handle = nullptr;

@@ -193,6 +193,7 @@
     Object.defineProperty(Element.prototype,name,descriptor.value?{value:checked(descriptor.value),writable:true,enumerable:true,configurable:true}:
       {get:descriptor.get?checked(descriptor.get):undefined,set:descriptor.set?checked(descriptor.set):undefined,enumerable:true,configurable:true});
   }
+  Object.defineProperty(HTMLElement.prototype,'nonce',{enumerable:true,configurable:true,get(){if(!elementBrand.has(this))throw new TypeError('Illegal invocation');return bridge('nonce',this._key);},set(value){if(!elementBrand.has(this))throw new TypeError('Illegal invocation');bridge('attr',this._key,'nonce',String(value));}});
   // Script loaders often instrument these native-facing property descriptors.
   // Brand checks prevent treating arbitrary elements as scripts.
   for(const name of ['src','type','text','textContent','innerText','async','defer','noModule','integrity','crossOrigin']){
@@ -237,7 +238,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.11.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.11.1'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;

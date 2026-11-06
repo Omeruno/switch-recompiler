@@ -191,7 +191,7 @@ struct Scripts::Impl {
     std::vector<litehtml::element::ptr> nodes{nullptr};
     std::unordered_map<const litehtml::element *, unsigned> ids;
     struct Job {
-        std::string source, url, module;
+        std::string source, url, module, nonce;
         Resource *resource = nullptr;
         enum Mode { ordered, asynchronous, deferred, dynamic_ordered } mode = ordered;
         bool external = false, done = false, dynamic = false;
@@ -503,7 +503,8 @@ struct Scripts::Impl {
         return out;
     }
     bool allowed(const std::string &directive, const std::string &url, bool inline_code,
-                 const std::string &keyword = "'unsafe-inline'") const {
+                 const std::string &keyword = "'unsafe-inline'",
+                 const std::string &nonce = "") const {
         if (policy_overflow)
             return false;
         const bool socket = directive == "connect-src" && url.rfind("wss://", 0) == 0;
@@ -538,12 +539,44 @@ struct Scripts::Impl {
                 it = entries.find("default-src");
             if (it == entries.end())
                 continue;
-            bool yes = false;
+            const bool script = directive == "script-src" || directive == "script-src-attr";
+            const bool evaluation = keyword == "'unsafe-eval'";
+            bool nonce_source = false, nonce_match = false, hashed = false, strict = false;
+            for (const auto &token : it->second) {
+                auto normalized = lower(token);
+                if (normalized.rfind("'nonce-", 0) == 0 && token.size() > 8 &&
+                    token.back() == '\'') {
+                    auto value = token.substr(7, token.size() - 8);
+                    bool valid = value.size() <= 256;
+                    size_t padding = value.find('=');
+                    if (padding == std::string::npos)
+                        padding = value.size();
+                    if (!padding || value.size() - padding > 2)
+                        valid = false;
+                    for (size_t i = 0; i < value.size(); ++i) {
+                        auto c = static_cast<unsigned char>(value[i]);
+                        if (i >= padding ? c != '='
+                                         : !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                                             (c >= '0' && c <= '9') || c == '+' || c == '/' ||
+                                             c == '-' || c == '_'))
+                            valid = false;
+                    }
+                    nonce_source |= valid;
+                    nonce_match |= valid && !nonce.empty() && nonce == value;
+                }
+                hashed |= normalized.rfind("'sha256-", 0) == 0 ||
+                          normalized.rfind("'sha384-", 0) == 0 ||
+                          normalized.rfind("'sha512-", 0) == 0;
+                strict |= normalized == "'strict-dynamic'";
+            }
+            // Nonces do not authorize event attributes or eval. Hash execution and
+            // strict-dynamic trust propagation remain unsupported and fail closed.
+            bool yes = script && directive == "script-src" && !evaluation && nonce_match;
             for (auto &token : it->second) {
-                if (token == "'strict-dynamic'")
-                    return false;
+                if (script && !evaluation && strict)
+                    continue;
                 if (inline_code) {
-                    if (token == keyword)
+                    if (token == keyword && (evaluation || !script || !(nonce_source || hashed)))
                         yes = true;
                 } else if (token == "*" || token == "https:" || (socket && token == "wss:") ||
                            (token == "'self'" &&
@@ -876,6 +909,11 @@ struct Scripts::Impl {
         }
         Job entry;
         entry.element = el;
+        if (auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(el)) {
+            auto nonce = tag->native_attributes().find("nonce");
+            if (nonce != tag->native_attributes().end() && nonce->second.size() <= 256)
+                entry.nonce = nonce->second;
+        }
         entry.dynamic = dynamic;
         if (has_src) {
             if (src.empty()) {
@@ -883,7 +921,7 @@ struct Scripts::Impl {
                 return;
             }
             entry.url = Resources::resolve(container.base, src);
-            if (!allowed("script-src", entry.url, false)) {
+            if (!allowed("script-src", entry.url, false, "'unsafe-inline'", entry.nonce)) {
                 fail("policy", "external-script");
                 return;
             }
@@ -912,7 +950,7 @@ struct Scripts::Impl {
                 fail("limit", "script-bytes");
                 return;
             }
-            if (!allowed("script-src", "", true)) {
+            if (!allowed("script-src", "", true, "'unsafe-inline'", entry.nonce)) {
                 fail("policy", "inline-script");
                 return;
             }
@@ -955,7 +993,7 @@ struct Scripts::Impl {
             return "";
         std::string out = "<" + std::string(el->get_tagName());
         for (auto &a : tag->native_attributes())
-            out += ' ' + a.first + "=\"" + escape(a.second, true) + "\"";
+            out += ' ' + a.first + "=\"" + escape(a.first == "nonce" ? "" : a.second, true) + "\"";
         out += '>';
         for (auto &child : el->children())
             if (!generated(child)) {
@@ -1464,6 +1502,13 @@ struct Scripts::Impl {
             activate_scripts(el); // Existing empty connected script receiving new text.
             return JS_UNDEFINED;
         }
+        if (op == "nonce") {
+            auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(el);
+            if (!tag)
+                return js("");
+            auto found = tag->native_attributes().find("nonce");
+            return js(found == tag->native_attributes().end() ? "" : found->second);
+        }
         if (op == "attr") {
             auto key = lower(str(2, 96));
             if (argc < 4) {
@@ -1827,7 +1872,7 @@ struct Scripts::Impl {
         if (j.external) {
             absorb_meta();
             if (policy_overflow || j.resource->state != Resource::ready ||
-                !allowed("script-src", j.resource->effective, false)) {
+                !allowed("script-src", j.resource->effective, false, "'unsafe-inline'", j.nonce)) {
                 last_error = "Script request failed or was blocked";
                 issue_log.add("script-load", "failed", origin(j.url));
                 script_event(j.element, "error");
@@ -1839,6 +1884,12 @@ struct Scripts::Impl {
                 return;
             }
             j.source.assign(j.resource->data.begin(), j.resource->data.end());
+        } else {
+            absorb_meta();
+            if (!allowed("script-src", "", true, "'unsafe-inline'", j.nonce)) {
+                issue_log.add("policy", "inline-script", origin(container.page_url));
+                return;
+            }
         }
         if (!nested)
             budget(50);
