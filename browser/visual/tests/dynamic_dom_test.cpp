@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Interfaces: %s\n", js.error().c_str());
             return 1;
         }
-        CHECK(js.eval("if(HTMLScriptElement.supports('module')||HTMLScriptElement.supports('"
+        CHECK(js.eval("if(!HTMLScriptElement.supports('module')||HTMLScriptElement.supports('"
                       "importmap'))throw Error('unsupported script capability advertised');"));
         std::ifstream input(std::string(argv[3]) + "/dynamic-dom.js");
         CHECK(input);

@@ -128,7 +128,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         // Local assets are an explicit allowlist, never a URL-to-path mapping.
         if (name != "index.html" && name != "style.css" && name != "landscape.png" &&
             name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
-            name != "state.json" && name != "dynamic-demo.js") {
+            name != "state.json" && name != "dynamic-demo.js" && name != "modules-demo.js" &&
+            name != "module-state.js" && name != "module-step.js") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -285,7 +286,7 @@ void Resources::stop(Resource &r) {
 void Resources::discard(Resource &r) {
     received -= r.data.size();
     std::fill(r.data.begin(), r.data.end(), 0);
-    r.data.clear();
+    std::vector<unsigned char>().swap(r.data);
 }
 void Resources::release_body(Resource &r) {
     if (r.web_request)
@@ -608,7 +609,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.9.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.10.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;

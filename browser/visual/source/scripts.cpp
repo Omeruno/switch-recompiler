@@ -15,6 +15,7 @@ extern "C" {
 #include <litehtml/render_item.h>
 #include <map>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <time.h>
 #include <unordered_map>
@@ -189,7 +190,7 @@ struct Scripts::Impl {
     std::vector<litehtml::element::ptr> nodes{nullptr};
     std::unordered_map<const litehtml::element *, unsigned> ids;
     struct Job {
-        std::string source, url;
+        std::string source, url, module;
         Resource *resource = nullptr;
         enum Mode { ordered, asynchronous, deferred, dynamic_ordered } mode = ordered;
         bool external = false, done = false, dynamic = false;
@@ -227,6 +228,7 @@ struct Scripts::Impl {
          usable_runtime = false;
     uint64_t previous_frame = 0;
     bool fetch_turn = false;
+#include "module_loader.inc"
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
          std::vector<std::string> policy)
         : doc(d), container(c), resources(r), policies(std::move(policy)) {
@@ -255,6 +257,8 @@ struct Scripts::Impl {
             throw std::runtime_error("JavaScript context allocation failed");
         }
         JS_SetContextOpaque(context, this);
+        JS_SetModuleLoaderFunc2(runtime, module_normalize, module_load, module_attributes, this);
+        JS_SetHostImportModuleFunc(runtime, module_dynamic, this);
         auto global = JS_GetGlobalObject(context);
         JS_SetPropertyStr(context, global, "__native",
                           JS_NewCFunction(context, native, "__native", 4));
@@ -281,6 +285,7 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        release_modules();
         for (auto &f : fetches)
             resources.cancel(*f.resource);
         fetches.clear();
@@ -786,6 +791,8 @@ struct Scripts::Impl {
         if (state.started || !connected_script(el))
             return;
         std::string type = lower(el->get_attr("type", ""));
+        auto first = type.find_first_not_of(" \t\r\n\f"), last = type.find_last_not_of(" \t\r\n\f");
+        type = first == std::string::npos ? "" : type.substr(first, last - first + 1);
         if (!type.empty() && type != "text/javascript" && type != "application/javascript" &&
             type != "module")
             return;
@@ -808,14 +815,51 @@ struct Scripts::Impl {
             issue_log.add(category, code, origin(container.page_url));
             script_event(el, "error");
         };
-        if (type == "module") {
-            last_error = "JavaScript modules are not implemented";
-            fail("unsupported", "module");
-            return;
-        }
         absorb_meta();
         if (policy_overflow) {
             fail("policy", "script-policy-limit");
+            return;
+        }
+        if (type != "module" && el->get_attr("nomodule"))
+            return;
+        if (type == "module") {
+            try {
+                Job job;
+                job.element = el;
+                job.dynamic = dynamic;
+                job.external = has_src;
+                job.mode = (el->get_attr("async") || (dynamic && force_async)) ? Job::asynchronous
+                           : dynamic ? Job::dynamic_ordered
+                                     : Job::deferred;
+                const std::string credentials =
+                    lower(el->get_attr("crossorigin", "")) == "use-credentials" ? "include"
+                                                                                : "same-origin";
+                if (*el->get_attr("integrity", "")) {
+                    fail("unsupported", "module-integrity");
+                    return;
+                }
+                if (has_src) {
+                    if (src.empty())
+                        throw std::runtime_error("Empty module src");
+                    job.module = module_url(container.base, src, false);
+                    module_fetch(job.module, credentials);
+                } else {
+                    if (!allowed("script-src", "", true) || modules.size() >= 64)
+                        throw std::runtime_error("Inline module policy/quota");
+                    job.module = "@inline:" + std::to_string(++inline_modules);
+                    ModuleRecord record;
+                    record.key = job.module;
+                    record.base = record.meta_url = container.base;
+                    record.source = std::move(source);
+                    record.inline_module = true;
+                    record.credentials = credentials;
+                    modules.emplace(job.module, std::move(record));
+                }
+                jobs.push_back(std::move(job));
+            } catch (const std::exception &) {
+                fail("module", "prepare");
+                last_error = "Module preparation failed";
+            }
             return;
         }
         Job entry;
@@ -860,7 +904,7 @@ struct Scripts::Impl {
                 fail("policy", "inline-script");
                 return;
             }
-            entry.url = "inline";
+            entry.url = container.base;
             entry.source = std::move(source);
         }
         jobs.push_back(std::move(entry));
@@ -1690,11 +1734,33 @@ struct Scripts::Impl {
         return ok;
     }
     bool runnable(const Job &j) const {
+        if (!j.module.empty())
+            return module_graph(j.module) != 0;
         return !j.resource ||
                (j.resource->state != Resource::queued && j.resource->state != Resource::loading);
     }
     void execute(Job &j, bool nested = false) {
         j.done = true;
+        if (!j.module.empty()) {
+            budget(50);
+            auto &m = modules.at(j.module);
+            if (module_graph(j.module) < 0 && m.state != ModuleRecord::failed)
+                module_fail(m, module_graph_error(m.key), "dependency");
+            bool ok = module_evaluate(m);
+            m.static_root = true;
+            m.error_reported = false;
+            drain();
+            module_refresh(m);
+            if (!ok && m.fetch_error)
+                script_event(j.element, "error");
+            else {
+                if (m.state == ModuleRecord::failed && !m.fetch_error)
+                    module_report(m);
+                if (j.external)
+                    script_event(j.element, "load");
+            }
+            return;
+        }
         if (script_depth >= 8) {
             issue_log.add("limit", "script-depth", origin(container.page_url));
             return;
@@ -1720,7 +1786,7 @@ struct Scripts::Impl {
         auto previous_script = current_script;
         current_script = j.element;
         ++script_depth;
-        evaluate(j.source.c_str(), j.source.size(), j.url.substr(0, j.url.find('?')));
+        evaluate(j.source.c_str(), j.source.size(), j.url);
         --script_depth;
         current_script = previous_script;
         if (!nested)
@@ -1788,10 +1854,20 @@ struct Scripts::Impl {
             drain();
             return dirty;
         }
+        budget(50);
+        if (module_static_errors()) {
+            drain();
+            return dirty;
+        }
         if (!pending_script_events.empty()) {
             auto target = pending_script_events.front();
             pending_script_events.erase(pending_script_events.begin());
             event(target.first, target.second, false);
+            return dirty;
+        }
+        budget(50);
+        if (pump_modules()) {
+            drain();
             return dirty;
         }
         Job *ordered = nullptr, *deferred = nullptr, *async = nullptr, *dynamic_order = nullptr;

@@ -1,0 +1,90 @@
+{
+  "browser": "Chromium 151.0.7922.34",
+  "sha256": {
+    "cycle-a.js": "ecbc7b10ceaf881b82af45593b55be589fa02232d79ed54b07e419e8c8839179",
+    "cycle-b.js": "6a1c533b85a55d2947afd58fc94a274f40605f8df1b15b4e0a1e964b45e9eea0",
+    "default.js": "66ef65b3bc78376792dcb2c82e9825bae9e24503d46a0f79a08ad999d88c5cfa",
+    "extra.js": "3d9603e5a6a2e5202d33120875696d86245ec3e4cbd476553daad830e6ffab1a",
+    "fast.js": "d0ce21fd43fd804b99adfbd8ff6f3c8eb60379db4fbf7e235a2e7bc219c2c413",
+    "lazy.js": "d3eb233d010e0ab5dcb04f9686d09b4b8f3d04a82e42ca21b716c41072fa4f4a",
+    "leaf.js": "490ea60e46a4b08ced46f17158e26b1493c79a62e4105e0b46f129209f4690e3",
+    "link-error.js": "923680147285e4904cd4fd3f5bd7036778656460aff3f6612fbdfba744f2ffbd",
+    "main.js": "c47d3868c269211182fcf5b940ac1d2a8bd7c23d6c20f0480848b98899212140",
+    "meta.js": "2ce6e9c476ab1c797d6b4eb2436ab399c084107863c3f8732bb6b90cdefa6f62",
+    "parent-error.js": "77b480c01a587ba9df84d8553d692f9733bbc1c03bacad20ed49d635876f5588",
+    "parse-error.js": "4d5d38ecc649718aefc8e9f00d8172f8563d41a394ab25fa7f1be28771384dd5",
+    "reexport.js": "58ffc1532b4071ead75667d141f34c71bac58e037c410c985623e12c561d2244",
+    "runtime-error.js": "f282dc42c52c345a7304f9c738220cd72dd9c3e269733f4104babd5d19ae3a64",
+    "slow.js": "debff9e4e8707156aad711a2169a3568e0abfb12e432a4484de6d64b5c48a7aa",
+    "tla-error.js": "d6ef7b6f26994b2e07a1f060eddeac888b3a384831433b5e01fdccc7ea631000"
+  },
+  "result": {
+    "result": "scope|static-imports|exports|live-bindings|cycles|meta|tla|dynamic-cache|query-identity",
+    "trace": [
+      "leaf",
+      "default",
+      "cycle-b",
+      "cycle-a",
+      "main",
+      "lazy",
+      "leaf",
+      "done"
+    ],
+    "lifecycle": [
+      "dom",
+      "load"
+    ],
+    "nomodule": false,
+    "errors": [
+      {
+        "name": "parse-error",
+        "type": "SyntaxError",
+        "repeatType": "SyntaxError",
+        "same": true
+      },
+      {
+        "name": "link-error",
+        "type": "SyntaxError",
+        "repeatType": "SyntaxError",
+        "same": false
+      },
+      {
+        "name": "runtime-error",
+        "type": "Error",
+        "repeatType": "Error",
+        "same": true
+      },
+      {
+        "name": "parent-error",
+        "type": "SyntaxError",
+        "repeatType": "SyntaxError",
+        "same": true
+      }
+    ],
+    "errorEvents": {
+      "parse-error.js": [
+        "window-error",
+        "script-load",
+        "window-load"
+      ],
+      "link-error.js": [
+        "window-error",
+        "script-load",
+        "window-load"
+      ],
+      "runtime-error.js": [
+        "window-error",
+        "script-load",
+        "window-load"
+      ],
+      "tla-error.js": [
+        "start",
+        "module-load",
+        "dom",
+        "window-load",
+        "end",
+        "error"
+      ]
+    }
+  }
+}

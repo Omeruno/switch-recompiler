@@ -156,12 +156,12 @@ int main(int argc, char **argv) {
         visual::Resources resources(argv[1]);
         visual::Container c(renderer, resources, argv[2]);
         c.base = c.page_url = "https://example.test/path?access_token=DO_NOT_REPORT";
-        auto doc = litehtml::document::createFromString("<script type=module>ignored</script>", &c);
+        auto doc = litehtml::document::createFromString("<p>Report privacy</p>", &c);
         doc->render(1280);
         visual::Scripts s(doc, c, resources);
         CHECK(!s.eval("throw new TypeError('PRIVATE_FORM_VALUE')"));
         CHECK(!s.eval("throw new TypeError('PRIVATE_FORM_VALUE')"));
-        CHECK(s.issues().entries().size() == 2);
+        CHECK(s.issues().entries().size() == 1);
         auto issue = s.issues().entries().back();
         CHECK(issue.category == "exception" && issue.code == "TypeError" && issue.count == 2 &&
               issue.origin == "https://example.test");

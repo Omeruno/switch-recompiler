@@ -1,0 +1,1 @@
+globalThis.moduleOrder.push('fast');

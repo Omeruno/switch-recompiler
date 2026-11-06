@@ -30,7 +30,7 @@ Chromium/Blink, Firefox/Gecko и WebKit разделяют несколько з
 | Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, iframe, editing/selection/accessibility |
 | CSS/layout | каскад, обычный поток, таблицы, flex, media queries, размеры и поля | Grid, полное современное intrinsic sizing, дополнительные правила текста, transforms |
 | Paint | SDL, DejaVu, PNG/JPEG/WebP, заливки, часть границ и градиентов | SVG, web fonts/shaping/fallback, полные тени/outline/clip, display list/compositor |
-| JS | QuickJS, native DOM bridge, события, таймеры, Promise, buffered Fetch/XHR, classic async/defer, Mutation/Resize/IntersectionObserver | модули, workers, множество остальных Web API |
+| JS | QuickJS, native DOM bridge, события, таймеры, Promise, buffered Fetch/XHR, classic async/defer, Mutation/Resize/IntersectionObserver | import maps/attributes, workers, множество остальных Web API |
 | Планирование | раздельные задачи/microtasks/rAF, асинхронная сеть, бюджеты JS/observer и типизированные resource revisions | потоковая загрузка/parser scheduling, полная очередность стандарта, точечная style/layout-инвалидация |
 | Игры/медиа | отдельный WASM probe | JS/WASM game imports, WebGPU/WebGL, видео/аудио, MSE/WebRTC, игровые события |
 | Изоляция | квоты и интерпретаторы | полноценные границы процессов/песочницы, модель безопасности современного браузера |
@@ -248,3 +248,27 @@ SameSite/partitioning. Анонимные запросы не включают c
 последовательности и тест кэша скриптов (Fetch больше не заполняет этот кэш).
 Для Switch добавлено офлайн-демо «Загрузка и отмена»; вход и игра остаются
 непроверенными на устройстве.
+
+## Модульный JavaScript — 0.10.0
+
+Добавлена browser-интеграция настоящих ES modules QuickJS: анализ импортов через
+разобранные module records, асинхронная загрузка полного графа, затем связывание
+и исполнение. Текст импортов не переписывается. Проверены циклы, живые экспорты,
+namespace/cache identity, query URLs, import.meta.url и top-level await. Наблюдаемая
+очерёдность DCL/load и событий ошибок сверена с Chromium; handled import failures
+не превращаются в лишний unhandledrejection. Найден и исправлен внутренний
+rejected Promise QuickJS при синхронном падении модуля: движок потреблял его сам,
+но не отмечал обработанным. Ошибки разбора/связывания/исполнения отделены от
+сетевых ошибок и MIME/CORS. Все URL-переходы проверяются script-src до соединения.
+
+Небольшие host API расширения QuickJS описаны в third_party/README.md. Старые
+режимы сохраняют обычное синхронное разрешение без нового флага/host callback.
+Модульная карта и pending imports ограничены и уничтожаются с realm при навигации.
+Доставленные native response buffers теперь освобождают и backing allocation,
+снято удержание старых массивов после clear() при последующих загрузках модулей.
+
+17 host-наборов включают multi-origin TLS, CSP/MIME, ошибки, очередность, квоты
+и реальный Browser navigation. Общий fixture графа и события имеют Chromium
+reference с хэшами исходников. На Switch добавлено офлайн-демо с настоящими
+static/dynamic imports. Import maps/attributes, Worker, WebSocket, WASM/GPU и
+медиа ещё не реализованы; работоспособность входа и игры не установлена.

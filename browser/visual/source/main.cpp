@@ -745,7 +745,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.9.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.10.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -855,7 +855,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.9.0");
+    visual::diagnostic("boot", "0.10.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -1300,6 +1300,20 @@ int main(int argc, char **argv) {
                     app.document->root()->select_one("#network-status")->get_text(network_status);
                     if (network_status != "Загрузка отменена")
                         throw std::runtime_error("offline abort demo failed");
+                    tap_element("module-run");
+                    for (int i = 0; i < 20; i++)
+                        app.pump();
+                    std::string module_status;
+                    app.document->root()->select_one("#module-status")->get_text(module_status);
+                    if (module_status != "Запуск модуля: 1")
+                        throw std::runtime_error("module demo first run failed: " + module_status);
+                    tap_element("module-run");
+                    for (int i = 0; i < 20; i++)
+                        app.pump();
+                    module_status.clear();
+                    app.document->root()->select_one("#module-status")->get_text(module_status);
+                    if (module_status != "Запуск модуля: 2")
+                        throw std::runtime_error("module demo second run failed: " + module_status);
                     float before_report_scroll = app.view.y;
                     app.toggle_report();
                     if (!app.report_open || app.report_lines.size() < 10)

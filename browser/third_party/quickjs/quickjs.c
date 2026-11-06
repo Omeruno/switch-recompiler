@@ -373,6 +373,8 @@ struct JSRuntime {
     } u;
     JSModuleCheckSupportedImportAttributes *module_check_attrs;
     void *module_loader_opaque;
+    JSHostImportModuleFunc *host_import_module;
+    void *host_import_module_opaque;
     /* timestamp for internal use in module evaluation */
     int64_t module_async_evaluation_next_timestamp;
 
@@ -30428,13 +30430,17 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
         m1 = js_host_resolve_imported_module_atom(ctx, m->module_name,
                                                   rme->module_name,
                                                   rme->attributes);
-        if (!m1)
+        if (!m1) {
+            m->resolved = FALSE;
             return -1;
+        }
         rme->module = m1;
         /* already done in js_host_resolve_imported_module() except if
            the module was loaded with JS_EvalBinary() */
-        if (js_resolve_module(ctx, m1) < 0)
+        if (js_resolve_module(ctx, m1) < 0) {
+            m->resolved = FALSE;
             return -1;
+        }
     }
     return 0;
 }
@@ -30941,8 +30947,14 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     if (!filename)
         goto exception;
 
-    JS_LoadModuleInternal(ctx, basename, filename,
-                          resolving_funcs, attributes);
+    if (ctx->rt->host_import_module) {
+        ctx->rt->host_import_module(ctx, basename, filename,
+                                    resolving_funcs[0], resolving_funcs[1], attributes,
+                                    ctx->rt->host_import_module_opaque);
+    } else {
+        JS_LoadModuleInternal(ctx, basename, filename,
+                              resolving_funcs, attributes);
+    }
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, basename);
     return JS_UNDEFINED;
@@ -31289,6 +31301,8 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
         if (state == JS_PROMISE_FULFILLED) {
             JS_FreeValue(ctx, promise);
         } else if (state == JS_PROMISE_REJECTED) {
+            /* The engine consumes this internal promise itself. */
+            JS_MarkPromiseHandled(ctx, promise);
             *pvalue = JS_PromiseResult(ctx, promise);
             JS_FreeValue(ctx, promise);
             return -1;
@@ -31545,6 +31559,24 @@ static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *r
         return -1;
     }
     return js_parse_expect(s, '}');
+}
+
+/* Browser integration: inspect imports after parsing, before linking. */
+void JS_SetHostImportModuleFunc(JSRuntime *rt, JSHostImportModuleFunc *func, void *opaque)
+{
+    rt->host_import_module = func;
+    rt->host_import_module_opaque = opaque;
+}
+int JS_GetModuleRequestCount(JSModuleDef *m) { return m->req_module_entries_count; }
+JSAtom JS_GetModuleRequestName(JSContext *ctx, JSModuleDef *m, int index)
+{
+    if (index < 0 || index >= m->req_module_entries_count) return JS_ATOM_NULL;
+    return JS_DupAtom(ctx, m->req_module_entries[index].module_name);
+}
+JSValue JS_GetModuleRequestAttributes(JSContext *ctx, JSModuleDef *m, int index)
+{
+    if (index < 0 || index >= m->req_module_entries_count) return JS_UNDEFINED;
+    return JS_DupValue(ctx, m->req_module_entries[index].attributes);
 }
 
 /* return the module index in m->req_module_entries[] or < 0 if error */
@@ -37166,11 +37198,14 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     fun_obj = js_create_function(ctx, fd);
     if (JS_IsException(fun_obj))
         goto fail1;
-    /* Could add a flag to avoid resolution if necessary */
+    /* The browser may defer resolution until asynchronous graph loading completes. */
     if (m) {
         m->func_obj = fun_obj;
-        if (js_resolve_module(ctx, m) < 0)
-            goto fail1;
+        if (!(flags & JS_EVAL_FLAG_COMPILE_ONLY) ||
+            !(flags & JS_EVAL_FLAG_DEFER_MODULE_RESOLUTION)) {
+            if (js_resolve_module(ctx, m) < 0)
+                goto fail1;
+        }
         fun_obj = JS_NewModuleValue(ctx, m);
     }
     if (flags & JS_EVAL_FLAG_COMPILE_ONLY) {
@@ -37252,7 +37287,9 @@ int JS_ResolveModule(JSContext *ctx, JSValueConst obj)
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_MODULE) {
         JSModuleDef *m = JS_VALUE_GET_PTR(obj);
         if (js_resolve_module(ctx, m) < 0) {
-            js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
+            /* An asynchronous host retains compiled records for other graphs. */
+            if (!ctx->rt->host_import_module)
+                js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
             return -1;
         }
     }
@@ -53137,6 +53174,19 @@ JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
     if (!s)
         return -1;
     return s->promise_state;
+}
+
+int JS_MarkPromiseHandled(JSContext *ctx, JSValueConst promise)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    if (!s) return -1;
+    if (!s->is_handled && s->promise_state == JS_PROMISE_REJECTED &&
+        ctx->rt->host_promise_rejection_tracker) {
+        ctx->rt->host_promise_rejection_tracker(ctx, promise, s->promise_result, TRUE,
+                                               ctx->rt->host_promise_rejection_tracker_opaque);
+    }
+    s->is_handled = TRUE;
+    return 0;
 }
 
 JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)

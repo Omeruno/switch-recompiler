@@ -104,6 +104,7 @@ void browser_network_checks(Browser &app, const std::string &base) {
     eval("const oldXHR=new "
          "XMLHttpRequest();oldXHR.open('GET','/"
          "api-slow');oldXHR.onload=()=>localStorage.setItem('xhr_leak','1');oldXHR.send();");
+    eval("import('/esm-delay.js').then(()=>localStorage.setItem('module_callback_leak','1'));");
     app.resources.pump(); // Start the delayed transfer, then cancel the old realm/page.
     app.navigate(base + "/loop-clean", false);
     pump_until([&] { return app.scripts && app.scripts->ready(); });
@@ -116,6 +117,9 @@ void browser_network_checks(Browser &app, const std::string &base) {
     check(!browser_storage_get(base.c_str(), 0, "layout_leak"),
           "layout observer survived navigation");
     check(!browser_storage_get(base.c_str(), 0, "xhr_leak"), "XHR callback survived navigation");
+    check(!browser_storage_get(base.c_str(), 0, "module_leak") &&
+              !browser_storage_get(base.c_str(), 0, "module_callback_leak"),
+          "old module realm survived navigation");
     puts("PASS delayed async/defer/classic scripts, timer during load, DCL/load order, JSON "
          "without layout, image-only relayout, late CSS and coalesced DOM changes");
 }

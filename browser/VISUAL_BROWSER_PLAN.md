@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.9.0, 2026-11-06
+## Current status — visual 0.10.0, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,19 +16,19 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.9.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.10.0 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
   events, timers, buffered Fetch/body requests, asynchronous XHR and anonymous CORS. Version 0.4.1 adds native field
   frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
   See the visual README for limits.
-- Sixteen host suites now cover rendering/forms, scheduling, dynamic scripts and
+- Seventeen host suites now cover rendering/forms, scheduling, dynamic scripts and
   observers. Flex geometry has 120 Chromium reference rectangles; the shared
   dynamic DOM fixture also runs in Chromium. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
 - Still required for general browsing: broader DOM/events and JavaScript APIs,
-  Grid and additional CSS, navigation/focus/selection work, modules/workers,
+  Grid and additional CSS, navigation/focus/selection work, import maps/workers,
   broader network APIs and media. VK/YouTube compatibility is not established.
 - The separate WASM probe's original feature tests passed on Switch. Its new
   stable-memory backend needs device verification. WebGPU and the game bridge
@@ -100,7 +100,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.9.0
+## Implemented candidate — visual 0.1.0–0.10.0
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -189,3 +189,14 @@ WebSocket, modules/workers and media/GPU remain separate gates. Sixteen host sui
 include real TLS multi-origin and shared Chromium interface fixtures. Check the
 offline «Загрузка и отмена» demo on Switch; account/security/game compatibility
 is not established by the host results.
+
+## URL-based module block — 0.10.0
+
+Browser module-map loading now connects QuickJS's real ES module parser/linker to
+the asynchronous TLS/CORS transport. Static/dynamic imports, re-exports, live
+bindings, cycles, import.meta.url and top-level await are covered by native and
+Chromium fixtures. nomodule/async/defer, redirects/policies/MIME, errors, quotas
+and navigation cancellation are part of the block. Offline device checks use
+«Модульная страница». Seventeen host suites are the release gate; full site/game
+compatibility is unverified. Import maps/attributes and non-JS module types,
+Workers, WebSocket, JS↔WASM and GPU/media remain separate milestones.

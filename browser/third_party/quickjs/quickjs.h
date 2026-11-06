@@ -345,6 +345,9 @@ static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
 /* allow top-level await in normal script. JS_Eval() returns a
    promise. Only allowed with JS_EVAL_TYPE_GLOBAL */
 #define JS_EVAL_FLAG_ASYNC (1 << 7)
+/* Browser host: compile a module without synchronously loading dependencies.
+   Use only together with MODULE | COMPILE_ONLY, then JS_ResolveModule(). */
+#define JS_EVAL_FLAG_DEFER_MODULE_RESOLUTION (1 << 8)
 
 typedef JSValue JSCFunction(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
 typedef JSValue JSCFunctionMagic(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int magic);
@@ -914,6 +917,8 @@ typedef enum JSPromiseStateEnum {
 JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
 JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
 JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
+/* Host observes evaluation completion without invoking mutable Promise.then. */
+int JS_MarkPromiseHandled(JSContext *ctx, JSValueConst promise);
 
 /* is_handled = TRUE means that the rejection is handled */
 typedef void JSHostPromiseRejectionTracker(JSContext *ctx, JSValueConst promise,
@@ -963,6 +968,16 @@ void JS_SetModuleLoaderFunc2(JSRuntime *rt,
                              JSModuleLoaderFunc2 *module_loader,
                              JSModuleCheckSupportedImportAttributes *module_check_attrs,
                              void *opaque);
+/* Browser host extensions: borrowed module pointers, owned return atoms/values.
+   The deferred import callback must duplicate any values it retains. */
+typedef void JSHostImportModuleFunc(JSContext *ctx, const char *base,
+                                   const char *specifier, JSValueConst resolve,
+                                   JSValueConst reject, JSValueConst attributes,
+                                   void *opaque);
+void JS_SetHostImportModuleFunc(JSRuntime *rt, JSHostImportModuleFunc *func, void *opaque);
+int JS_GetModuleRequestCount(JSModuleDef *m);
+JSAtom JS_GetModuleRequestName(JSContext *ctx, JSModuleDef *m, int index);
+JSValue JS_GetModuleRequestAttributes(JSContext *ctx, JSModuleDef *m, int index);
 /* return the import.meta object of a module */
 JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);

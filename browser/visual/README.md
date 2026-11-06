@@ -1,4 +1,4 @@
-# Switch visual browser — 0.9.0
+# Switch visual browser — 0.10.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -8,6 +8,9 @@ path; it is not a production engine selection or a playable Keldurn client.
 
 ## What is implemented
 
+- URL-based ES modules with static/dynamic imports, live exports and top-level await;
+  sources load asynchronously through the browser module map. Import maps, workers,
+  WASM/game bindings and graphics remain separate milestones.
 - Persistent QuickJS session bound to the same native litehtml document that is
   painted/hit-tested. Resource completion and viewport changes preserve element
   identity, handlers and JavaScript state. A checksum-locked renderer patch rebuilds
@@ -106,7 +109,7 @@ Limits: 1 MiB HTML, 8,192 '<' characters before parsing, 512 KiB per stylesheet,
 text textures. DejaVu is the only font family and font size is clamped 6–144 px.
 These quotas do not make this an isolated or standards-complete web runtime.
 
-Not implemented: JavaScript modules/workers, complete DOM/web forms, multipart/file
+Not implemented: JavaScript workers/import maps, complete DOM/web forms, multipart/file
 uploads, text selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
 CSS grid/transforms, advanced gradient color spaces, rounded image/overflow clipping, rounded border
 strokes or complete border styles. Text case conversion is ASCII-only. Buttons can dispatch JavaScript click/submit handlers; compatibility depends on the APIs their scripts use. Pinch zoom magnifies the selected layout width; Minus explicitly changes that width.
@@ -143,7 +146,7 @@ VPN support is deferred at the user's request.
 
 ## JavaScript bridge — 0.3.0
 
-Classic scripts use one QuickJS realm per navigation. Preparation starts after
+Classic scripts and ES modules use one QuickJS realm per navigation. Preparation starts after
 initial stylesheets settle (images do not block startup). Initial external async
 scripts run when ready; ordinary classic scripts retain source order, and external
 defer scripts run in source order after the interactive transition. Inline async/defer
@@ -203,7 +206,7 @@ Tests exercise the actual rendered native tree, stable node identity across
 resource/viewport refresh, CSS selector rematching, live style changes, events,
 form cancellation, timers, infinite-loop interruption, authenticated external
 script loading, cookie visibility, async fetch and real HTTPS failures. The NRO
-still does not establish VK/YouTube/game compatibility: modules, broader web APIs,
+still does not establish VK/YouTube/game compatibility: import maps/workers, broader web APIs,
 Grid, GPU and media remain separate work.
 
 A live host capture of `https://keldurn.com/ru/` on 2026-11-06 completed the
@@ -508,3 +511,68 @@ References: [Fetch](https://fetch.spec.whatwg.org/),
 [XMLHttpRequest](https://xhr.spec.whatwg.org/),
 [AbortSignal](https://dom.spec.whatwg.org/#interface-abortsignal),
 [UTF-8 decoding](https://encoding.spec.whatwg.org/#utf-8-decoder).
+
+## Browser ES modules — 0.10.0
+
+HTML script type=module, URL-based static imports/exports/re-exports and dynamic
+import() use QuickJS's real module parser, linker and evaluator. Import clauses
+are inspected from the parsed module record, never extracted with regular
+expressions or rewritten into classic scripts. Live bindings, cycles, strict
+module scope, namespaces, top-level await and import.meta.url are supported in the
+shared fixtures. A module map belongs to one navigation: repeated imports share
+an instance/namespace, while distinct query URLs retain separate identities.
+
+The host compiles without resolving dependencies, queues HTTPS loads, discovers
+imports and links only after the complete reachable graph is ready. QuickJS's
+synchronous loader only returns compiled records; it never waits for HTTP. Module
+sources use the buffered CORS transport with script-src/default-src (not connect-src),
+verified TLS, strict JavaScript MIME checks and policy checks before redirect hops.
+Relative imports/import.meta.url use the final response URL. Default credentials
+are same-origin; cross-origin use-credentials transfers remain blocked by the
+network layer. Root integrity attributes are rejected rather than ignored.
+
+Parser-created modules join the defer sequence unless async is set; dynamic module
+scripts are asynchronous and async=false joins the ordered dynamic queue. Inline
+modules also execute asynchronously. document.currentScript is null during module
+execution. Classic nomodule scripts are skipped, and HTMLScriptElement.supports
+now reports module=true, importmap=false. innerHTML-inserted module scripts stay
+inert. Initial preparation still occurs on the already parsed native DOM: this
+is not streaming HTML parser integration.
+
+Top-level await does not hold DOMContentLoaded/window load until its promise
+settles. External module load fires after evaluation starts; deferred rejection
+is reported through the existing window error-event subset. HTTP/CORS/MIME failures
+produce script error events. Parse/link/runtime failures report window errors and
+external script load, matching the Chromium fixtures; inline modules do not gain
+external load events. Handled dynamic-import failures do not create spurious
+unhandledrejection events. Parse/evaluation failures retain error identity; linking
+failures produce fresh SyntaxError objects on repeated imports. The UI can show a
+bounded error message; exported diagnostics retain only phase/class/origin.
+
+Limits: 64 module records, 512 parsed dependency edges, depth 64, 128 KiB per source,
+4 MiB cumulative source bytes, 32 pending dynamic imports and the existing 32 MiB
+JS heap. Module requests share the page's 64-resource ceiling, response/native
+buffer limits and 15-second network deadlines. Compilation/evaluation uses the
+existing 50 ms interrupt budget; one source/graph-completion action runs per poll.
+Native delivered body storage is now freed, including backing allocations, and
+compiled source buffers are released after parsing. Navigation cancels transfers,
+drops pending imports/timers and frees the entire realm/module map.
+
+Unsupported: import maps/bare package specifiers, nonempty import attributes,
+JSON/CSS/WASM modules, data/blob/file module URLs, import.meta.resolve, modulepreload
+processing, streaming compilation, Workers/Service Workers and complete ErrorEvent
+or CSP/Web IDL behavior. JavaScript module support does not implement WebAssembly,
+WebSocket, GPU, audio/video or successful service sign-in/game execution.
+
+Seventeen host suites now include real multi-origin TLS module tests: static and
+dynamic graphs, live exports/cycles, redirected bases, MIME/CORS/policies, ordered
+scripts, failure caching/events, a 40-import quota burst, and actual Browser
+navigation cancellation. The shared own module graph and lifecycle/error traces
+have Chromium 151.0.7922.34 provenance in modules.reference.json; regenerate with
+tools/reference_modules.py. The offline «Модульная страница» demo uses real static
+and dynamic imports and a live exported counter. Actual 0.10.0 Switch behavior
+remains to be verified.
+
+References: [HTML module scripts](https://html.spec.whatwg.org/multipage/webappapis.html#module-script),
+[HTML script processing](https://html.spec.whatwg.org/multipage/scripting.html#processing-model),
+[ECMAScript modules](https://tc39.es/ecma262/#sec-modules).

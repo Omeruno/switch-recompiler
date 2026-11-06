@@ -1,0 +1,18 @@
+import {count,increment,value} from './reexport.js';
+import {readCycle} from './cycle-a.js';
+import valueDefault from './default.js';
+const check=(ok,name)=>{if(!ok)throw Error(name);};
+// import './not-a-real-dependency.js';
+const text="import 'also-not-a-dependency'";
+check(this===undefined&&document.currentScript===null,'module scope/currentScript');
+check(import.meta.url.endsWith('/main.js'),'import meta');
+check(valueDefault===17&&value===17&&readCycle()==='ABA','exports/cycle');
+check(count===0,'initial live binding');increment();check(count===1,'live binding');
+globalThis.moduleTrace.push('main');
+const lazy=await import('./lazy.js'),again=await import('./lazy.js');
+check(lazy===again&&lazy.value===42&&lazyRuns===1,'dynamic identity');
+const alternate=await import('./leaf.js?alternate');check(alternate.count===0&&count===1,'query module identity');
+const original=await import('./leaf.js');check(original.count===1,'shared static/dynamic module');
+globalThis.moduleTrace.push('done');
+globalThis.moduleFixtureResult='scope|static-imports|exports|live-bindings|cycles|meta|tla|dynamic-cache|query-identity';
+document.documentElement.setAttribute('data-module-done','1');

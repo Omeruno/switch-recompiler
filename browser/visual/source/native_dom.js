@@ -155,7 +155,7 @@
   const scriptBrand=new WeakSet();
   class HTMLScriptElement extends HTMLElement {
     constructor(key,token){super(key,token);scriptBrand.add(this);}
-    static supports(type){return String(type)==='classic';}
+    static supports(type){return ['classic','module'].includes(String(type));}
   }
   class HTMLInputElement extends HTMLElement {}
   class HTMLTextAreaElement extends HTMLElement {}
@@ -237,7 +237,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.9.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.10.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -605,6 +605,7 @@
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
     mutated:mutation,
+    moduleError(error,message){const event=new Event('error',{cancelable:true});event.error=error;event.message=message;globalThis.dispatchEvent(event);},
     focus(id){setFocus(id?wrap(id):null);},
     rejected(promise,reason,handled){const event=new Event(handled?'rejectionhandled':'unhandledrejection',{cancelable:!handled});event.promise=promise;event.reason=reason;return globalThis.dispatchEvent(event);},
     viewport:viewportEvents,

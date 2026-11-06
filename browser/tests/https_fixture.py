@@ -118,6 +118,23 @@ extendedKeyUsage=serverAuth
                 self.send_response(status);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)))
                 if route=='/dyn-page':self.send_header('Content-Security-Policy',"script-src 'self' 'unsafe-inline'; script-src-attr 'none'")
                 self.end_headers();self.wfile.write(body);return
+            if route.startswith('/esm-'):
+                if route=='/esm-config':body=json.dumps({'cross':f'https://localhost:{cross}'}).encode();mime='application/json'
+                elif route=='/esm-fixtures/slow.js':time.sleep(.2);body=(Path(__file__).resolve().parents[1]/'visual/tests/fixtures/modules/slow.js').read_bytes();mime='text/javascript'
+                elif route.startswith('/esm-fixtures/') and '/' not in route[len('/esm-fixtures/'):]:
+                    path=Path(__file__).resolve().parents[1]/'visual/tests/fixtures/modules'/route[len('/esm-fixtures/'):]
+                    if not path.is_file():self.send_error(404);return
+                    body=path.read_bytes();mime='text/javascript'
+                elif route=='/esm-delay.js':time.sleep(.25);body=b"localStorage.setItem('module_leak','1');export const value=1;";mime='text/javascript'
+                elif route=='/esm-large.js':body=b'/*'+b'x'*140000+b'*/globalThis.largeModuleExecuted=true;';mime='text/javascript'
+                elif route=='/esm-wrong.js':body=b'globalThis.badMimeExecuted=true;';mime='text/plain'
+                elif route=='/esm-deny.js':body=b'globalThis.badCorsExecuted=true;';mime='text/javascript'
+                elif route=='/esm-redirect.js':
+                    self.send_response(307);self.send_header('Location',urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get('target',['/esm-fixtures/extra.js'])[0]);self.send_header('Content-Length','0');self.end_headers();return
+                else:self.send_error(404);return
+                self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)))
+                if self.headers.get('Origin') and route!='/esm-deny.js':self.send_header('Access-Control-Allow-Origin',self.headers['Origin'])
+                self.end_headers();self.wfile.write(body);return
             loop_scripts={
                 '/loop-async.js':"globalThis.trace=globalThis.trace||[];trace.push('async');",
                 '/loop-ordered.js':"if(document.currentScript.id!=='ordered')throw Error('currentScript');trace.push('ordered');",
