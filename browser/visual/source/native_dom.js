@@ -3,7 +3,7 @@
   const bridge=globalThis.__native;
   delete globalThis.__native;
   const nodes=new Map(), listeners=new WeakMap();
-  let listenerCount=0, readyState='loading', activeElement=null;
+  let listenerCount=0, readyState='loading';
   class Event {
     constructor(type,options={}) {this.type=String(type);this.bubbles=!!options.bubbles;this.cancelable=!!options.cancelable;this.defaultPrevented=false;this.target=null;this.currentTarget=null;this.eventPhase=0;this._stop=false;this._immediate=false;}
     preventDefault(){if(this.cancelable)this.defaultPrevented=true;}
@@ -121,13 +121,21 @@
     closest(s){for(let n=this;n&&n.nodeType===1;n=n.parentNode)if(n.matches(s))return n;return null;}
     getBoundingClientRect(){return bridge('rect',this._key);}
     get offsetWidth(){return this.getBoundingClientRect().width;}get offsetHeight(){return this.getBoundingClientRect().height;}
-    focus(){activeElement=this;this.dispatchEvent(new Event('focus'));}
-    blur(){if(activeElement===this)activeElement=null;this.dispatchEvent(new Event('blur'));}
+    focus(){setFocus(this);}
+    blur(){if(currentFocus()===this)setFocus(null);}
     click(){this.dispatchEvent(new Event('click',{bubbles:true,cancelable:true}));}
   }
   for(const name of ['lang','dir','title','rel','target','placeholder'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
   Object.defineProperty(Node.prototype,'src',{get(){const value=this.getAttribute('src');return value?bridge('resolve',0,value):'';},set(v){this.setAttribute('src',v);}});
   Object.assign(Node.prototype,eventMethods);
+  function currentFocus(){const key=bridge('activeElement',0);return key===null?null:wrap(key);}
+  function setFocus(target){
+    const old=currentFocus();bridge('focus',target?target._key:0);const next=currentFocus();
+    if(old===next)return;
+    if(old){const blur=new Event('blur');blur.relatedTarget=next;old.dispatchEvent(blur);const out=new Event('focusout',{bubbles:true});out.relatedTarget=next;old.dispatchEvent(out);}
+    // A blur handler may already have moved focus elsewhere.
+    if(next&&currentFocus()===next){const focus=new Event('focus');focus.relatedTarget=old;next.dispatchEvent(focus);if(currentFocus()===next){const into=new Event('focusin',{bubbles:true});into.relatedTarget=old;next.dispatchEvent(into);}}
+  }
   function wrap(key){if(!nodes.has(key))nodes.set(key,new Node(key));return nodes.get(key);}
   const document=wrap(0);
   document.createElement=tag=>wrap(bridge('create',0,String(tag)));
@@ -138,7 +146,7 @@
   Object.defineProperties(document,{
     documentElement:{get:()=>wrap(bridge('root',0))},body:{get:()=>document.querySelector('body')},head:{get:()=>document.querySelector('head')},
     title:{get:()=>document.querySelector('title')?.textContent||'',set:v=>{const t=document.querySelector('title');if(t)t.textContent=v;}},
-    readyState:{get:()=>readyState},activeElement:{get:()=>activeElement||document.body},
+    readyState:{get:()=>readyState},activeElement:{get:()=>currentFocus()||document.body},
     cookie:{get:()=>bridge('cookie',0),set:v=>bridge('cookie',0,String(v))},
     referrer:{get:()=>''},
     URL:{get:()=>bridge('url',0)}
@@ -146,7 +154,7 @@
   Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.4.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.4.1'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -196,6 +204,7 @@
   };
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
+    focus(id){setFocus(id?wrap(id):null);},
     tick(now){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}let count=0;for(const [id,t] of [...timers]){if(count>=32)break;if(t.due>now||!timers.has(id))continue;if(t.repeat)t.due=now+t.repeat;else timers.delete(id);++count;try{t.fn(...t.args);}catch(e){bridge('report',0,String(e));}}},
     ready(){readyState='interactive';document.dispatchEvent(new Event('DOMContentLoaded',{bubbles:true}));readyState='complete';document.dispatchEvent(new Event('readystatechange'));globalThis.dispatchEvent(new Event('load'));},
     event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},

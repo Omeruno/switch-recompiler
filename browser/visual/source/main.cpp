@@ -194,7 +194,6 @@ struct Browser {
                 std::max(float(container.viewport_width), float(document->width()));
             view.content_height = std::max(container.viewport_height, float(document->height()));
             view.clamp();
-            notice.clear();
             visual::diagnostic("layout.ready",
                                "width=" + std::to_string(int(view.content_width)) +
                                    " height=" + std::to_string(int(view.content_height)) +
@@ -236,6 +235,8 @@ struct Browser {
         return false;
     }
     void pump() {
+        if (container.prune_focus())
+            rebuild = true;
         container.scroll_x = view.x;
         container.scroll_y = view.y;
         resources.pump();
@@ -361,6 +362,9 @@ struct Browser {
             activate_control(el);
             return;
         }
+        if (!hit || (!std::dynamic_pointer_cast<visual::Control>(hit) &&
+                     std::string(hit->get_tagName()) != "button"))
+            focus({});
         if (!container.anchor.empty()) {
             auto next = container.anchor;
             container.anchor.clear();
@@ -385,8 +389,18 @@ struct Browser {
             scripts->dispatch(el, "change", false);
         }
     }
+    void focus(const litehtml::element::ptr &el) {
+        if (scripts)
+            scripts->focus(el);
+        else
+            container.focus(el);
+        rebuild = true;
+    }
     void activate_check(const std::shared_ptr<visual::Control> &control, bool emit_click) {
         if (control->disabled())
+            return;
+        focus(control);
+        if (apply_script_navigation())
             return;
         std::vector<std::pair<std::shared_ptr<visual::Control>, visual::Control::CheckedState>>
             saved;
@@ -514,6 +528,9 @@ struct Browser {
             return;
         }
         auto control = std::dynamic_pointer_cast<visual::Control>(el);
+        focus(el);
+        if (apply_script_navigation())
+            return;
         if (control && (control->type() == "checkbox" || control->type() == "radio")) {
             activate_check(control, true);
             return;
@@ -683,7 +700,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.4.0");
+    visual::diagnostic("boot", "0.4.1");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));

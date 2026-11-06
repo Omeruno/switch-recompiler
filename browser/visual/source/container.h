@@ -39,6 +39,10 @@ class Container final : public litehtml::document_container {
   public:
     static constexpr int width = 1280, height = 720, toolbar = 84;
     Forms forms;
+    std::weak_ptr<litehtml::element> focused_node;
+    litehtml::element::ptr focused() const;
+    bool focus(const litehtml::element::ptr &);
+    bool prune_focus();
     litehtml::element::ptr clicked;
     int viewport_width = 1280;
     float viewport_height = 636;

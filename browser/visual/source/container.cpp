@@ -37,6 +37,7 @@ class SourceElement : public litehtml::html_tag {
 };
 } // namespace
 void Container::reset() {
+    focus({});
     for (auto &kv : images)
         if (kv.second.texture)
             SDL_DestroyTexture(kv.second.texture);
@@ -56,6 +57,56 @@ void Container::reset() {
     forms.relayout();
     clips.clear();
 }
+litehtml::element::ptr Container::focused() const {
+    auto el = focused_node.lock();
+    if (!el)
+        return {};
+    auto doc = el->get_document();
+    if (!doc || form_disabled(el))
+        return {};
+    for (auto p = el; p; p = p->parent()) {
+        if (p->css().get_display() == litehtml::display_none ||
+            p->css().get_visibility() != litehtml::visibility_visible)
+            return {};
+        if (p == doc->root())
+            return el;
+    }
+    return {};
+}
+bool Container::focus(const litehtml::element::ptr &el) {
+    if (el) {
+        if (form_disabled(el) || el->is_text())
+            return false;
+        auto control = std::dynamic_pointer_cast<Control>(el);
+        std::string tag = el->get_tagName();
+        if ((!control && tag != "button" && tag != "a" && !el->get_attr("tabindex")) ||
+            (control && control->type() == "hidden"))
+            return false;
+        auto old = focused_node;
+        focused_node = el;
+        bool visible = bool(focused());
+        focused_node = old;
+        if (!visible)
+            return false;
+    }
+    auto old = focused_node.lock();
+    if (old == el)
+        return false;
+    for (auto node : {old, el}) {
+        if (!node)
+            continue;
+        bool yes = node == el;
+        node->set_pseudo_class(litehtml::_id("focus"), yes);
+        for (auto p = node; p; p = p->parent())
+            p->set_pseudo_class(litehtml::_id("focus-within"), false);
+    }
+    if (el)
+        for (auto p = el; p; p = p->parent())
+            p->set_pseudo_class(litehtml::_id("focus-within"), true);
+    focused_node = el;
+    return true;
+}
+bool Container::prune_focus() { return focused_node.lock() && !focused() ? focus({}) : false; }
 SDL_Rect Container::screen(const litehtml::position &p) const {
     float x = float(p.x) * zoom, y = float(p.y) * zoom + toolbar;
     return {int(std::floor(x)), int(std::floor(y)), int(std::ceil(float(p.width) * zoom)),

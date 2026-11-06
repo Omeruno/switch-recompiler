@@ -7,18 +7,24 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.4.0, 2026-11-06
+## Current status — visual 0.4.1, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
 - The user verified visual 0.1.0 on Switch: Google and Keldurn root/ru pages load;
-  touchscreen gestures and left-stick pointer work. Later additions await device checks.
-- Visual 0.4.0 retains the native document through HTML/CSS layout and QuickJS
+  touchscreen gestures and left-stick pointer work. On 0.4.0 the user confirms
+  fields accept input but some remain invisible on Google; VK/YouTube still fail.
+  Version 0.4.1 corrections await device checks; a network restriction is unproven.
+  VPN is deferred by the user.
+- Visual 0.4.1 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
-  events, timers and bounded same-origin GET fetch. See the visual README for limits.
-- Eight host suites and ASan/UBSan checks pass for 0.4.0. ARM64 CI supplies the NRO;
+  events, timers and bounded same-origin GET fetch. Version 0.4.1 adds native field
+  frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
+  See the visual README for limits.
+- Nine host suites cover 0.4.1 field geometry, pixel visibility, focus and existing
+  forms/resources/JS behavior. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
 - Still required for general browsing: broader DOM/events and JavaScript APIs,
   Grid and additional CSS, navigation/focus/selection work, modules/workers,
@@ -93,7 +99,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.4.0
+## Implemented candidate — visual 0.1.0–0.4.1
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and

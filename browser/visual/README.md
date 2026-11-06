@@ -1,4 +1,4 @@
-# Switch visual browser — 0.4.0
+# Switch visual browser — 0.4.1
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -22,7 +22,11 @@ path; it is not a production engine selection or a playable Keldurn client.
 - Taps on painted links; drag scrolling that suppresses taps; decaying inertia;
   anchored two-contact pinch zoom (100–250%); contact/focus cancellation.
 - Native input/textarea boxes with values, placeholders, readonly/disabled states,
-  password masking and the Switch keyboard. Values stay in memory for the current
+  password masking and the Switch keyboard. Control width and height are independent
+  (no image aspect-ratio scaling), with native min/max and border-box sizing.
+  Borderless text fields get a thin native frame; the active field has a blue frame.
+  Long values fit at UTF-8 boundaries; an active single-line field shows the tail,
+  and textareas wrap unless wrap=off. Values stay in memory for the current
   navigation and survive image/style-driven relayout and viewport changes.
 - Native GET/POST forms with URL-encoded text, textarea, hidden fields, checked
   checkboxes/radio groups, single/multiple selects and the chosen submitter.
@@ -54,7 +58,8 @@ path; it is not a production engine selection or a playable Keldurn client.
   cards, editable search, a JavaScript counter and async JSON-loading button, and a
   below-the-fold anchor. A second form demo exercises checkboxes, radio groups,
   scrollable single/multiple selects, validation and reset without sending data.
-  It works without Wi-Fi.
+  A visible input/textarea section also exercises borderless responsive fields.
+  It works without Wi-Fi (the optional Google search requires a connection).
 
 ## Build
 
@@ -125,7 +130,13 @@ pointer work on the console. Website composition is imperfect; web inputs were
 missing. VK reports an outdated browser and YouTube did not open. The precise
 cause of those two failures is not established by that feedback. Version 0.1.0 had no page JavaScript, media playback, MSE or WebRTC, so no compatibility claim
 is made for VK, YouTube or cloud gaming. Changing the user agent does not supply
-those capabilities. The 0.2.0–0.4.0 additions require their own device checks.
+those capabilities. The user subsequently tested 0.4.0: fields can be tapped/edited but some Google
+fields are still visually missing; VK still reports an outdated browser and
+YouTube still fails to open. A live host capture received a different Google
+variant with visible fields, so the exact device-page failure is not reproduced.
+The 0.4.1 field rendering changes require a new device check. A regional network
+restriction is a hypothesis, not an established explanation for YouTube's failure.
+VPN support is deferred at the user's request.
 
 ## JavaScript bridge — 0.3.0
 
@@ -156,7 +167,11 @@ checked/defaultChecked, selected/defaultSelected, selectedIndex, options and
 selectedOptions. Native submit(), requestSubmit(submitter) and reset() are supplied.
 checkValidity()/reportValidity() use the basic native submission validator and may
 also reject unsupported destinations/encodings; they are not full constraint validation. Promise jobs, function-only timers and rAF
-run on the UI loop. URL/URLSearchParams, origin-scoped storage/cookies, and the
+run on the UI loop. Native control activation and JS focus()/blur() share focus
+state, document.activeElement, CSS :focus/:focus-within and focus/blur/focusin/focusout
+events. Disabled, hidden and detached nodes cannot retain focus. Full focus order,
+:focus-visible, editor selection/caret and IME events are not supplied.
+URL/URLSearchParams, origin-scoped storage/cookies, and the
 existing ru/en UTC Intl subset are available. Pointer/touch/keyboard web events,
 programmatic activation defaults, selection and complete focus semantics remain
 unimplemented; native gestures continue to work independently.
@@ -205,3 +220,17 @@ Select size/listbox presentation, full dynamic option normalization, date/color/
 widgets, validity patterns/step, form target browsing contexts, IME composition and
 per-keystroke web events remain incomplete. Native form POST support does not add
 POST fetch, XHR, WebSocket, media or GPU support.
+
+## Field rendering verification — 0.4.1
+
+Nine host suites include pixel assertions for borderless/active frames, independent
+input dimensions, CSS min sizes and border-box sizing, Cyrillic value fitting,
+textarea wrapping, CSS focus matching and native/JS focus transitions. The fixture
+frame is published as visual-preview-fields.bmp. Validation messages now survive
+resource/focus relayout instead of disappearing on the following frame.
+
+Native frames intentionally add a visible affordance to borderless text fields;
+they are not complete CSS outline/box-shadow rendering. Textarea editing still
+uses the system keyboard, without a full inline editor or internal text scrollbar.
+Host Google captures do not prove that a different server response on Switch is
+fixed. No VK, YouTube or media compatibility improvement is claimed by this release.

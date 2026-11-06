@@ -15,6 +15,7 @@ class Scripts {
     Scripts &operator=(const Scripts &) = delete;
     static uint64_t clock_ms();
     bool poll(uint64_t now);
+    void focus(const litehtml::element::ptr &);
     bool dispatch(const litehtml::element::ptr &, const std::string &type, bool cancelable = true,
                   const litehtml::element::ptr &submitter = {});
     bool eval(const std::string &, unsigned budget_ms = 50);

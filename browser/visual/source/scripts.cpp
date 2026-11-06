@@ -598,6 +598,17 @@ struct Scripts::Impl {
             return JS_NewInt32(context, int(handle(el)));
         }
         auto el = node(id);
+        if (op == "activeElement") {
+            if (container.prune_focus())
+                quota(0);
+            auto focused = container.focused();
+            return focused ? JS_NewInt32(context, int(handle(focused))) : JS_NULL;
+        }
+        if (op == "focus") {
+            if (container.focus(id ? el : litehtml::element::ptr{}))
+                quota(0);
+            return JS_UNDEFINED;
+        }
         if (op == "root")
             return JS_NewInt32(context, int(handle(doc->root())));
         if (op == "kind")
@@ -994,6 +1005,8 @@ struct Scripts::Impl {
     bool poll(uint64_t time) {
         if (!usable_runtime)
             return dirty;
+        if (container.prune_focus())
+            dirty = true;
         now = time;
         budget(8);
         if (!loaded) {
@@ -1058,6 +1071,16 @@ Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,
     : impl(std::make_unique<Impl>(d, c, r, std::move(p))) {}
 Scripts::~Scripts() = default;
 bool Scripts::poll(uint64_t n) { return impl->poll(n); }
+void Scripts::focus(const litehtml::element::ptr &el) {
+    if (!impl->usable_runtime) {
+        impl->container.focus(el);
+        return;
+    }
+    impl->budget(30);
+    auto result = impl->call("focus", {JS_NewInt32(impl->context, el ? int(impl->handle(el)) : 0)});
+    JS_FreeValue(impl->context, result);
+    impl->drain();
+}
 bool Scripts::dispatch(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
                        const litehtml::element::ptr &submitter) {
     return impl->event(el, type, cancelable, submitter);

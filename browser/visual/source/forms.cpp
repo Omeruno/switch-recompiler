@@ -1,4 +1,5 @@
 #include "forms.h"
+#include "container.h"
 #include "resources.h"
 #include <algorithm>
 #include <cctype>
@@ -300,7 +301,46 @@ void Control::get_content_size(litehtml::size &s, litehtml::pixel_t) {
 }
 std::shared_ptr<litehtml::render_item>
 Control::create_render_item(const std::shared_ptr<litehtml::render_item> &p) {
-    auto r = std::make_shared<litehtml::render_item_image>(shared_from_this());
+    // Form controls have independent intrinsic width and height. An image renderer
+    // incorrectly scales their height when CSS changes only their width.
+    class RenderControl final : public litehtml::render_item_image {
+        litehtml::pixel_t _render(litehtml::pixel_t x, litehtml::pixel_t y,
+                                  const litehtml::containing_block_context &cb,
+                                  litehtml::formatting_context *, bool) override {
+            using CB = litehtml::containing_block_context;
+            calc_outlines(cb.width);
+            auto size = calculate_containing_block_context(cb);
+            litehtml::size intrinsic;
+            src_el()->get_content_size(intrinsic, cb.width);
+            auto constrain = [](litehtml::pixel_t value, const CB::typed_pixel &min,
+                                const CB::typed_pixel &max) {
+                if (max.type != CB::cbc_value_type_none && max.type != CB::cbc_value_type_auto)
+                    value = std::min(value, max.value);
+                if (min.type != CB::cbc_value_type_none && min.type != CB::cbc_value_type_auto)
+                    value = std::max(value, min.value);
+                return std::max(litehtml::pixel_t(0), value);
+            };
+            m_pos.move_to(x + content_offset_left(), y + content_offset_top());
+            m_pos.width =
+                constrain(size.width.type == CB::cbc_value_type_auto ? intrinsic.width
+                                                                     : size.render_width.value,
+                          size.min_width, size.max_width);
+            bool auto_height = size.height.type == CB::cbc_value_type_auto ||
+                               (size.height.type == CB::cbc_value_type_percentage &&
+                                cb.height.type == CB::cbc_value_type_auto);
+            m_pos.height =
+                constrain(auto_height ? intrinsic.height : size.height.value - box_sizing_height(),
+                          size.min_height, size.max_height);
+            return m_pos.width + content_offset_width();
+        }
+
+      public:
+        explicit RenderControl(const litehtml::element::ptr &el) : render_item_image(el) {}
+        std::shared_ptr<litehtml::render_item> clone() override {
+            return std::make_shared<RenderControl>(src_el());
+        }
+    };
+    auto r = std::make_shared<RenderControl>(shared_from_this());
     r->parent(p);
     return r;
 }
@@ -315,6 +355,35 @@ void Control::draw(litehtml::uint_ptr hdc, litehtml::pixel_t x, litehtml::pixel_
         return;
     auto *c = get_document()->container();
     auto t = type();
+    auto *native = dynamic_cast<Container *>(c);
+    bool focused = native && native->focused().get() == this;
+    bool text_field = editable() || (get_attr("readonly") && (t == "text" || t == "textarea" ||
+                                                              t == "password" || t == "search"));
+    bool has_border = false;
+    auto &borders = css().get_borders();
+    for (auto side : {borders.top, borders.right, borders.bottom, borders.left})
+        has_border = has_border || (side.width.val() > 0 && side.color.alpha &&
+                                    side.style != litehtml::border_style_none &&
+                                    side.style != litehtml::border_style_hidden);
+    // A native affordance keeps transparent, borderless fields discoverable even
+    // when a site's shadow/outline based decoration is unsupported.
+    if (focused || (text_field && !has_border)) {
+        auto frame = p;
+        frame.x -= ri->padding_left() + ri->border_left();
+        frame.y -= ri->padding_top() + ri->border_top();
+        frame.width +=
+            ri->padding_left() + ri->padding_right() + ri->border_left() + ri->border_right();
+        frame.height +=
+            ri->padding_top() + ri->padding_bottom() + ri->border_top() + ri->border_bottom();
+        litehtml::borders outline;
+        for (auto side : {&outline.top, &outline.right, &outline.bottom, &outline.left}) {
+            side->width = focused ? 2 : 1;
+            side->style = litehtml::border_style_solid;
+            side->color =
+                focused ? litehtml::web_color(24, 100, 200) : litehtml::web_color(122, 134, 153);
+        }
+        c->draw_borders(hdc, outline, frame, false);
+    }
     std::string text = value();
     if (t == "checkbox" || t == "radio")
         text = checked() ? (t == "radio" ? "●" : "✓") : (t == "radio" ? "○" : " ");
@@ -332,7 +401,8 @@ void Control::draw(litehtml::uint_ptr hdc, litehtml::pixel_t x, litehtml::pixel_
                 ++n;
         text.assign(std::min(size_t(128), n), '*');
     }
-    if (text.empty())
+    bool placeholder = text.empty();
+    if (placeholder)
         text = get_attr("placeholder", t == "submit"  ? "Отправить"
                                        : t == "reset" ? "Сбросить"
                                                       : " ");
@@ -340,19 +410,57 @@ void Control::draw(litehtml::uint_ptr hdc, litehtml::pixel_t x, litehtml::pixel_
     size_t start = 0;
     int line = 0;
     float lineheight = std::max(18.f, float(css().get_font_size()) * 1.3f);
+    // Fit UTF-8 at character boundaries before creating a texture. Long input
+    // strings previously exceeded the text texture quota and vanished entirely.
+    auto fit = [&](const std::string &value, bool tail) {
+        std::vector<size_t> offsets{0};
+        for (size_t i = 1; i < value.size(); ++i)
+            if ((static_cast<unsigned char>(value[i]) & 0xc0) != 0x80)
+                offsets.push_back(i);
+        offsets.push_back(value.size());
+        size_t lo = 0, hi = offsets.size() - 1;
+        while (lo < hi) {
+            size_t mid = (lo + hi + 1) / 2;
+            auto piece = tail ? value.substr(offsets[offsets.size() - 1 - mid])
+                              : value.substr(0, offsets[mid]);
+            if (c->text_width(piece.c_str(), css().get_font()) <= p.width)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        return tail ? value.substr(offsets[offsets.size() - 1 - lo]) : value.substr(0, offsets[lo]);
+    };
     do {
         size_t end = text.find('\n', start);
         auto part = text.substr(start, end == std::string::npos ? end : end - start);
+        auto fitted = fit(part, focused && !placeholder && t != "textarea");
+        bool wrap = t == "textarea" && lower(get_attr("wrap", "soft")) != "off";
+        size_t consumed = part.size();
+        if (wrap && fitted.size() < part.size()) {
+            if (fitted.empty())
+                break;
+            auto space = fitted.find_last_of(" \t");
+            if (space != std::string::npos && space > 0)
+                fitted.resize(space + 1);
+            consumed = fitted.size();
+        }
         auto pos = p;
         pos.y += line * lineheight;
         if (float(pos.y) >= float(p.bottom()))
             break;
-        c->draw_text(hdc, part.c_str(), css().get_font(),
-                     disabled() ? litehtml::web_color(110, 110, 110) : css().get_color(), pos);
+        c->draw_text(hdc, fitted.c_str(), css().get_font(),
+                     disabled() || placeholder ? litehtml::web_color(110, 110, 110)
+                                               : css().get_color(),
+                     pos);
         ++line;
-        if (end == std::string::npos || t != "textarea")
+        if (t != "textarea")
             break;
-        start = end + 1;
+        if (wrap && consumed < part.size())
+            start += consumed;
+        else if (end != std::string::npos)
+            start = end + 1;
+        else
+            break;
     } while (start < text.size());
     c->del_clip();
 }
