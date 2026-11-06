@@ -9,6 +9,7 @@ int browser_profile_persistent(void);
 int browser_profile_clear(void);
 const char *browser_profile_status(void);
 CURLcode browser_profile_configure(CURL *curl);
+CURLcode browser_profile_configure_anonymous(CURL *curl);
 void browser_profile_save_cookies(void);
 void browser_profile_log(const char *url, const char *phase, long status, CURLcode code);
 int browser_origin(const char *url, char *out, size_t capacity);

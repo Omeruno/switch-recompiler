@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.8.0, 2026-11-06
+## Current status — visual 0.9.0, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,14 +16,14 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.8.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.9.0 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
-  events, timers and bounded same-origin GET fetch. Version 0.4.1 adds native field
+  events, timers, buffered Fetch/body requests, asynchronous XHR and anonymous CORS. Version 0.4.1 adds native field
   frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
   See the visual README for limits.
-- Fifteen host suites now cover rendering/forms, scheduling, dynamic scripts and
+- Sixteen host suites now cover rendering/forms, scheduling, dynamic scripts and
   observers. Flex geometry has 120 Chromium reference rectangles; the shared
   dynamic DOM fixture also runs in Chromium. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
@@ -100,7 +100,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.8.0
+## Implemented candidate — visual 0.1.0–0.9.0
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -176,3 +176,16 @@ fifteen host suites are the release gate. Device checks use the offline observer
 demo. Grid, broader DOM/CSS, modules/workers, Fetch/CORS/XHR/WebSocket, media/GPU
 and game integration remain open. See visual/README.md for quotas, unsupported
 geometry and the explicit percentage rootMargin reference-browser difference.
+
+## Buffered network block — 0.9.0
+
+Independent native Fetch requests, Headers/Request/Response, UTF-8 codecs,
+AbortController and asynchronous XMLHttpRequest are implemented with body/header
+limits and realm-safe cancellation. Anonymous CORS includes OPTIONS preflight and
+response header exposure; every redirect is checked before connecting. Same-origin
+cookies and omit work; cross-origin include remains blocked pending a proper
+SameSite/partition policy. Streams, complete HTTP/cache/charset/CORS semantics,
+WebSocket, modules/workers and media/GPU remain separate gates. Sixteen host suites
+include real TLS multi-origin and shared Chromium interface fixtures. Check the
+offline «Загрузка и отмена» demo on Switch; account/security/game compatibility
+is not established by the host results.

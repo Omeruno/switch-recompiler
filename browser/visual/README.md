@@ -1,4 +1,4 @@
-# Switch visual browser — 0.8.0
+# Switch visual browser — 0.9.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -107,7 +107,7 @@ text textures. DejaVu is the only font family and font size is clamped 6–144 p
 These quotas do not make this an isolated or standards-complete web runtime.
 
 Not implemented: JavaScript modules/workers, complete DOM/web forms, multipart/file
-uploads, POST fetch, text selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
+uploads, text selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
 CSS grid/transforms, advanced gradient color spaces, rounded image/overflow clipping, rounded border
 strokes or complete border styles. Text case conversion is ASCII-only. Buttons can dispatch JavaScript click/submit handlers; compatibility depends on the APIs their scripts use. Pinch zoom magnifies the selected layout width; Minus explicitly changes that width.
 Text/search fields use native keyboard editing and emit input/change when a committed edit changes the value; per-keystroke keyboard events are not supplied. No long-press action
@@ -185,12 +185,10 @@ existing ru/en UTC Intl subset are available. Pointer/touch/keyboard web events,
 programmatic activation defaults, selection and complete focus semantics remain
 unimplemented; native gestures continue to work independently.
 
-`fetch` is a bounded same-origin GET-only API returning text/JSON Promises and
-status/ok/url. HTTP error responses resolve with ok=false; TLS/transport, disallowed
-origins and redirects reject. There is no streaming, custom-header/body fetch,
-CORS implementation, XHR, WebSocket or media API. Fetch uses the existing bounded
-page resource cache, not a complete HTTP cache or arbitrary long-lived polling
-implementation.
+The initial GET-only fetch facade has been replaced by the buffered network APIs
+in 0.9.0: independent GET/HEAD and body requests, Headers/Request/Response,
+cancellation and asynchronous XHR with a documented anonymous CORS subset. See
+«Buffered network APIs» below for credentials, redirect, streaming and quota limits.
 
 The script loader intersects final HTTP CSP headers and initial meta policies for its
 supported script directives, checks redirect destinations, and blocks unsupported
@@ -227,8 +225,8 @@ CI publishes page/popup BMP previews alongside the ARM64 NRO build.
 
 Select size/listbox presentation, full dynamic option normalization, date/color/range
 widgets, validity patterns/step, form target browsing contexts, IME composition and
-per-keystroke web events remain incomplete. Native form POST support does not add
-POST fetch, XHR, WebSocket, media or GPU support.
+per-keystroke web events remain incomplete. Fetch/XHR arrive separately in 0.9.0;
+WebSocket, media and GPU remain separate gates.
 
 ## Field rendering verification — 0.4.1
 
@@ -438,3 +436,75 @@ Native tests cover loop protection, takeRecords, quota/release, repeated CSS ref
 and the real Browser view plus cancellation of both observers on navigation.
 The complete release gate now contains fifteen host suites; actual Switch behavior
 of 0.8.0 remains to be verified. The offline demo includes «Размеры и видимость».
+
+## Buffered network APIs — 0.9.0
+
+Fetch now creates independent curl-multi requests, with GET/HEAD/POST/PUT/PATCH/
+DELETE/OPTIONS, request headers and string/URLSearchParams/ArrayBuffer/typed-array
+bodies. It no longer fills or reuses the image/script URL cache. HTTP error statuses
+resolve normally; transport/TLS/CORS/policy failures reject. Headers, Request and
+Response include normalized headers, status metadata, clone and one-shot
+text/json/arrayBuffer consumption. Network response headers are immutable and
+Set-Cookie/Set-Cookie2 are never exposed to script. Forbidden request headers,
+including Cookie/Host/Origin/Content-Length and sec-/proxy- names, are ignored by
+the request guard. UTF-8 TextEncoder/TextDecoder handle Cyrillic, supplementary
+characters, isolated surrogates, malformed byte sequences and BOMs.
+
+AbortController/AbortSignal support synchronous abort events, custom/default reasons,
+throwIfAborted, static abort and timeout. Abort cancels the native request, removes
+its live queue slot and rejects with the signal reason; buffered body reads also
+check the signal. Signal timeout uses the bounded timer queue. Network requests
+have a native total deadline including queue/preflight/redirect waiting: default
+15 seconds, configurable through XHR.timeout up to 60 seconds; timeout=0 uses the
+15-second internal ceiling. Intentional cancellation is excluded from failure counters.
+
+Asynchronous XMLHttpRequest supports open/send/abort, request/response headers,
+status/URL, readyState events, text/json/arraybuffer responses, withCredentials and
+mutable timeout. Generation checks isolate abort/reopen/navigation from stale
+completions. Buffered completion emits HEADERS_RECEIVED, LOADING, one terminal
+progress event, DONE and load/loadend (or error/timeout/abort). Upload exposes an
+EventTarget for listener registration but upload progress is not implemented.
+No synchronous XHR, MIME/charset override, document/blob response or incremental
+header/body/progress streaming is supplied. Text decoding is UTF-8 only; fatal and
+streaming decoder modes reject.
+
+Cross-origin requests support mode=cors with anonymous transport, exact/wildcard
+Access-Control-Allow-Origin, a bounded OPTIONS preflight for unsafe methods/headers,
+explicit Authorization grants, and safelisted/Access-Control-Expose-Headers response
+filtering. Preflights never use cookies. credentials=same-origin/omit are honored;
+credentials=include works for same-origin requests. **Cross-origin credentials=include
+is rejected** until SameSite/partitioned cookie policy is implemented; the existing
+cookie jar alone cannot provide that policy. no-cors/opaque responses and manual
+redirect mode are also unsupported. Preflight redirects are rejected and grants
+are not cached. This is a tested CORS subset, not complete Fetch/security isolation.
+
+Actual request redirects are manual, at most five. Each destination must pass the
+owning realm's current connect-src/default-src policy before a connection starts.
+301/302 POST and 303 non-HEAD rewrite to GET and remove body headers; 307/308 preserve
+the body. Origin-changing redirects strip Authorization and preserve CORS origin
+checks/tainting. Credentials in URLs and HTTPS downgrade are rejected. Anonymous
+handles use the same verified CA/TLS configuration without enabling cookie sharing
+or accepting response cookies. Bodies are wiped after native completion/cancellation;
+logs retain origins/statuses, never payloads, auth headers or query strings.
+
+Quotas: 32 live requests, the shared 64 resource/logical-request entries per page (preflights and redirects reuse entries), 64 KiB
+request body, 32/8 KiB request headers, 64/16 KiB response headers (8 KiB per value),
+512 KiB buffered response, 16 MiB resident native response/cache bytes. Delivered
+network bodies leave native storage after copying to JS; JS keeps its 32 MiB heap
+limit. Header/redirect/preflight work and callbacks remain bounded. These APIs do
+not provide unbounded polling, complete HTTP caching, streams, FormData/file uploads,
+workers/modules, WebSocket, WebGPU or media playback.
+
+Sixteen host suites cover this release. A shared own network-types fixture has
+Chromium reference provenance. The local TLS fixture adds a second valid origin;
+checks verify POST/JSON/binary data, cookie omission and acceptance, failed preflights
+without sending POST, header exposure/immutability, explicit Authorization grants,
+fresh repeated GETs, redirects/CSP, TLS expiry, body quotas, signal/native timeouts,
+XHR abort/reopen and cancellation on Browser navigation. The offline demo includes
+«Загрузка и отмена». Actual Switch compatibility with account login, Cloudflare or
+WoW remains unverified.
+
+References: [Fetch](https://fetch.spec.whatwg.org/),
+[XMLHttpRequest](https://xhr.spec.whatwg.org/),
+[AbortSignal](https://dom.spec.whatwg.org/#interface-abortsignal),
+[UTF-8 decoding](https://encoding.spec.whatwg.org/#utf-8-decoder).

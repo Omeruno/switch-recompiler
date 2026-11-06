@@ -237,7 +237,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.8.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.9.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -499,12 +499,109 @@
     if(viewport.scrollX!==previous.scrollX||viewport.scrollY!==previous.scrollY)document.dispatchEvent(new Event('scroll',{bubbles:true}));
   }
   globalThis.getComputedStyle=el=>new Proxy({getPropertyValue:key=>bridge('computed',el._key,String(key))},{get(o,key){if(key in o)return o[key];return o.getPropertyValue(String(key).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()));}});
+  const networkToken=Symbol(),headerStates=new WeakMap(),bodyStates=new WeakMap(),requestStates=new WeakMap(),responseStates=new WeakMap(),signalStates=new WeakMap(),controllerStates=new WeakMap(),xhrStates=new WeakMap();
+  class DOMException extends Error {
+    constructor(message='',name='Error'){super(String(message));Object.defineProperty(this,'name',{value:String(name),configurable:true});}
+    get code(){return {IndexSizeError:1,HierarchyRequestError:3,InvalidCharacterError:5,NotFoundError:8,NotSupportedError:9,InvalidStateError:11,SyntaxError:12,InvalidAccessError:15,SecurityError:18,NetworkError:19,AbortError:20,QuotaExceededError:22,TimeoutError:23,DataCloneError:25}[this.name]||0;}
+  }
+  class ProgressEvent extends Event {constructor(type,options={}){super(type,options);Object.defineProperties(this,{lengthComputable:{value:!!options.lengthComputable,enumerable:true},loaded:{value:Number(options.loaded)||0,enumerable:true},total:{value:Number(options.total)||0,enumerable:true}});}}
+  class AbortSignal extends EventTarget {
+    constructor(token){super();if(token!==networkToken)throw new TypeError('Illegal constructor');signalStates.set(this,{aborted:false,reason:undefined,algorithms:new Set(),timer:null});}
+    get aborted(){return signalStates.get(this).aborted;}get reason(){return signalStates.get(this).reason;}
+    throwIfAborted(){if(this.aborted)throw this.reason;}
+    static abort(reason){const signal=new AbortSignal(networkToken);abortSignal(signal,reason);return signal;}
+    static timeout(ms){ms=Number(ms);if(!Number.isInteger(ms)||ms<0||ms>60000)throw new RangeError('Signal timeout limit');const signal=new AbortSignal(networkToken),state=signalStates.get(signal);state.timer=setTimeout(()=>abortSignal(signal,new DOMException('Signal timed out','TimeoutError')),ms);return signal;}
+  }
+  function abortSignal(signal,reason){const state=signalStates.get(signal);if(state.aborted)return;state.aborted=true;state.reason=reason===undefined?new DOMException('The operation was aborted','AbortError'):reason;if(state.timer!==null)clearTimeout(state.timer);for(const fn of [...state.algorithms])fn();state.algorithms.clear();signal.dispatchEvent(new Event('abort'));}
+  class AbortController {constructor(){controllerStates.set(this,new AbortSignal(networkToken));}get signal(){const signal=controllerStates.get(this);if(!signal)throw new TypeError('Illegal invocation');return signal;}abort(reason){const signal=controllerStates.get(this);if(!signal)throw new TypeError('Illegal invocation');abortSignal(signal,reason);}}
+  const headerName=name=>{name=String(name).toLowerCase();if(!/^[!#$%&'*+.^_`|~0-9a-z-]+$/.test(name)||name.length>128)throw new TypeError('Invalid header name');return name;};
+  const headerValue=value=>{value=String(value).replace(/^[\t ]+|[\t ]+$/g,'');if(/[\r\n\0]/.test(value)||value.length>8192)throw new TypeError('Invalid header value');return value;};
+  const forbiddenHeader=name=>/^(proxy-|sec-)/.test(name)||['accept-charset','accept-encoding','access-control-request-headers','access-control-request-method','connection','content-length','cookie','cookie2','date','dnt','expect','host','keep-alive','origin','permissions-policy','referer','te','trailer','transfer-encoding','upgrade','user-agent','via','x-http-method','x-http-method-override','x-method-override'].includes(name);
+  class Headers {
+    constructor(init){const state={map:new Map(),guard:'none'};headerStates.set(this,state);if(init==null)return;if(init instanceof Headers){for(const [name,value] of init)this.append(name,value);}else if(typeof init[Symbol.iterator]==='function'){let count=0;for(const pair of init){if(++count>64)throw new RangeError('Header limit');const fields=[...pair];if(fields.length!==2)throw new TypeError('Expected header pair');this.append(fields[0],fields[1]);}}else for(const name of Object.keys(init))this.append(name,init[name]);}
+    append(name,value){this._put(name,value,true);}set(name,value){this._put(name,value,false);}
+    _put(name,value,append){name=headerName(name);value=headerValue(value);const state=headerStates.get(this);if(state.guard==='immutable')throw new TypeError('Immutable headers');if(state.guard==='request'&&forbiddenHeader(name)||state.guard==='response'&&['set-cookie','set-cookie2'].includes(name))return;const map=new Map(state.map);map.set(name,append&&map.has(name)?map.get(name)+', '+value:value);let bytes=0;for(const [n,v] of map)bytes+=n.length+v.length;if(map.size>(state.guard==='request'?32:64)||bytes>(state.guard==='request'?8192:16384))throw new RangeError('Header quota');state.map=map;}
+    get(name){return headerStates.get(this).map.get(headerName(name))??null;}has(name){return headerStates.get(this).map.has(headerName(name));}
+    delete(name){name=headerName(name);const state=headerStates.get(this);if(state.guard==='immutable')throw new TypeError('Immutable headers');if(state.guard==='request'&&forbiddenHeader(name))return;state.map.delete(name);}
+    entries(){return [...headerStates.get(this).map].sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0)[Symbol.iterator]();}keys(){return [...this].map(p=>p[0])[Symbol.iterator]();}values(){return [...this].map(p=>p[1])[Symbol.iterator]();}[Symbol.iterator](){return this.entries();}
+    forEach(fn,thisArg){if(typeof fn!=='function')throw new TypeError('Expected callback');for(const [name,value] of this)fn.call(thisArg,value,name,this);}
+  }
+  const requestHeaders=init=>{const headers=new Headers();headerStates.get(headers).guard='request';for(const [name,value] of new Headers(init))headers.append(name,value);return headers;};
+  const scalarText=value=>{const text=String(value);let out='';for(let i=0;i<text.length;i++){const c=text.charCodeAt(i);if(c>=0xd800&&c<=0xdbff){const next=text.charCodeAt(i+1);if(next>=0xdc00&&next<=0xdfff){out+=text[i]+text[++i];}else out+='\ufffd';}else if(c>=0xdc00&&c<=0xdfff)out+='\ufffd';else out+=text[i];}return out;};
+  class TextEncoder {get encoding(){return 'utf-8';}encode(text=''){return new Uint8Array(bridge('encode',0,scalarText(text)));}}
+  const byteBuffer=input=>{if(input instanceof ArrayBuffer)return input.slice(0);if(ArrayBuffer.isView(input))return input.buffer.slice(input.byteOffset,input.byteOffset+input.byteLength);throw new TypeError('Expected byte buffer');};
+  class TextDecoder {
+    constructor(label='utf-8',options={}){options=options??{};if(!['utf-8','utf8','unicode-1-1-utf-8'].includes(String(label).trim().toLowerCase())||options.fatal)throw new RangeError('Only nonfatal UTF-8 decoding is supported');Object.defineProperties(this,{encoding:{value:'utf-8'},fatal:{value:false},ignoreBOM:{value:!!options.ignoreBOM}});}
+    decode(input=new ArrayBuffer(0),options={}){if(options.stream)throw new TypeError('Streaming decoding unavailable');let text=bridge('decode',0,byteBuffer(input));return !this.ignoreBOM&&text.charCodeAt(0)===0xfeff?text.slice(1):text;}
+  }
+  const encodeBody=(value,headers)=>{if(value==null)return null;if(value instanceof URLSearchParams){if(!headers.has('content-type'))headers.set('content-type','application/x-www-form-urlencoded;charset=UTF-8');return bridge('encode',0,value.toString());}if(typeof value==='string'){if(!headers.has('content-type'))headers.set('content-type','text/plain;charset=UTF-8');return bridge('encode',0,scalarText(value));}return byteBuffer(value);};
+  function bodyObject(owner,bytes,signal=null){bodyStates.set(owner,{bytes,used:false,signal});}
+  function consumeBody(owner,format){const state=bodyStates.get(owner);if(state.signal?.aborted)return Promise.reject(state.signal.reason);if(state.used)return Promise.reject(new TypeError('Body already consumed'));if(state.bytes!==null)state.used=true;return Promise.resolve().then(()=>{if(state.signal?.aborted)throw state.signal.reason;const bytes=state.bytes===null?new ArrayBuffer(0):state.bytes.slice(0);if(format==='arrayBuffer')return bytes;const text=new TextDecoder().decode(bytes);return format==='json'?JSON.parse(text):text;});}
+  function addBodyMethods(ctor){Object.defineProperty(ctor.prototype,'bodyUsed',{get(){return bodyStates.get(this).used;},enumerable:true});for(const format of ['text','json','arrayBuffer'])Object.defineProperty(ctor.prototype,format,{value:function(){return consumeBody(this,format);},writable:true,configurable:true});}
+  class Request {
+    constructor(input,init={}){
+      init=init??{};const old=input instanceof Request?requestStates.get(input):null;
+      const url=old?old.url:new URL(String(input),document.baseURI).href;
+      let method=String(init.method??old?.method??'GET');if(['get','head','post','put','patch','delete','options'].includes(method.toLowerCase()))method=method.toUpperCase();if(!['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].includes(method))throw new TypeError('Unsupported HTTP method');
+      const headers=requestHeaders(init.headers??old?.headers),mode=String(init.mode??old?.mode??'cors'),credentials=String(init.credentials??old?.credentials??'same-origin'),redirect=String(init.redirect??old?.redirect??'follow');
+      if(!['cors','same-origin'].includes(mode)||!['same-origin','omit','include'].includes(credentials)||!['follow','error'].includes(redirect))throw new TypeError('Unsupported request policy');
+      if(init.cache!==undefined&&!['default','no-store','reload','no-cache'].includes(init.cache)||init.integrity||init.keepalive||init.duplex||init.referrer!==undefined||init.referrerPolicy!==undefined)throw new TypeError('Unsupported request option');
+      const signal=init.signal??old?.signal??new AbortSignal(networkToken);if(!signalStates.has(signal))throw new TypeError('Expected AbortSignal');
+      let bytes;if(init.body!==undefined&&init.body!==null)bytes=encodeBody(init.body,headers);else if(old){const state=bodyStates.get(input);if(state.used)throw new TypeError('Body already consumed');bytes=state.bytes===null?null:state.bytes.slice(0);}else bytes=null;
+      if((method==='GET'||method==='HEAD')&&bytes!==null)throw new TypeError('GET/HEAD body unavailable');if(bytes&&bytes.byteLength>65536)throw new RangeError('Request body limit');
+      requestStates.set(this,{url,method,headers,mode,credentials,redirect,signal});bodyObject(this,bytes,signal);
+    }
+    get url(){return requestStates.get(this).url;}get method(){return requestStates.get(this).method;}get headers(){return requestStates.get(this).headers;}get mode(){return requestStates.get(this).mode;}get credentials(){return requestStates.get(this).credentials;}get redirect(){return requestStates.get(this).redirect;}get signal(){return requestStates.get(this).signal;}
+    clone(){if(this.bodyUsed)throw new TypeError('Body already consumed');return new Request(this);}
+  }
+  addBodyMethods(Request);
+  class Response {
+    constructor(body=null,init={}){const status=Number(init.status??200);if(!Number.isInteger(status)||status<200||status>599)throw new RangeError('Invalid response status');const headers=new Headers(init.headers);headerStates.get(headers).guard='response';headers.delete('set-cookie');headers.delete('set-cookie2');const bytes=encodeBody(body,headers);if([204,205,304].includes(status)&&bytes!==null)throw new TypeError('Null body status');const statusText=String(init.statusText??'');if(/[\r\n]/.test(statusText))throw new TypeError('Invalid status text');responseStates.set(this,{status,statusText,headers,url:'',redirected:false,type:'default'});bodyObject(this,bytes);}
+    get status(){return responseStates.get(this).status;}get statusText(){return responseStates.get(this).statusText;}get headers(){return responseStates.get(this).headers;}get url(){return responseStates.get(this).url;}get redirected(){return responseStates.get(this).redirected;}get type(){return responseStates.get(this).type;}get ok(){return this.status>=200&&this.status<300;}
+    clone(){const state=bodyStates.get(this);if(state.used)throw new TypeError('Body already consumed');const out=Object.create(Response.prototype);responseStates.set(out,{...responseStates.get(this),headers:new Headers(this.headers)});headerStates.get(out.headers).guard=headerStates.get(this.headers).guard;bodyObject(out,state.bytes===null?null:state.bytes.slice(0),state.signal);return out;}
+    static json(value,init={}){const headers=new Headers(init.headers);if(!headers.has('content-type'))headers.set('content-type','application/json');return new Response(JSON.stringify(value),{...init,headers});}
+    static error(){const out=new Response();const state=responseStates.get(out);state.status=0;state.type='error';headerStates.get(state.headers).guard='immutable';return out;}
+  }
+  addBodyMethods(Response);
   let fetchID=0;const fetches=new Map();
-  globalThis.fetch=(url,options={})=>{
-    if(options.method&&String(options.method).toUpperCase()!=='GET')return Promise.reject(new TypeError('Only GET fetch is available'));
-    if(options.body||options.headers||options.mode==='no-cors')return Promise.reject(new TypeError('Unsupported fetch options'));
-    return new Promise((resolve,reject)=>{if(fetches.size>=32)throw new RangeError('Fetch limit');const id=++fetchID;bridge('fetch',0,id,String(url));fetches.set(id,{resolve,reject});});
-  };
+  function cleanupNetwork(id){const entry=fetches.get(id);if(!entry)return null;fetches.delete(id);signalStates.get(entry.signal).algorithms.delete(entry.abort);return entry;}
+  function cancelNetwork(id){cleanupNetwork(id);bridge('cancelFetch',0,id);}
+  function startNetwork(request,timeout,callback){
+    if(fetches.size>=32)throw new RangeError('Fetch limit');const state=requestStates.get(request),body=bodyStates.get(request);if(body.used)throw new TypeError('Body already consumed');state.signal.throwIfAborted();
+    const id=++fetchID;const abort=()=>{if(!cleanupNetwork(id))return;bridge('cancelFetch',0,id);callback(state.signal.reason,null,'abort');};
+    fetches.set(id,{signal:state.signal,abort,callback,method:state.method});signalStates.get(state.signal).algorithms.add(abort);
+    try{bridge('fetch',0,id,{url:state.url,method:state.method,headers:[...state.headers],body:body.bytes===null?new ArrayBuffer(0):body.bytes.slice(0),mode:state.mode,credentials:state.credentials,redirect:state.redirect,timeout});if(body.bytes!==null)body.used=true;}catch(e){cleanupNetwork(id);throw e;}
+    return id;
+  }
+  globalThis.fetch=(input,init)=>new Promise((resolve,reject)=>{const request=new Request(input,init);startNetwork(request,15000,(error,response,kind)=>{if(error){reject(kind==='abort'?error:new TypeError(error.name==='TimeoutError'?'Request timed out':'Network request failed'));return;}resolve(response);});if(input instanceof Request&&init?.body===undefined&&bodyStates.get(input).bytes!==null)bodyStates.get(input).used=true;});
+  function fetched(id,status,url,bytes,headers,statusText,redirected,cors,error){
+    const entry=cleanupNetwork(id);if(!entry)return;if(error){entry.callback(error==='TimeoutError'?new DOMException('Request timed out','TimeoutError'):new TypeError('Network request failed'),null,'network');return;}
+    try{const response=Object.create(Response.prototype),fields=new Headers(headers);headerStates.get(fields).guard='immutable';responseStates.set(response,{status,statusText,url,redirected,headers:fields,type:cors?'cors':'basic'});bodyObject(response,entry.method==='HEAD'||[204,205,304].includes(status)?null:bytes,entry.signal);entry.callback(null,response);}catch(e){entry.callback(new TypeError('Invalid network response'),null,'network');}
+  }
+  function xhrEvent(xhr,type,loaded=0){xhr.dispatchEvent(type==='readystatechange'?new Event(type):new ProgressEvent(type,{lengthComputable:type==='progress',loaded,total:loaded}));}
+  function xhrError(xhr,type,token){const state=xhrStates.get(xhr);state.inflight=false;state.id=0;state.readyState=4;state.response=null;state.bytes=null;state.status=0;state.statusText='';state.url='';state.headers=new Headers();xhrEvent(xhr,'readystatechange');if(state.generation!==token)return;xhrEvent(xhr,type);if(state.generation===token)xhrEvent(xhr,'loadend');}
+  function xhrFinish(xhr,token,error,response){const state=xhrStates.get(xhr);if(state.generation!==token||!state.inflight)return;if(error){xhrError(xhr,error.name==='TimeoutError'?'timeout':'error',token);return;}
+    state.id=0;state.status=response.status;state.statusText=response.statusText;state.url=response.url;state.headers=response.headers;state.response=response;state.parsedReady=false;state.parsed=null;state.bytes=bodyStates.get(response).bytes??new ArrayBuffer(0);state.readyState=2;xhrEvent(xhr,'readystatechange');if(state.generation!==token)return;
+    state.readyState=3;xhrEvent(xhr,'readystatechange');if(state.generation!==token)return;xhrEvent(xhr,'progress',state.bytes.byteLength);if(state.generation!==token)return;state.readyState=4;state.inflight=false;xhrEvent(xhr,'readystatechange');if(state.generation!==token)return;xhrEvent(xhr,'load',state.bytes.byteLength);if(state.generation===token)xhrEvent(xhr,'loadend',state.bytes.byteLength);
+  }
+  class XMLHttpRequest extends EventTarget {
+    constructor(){super();xhrStates.set(this,{readyState:0,generation:0,inflight:false,id:0,method:'GET',url:'',headers:new Headers(),requestHeaders:requestHeaders(),timeout:0,credentials:false,type:'',status:0,statusText:'',response:null,bytes:null});Object.defineProperty(this,'upload',{value:new EventTarget(),enumerable:true});}
+    open(method,url,async=true,user,password){if(!async||user!=null||password!=null)throw new DOMException('Synchronous XHR/URL credentials unavailable','NotSupportedError');const request=new Request(String(url),{method});const state=xhrStates.get(this),wasOpen=state.readyState===1;if(state.id)cancelNetwork(state.id);Object.assign(state,{generation:state.generation+1,inflight:false,id:0,method:request.method,requestURL:request.url,url:'',requestHeaders:requestHeaders(),headers:new Headers(),status:0,statusText:'',bytes:null,response:null,readyState:1});if(!wasOpen)xhrEvent(this,'readystatechange');}
+    setRequestHeader(name,value){const state=xhrStates.get(this);if(state.readyState!==1||state.inflight)throw new DOMException('XHR is not open','InvalidStateError');state.requestHeaders.append(name,value);}
+    send(body=null){const state=xhrStates.get(this);if(state.readyState!==1||state.inflight)throw new DOMException('XHR is not open','InvalidStateError');const request=new Request(state.requestURL,{method:state.method,headers:state.requestHeaders,body:['GET','HEAD'].includes(state.method)?null:body,credentials:state.credentials?'include':'same-origin'});const token=state.generation;state.inflight=true;try{state.id=startNetwork(request,state.timeout,(error,response)=>xhrFinish(this,token,error,response));}catch(e){queueMicrotask(()=>xhrFinish(this,token,e,null));}xhrEvent(this,'loadstart');}
+    abort(){const state=xhrStates.get(this),active=state.inflight;if(state.id)cancelNetwork(state.id);const token=++state.generation;if(active)xhrError(this,'abort',token);if(state.generation===token){state.readyState=0;state.status=0;state.statusText='';state.response=null;state.bytes=null;state.url='';}}
+    get readyState(){return xhrStates.get(this).readyState;}get status(){return xhrStates.get(this).status;}get statusText(){return xhrStates.get(this).statusText;}get responseURL(){return xhrStates.get(this).url;}
+    get timeout(){return xhrStates.get(this).timeout;}set timeout(value){value=Number(value);if(!Number.isInteger(value)||value<0||value>60000)throw new RangeError('XHR timeout limit');const state=xhrStates.get(this);state.timeout=value;if(state.id)bridge('fetchTimeout',0,state.id,value);}
+    get withCredentials(){return xhrStates.get(this).credentials;}set withCredentials(value){const state=xhrStates.get(this);if(state.readyState>1||state.inflight)throw new DOMException('XHR already sent','InvalidStateError');state.credentials=!!value;}
+    get responseType(){return xhrStates.get(this).type;}set responseType(value){value=String(value);const state=xhrStates.get(this);if(state.readyState>=3)throw new DOMException('XHR already loading','InvalidStateError');if(!['','text','json','arraybuffer'].includes(value))throw new DOMException('Unsupported response type','NotSupportedError');state.type=value;}
+    get responseText(){const state=xhrStates.get(this);if(state.type!==''&&state.type!=='text')throw new DOMException('XHR has a non-text response','InvalidStateError');return state.readyState<3||!state.bytes?'':new TextDecoder().decode(state.bytes);}
+    get response(){const state=xhrStates.get(this);if(state.type===''||state.type==='text')return this.responseText;if(state.readyState!==4||!state.bytes)return null;if(state.type==='arraybuffer')return state.bytes;if(!state.parsedReady){state.parsedReady=true;try{state.parsed=JSON.parse(new TextDecoder().decode(state.bytes));}catch{state.parsed=null;}}return state.parsed;}
+    getResponseHeader(name){const state=xhrStates.get(this);return state.readyState<2?null:state.headers.get(name);}
+    getAllResponseHeaders(){const state=xhrStates.get(this);return state.readyState<2?'':[...state.headers].map(([name,value])=>name+': '+value+'\r\n').join('');}
+    overrideMimeType(){throw new DOMException('MIME/charset override unavailable','NotSupportedError');}
+  }
+  for(const [name,value] of Object.entries({UNSENT:0,OPENED:1,HEADERS_RECEIVED:2,LOADING:3,DONE:4})){Object.defineProperty(XMLHttpRequest,name,{value});Object.defineProperty(XMLHttpRequest.prototype,name,{value});}
+  for(const [name,ctor] of Object.entries({DOMException,ProgressEvent,AbortSignal,AbortController,Headers,Request,Response,TextEncoder,TextDecoder,XMLHttpRequest})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
     mutated:mutation,
@@ -524,7 +621,7 @@
     loaded(){globalThis.dispatchEvent(new Event('load'));},
     event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur','load','error'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
-    fetched(id,ok,status,url,body,error){const f=fetches.get(id);if(!f)return;fetches.delete(id);if(error){f.reject(new TypeError(error));return;}f.resolve({ok,status,url,text:()=>Promise.resolve(body),json:()=>Promise.resolve().then(()=>JSON.parse(body))});},
+    fetched,
     blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])defineNativeProperty(nativePrototype(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}
   };
 })();

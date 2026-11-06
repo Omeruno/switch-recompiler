@@ -44,6 +44,15 @@ document.addEventListener('DOMContentLoaded',()=>{
   const layoutMedia=matchMedia('(min-width: 900px)');
   function updateLayoutMedia(){document.getElementById('layout-media').textContent=layoutMedia.matches?'Широкий режим':'Узкий режим';}
   layoutMedia.addEventListener('change',updateLayoutMedia);updateLayoutMedia();
+  document.getElementById('network-xhr').addEventListener('click',()=>{
+    const request=new XMLHttpRequest();request.open('GET','state.json');request.responseType='json';
+    request.onload=()=>{document.getElementById('network-status').textContent='Код '+request.status+': '+request.response.message;};
+    request.onerror=()=>{document.getElementById('network-status').textContent='Ошибка загрузки';};request.send();
+  });
+  document.getElementById('network-abort').addEventListener('click',()=>{
+    const controller=new AbortController();
+    fetch('state.json',{signal:controller.signal}).catch(error=>{document.getElementById('network-status').textContent=error.name==='AbortError'?'Загрузка отменена':'Ошибка загрузки';});controller.abort();
+  });
   document.getElementById('js-fetch').addEventListener('click',()=>{
     document.getElementById('fetch-result').textContent='Загрузка…';
     fetch('state.json').then(response=>response.json()).then(data=>{

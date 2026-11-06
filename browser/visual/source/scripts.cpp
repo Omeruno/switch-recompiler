@@ -83,6 +83,52 @@ std::string string(JSContext *ctx, JSValueConst v, size_t limit = 65536) {
     JS_FreeCString(ctx, s);
     return out;
 }
+std::string decode_utf8(const uint8_t *bytes, size_t size) {
+    std::string out;
+    out.reserve(size);
+    for (size_t i = 0; i < size;) {
+        unsigned lead = bytes[i], length = 0, low = 0x80, high = 0xbf;
+        if (lead < 0x80) {
+            out.push_back(char(lead));
+            ++i;
+            continue;
+        }
+        if (lead >= 0xc2 && lead <= 0xdf)
+            length = 2;
+        else if (lead >= 0xe0 && lead <= 0xef) {
+            length = 3;
+            if (lead == 0xe0)
+                low = 0xa0;
+            if (lead == 0xed)
+                high = 0x9f;
+        } else if (lead >= 0xf0 && lead <= 0xf4) {
+            length = 4;
+            if (lead == 0xf0)
+                low = 0x90;
+            if (lead == 0xf4)
+                high = 0x8f;
+        }
+        if (!length) {
+            out.append("\xef\xbf\xbd", 3);
+            ++i;
+            continue;
+        }
+        unsigned j = 1;
+        for (; j < length && i + j < size; j++) {
+            unsigned ch = bytes[i + j];
+            if (ch < (j == 1 ? low : 0x80) || ch > (j == 1 ? high : 0xbf))
+                break;
+        }
+        if (j != length) {
+            out.append("\xef\xbf\xbd", 3);
+            i += j;
+        } else {
+            out.append(reinterpret_cast<const char *>(bytes + i), length);
+            i += length;
+        }
+    }
+    return out;
+}
 std::string lower(std::string s) {
     for (char &c : s)
         c = char(std::tolower(static_cast<unsigned char>(c)));
@@ -235,6 +281,9 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        for (auto &f : fetches)
+            resources.cancel(*f.resource);
+        fetches.clear();
         if (runtime)
             JS_SetHostPromiseRejectionTracker(runtime, nullptr, nullptr);
         if (context) {
@@ -1008,16 +1057,101 @@ struct Scripts::Impl {
             curl_url_cleanup(u);
             return result;
         }
+        if (op == "encode") {
+            auto text = str(2, 512u * 1024u);
+            return JS_NewArrayBufferCopy(context, reinterpret_cast<const uint8_t *>(text.data()),
+                                         text.size());
+        }
+        if (op == "decode") {
+            size_t size = 0;
+            auto *bytes = argc > 2 ? JS_GetArrayBuffer(context, &size, a[2]) : nullptr;
+            if (!bytes || size > 512u * 1024u)
+                throw std::runtime_error("Invalid byte buffer");
+            auto text = decode_utf8(bytes, size);
+            return JS_NewStringLen(context, text.data(), text.size());
+        }
+        if (op == "cancelFetch" || op == "fetchTimeout") {
+            for (auto it = fetches.begin(); it != fetches.end(); ++it)
+                if (it->id == integer(2)) {
+                    if (op == "cancelFetch") {
+                        resources.cancel(*it->resource);
+                        fetches.erase(it);
+                    } else
+                        resources.timeout(*it->resource,
+                                          unsigned(std::clamp(integer(3), 0, 60000)));
+                    break;
+                }
+            return JS_UNDEFINED;
+        }
         if (op == "fetch") {
-            if (fetches.size() >= 32)
+            if (fetches.size() >= 32 || argc < 4)
                 throw std::runtime_error("Fetch quota exceeded");
-            auto url = Resources::resolve(container.base, str(3, 2048));
-            if (origin(url) != origin(container.page_url) || !allowed("connect-src", url, false))
-                throw std::runtime_error("Fetch origin/CSP policy rejected request");
-            auto *r = resources.request(url, 512u * 1024u);
+            auto field = [&](const char *key, size_t limit = 2048) {
+                auto value = JS_GetPropertyStr(context, a[3], key);
+                std::string result;
+                try {
+                    result = string(context, value, limit);
+                } catch (...) {
+                    JS_FreeValue(context, value);
+                    throw;
+                }
+                JS_FreeValue(context, value);
+                return result;
+            };
+            auto url = Resources::resolve(container.base, field("url"));
+            if (!allowed("connect-src", url, false))
+                throw std::runtime_error("Fetch CSP policy rejected request");
+            WebRequest options;
+            options.source = container.page_url;
+            options.mode = field("mode", 32);
+            options.credentials = field("credentials", 32);
+            options.redirect = field("redirect", 32);
+            auto timeout_value = JS_GetPropertyStr(context, a[3], "timeout");
+            uint32_t timeout_ms = 0;
+            JS_ToUint32(context, &timeout_ms, timeout_value);
+            JS_FreeValue(context, timeout_value);
+            options.timeout_ms = std::min(60000u, timeout_ms);
+            auto headers = JS_GetPropertyStr(context, a[3], "headers"),
+                 length = JS_GetPropertyStr(context, headers, "length");
+            uint32_t count = 0;
+            JS_ToUint32(context, &count, length);
+            JS_FreeValue(context, length);
+            if (count > 32) {
+                JS_FreeValue(context, headers);
+                throw std::runtime_error("Header quota exceeded");
+            }
+            for (uint32_t i = 0; i < count; i++) {
+                auto pair = JS_GetPropertyUint32(context, headers, i),
+                     key = JS_GetPropertyUint32(context, pair, 0),
+                     value = JS_GetPropertyUint32(context, pair, 1);
+                try {
+                    options.headers.emplace_back(string(context, key, 128),
+                                                 string(context, value, 8192));
+                } catch (...) {
+                    JS_FreeValue(context, key);
+                    JS_FreeValue(context, value);
+                    JS_FreeValue(context, pair);
+                    JS_FreeValue(context, headers);
+                    throw;
+                }
+                JS_FreeValue(context, key);
+                JS_FreeValue(context, value);
+                JS_FreeValue(context, pair);
+            }
+            JS_FreeValue(context, headers);
+            auto value = JS_GetPropertyStr(context, a[3], "body");
+            size_t size = 0;
+            auto *bytes = JS_GetArrayBuffer(context, &size, value);
+            if (!bytes || size > 65536) {
+                JS_FreeValue(context, value);
+                throw std::runtime_error("Request body quota exceeded");
+            }
+            std::string body(reinterpret_cast<const char *>(bytes), size);
+            JS_FreeValue(context, value);
+            auto *r =
+                resources.network(url, field("method", 16), std::move(body), std::move(options));
             if (!r)
-                throw std::runtime_error("Resource quota exceeded");
-            r->critical = true;
+                throw std::runtime_error("Request policy or resource quota rejected request");
             fetches.push_back({integer(2), r, url});
             return JS_UNDEFINED;
         }
@@ -1598,22 +1732,45 @@ struct Scripts::Impl {
     bool settle_fetch() {
         for (auto it = fetches.begin(); it != fetches.end(); ++it) {
             auto *r = it->resource;
+            if (r->state == Resource::checking) {
+                resources.follow(*r, allowed("connect-src", r->pending_url, false));
+                return true;
+            }
             if (r->state == Resource::queued || r->state == Resource::loading)
                 continue;
             bool ok = r->transfer_ok && r->data.size() <= 512u * 1024u &&
-                      origin(r->effective) == origin(container.page_url) &&
                       allowed("connect-src", r->effective, false);
-            std::string body = ok ? std::string(r->data.begin(), r->data.end()) : "";
-            auto result =
-                call("fetched",
-                     {JS_NewInt32(context, it->id),
-                      JS_NewBool(context, ok && r->http_status >= 200 && r->http_status < 300),
-                      JS_NewInt32(context, int(r->http_status)),
-                      JS_NewString(context, r->effective.c_str()),
-                      JS_NewStringLen(context, body.data(), body.size()),
-                      JS_NewString(context, ok ? "" : "Fetch failed or redirected across origin")});
-            JS_FreeValue(context, result);
+            auto headers = JS_NewArray(context);
+            uint32_t index = 0;
+            if (ok)
+                for (auto &header : resources.exposed_headers(*r)) {
+                    auto pair = JS_NewArray(context);
+                    JS_SetPropertyUint32(context, pair, 0,
+                                         JS_NewString(context, header.first.c_str()));
+                    JS_SetPropertyUint32(context, pair, 1,
+                                         JS_NewString(context, header.second.c_str()));
+                    JS_SetPropertyUint32(context, headers, index++, pair);
+                }
+            auto bytes = JS_NewArrayBufferCopy(context, ok ? r->data.data() : nullptr,
+                                               ok ? r->data.size() : 0);
+            int id = it->id;
             fetches.erase(it);
+            // Remove the native entry before invoking XHR event handlers: they may
+            // synchronously start/cancel other requests and grow the vector.
+            auto error = ok                     ? std::string{}
+                         : r->web_error.empty() ? std::string("TypeError")
+                                                : r->web_error;
+            auto status = int(r->http_status);
+            auto url = r->effective;
+            auto text = r->status_text;
+            bool redirected = r->redirects > 0, cors = r->cors_tainted;
+            resources.release_body(*r);
+            auto result = call(
+                "fetched", {JS_NewInt32(context, id), JS_NewInt32(context, ok ? status : 0),
+                            JS_NewString(context, ok ? url.c_str() : ""), bytes, headers,
+                            JS_NewString(context, text.c_str()), JS_NewBool(context, redirected),
+                            JS_NewBool(context, cors), JS_NewString(context, error.c_str())});
+            JS_FreeValue(context, result);
             return true;
         }
         return false;

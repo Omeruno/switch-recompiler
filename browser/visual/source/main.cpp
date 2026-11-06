@@ -745,7 +745,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.8.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.9.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -855,7 +855,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.8.0");
+    visual::diagnostic("boot", "0.9.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -1287,6 +1287,19 @@ int main(int argc, char **argv) {
                         ->get_text(observed_result);
                     if (dynamic_result != "Запуск: 2" || observed_result != "Изменений: 4")
                         throw std::runtime_error("dynamic demo second run failed");
+                    tap_element("network-xhr");
+                    for (int i = 0; i < 8; i++)
+                        app.pump();
+                    std::string network_status;
+                    app.document->root()->select_one("#network-status")->get_text(network_status);
+                    if (network_status.find("Код 200:") != 0)
+                        throw std::runtime_error("offline XHR demo failed: " + network_status);
+                    tap_element("network-abort");
+                    app.pump();
+                    network_status.clear();
+                    app.document->root()->select_one("#network-status")->get_text(network_status);
+                    if (network_status != "Загрузка отменена")
+                        throw std::runtime_error("offline abort demo failed");
                     float before_report_scroll = app.view.y;
                     app.toggle_report();
                     if (!app.report_open || app.report_lines.size() < 10)

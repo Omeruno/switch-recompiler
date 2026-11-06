@@ -436,11 +436,13 @@ int browser_profile_open(const char *dir, const char *ca_file) {
 }
 int browser_profile_persistent(void) { return persistent; }
 const char *browser_profile_status(void) { return status_text; }
-CURLcode browser_profile_configure(CURL *curl) {
-    if (!ensure_cookies())
+static CURLcode configure_transfer(CURL *curl, int credentials) {
+    if (credentials && !ensure_cookies())
         return CURLE_OUT_OF_MEMORY;
-    CURLcode result = curl_easy_setopt(curl, CURLOPT_SHARE, shared);
-    if (result == CURLE_OK)
+    CURLcode result = CURLE_OK;
+    if (credentials)
+        result = curl_easy_setopt(curl, CURLOPT_SHARE, shared);
+    if (credentials && result == CURLE_OK)
         result = curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
     if (result == CURLE_OK)
         result = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
@@ -457,6 +459,8 @@ CURLcode browser_profile_configure(CURL *curl) {
     }
     return result;
 }
+CURLcode browser_profile_configure(CURL *curl) { return configure_transfer(curl, 1); }
+CURLcode browser_profile_configure_anonymous(CURL *curl) { return configure_transfer(curl, 0); }
 void browser_profile_save_cookies(void) {
     if (!persistent || !cookies)
         return;

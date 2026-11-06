@@ -26,11 +26,11 @@ Chromium/Blink, Firefox/Gecko и WebKit разделяют несколько з
 
 | Подсистема | Реализовано | Чего существенно не хватает |
 |---|---|---|
-| Сеть | curl-multi, HTTPS/CA, cookies, GET, навигационные POST, ограничения CSP | полный Fetch/CORS, POST fetch, XHR, WebSocket, HTTP-кэш, MIME/charset-политики |
+| Сеть | curl-multi, HTTPS/CA, cookies, Fetch/body/XHR, анонимный CORS/preflight, навигационные POST, CSP | полная модель Fetch/CORS/cookies, streams, WebSocket, HTTP-кэш, MIME/charset-политики |
 | Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, iframe, editing/selection/accessibility |
 | CSS/layout | каскад, обычный поток, таблицы, flex, media queries, размеры и поля | Grid, полное современное intrinsic sizing, дополнительные правила текста, transforms |
 | Paint | SDL, DejaVu, PNG/JPEG/WebP, заливки, часть границ и градиентов | SVG, web fonts/shaping/fallback, полные тени/outline/clip, display list/compositor |
-| JS | QuickJS, native DOM bridge, события, таймеры, Promise, GET fetch, classic async/defer, Mutation/Resize/IntersectionObserver | модули, workers, множество остальных Web API |
+| JS | QuickJS, native DOM bridge, события, таймеры, Promise, buffered Fetch/XHR, classic async/defer, Mutation/Resize/IntersectionObserver | модули, workers, множество остальных Web API |
 | Планирование | раздельные задачи/microtasks/rAF, асинхронная сеть, бюджеты JS/observer и типизированные resource revisions | потоковая загрузка/parser scheduling, полная очередность стандарта, точечная style/layout-инвалидация |
 | Игры/медиа | отдельный WASM probe | JS/WASM game imports, WebGPU/WebGL, видео/аудио, MSE/WebRTC, игровые события |
 | Изоляция | квоты и интерпретаторы | полноценные границы процессов/песочницы, модель безопасности современного браузера |
@@ -225,3 +225,26 @@ overflow, отдельная очередь задач). Расширены Medi
 SVG/transform/multifragment, device pixel box, intersection visibility/occlusion,
 scrollMargin и smooth scrolling не реализованы. Наблюдатели не закрывают Grid,
 модульный JS, сети, GPU/медиа и вход на защищённые сайты.
+
+## Сетевые API — 0.9.0
+
+Fetch отделён от кэша изображений/скриптов: каждый вызов — отдельный curl-multi
+запрос, включая GET. Добавлены тела/заголовки, Request/Response/Headers, бинарные
+буферы и UTF-8. AbortSignal и XHR.timeout останавливают настоящий транспорт,
+включая ожидание очереди/OPTIONS/redirect. XHR обрабатывает повторный open/abort
+с проверкой поколения, старые обработчики уничтожаются при навигации.
+
+CORS проверяет ACAO, OPTIONS для небезопасных запросов и доступность заголовков
+ответа. Cross-origin include запрещён: общий cookie jar пока не реализует
+SameSite/partitioning. Анонимные запросы не включают cookie engine, но используют
+тот же проверенный TLS/CA. Перенаправления проверяются CSP до следующего соединения;
+тела POST/Authorization не попадают в журнал или историю. Лимиты и неподдержанные
+режимы перечислены в README. Загрузка буферизуется, upload/streaming progress,
+полный CORS/HTTP cache, WebSocket и модули/воркеры ещё не реализованы.
+
+Шестнадцать host-наборов включают локальный TLS-сервер со вторым допустимым origin
+и негативные проверки предзапросов, cookies, TLS, redirect, отмены и XHR reentrancy.
+Общий fixture интерфейсов сравнивается с Chromium. Исправлены повреждённые UTF-8
+последовательности и тест кэша скриптов (Fetch больше не заполняет этот кэш).
+Для Switch добавлено офлайн-демо «Загрузка и отмена»; вход и игра остаются
+непроверенными на устройстве.

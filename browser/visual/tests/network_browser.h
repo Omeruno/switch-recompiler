@@ -101,6 +101,9 @@ void browser_network_checks(Browser &app, const std::string &base) {
          "tall);");
     eval("setTimeout(()=>localStorage.setItem('old_callback','timer'),16);fetch('/"
          "loop-image2.png?cancel=1').then(()=>localStorage.setItem('old_callback','fetch'));");
+    eval("const oldXHR=new "
+         "XMLHttpRequest();oldXHR.open('GET','/"
+         "api-slow');oldXHR.onload=()=>localStorage.setItem('xhr_leak','1');oldXHR.send();");
     app.resources.pump(); // Start the delayed transfer, then cancel the old realm/page.
     app.navigate(base + "/loop-clean", false);
     pump_until([&] { return app.scripts && app.scripts->ready(); });
@@ -112,6 +115,7 @@ void browser_network_checks(Browser &app, const std::string &base) {
           "old realm callback survived navigation");
     check(!browser_storage_get(base.c_str(), 0, "layout_leak"),
           "layout observer survived navigation");
+    check(!browser_storage_get(base.c_str(), 0, "xhr_leak"), "XHR callback survived navigation");
     puts("PASS delayed async/defer/classic scripts, timer during load, DCL/load order, JSON "
          "without layout, image-only relayout, late CSS and coalesced DOM changes");
 }
@@ -166,8 +170,13 @@ void browser_dynamic_checks(Browser &app, const std::string &base) {
     until([&] { return !app.resources.pending(); });
     for (int i = 0; i < 10; ++i)
         app.pump();
-    eval("if(!largeFetched)throw Error('large cache "
-         "fixture');script('large','/dyn-large.js',false);");
+    eval("if(!largeFetched)throw Error('large fetch fixture');");
+    // Fetch is independent of the script/image resource cache. Prime that cache
+    // explicitly to keep exercising the script byte-limit check on cached data.
+    check(app.resources.request(base + "/dyn-large.js", 512u * 1024u) != nullptr,
+          "large script cache fixture");
+    until([&] { return !app.resources.pending(); });
+    eval("script('large','/dyn-large.js',false);");
     for (int i = 0; i < 10; ++i)
         app.pump();
     eval("if(largeExecuted||!dynEvents.includes('error:large'))throw Error('cached script byte "

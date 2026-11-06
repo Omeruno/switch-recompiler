@@ -43,7 +43,45 @@ extendedKeyUsage=serverAuth
     openssl('ca','-batch','-notext','-config',root/'ca.conf','-in',root/'server.csr','-out',root/'expired.pem','-startdate','20000101000000Z','-enddate','20010101000000Z')
     class Handler(http.server.BaseHTTPRequestHandler):
         form_counts={'forbidden':0,'echo':0,'preserved':0}
+        api_counts={}
+        def api(self):
+            parsed=urllib.parse.urlsplit(self.path)
+            if not parsed.path.startswith('/api-'):return False
+            query=urllib.parse.parse_qs(parsed.query);origin=self.headers.get('Origin','')
+            self.api_counts[parsed.path+':'+self.command]=self.api_counts.get(parsed.path+':'+self.command,0)+1
+            length=int(self.headers.get('Content-Length','0'));data=self.rfile.read(min(length,65537)) if length else b''
+            if parsed.path=='/api-slow':time.sleep(.25)
+            status=200;extra=[]
+            if self.command=='OPTIONS':
+                body=b'';status=204
+                extra=[('Access-Control-Allow-Methods','GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS'),('Access-Control-Allow-Headers',self.headers.get('Access-Control-Request-Headers',''))]
+                if query.get('allow_headers')==['wildcard']:extra[-1]=('Access-Control-Allow-Headers','*')
+            elif parsed.path=='/api-config':body=json.dumps({'cross':f'https://localhost:{cross}','expired':f'https://localhost:{expired}'}).encode()
+            elif parsed.path=='/api-state':body=json.dumps(self.api_counts).encode()
+            elif parsed.path=='/api-redirect':
+                status=int(query.get('code',['307'])[0]);extra=[('Location',query.get('target',['/api-echo'])[0])];body=b''
+            elif parsed.path=='/api-large':body=b'x'*600000
+            else:
+                status=404 if parsed.path=='/api-404' else 200
+                body=json.dumps({'method':self.command,'text':data.decode('utf-8',errors='replace'),'bytes':list(data),'cookie':bool(self.headers.get('Cookie')),'new_cookie':'network_set=1' in self.headers.get('Cookie',''),'origin':origin,'custom':self.headers.get('X-Test'),'authorization':self.headers.get('Authorization'),'content_type':self.headers.get('Content-Type')},ensure_ascii=False).encode()
+            self.send_response(status)
+            if origin and parsed.path!='/api-deny' and query.get('cors')!=['deny']:self.send_header('Access-Control-Allow-Origin','*' if query.get('cors')==['wildcard'] else origin)
+            for key,value in extra:self.send_header(key,value)
+            if parsed.path=='/api-headers-large':self.send_header('X-Large','h'*17000)
+            self.send_header('X-Visible','shown');self.send_header('X-Hidden','private')
+            self.send_header('Access-Control-Expose-Headers','X-Visible')
+            if parsed.path=='/api-set':self.send_header('Set-Cookie','network_set=1; Path=/; Secure; HttpOnly')
+            self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers()
+            if self.command!='HEAD':self.wfile.write(body)
+            return True
+        def do_OPTIONS(self):self.api()
+        def do_PUT(self):self.api()
+        def do_PATCH(self):self.api()
+        def do_DELETE(self):self.api()
+        def do_HEAD(self):self.api()
+
         def do_POST(self):
+            if self.api():return
             length=int(self.headers.get('Content-Length','0'))
             data=self.rfile.read(min(length,65537))
             values=urllib.parse.parse_qs(data.decode('utf-8'),keep_blank_values=True)
@@ -65,6 +103,7 @@ extendedKeyUsage=serverAuth
         def log_message(self,*args):
             pass
         def do_GET(self):
+            if self.api():return
             route=urllib.parse.urlsplit(self.path).path
             if route.startswith('/dyn-'):
                 mime='text/javascript';status=200
@@ -134,13 +173,13 @@ extendedKeyUsage=serverAuth
             super().handle_error(request, address)
     servers=[]
     try:
-        for name in ['server','expired']:
+        for name in ['server','expired','server']:
             server=Server(('127.0.0.1',0),Handler)
             context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(root/f'{name}.pem',root/'server.key')
             server.socket=context.wrap_socket(server.socket,server_side=True)
             threading.Thread(target=server.serve_forever,daemon=True).start();servers.append(server)
-        port,expired=[s.server_port for s in servers]
+        port,expired,cross=[s.server_port for s in servers]
         env=dict(os.environ,NO_PROXY='localhost,127.0.0.1',no_proxy='localhost,127.0.0.1')
         subprocess.run([sys.argv[1],*sys.argv[2:],str(root/'profile'),f'https://localhost:{port}',f'https://127.0.0.1:{port}/',f'https://localhost:{expired}/',str(root/'ca.pem'),str(root/'wrong.pem')],check=True,env=env)
     finally:
