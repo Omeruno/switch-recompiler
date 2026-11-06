@@ -5,26 +5,35 @@
 #include <map>
 #include <optional>
 namespace visual {
+// Dead zone and quadratic response: precision near center, fast at full throw.
+inline float stick_scroll_speed(float value) {
+    float a = std::min(1.f, std::fabs(value));
+    if (a <= .18f)
+        return 0;
+    float t = (a - .18f) / .82f;
+    return std::copysign(2200.f * t * t, value);
+}
 struct Point {
     float x = 0, y = 0;
 };
 struct View {
-    float x = 0, y = 0, zoom = 1, content_width = 1280, content_height = 636;
+    float x = 0, y = 0, zoom = 1, base_scale = 1, content_width = 1280, content_height = 636;
+    float scale() const { return zoom * base_scale; }
     void clamp() {
-        x = std::clamp(x, 0.f, std::max(0.f, content_width - 1280 / zoom));
-        y = std::clamp(y, 0.f, std::max(0.f, content_height - 636 / zoom));
+        x = std::clamp(x, 0.f, std::max(0.f, content_width - 1280 / scale()));
+        y = std::clamp(y, 0.f, std::max(0.f, content_height - 636 / scale()));
     }
-    Point document(Point p) const { return {x + p.x / zoom, y + p.y / zoom}; }
+    Point document(Point p) const { return {x + p.x / scale(), y + p.y / scale()}; }
     void drag(float dx, float dy) {
-        x -= dx / zoom;
-        y -= dy / zoom;
+        x -= dx / scale();
+        y -= dy / scale();
         clamp();
     }
     void pinch(Point old_center, Point new_center, float ratio) {
         auto anchor = document(old_center);
         zoom = std::clamp(zoom * ratio, 1.f, 2.5f);
-        x = anchor.x - new_center.x / zoom;
-        y = anchor.y - new_center.y / zoom;
+        x = anchor.x - new_center.x / scale();
+        y = anchor.y - new_center.y / scale();
         clamp();
     }
 };
@@ -42,6 +51,7 @@ class Gestures {
     View &view;
     explicit Gestures(View &v) : view(v) {}
     bool active() const { return !contacts.empty(); }
+    void stop_inertia() { vx = vy = 0; }
     void cancel() {
         contacts.clear();
         suppressed = dragging = false;

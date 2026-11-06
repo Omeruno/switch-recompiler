@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0",
+  "source": "user messages on 2026-11-06 Europe/Moscow",
+  "confirmed": [
+    "Google website loads",
+    "Keldurn root and /ru/ load by manual address entry",
+    "touchscreen interaction",
+    "gestures",
+    "left-stick pointer"
+  ],
+  "reported_limitations": [
+    "imperfect website layout",
+    "missing editable web fields",
+    "VK outdated-browser message",
+    "YouTube did not open"
+  ],
+  "not_established": [
+    "exact VK rejection mechanism",
+    "exact YouTube failure stage",
+    "JavaScript or video compatibility",
+    "0.2.0 device behavior"
+  ]
+}

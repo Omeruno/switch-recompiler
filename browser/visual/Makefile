@@ -5,11 +5,11 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET := switch-visual-browser
 APP_TITLE := Switch Visual Browser
 APP_AUTHOR := switch-recompiler
-APP_VERSION := 0.1.0
+APP_VERSION := 0.2.0
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mno-outline-atomics -mtp=soft -ftls-model=local-exec -fPIE
 PORTLIBS := $(DEVKITPRO)/portlibs/switch
-PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PORTLIBS)/lib/pkgconfig pkg-config --cflags sdl2 SDL2_ttf SDL2_image libcurl)
-PORT_LIBS := $(shell PKG_CONFIG_LIBDIR=$(PORTLIBS)/lib/pkgconfig pkg-config --static --libs sdl2 SDL2_ttf SDL2_image libcurl)
+PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PORTLIBS)/lib/pkgconfig pkg-config --cflags sdl2 SDL2_ttf SDL2_image libwebp libcurl)
+PORT_LIBS := $(shell PKG_CONFIG_LIBDIR=$(PORTLIBS)/lib/pkgconfig pkg-config --static --libs sdl2 SDL2_ttf SDL2_image libwebp libcurl)
 CMAKE ?= cmake
 .PHONY: all runtime assets
 all: $(TARGET).nro

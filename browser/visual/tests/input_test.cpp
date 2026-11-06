@@ -64,6 +64,23 @@ int main() {
     CHECK(!g.up(1, {100, 100}, 510));
     g.down(1, {100, 100}, 600);
     CHECK(!g.up(1, {100, 100}, 1400));
+    CHECK(visual::stick_scroll_speed(.1f) == 0);
+    CHECK(visual::stick_scroll_speed(-.18f) == 0);
+    CHECK(visual::stick_scroll_speed(.3f) > 0 &&
+          visual::stick_scroll_speed(.3f) < visual::stick_scroll_speed(.7f));
+    CHECK(std::fabs(visual::stick_scroll_speed(1) - 2200) < .01f);
+    CHECK(visual::stick_scroll_speed(-1) == -visual::stick_scroll_speed(1));
+    visual::View mobile;
+    mobile.base_scale = 2;
+    mobile.content_width = 640;
+    mobile.content_height = 1800;
+    mobile.drag(0, -200);
+    CHECK(mobile.y == 100);
+    auto doc = mobile.document({400, 200});
+    CHECK(doc.x == 200 && doc.y == 200);
+    mobile.pinch({400, 200}, {400, 200}, 1.5f);
+    auto anchored = mobile.document({400, 200});
+    CHECK(std::fabs(anchored.x - doc.x) < .01f && std::fabs(anchored.y - doc.y) < .01f);
     puts("PASS taps, drag suppression, inertia, chrome isolation, pinch anchor, bounds, "
          "multi-touch and cancellation");
 }

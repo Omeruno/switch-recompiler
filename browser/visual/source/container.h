@@ -1,4 +1,5 @@
 #pragma once
+#include "forms.h"
 #include "resources.h"
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -23,6 +24,12 @@ class Container final : public litehtml::document_container {
     std::map<std::string, Text> texts;
     size_t image_bytes = 0, text_bytes = 0;
     std::vector<SDL_Rect> clips;
+    std::map<std::string, SDL_Texture *> gradients;
+    size_t gradient_bytes = 0;
+    void paint_tile(SDL_Texture *, const litehtml::background_layer &);
+    void paint_gradient(const litehtml::background_layer &,
+                        const litehtml::background_layer::gradient_base &, const std::string &,
+                        const std::function<float(float, float)> &);
     SDL_Rect screen(const litehtml::position &) const;
     void color(litehtml::web_color);
     void apply_clip();
@@ -31,9 +38,13 @@ class Container final : public litehtml::document_container {
 
   public:
     static constexpr int width = 1280, height = 720, toolbar = 84;
+    Forms forms;
+    litehtml::element::ptr clicked;
+    int viewport_width = 1280;
+    float viewport_height = 636;
     float zoom = 1;
     std::string base = "demo:/index.html", caption, anchor, cursor;
-    unsigned unsupported = 0, painted_text = 0, painted_images = 0;
+    unsigned unsupported = 0, painted_text = 0, painted_images = 0, painted_gradients = 0;
     Container(SDL_Renderer *, Resources &, std::string font);
     ~Container() override;
     size_t decoded_images() const;
@@ -77,9 +88,8 @@ class Container final : public litehtml::document_container {
     void del_clip() override;
     void get_viewport(litehtml::position &) const override;
     litehtml::element::ptr create_element(const char *, const litehtml::string_map &,
-                                          const std::shared_ptr<litehtml::document> &) override {
-        return {};
-    }
+                                          const std::shared_ptr<litehtml::document> &) override;
+    bool on_element_click(const litehtml::element::ptr &) override;
     void get_media_features(litehtml::media_features &) const override;
     void get_language(std::string &language, std::string &culture) const override {
         language = "ru";

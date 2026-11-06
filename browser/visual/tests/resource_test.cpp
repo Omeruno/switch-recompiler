@@ -27,6 +27,8 @@ int main(int argc, char **argv) {
     CHECK(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK);
     CHECK(browser_profile_open(nullptr, argv[5]));
     std::string base = argv[2];
+    CHECK(visual::Resources::resolve("demo:/index.html", "https://example.com/") ==
+          "https://example.com/");
     CHECK(visual::Resources::resolve(base + "/assets/style.css", "../image.png") ==
           base + "/image.png");
     CHECK(visual::Resources::resolve(base + "/a", "//localhost:123/a") ==

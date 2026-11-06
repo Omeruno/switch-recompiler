@@ -161,3 +161,13 @@ coordinates; HTTPS resources use nonblocking libcurl-multi. The reader's QuickJS
 DOM is not attached to this document tree. Refer to the visual README for the
 supported painting subset and host/device verification boundary. This candidate
 does not settle final browser-engine selection or supply gameplay.
+
+### Visual 0.2.0 refinement
+
+The user confirms visual 0.1.0 networking, touchscreen gestures and stick pointer
+on the device, including manually entered Keldurn `/ru/`. Refinement implements
+native text controls/basic GET forms, WebP, bounded gradient tiles, right-stick
+scroll and selectable CSS viewport width. Grid, JavaScript and media playback
+remain separate missing capabilities. VK and YouTube feedback is recorded in
+visual/device-evidence-2026-11-06.json without attributing their exact failures
+to user-agent detection. A CSS viewport toggle does not implement Grid.

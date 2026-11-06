@@ -5,6 +5,7 @@ extern "C" {
 #include "profile.h"
 }
 #include <SDL_image.h>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
@@ -42,6 +43,7 @@ struct Browser {
     std::vector<std::string> history;
     unsigned built_revision = 0;
     bool rebuild = true;
+    int viewport_mode = 0;
     TTF_Font *ui = nullptr;
     int pointer_x = 640, pointer_y = 318;
     Browser(SDL_Renderer *r, const std::string &root, const std::string &font)
@@ -78,8 +80,10 @@ struct Browser {
         document.reset();
         container.reset();
         resources.clear();
+        container.forms.clear();
         gestures.cancel();
         view = {};
+        view.base_scale = 1280.f / container.viewport_width;
         url = next;
         container.base = url;
         notice.clear();
@@ -126,7 +130,7 @@ struct Browser {
         document.reset();
         container.reset();
         container.base = r->effective;
-        container.zoom = view.zoom;
+        container.zoom = view.scale();
         std::string html(r->data.begin(), r->data.end());
         if (std::count(html.begin(), html.end(), '<') > 8192) {
             notice = "Превышен лимит сложности страницы";
@@ -134,12 +138,14 @@ struct Browser {
             return;
         }
         try {
-            document = litehtml::document::createFromString(html, &container);
+            document = litehtml::document::createFromString(
+                html, &container, litehtml::master_css + visual::control_styles());
             if (!document)
                 throw std::runtime_error("HTML parse failed");
-            document->render(visual::Container::width);
-            view.content_width = std::max(1280.f, float(document->width()));
-            view.content_height = std::max(636.f, float(document->height()));
+            document->render(container.viewport_width);
+            view.content_width =
+                std::max(float(container.viewport_width), float(document->width()));
+            view.content_height = std::max(container.viewport_height, float(document->height()));
             view.clamp();
             notice.clear();
             visual::diagnostic("layout.ready",
@@ -177,14 +183,68 @@ struct Browser {
             return;
         auto q = view.document(p);
         auto redraw = [](const litehtml::position &) {};
-        document->on_mouse_over(q.x, q.y, p.x / view.zoom, p.y / view.zoom, redraw);
-        document->on_lbutton_down(q.x, q.y, p.x / view.zoom, p.y / view.zoom, redraw);
-        document->on_lbutton_up(q.x, q.y, p.x / view.zoom, p.y / view.zoom, redraw);
+        document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
+        document->on_lbutton_down(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
+        document->on_lbutton_up(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
+        if (container.clicked) {
+            auto el = container.clicked;
+            container.clicked.reset();
+            activate_control(el);
+            return;
+        }
         if (!container.anchor.empty()) {
             auto next = container.anchor;
             container.anchor.clear();
             navigate(next);
         }
+    }
+    void cycle_viewport() {
+        viewport_mode = (viewport_mode + 1) % 3;
+        static const int widths[] = {1280, 960, 640};
+        container.viewport_width = widths[viewport_mode];
+        view.base_scale = 1280.f / container.viewport_width;
+        container.viewport_height = 636 / view.base_scale;
+        view.zoom = 1;
+        view.x = view.y = 0;
+        gestures.cancel();
+        rebuild = true;
+    }
+    void activate_control(const litehtml::element::ptr &el) {
+        if (el->get_attr("disabled"))
+            return;
+        auto control = std::dynamic_pointer_cast<visual::Control>(el);
+        if (control && control->editable()) {
+#ifdef __SWITCH__
+            gestures.cancel();
+            SwkbdConfig keyboard;
+            if (R_FAILED(swkbdCreate(&keyboard, 0)))
+                return;
+            swkbdConfigMakePresetDefault(&keyboard);
+            if (control->type() == "password")
+                swkbdConfigSetPasswordFlag(&keyboard, 1);
+            swkbdConfigSetHeaderText(&keyboard, "Ввод текста");
+            swkbdConfigSetGuideText(&keyboard,
+                                    el->get_attr("placeholder", el->get_attr("name", "")));
+            swkbdConfigSetInitialText(&keyboard, control->value().c_str());
+            int maxlength = std::clamp(std::atoi(el->get_attr("maxlength", "1024")), 1, 1024);
+            swkbdConfigSetStringLenMax(&keyboard, maxlength);
+            char value[4097] = {};
+            Result rc = swkbdShow(&keyboard, value, sizeof(value));
+            swkbdClose(&keyboard);
+            if (R_SUCCEEDED(rc))
+                control->value(value);
+#else
+            notice = "Поле выбрано. Экранная клавиатура доступна на Switch.";
+#endif
+            return;
+        }
+        std::string type = control ? control->type() : el->get_attr("type", "submit");
+        if (type == "submit") {
+            auto next = visual::form_get(el, container.base, notice);
+            if (!next.empty())
+                navigate(next);
+        } else if (!el->get_attr("readonly"))
+            notice = "Этот тип элемента пока не подключён";
     }
     void edit_address() {
 #ifdef __SWITCH__
@@ -214,10 +274,10 @@ struct Browser {
     void paint() {
         SDL_SetRenderDrawColor(renderer, 245, 247, 250, 255);
         SDL_RenderClear(renderer);
-        container.zoom = view.zoom;
+        container.zoom = view.scale();
         container.begin_paint();
         if (document) {
-            litehtml::position clip = {0, 0, 1280 / view.zoom, 636 / view.zoom};
+            litehtml::position clip = {0, 0, 1280 / view.scale(), 636 / view.scale()};
             document->draw(0, -view.x, -view.y, &clip);
         }
         container.end_paint();
@@ -230,7 +290,11 @@ struct Browser {
         text(renderer, ui, 1135, 10, "Адрес X", {112, 220, 235, 255}, 135);
         text(renderer, ui, 16, 46,
              notice.empty() ? "HTML/CSS · " + resources.status() + " · масштаб " +
-                                  std::to_string(int(view.zoom * 100)) + "% · без JavaScript"
+                                  std::to_string(int(view.zoom * 100)) + "% · " +
+                                  std::string(viewport_mode == 0   ? "ПК"
+                                              : viewport_mode == 1 ? "Планшет"
+                                                                   : "Мобильный") +
+                                  " · без JavaScript"
                             : notice,
              {174, 190, 211, 255}, 1250);
         if (!document && notice.empty())
@@ -247,7 +311,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.1.0");
+    visual::diagnostic("boot", "0.2.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -259,7 +323,8 @@ int main(int argc, char **argv) {
     bool sockets = R_SUCCEEDED(socketInitializeDefault());
 #else
     if (argc < 3) {
-        fprintf(stderr, "Usage: visual-host ASSET_ROOT FONT [--test SCREENSHOT.bmp | HTTPS_URL]\n");
+        fprintf(stderr, "Usage: visual-host ASSET_ROOT FONT [--test SCREENSHOT.bmp | --capture "
+                        "HTTPS_URL SCREENSHOT.bmp | HTTPS_URL]\n");
         return 1;
     }
     root = argv[1];
@@ -307,7 +372,11 @@ int main(int argc, char **argv) {
             Browser app(renderer, root, font);
 #ifndef __SWITCH__
             bool test = argc >= 5 && std::string(argv[3]) == "--test";
-            if (argc >= 4 && !test)
+            bool capture = argc >= 6 && std::string(argv[3]) == "--capture";
+            uint32_t capture_start = SDL_GetTicks();
+            if (capture)
+                app.navigate(argv[4]);
+            else if (argc >= 4 && !test)
                 app.navigate(argv[3]);
 #endif
             bool quit = false;
@@ -320,6 +389,8 @@ int main(int argc, char **argv) {
                 u64 down = padGetButtonsDown(&pad), held = padGetButtons(&pad);
                 if (down & HidNpadButton_Plus)
                     break;
+                if (down & HidNpadButton_Minus)
+                    app.cycle_viewport();
                 if (down & HidNpadButton_X)
                     app.edit_address();
                 if (down & HidNpadButton_B)
@@ -332,6 +403,13 @@ int main(int argc, char **argv) {
                     app.view.drag(0, -10);
                 if (held & HidNpadButton_Up)
                     app.view.drag(0, 10);
+                HidAnalogStickState right = padGetStickPos(&pad, 1);
+                float scroll_speed = visual::stick_scroll_speed(right.y / 32767.f);
+                if (scroll_speed != 0 && !app.gestures.active()) {
+                    app.gestures.stop_inertia();
+                    float seconds = std::min(.05f, (SDL_GetTicks() - previous) / 1000.f);
+                    app.view.drag(0, scroll_speed * seconds);
+                }
                 HidAnalogStickState stick = padGetStickPos(&pad, 0);
                 app.pointer_x = std::clamp(app.pointer_x + stick.x / 4096, 0, 1279);
                 app.pointer_y = std::clamp(app.pointer_y - stick.y / 4096, 0, 635);
@@ -387,6 +465,8 @@ int main(int argc, char **argv) {
                             quit = true;
                         else if (event.key.keysym.sym == SDLK_BACKSPACE)
                             app.back();
+                        else if (event.key.keysym.sym == SDLK_m)
+                            app.cycle_viewport();
                         else if (event.key.keysym.sym == SDLK_HOME)
                             app.navigate("demo:/index.html");
                         else if (event.key.keysym.sym == SDLK_DOWN)
@@ -401,6 +481,27 @@ int main(int argc, char **argv) {
                 app.pump();
                 app.paint();
 #ifndef __SWITCH__
+                if (capture && !app.resources.pending()) {
+                    if (!app.document)
+                        throw std::runtime_error(app.notice.empty() ? "No rendered document"
+                                                                    : app.notice);
+                    SDL_Surface *shot =
+                        SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);
+                    if (!shot ||
+                        SDL_RenderReadPixels(renderer, nullptr, shot->format->format, shot->pixels,
+                                             shot->pitch) ||
+                        SDL_SaveBMP(shot, argv[5]))
+                        throw std::runtime_error(SDL_GetError());
+                    SDL_FreeSurface(shot);
+                    fprintf(stderr,
+                            "CAPTURE height=%.1f resources=%zu images=%zu text=%u unsupported=%u\n",
+                            app.view.content_height, app.resources.count(),
+                            app.container.decoded_images(), app.container.painted_text,
+                            app.container.unsupported);
+                    quit = true;
+                }
+                if (capture && SDL_GetTicks() - capture_start > 30000)
+                    throw std::runtime_error("Capture timed out");
                 if (test) {
                     if (!app.document)
                         throw std::runtime_error("demo document missing");
@@ -419,7 +520,7 @@ int main(int argc, char **argv) {
                     if (!link || !target || !a || !b ||
                         !(float(a->get_placement().x) < float(b->get_placement().x)) ||
                         !(app.view.content_height > 636) || app.container.painted_images < 1 ||
-                        app.container.decoded_images() != 2 || app.container.painted_text < 10)
+                        app.container.decoded_images() != 3 || app.container.painted_text < 10)
                         throw std::runtime_error("CSS/image/layout assertions failed");
                     SDL_Surface *shot =
                         SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);
@@ -429,6 +530,34 @@ int main(int argc, char **argv) {
                         SDL_SaveBMP(shot, argv[4]))
                         throw std::runtime_error(SDL_GetError());
                     SDL_FreeSurface(shot);
+                    auto field = std::dynamic_pointer_cast<visual::Control>(
+                        app.document->root()->select_one("#search"));
+                    auto submit = app.document->root()->select_one("#search-button");
+                    if (!field || !field->editable() || float(field->get_placement().width) < 100)
+                        throw std::runtime_error("search control not laid out");
+                    auto input_box = field->get_placement();
+                    app.click({float(input_box.x) + 5, float(input_box.y) + 5});
+                    if (app.notice.find("Поле выбрано") == std::string::npos)
+                        throw std::runtime_error("input hit-test/keyboard dispatch failed");
+                    field->value("Привет Switch + &");
+                    std::string form_error;
+                    auto search_url = visual::form_get(submit, app.container.base, form_error);
+                    std::string normalized_search = search_url;
+                    for (char &ch : normalized_search)
+                        ch = char(std::toupper(static_cast<unsigned char>(ch)));
+                    if (normalized_search.find("Q=%D0%9F%D1%80") == std::string::npos ||
+                        normalized_search.find("%2B%20%26") == std::string::npos ||
+                        normalized_search.find("HL=RU") == std::string::npos ||
+                        std::count(search_url.begin(), search_url.end(), '&') != 1)
+                        throw std::runtime_error("GET form serialization failed: " + form_error +
+                                                 " " + search_url);
+                    app.rebuild = true;
+                    app.pump();
+                    field = std::dynamic_pointer_cast<visual::Control>(
+                        app.document->root()->select_one("#search"));
+                    if (!field || field->value() != "Привет Switch + &")
+                        throw std::runtime_error("form value lost on relayout");
+                    link = app.document->root()->select_one("#jump");
                     auto box = link->get_placement();
                     app.click({float(box.x) + 4, float(box.y) + 4});
                     if (app.view.y <= 0)
@@ -439,6 +568,23 @@ int main(int argc, char **argv) {
                         throw std::runtime_error("below-fold JPEG paint failed");
                     printf("PASS external CSS, flex layout, Russian text, PNG/JPEG paint, "
                            "scrolling and anchor hit testing\n");
+                    app.cycle_viewport();
+                    app.cycle_viewport();
+                    app.pump();
+                    if (app.container.viewport_width != 640 || app.view.scale() != 2)
+                        throw std::runtime_error("mobile viewport failed");
+                    field = std::dynamic_pointer_cast<visual::Control>(
+                        app.document->root()->select_one("#search"));
+                    if (!field || field->value() != "Привет Switch + &")
+                        throw std::runtime_error("form value lost on responsive relayout");
+                    auto mobile_box = field->get_placement();
+                    app.view.y = std::max(0.f, float(mobile_box.y) - 80);
+                    app.view.clamp();
+                    app.notice.clear();
+                    app.click({(float(mobile_box.x) + 5 - app.view.x) * app.view.scale(),
+                               (float(mobile_box.y) + 5 - app.view.y) * app.view.scale()});
+                    if (app.notice.find("Поле выбрано") == std::string::npos)
+                        throw std::runtime_error("mobile input hit-test failed");
                     quit = true;
                 }
 #endif

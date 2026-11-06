@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install graphics development libraries
-        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev libwebp-dev libcurl4-openssl-dev
       - name: Fetch pinned engine and build
         run: |
           python3 browser/visual/tools/fetch_litehtml.py browser/visual/build/litehtml
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install graphics dependencies
         run: |
-          dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf switch-sdl2_image
+          dkp-pacman -S --noconfirm --needed switch-curl switch-sdl2_ttf switch-sdl2_image switch-libwebp
           if ! command -v cmake; then apt-get update && apt-get install -y --no-install-recommends cmake; fi
       - name: Build and verify font assets
         run: |

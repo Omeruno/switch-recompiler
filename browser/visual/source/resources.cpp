@@ -40,7 +40,9 @@ std::string Resources::resolve(const std::string &base, const std::string &ref) 
     }
     CURLU *u = curl_url();
     char *text = nullptr, *scheme = nullptr, *user = nullptr, *pass = nullptr;
-    bool ok = u && (base.empty() || curl_url_set(u, CURLUPART_URL, base.c_str(), 0) == CURLUE_OK) &&
+    bool ok = u &&
+              (base.empty() || ref.rfind("https://", 0) == 0 ||
+               curl_url_set(u, CURLUPART_URL, base.c_str(), 0) == CURLUE_OK) &&
               curl_url_set(u, CURLUPART_URL, ref.c_str(), 0) == CURLUE_OK &&
               curl_url_get(u, CURLUPART_SCHEME, &scheme, 0) == CURLUE_OK &&
               std::string(scheme) == "https" &&
@@ -70,7 +72,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         std::string name = key.substr(6);
         // Local assets are an explicit allowlist, never a URL-to-path mapping.
         if (name != "index.html" && name != "style.css" && name != "landscape.png" &&
-            name != "landscape.jpg") {
+            name != "landscape.jpg" && name != "landscape.webp") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -136,7 +138,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.1.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.2.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();

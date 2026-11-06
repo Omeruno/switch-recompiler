@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <webp/decode.h>
 namespace visual {
 Container::Container(SDL_Renderer *r, Resources &res, std::string font)
     : renderer(r), resources(res), font_path(std::move(font)) {}
@@ -24,10 +25,16 @@ void Container::reset() {
         SDL_DestroyTexture(kv.second.texture);
     images.clear();
     texts.clear();
+    for (auto &kv : gradients)
+        SDL_DestroyTexture(kv.second);
+    gradients.clear();
+    gradient_bytes = 0;
     image_bytes = 0;
     text_bytes = 0;
     unsupported = 0;
     anchor.clear();
+    clicked.reset();
+    forms.relayout();
     clips.clear();
 }
 SDL_Rect Container::screen(const litehtml::position &p) const {
@@ -48,7 +55,7 @@ void Container::apply_clip() {
     SDL_RenderSetClipRect(renderer, &r);
 }
 void Container::begin_paint() {
-    painted_text = painted_images = 0;
+    painted_text = painted_images = painted_gradients = 0;
     clips.clear();
     apply_clip();
 }
@@ -114,6 +121,15 @@ void Container::draw_text(litehtml::uint_ptr, const char *text, litehtml::uint_p
                       std::to_string(c.alpha) + ":" + text;
     auto it = texts.find(key);
     if (it == texts.end()) {
+        int measured_width = 0, measured_height = 0;
+        if (TTF_SizeUTF8(reinterpret_cast<TTF_Font *>(p), text, &measured_width,
+                         &measured_height) != 0 ||
+            measured_width <= 0 || measured_height <= 0 || measured_width > 8192 ||
+            measured_height > 512 ||
+            size_t(measured_width) * size_t(measured_height) * 4 > 8u * 1024u * 1024u) {
+            ++unsupported;
+            return;
+        }
         SDL_Surface *s = TTF_RenderUTF8_Blended(reinterpret_cast<TTF_Font *>(p), text,
                                                 {c.red, c.green, c.blue, c.alpha});
         if (!s)
@@ -148,7 +164,11 @@ static bool dimensions(const std::vector<unsigned char> &b, int &w, int &h) {
     auto be32 = [&](size_t n) {
         return uint32_t(b[n]) << 24 | uint32_t(b[n + 1]) << 16 | uint32_t(b[n + 2]) << 8 | b[n + 3];
     };
-    if (b.size() >= 24 && b[0] == 137 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+    if (b.size() >= 12 && std::string(reinterpret_cast<const char *>(b.data()), 4) == "RIFF" &&
+        std::string(reinterpret_cast<const char *>(b.data() + 8), 4) == "WEBP") {
+        if (!WebPGetInfo(b.data(), b.size(), &w, &h))
+            return false;
+    } else if (b.size() >= 24 && b[0] == 137 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
         uint32_t x = be32(16), y = be32(20);
         if (x > 4096 || y > 4096)
             return false;
@@ -202,7 +222,18 @@ Container::Image *Container::image(const char *src, const char *baseurl) {
     Image out;
     if (dimensions(r->data, out.w, out.h) &&
         image_bytes + size_t(out.w) * out.h * 4 <= 32u * 1024u * 1024u) {
-        SDL_Surface *s = IMG_Load_RW(SDL_RWFromConstMem(r->data.data(), int(r->data.size())), 1);
+        SDL_Surface *s = nullptr;
+        if (r->data.size() >= 12 &&
+            std::string(reinterpret_cast<const char *>(r->data.data()), 4) == "RIFF") {
+            s = SDL_CreateRGBSurfaceWithFormat(0, out.w, out.h, 32, SDL_PIXELFORMAT_RGBA32);
+            if (s && !WebPDecodeRGBAInto(r->data.data(), r->data.size(),
+                                         static_cast<uint8_t *>(s->pixels), size_t(s->pitch) * s->h,
+                                         s->pitch)) {
+                SDL_FreeSurface(s);
+                s = nullptr;
+            }
+        } else
+            s = IMG_Load_RW(SDL_RWFromConstMem(r->data.data(), int(r->data.size())), 1);
         if (s) {
             if (s->w == out.w && s->h == out.h)
                 out.texture = SDL_CreateTextureFromSurface(renderer, s);
@@ -228,6 +259,10 @@ void Container::draw_image(litehtml::uint_ptr, const litehtml::background_layer 
     auto *im = image(url.c_str(), baseurl.c_str());
     if (!im || !im->texture)
         return;
+    paint_tile(im->texture, l);
+    ++painted_images;
+}
+void Container::paint_tile(SDL_Texture *texture, const litehtml::background_layer &l) {
     auto origin = screen(l.origin_box), clip = screen(l.clip_box), border = screen(l.border_box);
     SDL_Rect previous;
     SDL_RenderGetClipRect(renderer, &previous);
@@ -249,10 +284,9 @@ void Container::draw_image(litehtml::uint_ptr, const litehtml::background_layer 
         for (int y = y0; y < (ry ? clip.y + clip.h : y0 + 1) && tiles < 4096; y += origin.h)
             for (int x = x0; x < (rx ? clip.x + clip.w : x0 + 1) && tiles < 4096; x += origin.w) {
                 SDL_Rect d = {x, y, origin.w, origin.h};
-                SDL_RenderCopy(renderer, im->texture, nullptr, &d);
+                SDL_RenderCopy(renderer, texture, nullptr, &d);
                 ++tiles;
             }
-        ++painted_images;
     }
     SDL_RenderSetClipRect(renderer, &previous);
 }
@@ -285,18 +319,6 @@ void Container::draw_solid_fill(litehtml::uint_ptr, const litehtml::background_l
                            r.x + r.w - 1 - int(std::ceil(right)), y);
     }
     SDL_RenderSetClipRect(renderer, &old);
-}
-void Container::draw_linear_gradient(litehtml::uint_ptr, const litehtml::background_layer &,
-                                     const litehtml::background_layer::linear_gradient &) {
-    ++unsupported;
-}
-void Container::draw_radial_gradient(litehtml::uint_ptr, const litehtml::background_layer &,
-                                     const litehtml::background_layer::radial_gradient &) {
-    ++unsupported;
-}
-void Container::draw_conic_gradient(litehtml::uint_ptr, const litehtml::background_layer &,
-                                    const litehtml::background_layer::conic_gradient &) {
-    ++unsupported;
 }
 void Container::draw_borders(litehtml::uint_ptr, const litehtml::borders &b,
                              const litehtml::position &p, bool) {
@@ -357,15 +379,31 @@ void Container::del_clip() {
         clips.pop_back();
     apply_clip();
 }
-void Container::get_viewport(litehtml::position &p) const { p = {0, 0, width, height - toolbar}; }
+void Container::get_viewport(litehtml::position &p) const {
+    p = {0, 0, viewport_width, viewport_height};
+}
 void Container::get_media_features(litehtml::media_features &m) const {
     m = {};
     m.type = litehtml::media_type_screen;
-    m.width = width;
-    m.height = height - toolbar;
-    m.device_width = width;
-    m.device_height = height;
+    m.width = viewport_width;
+    m.height = viewport_height;
+    m.device_width = viewport_width;
+    m.device_height = float(height) * viewport_width / width;
     m.color = 8;
-    m.resolution = 96;
+    m.resolution = 96.f * width / viewport_width;
+}
+litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
+                                                 const std::shared_ptr<litehtml::document> &doc) {
+    if (std::string(tag) == "input" || std::string(tag) == "textarea")
+        return std::make_shared<Control>(doc, forms, forms.next++);
+    return {};
+}
+bool Container::on_element_click(const litehtml::element::ptr &el) {
+    std::string tag = el->get_tagName();
+    if (tag == "input" || tag == "textarea" || tag == "button") {
+        clicked = el;
+        return true;
+    }
+    return false;
 }
 } // namespace visual
