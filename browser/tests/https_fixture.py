@@ -66,6 +66,19 @@ extendedKeyUsage=serverAuth
             pass
         def do_GET(self):
             route=urllib.parse.urlsplit(self.path).path
+            if route.startswith('/dyn-'):
+                mime='text/javascript';status=200
+                if route in ('/dyn-slow.js','/dyn-leak.js'):time.sleep(.25)
+                if route=='/dyn-page':mime='text/html';body=b"""<!doctype html><html><head><script>globalThis.windowLoads=0;globalThis.domReady=0;addEventListener('load',()=>windowLoads++);document.addEventListener('DOMContentLoaded',()=>domReady++);</script></head><body><div id=net-result>Start</div></body></html>"""
+                elif route=='/dyn-slow.js':body=b"if(document.currentScript.id!=='slow')throw Error('dynamic currentScript');dynTrace.push('slow');document.getElementById('net-result').textContent='Slow';"
+                elif route=='/dyn-fast.js':body=b"dynTrace.push('fast');document.getElementById('net-result').textContent='Fast';"
+                elif route=='/dyn-async.js':body=b"dynTrace.push('async');"
+                elif route=='/dyn-large.js':body=b'/*'+b'x'*140000+b'*/globalThis.largeExecuted=true;'
+                elif route=='/dyn-leak.js':body=b"localStorage.setItem('dynamic_leak','1');"
+                else:status=404;body=b'Not found'
+                self.send_response(status);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)))
+                if route=='/dyn-page':self.send_header('Content-Security-Policy',"script-src 'self' 'unsafe-inline'; script-src-attr 'none'")
+                self.end_headers();self.wfile.write(body);return
             loop_scripts={
                 '/loop-async.js':"globalThis.trace=globalThis.trace||[];trace.push('async');",
                 '/loop-ordered.js':"if(document.currentScript.id!=='ordered')throw Error('currentScript');trace.push('ordered');",

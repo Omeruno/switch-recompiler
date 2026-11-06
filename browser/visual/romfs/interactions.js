@@ -19,6 +19,19 @@ document.addEventListener('DOMContentLoaded',()=>{
     event.preventDefault();
     document.getElementById('forms-result').textContent='Готово: '+document.getElementById('demo-select').value+' / '+event.submitter.id;
   });
+  let mutationCount=0;
+  const dynamicTarget=document.getElementById('dynamic-target');
+  const dynamicObserver=new MutationObserver(records=>{
+    mutationCount+=records.length;
+    document.getElementById('dynamic-observed').textContent='Изменений: '+mutationCount;
+  });
+  dynamicObserver.observe(dynamicTarget,{childList:true,attributes:true});
+  document.getElementById('dynamic-run').addEventListener('click',()=>{
+    const script=document.createElement('script');script.src='dynamic-demo.js';
+    script.onload=()=>{document.getElementById('dynamic-status').textContent='Готово';script.remove();};
+    script.onerror=()=>{document.getElementById('dynamic-status').textContent='Ошибка загрузки';script.remove();};
+    document.head.appendChild(script);
+  });
   document.getElementById('js-fetch').addEventListener('click',()=>{
     document.getElementById('fetch-result').textContent='Загрузка…';
     fetch('state.json').then(response=>response.json()).then(data=>{

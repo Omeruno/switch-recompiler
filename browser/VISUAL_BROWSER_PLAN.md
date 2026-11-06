@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.6.0, 2026-11-06
+## Current status — visual 0.7.0, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,15 +16,16 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.6.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.7.0 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
   events, timers and bounded same-origin GET fetch. Version 0.4.1 adds native field
   frames, independent control sizing, text fitting/wrapping and shared JS/native focus.
   See the visual README for limits.
-- Ten host suites cover the existing browser and 0.5.0 flex gaps/geometry, independently
-  compared to 120 Chromium rectangles, plus categorized core diagnostics. ARM64 CI supplies the NRO;
+- Fourteen host suites now cover rendering/forms, scheduling, dynamic scripts and
+  observers. Flex geometry has 120 Chromium reference rectangles; the shared
+  dynamic DOM fixture also runs in Chromium. ARM64 CI supplies the NRO;
   host results do not establish device performance or arbitrary-site compatibility.
 - Still required for general browsing: broader DOM/events and JavaScript APIs,
   Grid and additional CSS, navigation/focus/selection work, modules/workers,
@@ -99,7 +100,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.6.0
+## Implemented candidate — visual 0.1.0–0.7.0
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -143,3 +144,14 @@ completions from rebuilding CSS. Native DOM/input identity is tested through
 late images/styles and navigation. See the visual README and core audit for
 budgets and limits: streaming parser scheduling, dynamic scripts, observers,
 modules/workers and fine-grained style invalidation remain open.
+
+## Dynamic DOM block — 0.7.0
+
+Dynamic classic script preparation/execution, async=false ordering, currentScript,
+inert innerHTML, bounded native MutationObserver records and DocumentFragment/bulk
+mutations are implemented together. Shared behavioral fixtures have a Chromium
+reference; HTTPS tests cover loader ordering, policy/cache/size/error cases and
+navigation cancellation. Detached fragments defer computed style until the normal
+refresh, fixing a sanitizer-reported uninitialized font-style read. Device checks
+are documented in visual/TESTING.md; ResizeObserver, IntersectionObserver, modules,
+workers and the other network/layout/graphics gates remain separate.

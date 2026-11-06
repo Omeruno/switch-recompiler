@@ -1,6 +1,7 @@
 // Wrappers delegate to the actual litehtml tree. There is no second document.
 (() => {
   const bridge=globalThis.__native;
+  const defineNativeProperty=Object.defineProperty, nativePrototype=Object.getPrototypeOf;
   delete globalThis.__native;
   const nodes=new Map(), listeners=new WeakMap();
   let listenerCount=0, readyState='loading';
@@ -62,8 +63,8 @@
   class Node {
     constructor(key){Object.defineProperty(this,'_key',{value:key});}
     get nodeType(){return this._key===0?9:bridge('kind',this._key);}
-    get nodeName(){return this.nodeType===9?'#document':this.nodeType===3?'#text':this.tagName;}
-    get tagName(){return bridge('tag',this._key).toUpperCase();}
+    get nodeName(){return this.nodeType===9?'#document':this.nodeType===3?'#text':this.nodeType===11?'#document-fragment':this.tagName;}
+    get tagName(){return this.nodeType===1?bridge('tag',this._key).toUpperCase():undefined;}
     get ownerDocument(){return this._key===0?null:document;}
     get parentNode(){const key=bridge('parent',this._key);return key>=0?wrap(key):null;}
     get parentElement(){const p=this.parentNode;return p?.nodeType===1?p:null;}
@@ -77,16 +78,19 @@
     get isConnected(){for(let n=this;n;n=n.parentNode)if(n===document)return true;return false;}
     get textContent(){return bridge('text',this._key);}
     set textContent(v){bridge('text',this._key,String(v??''));}
+    get nodeValue(){return this.nodeType===3?this.textContent:null;}set nodeValue(v){if(this.nodeType===3)this.textContent=v;}
+    get data(){return this.nodeType===3?this.textContent:undefined;}set data(v){if(this.nodeType!==3)throw new TypeError('Expected CharacterData');this.textContent=v;}
+    get previousSibling(){const a=this.parentNode?.childNodes||[];return a[a.indexOf(this)-1]||null;}
     get innerHTML(){return bridge('html',this._key);}
     set innerHTML(v){bridge('html',this._key,String(v));}
     get innerText(){return this.textContent;}set innerText(v){this.textContent=v;}
     appendChild(node){if(!(node instanceof Node))throw new TypeError('Expected Node');bridge('append',this._key,node._key);return node;}
-    append(...items){for(const v of items)this.appendChild(v instanceof Node?v:document.createTextNode(String(v)));}
+    append(...items){bridge('batch',this._key,items.map(v=>(v instanceof Node?v:document.createTextNode(String(v)))._key),0);}
     insertBefore(node,before){if(!(node instanceof Node))throw new TypeError('Expected Node');bridge('insert',this._key,node._key,before?before._key:-1);return node;}
-    prepend(...items){for(let i=items.length-1;i>=0;i--){const node=items[i] instanceof Node?items[i]:document.createTextNode(String(items[i]));this.insertBefore(node,this.firstChild);}}
+    prepend(...items){bridge('batch',this._key,items.map(v=>(v instanceof Node?v:document.createTextNode(String(v)))._key),1);}
     removeChild(node){bridge('remove',this._key,node._key);return node;}
     remove(){if(this.parentNode)this.parentNode.removeChild(this);}
-    replaceChildren(...items){for(const node of this.childNodes)node.remove();this.append(...items);}
+    replaceChildren(...items){bridge('batch',this._key,items.map(v=>(v instanceof Node?v:document.createTextNode(String(v)))._key),2);}
     contains(node){for(let n=node;n;n=n.parentNode)if(n===this)return true;return false;}
     getAttribute(name){return bridge('attr',this._key,String(name).toLowerCase());}
     setAttribute(name,v){bridge('attr',this._key,String(name).toLowerCase(),String(v));}
@@ -97,6 +101,10 @@
     get classList(){const el=this;return {add(...a){el.className=[...new Set([...el.className.split(/\s+/).filter(Boolean),...a])].join(' ');},remove(...a){el.className=el.className.split(/\s+/).filter(x=>!a.includes(x)).join(' ');},contains(x){return el.className.split(/\s+/).includes(x);},toggle(x,force){const yes=force===undefined?!this.contains(x):!!force;yes?this.add(x):this.remove(x);return yes;}};}
     get dataset(){const el=this;return new Proxy({}, {get(_,k){return el.getAttribute('data-'+String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()))??undefined;},set(_,k,v){el.setAttribute('data-'+String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),v);return true;}});}
     get style(){const el=this;const pairs=()=>new Map((el.getAttribute('style')||'').split(';').map(x=>{const i=x.indexOf(':');return i<0?['','']:[x.slice(0,i).trim(),x.slice(i+1).trim()];}).filter(x=>x[0]));const css=k=>String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase());return new Proxy({setProperty(k,v,p=''){const a=pairs();a.set(String(k),String(v)+(p?' !important':''));el.setAttribute('style',[...a].map(x=>x.join(':')).join(';'));},removeProperty(k){const a=pairs(),v=a.get(k)||'';a.delete(k);el.setAttribute('style',[...a].map(x=>x.join(':')).join(';'));return v;},getPropertyValue(k){return pairs().get(k)||'';}},{get(o,k){return k==='cssText'?el.getAttribute('style')||'':k in o?o[k]:o.getPropertyValue(css(k));},set(o,k,v){if(k==='cssText')el.setAttribute('style',v);else o.setProperty(css(k),v);return true;}});}
+    get async(){return this.tagName==='SCRIPT'?bridge('scriptAsync',this._key):false;}set async(v){if(this.tagName!=='SCRIPT')return;bridge('scriptForce',this._key);v?this.setAttribute('async',''):this.removeAttribute('async');}
+    get defer(){return this.hasAttribute('defer');}set defer(v){v?this.setAttribute('defer',''):this.removeAttribute('defer');}
+    get noModule(){return this.hasAttribute('nomodule');}set noModule(v){v?this.setAttribute('nomodule',''):this.removeAttribute('nomodule');}
+    get text(){return this.tagName==='SCRIPT'?this.textContent:undefined;}set text(v){this.textContent=v;}
     get type(){return bridge('type',this._key);}set type(v){this.setAttribute('type',v);}
     get checked(){return bridge('checked',this._key);}set checked(v){bridge('checked',this._key,!!v);}
     get defaultChecked(){return this.hasAttribute('checked');}set defaultChecked(v){v?this.setAttribute('checked',''):this.removeAttribute('checked');}
@@ -125,7 +133,8 @@
     blur(){if(currentFocus()===this)setFocus(null);}
     click(){this.dispatchEvent(new Event('click',{bubbles:true,cancelable:true}));}
   }
-  for(const name of ['lang','dir','title','rel','target','placeholder'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
+  for(const name of ['lang','dir','title','rel','target','placeholder','integrity','crossOrigin','content'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
+  Object.defineProperty(Node.prototype,'httpEquiv',{get(){return this.getAttribute('http-equiv')||'';},set(v){this.setAttribute('http-equiv',v);}});
   Object.defineProperty(Node.prototype,'src',{get(){const value=this.getAttribute('src');return value?bridge('resolve',0,value):'';},set(v){this.setAttribute('src',v);}});
   Object.assign(Node.prototype,eventMethods);
   function currentFocus(){const key=bridge('activeElement',0);return key===null?null:wrap(key);}
@@ -140,6 +149,7 @@
   const document=wrap(0);
   document.createElement=tag=>wrap(bridge('create',0,String(tag)));
   document.createTextNode=text=>wrap(bridge('createText',0,String(text)));
+  document.createDocumentFragment=()=>wrap(bridge('createFragment',0));
   document.getElementById=id=>{const key=bridge('id',0,String(id));return key?wrap(key):null;};
   document.getElementsByClassName=s=>query(0,'.'+String(s).trim().split(/\s+/).join('.'));
   document.getElementsByTagName=s=>query(0,String(s));
@@ -155,7 +165,7 @@
   Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.6.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.7.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -186,6 +196,81 @@
   }
   globalThis.URL=URL;
   for(const [name,session] of [['localStorage',false],['sessionStorage',true]])globalThis[name]={get length(){return bridge('storageLength',0,session);},key(i){return bridge('storageKey',0,session,i);},getItem(k){return bridge('storageGet',0,session,String(k));},setItem(k,v){bridge('storageSet',0,session,String(k),String(v));},removeItem(k){bridge('storageRemove',0,session,String(k));},clear(){bridge('storageClear',0,session);}};
+  // Mutation records originate from committed native DOM operations, not a shadow tree.
+  const observerState=new WeakMap(), activeObservers=new Set(), pendingObservers=new Set();
+  let observerQueued=false, observerRecords=0, observerBytes=0, nextObserver=0;
+  const recordCosts=new WeakMap();
+  function observerError(code){bridge('observerLimit',0,code);}
+  function observerMicrotask(){
+    observerQueued=false;
+    const batch=[...pendingObservers].sort((a,b)=>observerState.get(a).index-observerState.get(b).index);pendingObservers.clear();
+    for(const observer of batch){
+      const state=observerState.get(observer);state.transient.clear();
+      const records=observer.takeRecords();
+      if(records.length){try{Reflect.apply(state.callback,observer,[records,observer]);}catch(e){bridge('report',0,String(e));}}
+    }
+  }
+  function scheduleObservers(observer){
+    pendingObservers.add(observer);
+    if(!observerQueued){observerQueued=true;bridge('microtask',0,observerMicrotask);}
+  }
+  const mutationRecordKey=Symbol();
+  class MutationRecord {
+    constructor(type,target,added,removed,previous,next,name,old,key){
+      if(key!==mutationRecordKey)throw new TypeError('Illegal constructor');
+      Object.defineProperties(this,Object.fromEntries(Object.entries({type,target,addedNodes:added,removedNodes:removed,previousSibling:previous,nextSibling:next,attributeName:name,attributeNamespace:null,oldValue:old}).map(([k,value])=>[k,{value,enumerable:true}])));
+    }
+  }
+  class MutationObserver {
+    constructor(callback){if(typeof callback!=='function')throw new TypeError('Observer requires function');observerState.set(this,{callback,index:++nextObserver,targets:new Map(),transient:new Map(),records:[]});}
+    observe(target,options){
+      const state=observerState.get(this);if(!state)throw new TypeError('Expected observer');
+      if(!(target instanceof Node))throw new TypeError('Expected Node');
+      if(options==null)throw new TypeError('Observer options required');
+      const o=Object(options),has=k=>o[k]!==undefined;
+      const attributes=has('attributes')?!!o.attributes:has('attributeOldValue')||has('attributeFilter');
+      const characterData=has('characterData')?!!o.characterData:has('characterDataOldValue');
+      const normalized={source:target._key,childList:!!o.childList,attributes,characterData,subtree:!!o.subtree,attributeOldValue:!!o.attributeOldValue,characterDataOldValue:!!o.characterDataOldValue,attributeFilter:has('attributeFilter')?Array.from(o.attributeFilter,String):null};
+      if(!normalized.childList&&!attributes&&!characterData||!attributes&&(normalized.attributeOldValue||normalized.attributeFilter!==null)||!characterData&&normalized.characterDataOldValue)throw new TypeError('Invalid observer options');
+      if(normalized.attributeFilter?.length>64)throw new RangeError('Attribute filter limit');
+      if(!activeObservers.has(this)&&activeObservers.size>=64)throw new RangeError('Observer limit');
+      if(!state.targets.has(target._key)&&state.targets.size>=32)throw new RangeError('Observer target limit');
+      state.targets.set(target._key,normalized);for(const [id,entries] of state.transient){const left=entries.filter(o=>o.source!==target._key);left.length?state.transient.set(id,left):state.transient.delete(id);}activeObservers.add(this);bridge('observerActive',0,true);
+    }
+    disconnect(){
+      const state=observerState.get(this);if(!state)throw new TypeError('Expected observer');
+      state.targets.clear();state.transient.clear();this.takeRecords();activeObservers.delete(this);pendingObservers.delete(this);
+      bridge('observerActive',0,activeObservers.size>0);
+    }
+    takeRecords(){const state=observerState.get(this);if(!state)throw new TypeError('Expected observer');const records=state.records;state.records=[];observerRecords-=records.length;for(const record of records)observerBytes-=recordCosts.get(record)||0;return records;}
+  }
+  globalThis.MutationObserver=MutationObserver;globalThis.MutationRecord=MutationRecord;
+  function mutation(type,key,added,removed,previous,next,name,old,ancestors){
+    for(const observer of activeObservers){
+      const state=observerState.get(observer),matching=[];
+      for(const id of ancestors){
+        const option=state.targets.get(id);if(option&&(id===key||option.subtree))matching.push(option);
+        for(const transient of state.transient.get(id)||[])matching.push(transient);
+      }
+      // Retain subtree observations until the next notification after a removal.
+      if(type==='childList'&&removed.length){
+        const inherited=matching.filter(o=>o.subtree);
+        if(inherited.length){for(const id of removed){if(state.transient.size>=128&&!state.transient.has(id)){observerError('transient');break;}state.transient.set(id,[...new Set([...(state.transient.get(id)||[]),...inherited])]);}scheduleObservers(observer);}
+      }
+      let interested=false,wantsOld=false;
+      for(const option of matching){
+        if(!option[type])continue;
+        if(type==='attributes'&&option.attributeFilter&&!option.attributeFilter.includes(name))continue;
+        interested=true;wantsOld ||=type==='attributes'?option.attributeOldValue:type==='characterData'?option.characterDataOldValue:false;
+      }
+      if(!interested)continue;
+      const cost=128+(added.length+removed.length)*8+(wantsOld&&old?old.length*2:0);
+      if(state.records.length>=256||observerRecords>=1024||observerBytes+cost>1048576){observerError('records');scheduleObservers(observer);continue;}
+      const list=ids=>{const a=ids.map(wrap);Object.defineProperty(a,'item',{value:i=>a[i]??null});return Object.freeze(a);};
+      const record=new MutationRecord(type,wrap(key),list(added),list(removed),previous<0?null:wrap(previous),next<0?null:wrap(next),name,wantsOld?old:null,mutationRecordKey);
+      state.records.push(record);recordCosts.set(record,cost);observerBytes+=cost;++observerRecords;scheduleObservers(observer);
+    }
+  }
   const timers=new Map(), frames=new Map();let nextTimer=0,nextFrame=0,frameIDs=[],frameTime=0;
   function timer(fn,delay,repeat,args){if(typeof fn!=='function')throw new TypeError('Timer requires function');if(timers.size>=64)throw new RangeError('Timer limit');let ms=Number(delay);ms=Number.isFinite(ms)?Math.max(0,Math.min(2147483647,ms)):0;const id=++nextTimer;timers.set(id,{fn,args,due:bridge('now',0)+ms,repeat:repeat?Math.max(4,ms):0});return id;}
   globalThis.setTimeout=(fn,delay,...args)=>timer(fn,delay,false,args);globalThis.setInterval=(fn,delay,...args)=>timer(fn,delay,true,args);
@@ -207,6 +292,7 @@
   };
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
+    mutated:mutation,
     focus(id){setFocus(id?wrap(id):null);},
     rejected(promise,reason,handled){const event=new Event(handled?'rejectionhandled':'unhandledrejection',{cancelable:!handled});event.promise=promise;event.reason=reason;return globalThis.dispatchEvent(event);},
     viewport(){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}},
@@ -220,6 +306,6 @@
     event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur','load','error'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched(id,ok,status,url,body,error){const f=fetches.get(id);if(!f)return;fetches.delete(id);if(error){f.reject(new TypeError(error));return;}f.resolve({ok,status,url,text:()=>Promise.resolve(body),json:()=>Promise.resolve().then(()=>JSON.parse(body))});},
-    blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])Object.defineProperty(Object.getPrototypeOf(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}
+    blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])defineNativeProperty(nativePrototype(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}
   };
 })();

@@ -20,7 +20,7 @@ index a1d4833..84cf43e 100644
          flex_wrap            get_flex_wrap() const;
          flex_justify_content get_flex_justify_content() const;
 diff --git a/include/litehtml/document.h b/include/litehtml/document.h
-index ea27155..3403d02 100644
+index ea27155..6789614 100644
 --- a/include/litehtml/document.h
 +++ b/include/litehtml/document.h
 @@ -58,6 +58,7 @@ namespace litehtml
@@ -31,15 +31,17 @@ index ea27155..3403d02 100644
          litehtml::css                           m_styles;
          litehtml::web_color                     m_def_color;
          litehtml::css                           m_master_css;
-@@ -126,6 +127,8 @@ namespace litehtml
+@@ -126,7 +127,9 @@ namespace litehtml
              return m_over_element;
          }
  
+-        void append_children_from_string(element& parent, const char* str, bool replace_existing);
 +        void refresh_native_dom();
 +
-         void append_children_from_string(element& parent, const char* str, bool replace_existing);
++        void append_children_from_string(element& parent, const char* str, bool replace_existing, bool defer_styles = false);
          void dump(dumper& cout);
  
+         // see doc/document_createFromString.txt
 diff --git a/include/litehtml/el_text.h b/include/litehtml/el_text.h
 index 365453a..3f59db1 100644
 --- a/include/litehtml/el_text.h
@@ -132,7 +134,7 @@ index 5b03ba4..7bc2de9 100644
              el->get_property<int>(_flex_direction_, false, flex_direction_row, offset(m_flex_direction)));
          m_flex_wrap =
 diff --git a/src/document.cpp b/src/document.cpp
-index 315749a..67a2eae 100644
+index 315749a..eb6eaf7 100644
 --- a/src/document.cpp
 +++ b/src/document.cpp
 @@ -105,6 +105,8 @@ namespace litehtml
@@ -144,10 +146,11 @@ index 315749a..67a2eae 100644
  
          m_root = root;
  
-@@ -1134,6 +1136,50 @@ namespace litehtml
+@@ -1134,7 +1136,51 @@ namespace litehtml
          }
      }
  
+-    void document::append_children_from_string(element& parent, const char* str, bool replace_existing)
 +    void document::refresh_native_dom()
 +    {
 +        if(!m_root) return;
@@ -192,9 +195,38 @@ index 315749a..67a2eae 100644
 +        if(m_root_render) m_root_render = m_root_render->init();
 +    }
 +
-     void document::append_children_from_string(element& parent, const char* str, bool replace_existing)
++    void document::append_children_from_string(element& parent, const char* str, bool replace_existing, bool defer_styles)
      {
          // parent must belong to this document
+         if(parent.get_document().get() != this)
+@@ -1162,7 +1208,7 @@ namespace litehtml
+         if(replace_existing)
+         {
+             parent.clearRecursive();
+-            parent_render->children().clear();
++            if(parent_render) parent_render->children().clear();
+         }
+ 
+         // Let's process created elements tree
+@@ -1170,6 +1216,9 @@ namespace litehtml
+         {
+             // Add the child element to parent
+             parent.appendChild(child);
++            // Native DOM edits are styled together later; detached parents do not
++            // have computed inherited font properties or render items yet.
++            if(defer_styles) continue;
+ 
+             // apply master CSS
+             child->apply_stylesheet(m_master_css);
+@@ -1200,7 +1249,7 @@ namespace litehtml
+         // Now the m_tabular_elements is filled with tabular elements.
+         // We have to check the tabular elements for missing table elements
+         // and create the anonymous boxes in visual table layout
+-        fix_tables_layout();
++        if(!defer_styles) fix_tables_layout();
+     }
+ 
+     void document::dump(dumper& cout)
 diff --git a/src/flex_line.cpp b/src/flex_line.cpp
 index b8511c2..2ac16eb 100644
 --- a/src/flex_line.cpp

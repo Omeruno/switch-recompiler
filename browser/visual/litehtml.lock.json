@@ -3,11 +3,11 @@
   "commit": "ab7caef1d54f2265f919c299d29c135863675d96",
   "patch": {
     "file": "patches/native-dom.patch",
-    "sha256": "ace172911f79389c4537e132932db5576d9827ce715398ceace807bf0653cd20",
+    "sha256": "75eee698715adc4a441d70a34f704dd6b16366f424a614a9e350749a2f5bfa37",
     "files": {
-      "include/litehtml/document.h": "ac7d2c1b81bf78b1fe9e329ba2bd606969d6880dd95a77c22b0e12e2cb1ba28d",
+      "include/litehtml/document.h": "c2254798176f20a7244ddf16891035b04e93c96c635277a7951d338ecf4e7924",
       "include/litehtml/html_tag.h": "9b8b0274b40dd93d6472dad9f3b6132676f462cd766aca0ef721bf5f4ad48aa7",
-      "src/document.cpp": "2a496f6e08422698160c577c57db6f3e7474f06e850535d48d4f4b30b6234691",
+      "src/document.cpp": "b84f9c2380de7ee6a2b72c502b1b52f75d22c561a0a8e8d83f094eab9caf96b5",
       "src/html_tag.cpp": "b518fddd2d3fda1bdb24b4a650eac40273c7dff86ad0fa99fd6741fa8a3cffe3",
       "include/litehtml/el_text.h": "2fffb1219a5577b07965341b08446b215807effa5b5315cfadf89aef5c1bf887",
       "src/style.cpp": "3761fa523fadb550785065e11a020f54fa6e65e9f572df8a49b2552bb9e99b4c",

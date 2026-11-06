@@ -9,6 +9,7 @@ extern "C" {
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <litehtml/el_text.h>
 #include <map>
 #include <set>
@@ -142,11 +143,17 @@ struct Scripts::Impl {
     struct Job {
         std::string source, url;
         Resource *resource = nullptr;
-        enum Mode { ordered, asynchronous, deferred } mode = ordered;
-        bool external = false, done = false;
+        enum Mode { ordered, asynchronous, deferred, dynamic_ordered } mode = ordered;
+        bool external = false, done = false, dynamic = false;
         litehtml::element::ptr element;
     };
-    std::vector<Job> jobs;
+    std::deque<Job> jobs;
+    struct ScriptState {
+        bool started = false, force_async = true;
+    };
+    std::unordered_map<const litehtml::element *, ScriptState> script_states;
+    unsigned script_depth = 0;
+    bool eval_blocked = false;
     litehtml::element::ptr current_script;
     struct Fetch {
         int id;
@@ -204,7 +211,7 @@ struct Scripts::Impl {
         JS_SetPropertyStr(context, global, "__native",
                           JS_NewCFunction(context, native, "__native", 4));
         JS_FreeValue(context, global);
-        budget(100);
+        budget(500); // Trusted bundled facade, not page-supplied JavaScript.
         usable_runtime = evaluate(browser_dom, sizeof(browser_dom) - 1, "native-dom");
         global = JS_GetGlobalObject(context);
         hooks = JS_GetPropertyStr(context, global, "__visualHooks");
@@ -214,61 +221,14 @@ struct Scripts::Impl {
         JS_FreeValue(context, global);
         if (!usable_runtime)
             throw std::runtime_error(last_error);
-        budget(50);
+        budget(500);
         evaluate(browser_intl, sizeof(browser_intl) - 1, "intl-ru-en");
-        for (auto &el : doc->root()->select_all("meta"))
-            if (lower(el->get_attr("http-equiv", "")) == "content-security-policy")
-                policies.push_back(el->get_attr("content", ""));
-        if (!allowed("script-src", "", true, "'unsafe-eval'")) {
-            auto result = call("blockEval", {});
-            JS_FreeValue(context, result);
-        }
+        absorb_meta();
         for (auto &el : doc->root()->select_all("script")) {
-            std::string type = lower(el->get_attr("type", ""));
-            if (type == "module") {
-                last_error = "JavaScript modules are not implemented";
-                issue_log.add("unsupported", "module", origin(container.page_url));
-                continue;
-            }
-            if (!type.empty() && type != "text/javascript" && type != "application/javascript")
-                continue;
-            if (jobs.size() >= 16) {
-                last_error = "Script count quota exceeded";
-                issue_log.add("limit", "script-count", origin(container.page_url));
-                break;
-            }
-            std::string src = el->get_attr("src", "");
-            Job entry;
-            entry.element = el;
-            if (src.empty()) {
-                el->get_text(entry.source);
-                if (entry.source.size() > 128u * 1024u) {
-                    last_error = "Script byte quota exceeded";
-                    issue_log.add("limit", "script-bytes", origin(container.page_url));
-                    continue;
-                }
-                if (!allowed("script-src", "", true)) {
-                    issue_log.add("policy", "inline-script", origin(container.page_url));
-                    continue;
-                }
-                entry.url = "inline";
-            } else {
-                entry.url = Resources::resolve(container.base, src);
-                if (!allowed("script-src", entry.url, false)) {
-                    issue_log.add("policy", "external-script", origin(entry.url));
-                    continue;
-                }
-                entry.external = true;
-                entry.mode = el->get_attr("async")   ? Job::asynchronous
-                             : el->get_attr("defer") ? Job::deferred
-                                                     : Job::ordered;
-                entry.resource = resources.request(entry.url, 128u * 1024u);
-                if (entry.resource)
-                    entry.resource->critical = true;
-                if (!entry.resource)
-                    continue;
-            }
-            jobs.push_back(std::move(entry));
+            script_states[el.get()] = {false, false};
+            prepare_script(el, false);
+            if (!script_states[el.get()].started && !el->get_attr("async"))
+                script_states[el.get()].force_async = true;
         }
     }
     ~Impl() { release(); }
@@ -435,6 +395,8 @@ struct Scripts::Impl {
     }
     bool allowed(const std::string &directive, const std::string &url, bool inline_code,
                  const std::string &keyword = "'unsafe-inline'") const {
+        if (policy_overflow)
+            return false;
         if (!inline_code && (url.empty() || Resources::resolve("", url).empty()) &&
             url.rfind("demo:/", 0) != 0)
             return false;
@@ -520,6 +482,302 @@ struct Scripts::Impl {
         }
         return out;
     }
+    bool observing = false;
+    using Element = litehtml::element::ptr;
+    std::vector<Element> dom_children(const Element &el) const {
+        std::vector<Element> out;
+        for (auto &child : el->children())
+            if (!generated(child))
+                out.push_back(child);
+        return out;
+    }
+    std::pair<Element, Element> siblings(const Element &el) const {
+        auto parent = el->parent();
+        if (!parent)
+            return {};
+        auto list = dom_children(parent);
+        auto it = std::find(list.begin(), list.end(), el);
+        return {it != list.begin() && it != list.end() ? *std::prev(it) : Element{},
+                it != list.end() && std::next(it) != list.end() ? *std::next(it) : Element{}};
+    }
+    JSValue node_ids(const std::vector<Element> &list) {
+        auto out = JS_NewArray(context);
+        if (JS_IsException(out))
+            throw std::runtime_error("Mutation allocation failed");
+        try {
+            for (uint32_t i = 0; i < list.size(); ++i)
+                if (JS_SetPropertyUint32(context, out, i,
+                                         JS_NewInt32(context, int(handle(list[i])))) < 0)
+                    throw std::runtime_error("Mutation allocation failed");
+        } catch (...) {
+            JS_FreeValue(context, out);
+            throw;
+        }
+        return out;
+    }
+    void mutation(const char *type, const Element &target, const std::vector<Element> &added = {},
+                  const std::vector<Element> &removed = {}, const Element &previous = {},
+                  const Element &next = {}, const char *attribute = nullptr,
+                  const std::string *old = nullptr) {
+        if (!observing)
+            return;
+        std::vector<Element> chain;
+        bool document_ancestor = false;
+        for (auto node = target; node; node = node->parent()) {
+            if (chain.size() >= 256)
+                throw std::runtime_error("DOM depth limit");
+            chain.push_back(node);
+            if (node == doc->root()) {
+                document_ancestor = true;
+                break;
+            }
+        }
+        std::vector<JSValue> args;
+        args.reserve(10);
+        try {
+            args.push_back(JS_NewString(context, type));
+            args.push_back(JS_NewInt32(context, int(handle(target))));
+            args.push_back(node_ids(added));
+            args.push_back(node_ids(removed));
+            args.push_back(JS_NewInt32(context, previous ? int(handle(previous)) : -1));
+            args.push_back(JS_NewInt32(context, next ? int(handle(next)) : -1));
+            args.push_back(attribute ? JS_NewString(context, attribute) : JS_NULL);
+            args.push_back(old ? JS_NewStringLen(context, old->data(), old->size()) : JS_NULL);
+            args.push_back(node_ids(chain));
+            if (document_ancestor &&
+                JS_SetPropertyUint32(context, args.back(), uint32_t(chain.size()),
+                                     JS_NewInt32(context, 0)) < 0)
+                throw std::runtime_error("Mutation allocation failed");
+            auto result = call("mutated", std::move(args));
+            JS_FreeValue(context, result);
+        } catch (...) {
+            for (auto arg : args)
+                JS_FreeValue(context, arg);
+            throw;
+        }
+    }
+    void detach(const Element &child) {
+        if (auto parent = child->parent()) {
+            auto near = siblings(child);
+            parent->removeChild(child);
+            mutation("childList", parent, {}, {child}, near.first, near.second);
+        }
+    }
+    bool is_fragment(const Element &el) const {
+        return std::string(el->get_tagName()) == "__fragment";
+    }
+    void batch_children(const Element &parent, const std::vector<Element> &input,
+                        Element before = {}, bool replace = false) {
+        if (parent->is_text())
+            throw std::runtime_error("Invalid parent");
+        if (before && before->parent() != parent)
+            throw std::runtime_error("Reference is not a child");
+        std::vector<Element> added, fragments;
+        auto add_unique = [&](const Element &node) {
+            added.erase(std::remove(added.begin(), added.end(), node), added.end());
+            added.push_back(node);
+        };
+        for (auto &node : input) {
+            if (node == doc->root())
+                throw std::runtime_error("Cannot move root");
+            unsigned depth = 0;
+            for (auto p = parent; p; p = p->parent()) {
+                if (++depth > 256)
+                    throw std::runtime_error("DOM depth limit");
+                if (p == node)
+                    throw std::runtime_error("DOM cycle");
+            }
+            if (is_fragment(node)) {
+                fragments.push_back(node);
+                for (auto &child : dom_children(node))
+                    add_unique(child);
+            } else
+                add_unique(node);
+        }
+        for (auto &node : added) {
+            if (node == parent)
+                throw std::runtime_error("DOM cycle");
+            for (auto p = parent; p; p = p->parent())
+                if (p == node)
+                    throw std::runtime_error("DOM cycle");
+        }
+        while (before && std::find(added.begin(), added.end(), before) != added.end())
+            before = siblings(before).second;
+        quota(0);
+        for (auto &fragment : fragments) {
+            auto removed = dom_children(fragment);
+            for (auto &node : removed)
+                fragment->removeChild(node);
+            if (!removed.empty())
+                mutation("childList", fragment, {}, removed);
+        }
+        for (auto &node : added)
+            detach(node);
+        auto removed = replace ? dom_children(parent) : std::vector<Element>{};
+        if (replace) {
+            for (auto &node : removed)
+                parent->removeChild(node);
+            before.reset();
+        }
+        auto remaining = dom_children(parent);
+        Element previous = before              ? siblings(before).first
+                           : remaining.empty() ? Element{}
+                                               : remaining.back();
+        auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(parent);
+        if (!tag)
+            throw std::runtime_error("Invalid parent");
+        for (auto &node : added) {
+            parent->appendChild(node);
+            if (before) {
+                auto &list = tag->children();
+                list.splice(std::find(list.begin(), list.end(), before), list,
+                            std::find(list.begin(), list.end(), node));
+            }
+        }
+        if (!added.empty() || !removed.empty())
+            mutation("childList", parent, added, removed, previous, before);
+        for (auto &node : added)
+            activate_scripts(node);
+        if (std::string(parent->get_tagName()) == "script")
+            activate_scripts(parent);
+    }
+    std::set<std::string> seen_meta;
+    bool policy_overflow = false;
+    unsigned scripts_prepared = 0;
+    void absorb_meta() {
+        for (auto &el : doc->root()->select_all("meta")) {
+            if (lower(el->get_attr("http-equiv", "")) != "content-security-policy")
+                continue;
+            std::string policy = el->get_attr("content", "");
+            if (!seen_meta.insert(policy).second)
+                continue;
+            if (policies.size() >= 16) {
+                policy_overflow = true;
+                break;
+            }
+            policies.push_back(policy);
+        }
+        if (!eval_blocked && !allowed("script-src", "", true, "'unsafe-eval'")) {
+            eval_blocked = true;
+            auto result = call("blockEval", {});
+            JS_FreeValue(context, result);
+            eval_blocked = true;
+        }
+    }
+    bool connected_script(const Element &el) const {
+        for (auto n = el; n; n = n->parent()) {
+            if (std::string(n->get_tagName()) == "template")
+                return false;
+            if (n == doc->root())
+                return true;
+        }
+        return false;
+    }
+    void script_event(const Element &el, const char *type) {
+        if (pending_script_events.size() < 64)
+            pending_script_events.push_back({el, type});
+        else
+            issue_log.add("limit", "script-events", origin(container.page_url));
+    }
+    void prepare_script(const Element &el, bool dynamic) {
+        auto &state = script_states[el.get()];
+        if (state.started || !connected_script(el))
+            return;
+        std::string type = lower(el->get_attr("type", ""));
+        if (!type.empty() && type != "text/javascript" && type != "application/javascript" &&
+            type != "module")
+            return;
+        const char *src_attr = el->get_attr("src");
+        bool has_src = src_attr != nullptr;
+        std::string src = src_attr ? src_attr : "";
+        bool force_async = state.force_async;
+        std::string source;
+        el->get_text(source);
+        if (!has_src && source.empty())
+            return;
+        state.started = true;
+        if (scripts_prepared >= 64 || (!dynamic && jobs.size() >= 16)) {
+            last_error = "Script count quota exceeded";
+            issue_log.add("limit", "script-count", origin(container.page_url));
+            return;
+        }
+        ++scripts_prepared;
+        auto fail = [&](const char *category, const char *code) {
+            issue_log.add(category, code, origin(container.page_url));
+            script_event(el, "error");
+        };
+        if (type == "module") {
+            last_error = "JavaScript modules are not implemented";
+            fail("unsupported", "module");
+            return;
+        }
+        absorb_meta();
+        if (policy_overflow) {
+            fail("policy", "script-policy-limit");
+            return;
+        }
+        Job entry;
+        entry.element = el;
+        entry.dynamic = dynamic;
+        if (has_src) {
+            if (src.empty()) {
+                fail("script-load", "empty-src");
+                return;
+            }
+            entry.url = Resources::resolve(container.base, src);
+            if (!allowed("script-src", entry.url, false)) {
+                fail("policy", "external-script");
+                return;
+            }
+            if (*el->get_attr("integrity", "")) {
+                fail("unsupported", "script-integrity");
+                return;
+            }
+            if (el->get_attr("crossorigin") && origin(entry.url) != origin(container.page_url)) {
+                fail("unsupported", "script-cors");
+                return;
+            }
+            entry.external = true;
+            entry.mode = dynamic ? (force_async || el->get_attr("async") ? Job::asynchronous
+                                                                         : Job::dynamic_ordered)
+                         : el->get_attr("async") ? Job::asynchronous
+                         : el->get_attr("defer") ? Job::deferred
+                                                 : Job::ordered;
+            entry.resource = resources.request(entry.url, 128u * 1024u);
+            if (!entry.resource) {
+                fail("limit", "script-resource");
+                return;
+            }
+            entry.resource->critical = true;
+        } else {
+            if (source.size() > 128u * 1024u) {
+                fail("limit", "script-bytes");
+                return;
+            }
+            if (!allowed("script-src", "", true)) {
+                fail("policy", "inline-script");
+                return;
+            }
+            entry.url = "inline";
+            entry.source = std::move(source);
+        }
+        jobs.push_back(std::move(entry));
+        if (dynamic && !jobs.back().external)
+            execute(jobs.back(), true);
+    }
+    void activate_scripts(const Element &root) {
+        if (!root)
+            return;
+        auto snapshot = descendants(root);
+        for (auto &el : snapshot)
+            if (std::string(el->get_tagName()) == "meta" && connected_script(el)) {
+                absorb_meta();
+                break;
+            }
+        for (auto &el : snapshot)
+            if (std::string(el->get_tagName()) == "script")
+                prepare_script(el, true);
+    }
     void quota(size_t bytes) {
         if (bytes > 65536 || mutated_bytes > 8u * 1024u * 1024u - bytes)
             throw std::runtime_error("DOM mutation quota exceeded");
@@ -584,6 +842,14 @@ struct Scripts::Impl {
                 return JS_ThrowTypeError(context, "Microtask requires function");
             if (JS_EnqueueJob(context, microtask_job, 1, a + 2) < 0)
                 return JS_EXCEPTION;
+            return JS_UNDEFINED;
+        }
+        if (op == "observerActive") {
+            observing = argc > 2 && JS_ToBool(context, a[2]) > 0;
+            return JS_UNDEFINED;
+        }
+        if (op == "observerLimit") {
+            issue_log.add("limit", "mutation-observer", origin(container.page_url));
             return JS_UNDEFINED;
         }
         if (op == "currentScript")
@@ -714,6 +980,11 @@ struct Scripts::Impl {
                 throw std::runtime_error("Storage quota/write failure");
             return JS_UNDEFINED;
         }
+        if (op == "createFragment") {
+            if (++created > 4096)
+                throw std::runtime_error("Dynamic DOM node quota exceeded");
+            return JS_NewInt32(context, int(handle(doc->create_element("__fragment", {}))));
+        }
         if (op == "create" || op == "createText") {
             if (++created > 4096)
                 throw std::runtime_error("Dynamic DOM node quota exceeded");
@@ -730,9 +1001,18 @@ struct Scripts::Impl {
                     throw std::runtime_error("Invalid element name");
                 el = doc->create_element(lower(name).c_str(), {});
             }
+            if (std::string(el->get_tagName()) == "script")
+                script_states[el.get()] = {};
             return JS_NewInt32(context, int(handle(el)));
         }
         auto el = node(id);
+        if (op == "scriptAsync")
+            return JS_NewBool(context,
+                              script_states[el.get()].force_async || el->get_attr("async"));
+        if (op == "scriptForce") {
+            script_states[el.get()].force_async = false;
+            return JS_UNDEFINED;
+        }
         if (op == "activeElement") {
             if (container.prune_focus())
                 quota(0);
@@ -747,7 +1027,7 @@ struct Scripts::Impl {
         if (op == "root")
             return JS_NewInt32(context, int(handle(doc->root())));
         if (op == "kind")
-            return JS_NewInt32(context, el->is_text() ? 3 : 1);
+            return JS_NewInt32(context, el->is_text() ? 3 : is_fragment(el) ? 11 : 1);
         if (op == "tag")
             return js(el->get_tagName());
         if (op == "parent") {
@@ -779,16 +1059,29 @@ struct Scripts::Impl {
             if (!id)
                 throw std::runtime_error("Cannot replace document text");
             auto text = str(2);
+            if (!el->is_text() && !text.empty() && created >= 4096)
+                throw std::runtime_error("Dynamic DOM node quota exceeded");
             quota(text.size());
-            if (auto leaf = std::dynamic_pointer_cast<litehtml::el_text>(el))
+            if (auto leaf = std::dynamic_pointer_cast<litehtml::el_text>(el)) {
+                std::string old;
+                leaf->get_text(old);
                 leaf->set_native_text(text);
-            else {
-                auto children = el->children();
+                mutation("characterData", el, {}, {}, {}, {}, nullptr, &old);
+            } else {
+                auto children = dom_children(el);
                 for (auto &child : children)
                     el->removeChild(child);
-                if (!text.empty())
-                    el->appendChild(std::make_shared<litehtml::el_text>(text.c_str(), doc));
+                std::vector<Element> added;
+                if (!text.empty()) {
+                    auto leaf = std::make_shared<litehtml::el_text>(text.c_str(), doc);
+                    el->appendChild(leaf);
+                    added.push_back(leaf);
+                    ++created;
+                }
+                if (!children.empty() || !added.empty())
+                    mutation("childList", el, added, children);
             }
+            activate_scripts(el->is_text() ? el->parent() : el);
             return JS_UNDEFINED;
         }
         if (op == "html") {
@@ -807,10 +1100,28 @@ struct Scripts::Impl {
             if (std::count(source.begin(), source.end(), '<') > 128)
                 throw std::runtime_error("Fragment node quota exceeded");
             quota(source.size());
-            auto children = el->children();
+            if (std::string(el->get_tagName()) == "script") {
+                auto old = dom_children(el);
+                if (!source.empty() && created >= 4096)
+                    throw std::runtime_error("Dynamic DOM node quota exceeded");
+                for (auto &child : old)
+                    el->removeChild(child);
+                std::vector<Element> added;
+                if (!source.empty()) {
+                    auto leaf = std::make_shared<litehtml::el_text>(source.c_str(), doc);
+                    el->appendChild(leaf);
+                    added.push_back(leaf);
+                    ++created;
+                }
+                if (!old.empty() || !added.empty())
+                    mutation("childList", el, added, old);
+                activate_scripts(el);
+                return JS_UNDEFINED;
+            }
+            auto children = dom_children(el);
             for (auto &child : children)
                 el->removeChild(child);
-            doc->append_children_from_string(*el, source.c_str(), false);
+            doc->append_children_from_string(*el, source.c_str(), false, true);
             try {
                 size_t count = 0;
                 for (auto &child : el->children())
@@ -826,6 +1137,14 @@ struct Scripts::Impl {
                     el->appendChild(child);
                 throw;
             }
+            auto added = dom_children(el);
+            for (auto &child : added)
+                for (auto &node : descendants(child))
+                    if (std::string(node->get_tagName()) == "script")
+                        script_states[node.get()] = {true, false};
+            if (!children.empty() || !added.empty())
+                mutation("childList", el, added, children);
+            activate_scripts(el); // Existing empty connected script receiving new text.
             return JS_UNDEFINED;
         }
         if (op == "attr") {
@@ -835,6 +1154,11 @@ struct Scripts::Impl {
                 return v ? js(v) : JS_NULL;
             }
             auto value = JS_IsNull(a[3]) ? "" : str(3, 2048);
+            const char *old_ptr = el->get_attr(key.c_str());
+            bool had_old = old_ptr != nullptr;
+            std::string old = old_ptr ? old_ptr : "";
+            if (!had_old && JS_IsNull(a[3]))
+                return JS_UNDEFINED;
             quota(value.size());
             if (JS_IsNull(a[3]))
                 el->remove_attr(key.c_str());
@@ -848,6 +1172,15 @@ struct Scripts::Impl {
                     parent = parent->parent();
                 if (auto control = std::dynamic_pointer_cast<Control>(parent))
                     control->parse_attributes();
+            }
+            mutation("attributes", el, {}, {}, {}, {}, key.c_str(), had_old ? &old : nullptr);
+            if (std::string(el->get_tagName()) == "meta" && connected_script(el))
+                absorb_meta();
+            if (std::string(el->get_tagName()) == "script") {
+                if (key == "async" && !JS_IsNull(a[3]))
+                    script_states[el.get()].force_async = false;
+                if (key == "src" && !JS_IsNull(a[3]))
+                    activate_scripts(el);
             }
             return JS_UNDEFINED;
         }
@@ -946,61 +1279,45 @@ struct Scripts::Impl {
                 el->set_attr("value", value.c_str());
             return JS_UNDEFINED;
         }
-        if (op == "insert") {
+        if (op == "insert" || op == "append" || op == "remove" || op == "batch") {
             if (!id || el->is_text())
                 throw std::runtime_error("Invalid parent");
-            auto child = node(integer(2));
-            int before_id = integer(3);
-            auto before = before_id < 0 ? litehtml::element::ptr{} : node(before_id);
-            if (before && before->parent() != el)
-                throw std::runtime_error("Reference is not a child");
-            if (before == child)
-                return JS_UNDEFINED;
-            unsigned depth = 0;
-            for (auto parent = el; parent; parent = parent->parent()) {
-                if (++depth > 256)
-                    throw std::runtime_error("DOM depth limit");
-                if (parent == child)
-                    throw std::runtime_error("DOM cycle");
-            }
-            if (child == doc->root())
-                throw std::runtime_error("Cannot move root");
-            auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(el);
-            if (!tag)
-                throw std::runtime_error("Invalid parent");
-            quota(0);
-            if (auto old = child->parent())
-                old->removeChild(child);
-            el->appendChild(child);
-            if (before) {
-                auto &list = tag->children();
-                list.splice(std::find(list.begin(), list.end(), before), list,
-                            std::find(list.begin(), list.end(), child));
-            }
-            return JS_UNDEFINED;
-        }
-        if (op == "append" || op == "remove") {
-            if (!id || el->is_text())
-                throw std::runtime_error("Invalid parent");
-            auto child = node(integer(2));
-            if (child == doc->root())
-                throw std::runtime_error("Cannot move root");
-            quota(0);
             if (op == "remove") {
+                auto child = node(integer(2));
                 if (child->parent() != el)
                     throw std::runtime_error("Node is not a child");
-                el->removeChild(child);
-            } else {
-                unsigned depth = 0;
-                for (auto p = el; p; p = p->parent()) {
-                    if (++depth > 256)
-                        throw std::runtime_error("DOM depth limit");
-                    if (p == child)
-                        throw std::runtime_error("DOM cycle");
+                quota(0);
+                detach(child);
+                return JS_UNDEFINED;
+            }
+            if (op == "batch") {
+                uint32_t count = 0;
+                auto length = JS_GetPropertyStr(context, a[2], "length");
+                if (JS_ToUint32(context, &count, length) < 0) {
+                    JS_FreeValue(context, length);
+                    return JS_EXCEPTION;
                 }
-                if (auto p = child->parent())
-                    p->removeChild(child);
-                el->appendChild(child);
+                JS_FreeValue(context, length);
+                if (count > 4096)
+                    throw std::runtime_error("DOM batch quota exceeded");
+                std::vector<Element> input;
+                for (uint32_t i = 0; i < count; ++i) {
+                    auto value = JS_GetPropertyUint32(context, a[2], i);
+                    int32_t key = 0;
+                    int rc = JS_ToInt32(context, &key, value);
+                    JS_FreeValue(context, value);
+                    if (rc < 0)
+                        return JS_EXCEPTION;
+                    input.push_back(node(key));
+                }
+                int mode = integer(3);
+                auto list = dom_children(el);
+                batch_children(el, input, mode == 1 && !list.empty() ? list.front() : Element{},
+                               mode == 2);
+            } else {
+                auto child = node(integer(2));
+                Element before = op == "insert" && integer(3) >= 0 ? node(integer(3)) : Element{};
+                batch_children(el, {child}, before);
             }
             return JS_UNDEFINED;
         }
@@ -1131,29 +1448,42 @@ struct Scripts::Impl {
         return !j.resource ||
                (j.resource->state != Resource::queued && j.resource->state != Resource::loading);
     }
-    void execute(Job &j) {
+    void execute(Job &j, bool nested = false) {
         j.done = true;
+        if (script_depth >= 8) {
+            issue_log.add("limit", "script-depth", origin(container.page_url));
+            return;
+        }
         if (j.external) {
-            if (j.resource->state != Resource::ready ||
+            absorb_meta();
+            if (policy_overflow || j.resource->state != Resource::ready ||
                 !allowed("script-src", j.resource->effective, false)) {
                 last_error = "Script request failed or was blocked";
                 issue_log.add("script-load", "failed", origin(j.url));
-                event(j.element, "error", false);
+                script_event(j.element, "error");
+                return;
+            }
+            if (j.resource->data.size() > 128u * 1024u) {
+                issue_log.add("limit", "script-bytes", origin(j.url));
+                script_event(j.element, "error");
                 return;
             }
             j.source.assign(j.resource->data.begin(), j.resource->data.end());
         }
-        budget(50);
+        if (!nested)
+            budget(50);
+        auto previous_script = current_script;
         current_script = j.element;
+        ++script_depth;
         evaluate(j.source.c_str(), j.source.size(), j.url.substr(0, j.url.find('?')));
-        current_script.reset();
-        bool checkpoint = drain();
-        // load events are queued separately so they cannot jump a pending checkpoint.
+        --script_depth;
+        current_script = previous_script;
+        if (!nested)
+            drain();
         if (j.external)
-            pending_script_events.push_back(j.element);
-        (void)checkpoint;
+            script_event(j.element, "load");
     }
-    std::vector<litehtml::element::ptr> pending_script_events;
+    std::vector<std::pair<Element, std::string>> pending_script_events;
     bool settle_fetch() {
         for (auto it = fetches.begin(); it != fetches.end(); ++it) {
             auto *r = it->resource;
@@ -1193,10 +1523,10 @@ struct Scripts::Impl {
         if (!pending_script_events.empty()) {
             auto target = pending_script_events.front();
             pending_script_events.erase(pending_script_events.begin());
-            event(target, "load", false);
+            event(target.first, target.second, false);
             return dirty;
         }
-        Job *ordered = nullptr, *deferred = nullptr, *async = nullptr;
+        Job *ordered = nullptr, *deferred = nullptr, *async = nullptr, *dynamic_order = nullptr;
         bool all_done = true;
         for (auto &j : jobs) {
             if (j.done)
@@ -1204,6 +1534,8 @@ struct Scripts::Impl {
             all_done = false;
             if (j.mode == Job::ordered && !ordered)
                 ordered = &j;
+            if (j.mode == Job::dynamic_ordered && !dynamic_order)
+                dynamic_order = &j;
             if (j.mode == Job::deferred && !deferred)
                 deferred = &j;
             if (j.mode == Job::asynchronous && !async && runnable(j))
@@ -1215,6 +1547,10 @@ struct Scripts::Impl {
         }
         if (ordered && runnable(*ordered)) {
             execute(*ordered);
+            return dirty;
+        }
+        if (dynamic_order && runnable(*dynamic_order)) {
+            execute(*dynamic_order);
             return dirty;
         }
         const char *phase = nullptr;

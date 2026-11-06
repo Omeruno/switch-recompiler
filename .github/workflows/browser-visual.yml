@@ -63,5 +63,6 @@ jobs:
             browser/visual/switch-visual-browser.nro
             browser/visual/README.md
             browser/visual/CORE_AUDIT.md
+            browser/visual/TESTING.md
             browser/visual/licenses/**
           if-no-files-found: error

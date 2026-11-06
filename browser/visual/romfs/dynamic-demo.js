@@ -1,0 +1,1 @@
+(()=>{globalThis.visualDynamicRuns=(globalThis.visualDynamicRuns||0)+1;const target=document.getElementById('dynamic-target');target.textContent='Запуск: '+visualDynamicRuns;target.setAttribute('data-runs',visualDynamicRuns);})();

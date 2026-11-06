@@ -83,7 +83,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         // Local assets are an explicit allowlist, never a URL-to-path mapping.
         if (name != "index.html" && name != "style.css" && name != "landscape.png" &&
             name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
-            name != "state.json") {
+            name != "state.json" && name != "dynamic-demo.js") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -218,7 +218,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.6.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.7.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();

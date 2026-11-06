@@ -725,7 +725,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.6.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.7.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -835,7 +835,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.6.0");
+    visual::diagnostic("boot", "0.7.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -874,7 +874,8 @@ int main(int argc, char **argv) {
     PadState pad;
     padInitializeDefault(&pad);
 #else
-    if (argc >= 10 && std::string(argv[3]) == "--network-test")
+    if (argc >= 10 &&
+        (std::string(argv[3]) == "--network-test" || std::string(argv[3]) == "--dynamic-test"))
         browser_profile_open(argv[4], argv[8]);
     else
         browser_profile_open(nullptr, nullptr);
@@ -898,9 +899,14 @@ int main(int argc, char **argv) {
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             Browser app(renderer, root, font);
 #ifndef __SWITCH__
-            bool network_test = argc >= 10 && std::string(argv[3]) == "--network-test";
-            if (network_test)
-                browser_network_checks(app, argv[5]);
+            bool network_test = argc >= 10 && (std::string(argv[3]) == "--network-test" ||
+                                               std::string(argv[3]) == "--dynamic-test");
+            if (network_test) {
+                if (std::string(argv[3]) == "--dynamic-test")
+                    browser_dynamic_checks(app, argv[5]);
+                else
+                    browser_network_checks(app, argv[5]);
+            }
             bool test = argc >= 5 && std::string(argv[3]) == "--test";
             bool capture = argc >= 6 && std::string(argv[3]) == "--capture";
             uint32_t capture_start = SDL_GetTicks();
@@ -1239,6 +1245,28 @@ int main(int argc, char **argv) {
                     if (!widget("demo-check")->checked() || !widget("demo-radio-a")->checked() ||
                         widget("demo-select")->value() != "ru")
                         throw std::runtime_error("native reset failed");
+                    tap_element("dynamic-run");
+                    for (int i = 0; i < 8; ++i)
+                        app.pump();
+                    std::string dynamic_result, observed_result;
+                    app.document->root()->select_one("#dynamic-target")->get_text(dynamic_result);
+                    app.document->root()
+                        ->select_one("#dynamic-observed")
+                        ->get_text(observed_result);
+                    if (dynamic_result != "Запуск: 1" || observed_result != "Изменений: 2")
+                        throw std::runtime_error("dynamic demo first run failed: " +
+                                                 dynamic_result + " / " + observed_result);
+                    tap_element("dynamic-run");
+                    for (int i = 0; i < 8; ++i)
+                        app.pump();
+                    dynamic_result.clear();
+                    observed_result.clear();
+                    app.document->root()->select_one("#dynamic-target")->get_text(dynamic_result);
+                    app.document->root()
+                        ->select_one("#dynamic-observed")
+                        ->get_text(observed_result);
+                    if (dynamic_result != "Запуск: 2" || observed_result != "Изменений: 4")
+                        throw std::runtime_error("dynamic demo second run failed");
                     float before_report_scroll = app.view.y;
                     app.toggle_report();
                     if (!app.report_open || app.report_lines.size() < 10)
