@@ -18,10 +18,11 @@ struct Point {
 };
 struct View {
     float x = 0, y = 0, zoom = 1, base_scale = 1, content_width = 1280, content_height = 636;
+    float viewport_width = 1280, viewport_height = 636;
     float scale() const { return zoom * base_scale; }
     void clamp() {
-        x = std::clamp(x, 0.f, std::max(0.f, content_width - 1280 / scale()));
-        y = std::clamp(y, 0.f, std::max(0.f, content_height - 636 / scale()));
+        x = std::clamp(x, 0.f, std::max(0.f, content_width - viewport_width / scale()));
+        y = std::clamp(y, 0.f, std::max(0.f, content_height - viewport_height / scale()));
     }
     Point document(Point p) const { return {x + p.x / scale(), y + p.y / scale()}; }
     void drag(float dx, float dy) {
@@ -49,6 +50,7 @@ class Gestures {
 
   public:
     View &view;
+    bool zoom_enabled = true;
     explicit Gestures(View &v) : view(v) {}
     bool active() const { return !contacts.empty(); }
     void stop_inertia() { vx = vy = 0; }
@@ -80,7 +82,7 @@ class Gestures {
             c.last = p;
             Point newa = a->second.last, newb = b->second.last;
             float d = distance(olda, oldb), nd = distance(newa, newb);
-            if (a->second.start.y >= 0 && b->second.start.y >= 0 && d > 8 && nd > 8)
+            if (zoom_enabled && a->second.start.y >= 0 && b->second.start.y >= 0 && d > 8 && nd > 8)
                 view.pinch({(olda.x + oldb.x) / 2, (olda.y + oldb.y) / 2},
                            {(newa.x + newb.x) / 2, (newa.y + newb.y) / 2}, nd / d);
         } else if (contacts.size() == 1) {

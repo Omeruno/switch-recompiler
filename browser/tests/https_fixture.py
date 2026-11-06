@@ -1,5 +1,7 @@
 """Real loopback TLS tests: custom CA, hostname, expiry and redirects."""
 import http.server
+import json
+import urllib.parse
 import os
 import ssl
 import subprocess
@@ -39,10 +41,34 @@ extendedKeyUsage=serverAuth
 """)
     openssl('ca','-batch','-notext','-config',root/'ca.conf','-in',root/'server.csr','-out',root/'expired.pem','-startdate','20000101000000Z','-enddate','20010101000000Z')
     class Handler(http.server.BaseHTTPRequestHandler):
+        form_counts={'forbidden':0,'echo':0,'preserved':0}
+        def do_POST(self):
+            length=int(self.headers.get('Content-Length','0'))
+            data=self.rfile.read(min(length,65537))
+            values=urllib.parse.parse_qs(data.decode('utf-8'),keep_blank_values=True)
+            valid=self.headers.get('Content-Type','').startswith('application/x-www-form-urlencoded') and values.get('user')==['Иван + &'] and values.get('password')==['LOCAL_TEST_PASSWORD'] and values.get('csrf')==['TOKEN'] and values.get('multi')==['a','b']
+            routes={'/forms-303':(303,'/forms-final'),'/forms-307':(307,'/forms-preserved'),'/forms-policy':(307,'/forbidden'),'/forms-downgrade':(307,f'http://localhost:{self.server.server_port}/forbidden'),'/forms-loop':(307,'/forms-loop')}
+            if self.path in routes:
+                status,location=routes[self.path];self.send_response(status);self.send_header('Location',location)
+                if self.path=='/forms-303':self.send_header('Set-Cookie','form_login=FORM_COOKIE; Path=/; Secure; HttpOnly')
+                self.send_header('Content-Length','0');self.end_headers();return
+            if self.path=='/forms-400':
+                response=b'<title>Invalid input</title><p>Invalid input</p>';self.send_response(400)
+            else:
+                if self.path=='/forms-echo':self.form_counts['echo']+=1
+                elif self.path=='/forms-preserved':self.form_counts['preserved']+=1
+                elif self.path=='/forbidden':self.form_counts['forbidden']+=1
+                response=json.dumps({'accepted':valid,'method':'POST'}).encode();self.send_response(200)
+            self.send_header('Content-Length',str(len(response)));self.end_headers();self.wfile.write(response)
+
         def log_message(self,*args):
             pass
         def do_GET(self):
             cookies=self.headers.get('Cookie','')
+            if self.path in ('/forms-final','/forms-count','/forbidden'):
+                if self.path=='/forbidden':self.form_counts['forbidden']+=1
+                result=self.form_counts if self.path=='/forms-count' else {'authenticated':'form_login=FORM_COOKIE' in cookies,'method':'GET'}
+                response=json.dumps(result).encode();self.send_response(200);self.send_header('Content-Length',str(len(response)));self.end_headers();self.wfile.write(response);return
             if self.path.startswith('/redirect-http'):
                 self.send_response(302);self.send_header('Location',f'http://localhost:{self.server.server_port}/must-not-load');self.end_headers();return
             if self.path.startswith('/visual-404'):

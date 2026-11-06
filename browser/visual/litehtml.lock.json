@@ -3,14 +3,15 @@
   "commit": "ab7caef1d54f2265f919c299d29c135863675d96",
   "patch": {
     "file": "patches/native-dom.patch",
-    "sha256": "735bab17bf1cc8d731cccf2454a6e50d9679eb9a5280318efefaa2368f440fb8",
+    "sha256": "130ce929214b621be21bc11bbe104e27a48ebb47ba84aca3a8e08065207303d1",
     "files": {
       "include/litehtml/document.h": "ac7d2c1b81bf78b1fe9e329ba2bd606969d6880dd95a77c22b0e12e2cb1ba28d",
       "include/litehtml/html_tag.h": "9b8b0274b40dd93d6472dad9f3b6132676f462cd766aca0ef721bf5f4ad48aa7",
       "src/document.cpp": "2a496f6e08422698160c577c57db6f3e7474f06e850535d48d4f4b30b6234691",
-      "src/html_tag.cpp": "5b52e7666e6a0dfedba03a83c28bf8913c0190e59587cab1dac810ae893a61dd",
+      "src/html_tag.cpp": "b518fddd2d3fda1bdb24b4a650eac40273c7dff86ad0fa99fd6741fa8a3cffe3",
       "include/litehtml/el_text.h": "2fffb1219a5577b07965341b08446b215807effa5b5315cfadf89aef5c1bf887",
-      "src/style.cpp": "e6e49c88978052883697308b935dcf1581e9ebedae86d15ea80c2405764641e7"
+      "src/style.cpp": "e6e49c88978052883697308b935dcf1581e9ebedae86d15ea80c2405764641e7",
+      "include/litehtml/element.h": "b8c14715327974407293fd048014c9eaf82a4218e1f1fa42f7db282620067223"
     }
   }
 }

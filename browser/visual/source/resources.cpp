@@ -9,6 +9,10 @@ extern "C" {
 #include <limits>
 #include <utility>
 namespace visual {
+static void wipe_payload(Resource &r) {
+    std::fill(r.post_body.begin(), r.post_body.end(), '\0');
+    r.post_body.clear();
+}
 Resources::Resources(std::string root) : local_root(std::move(root)) { multi = curl_multi_init(); }
 Resources::~Resources() {
     clear();
@@ -24,6 +28,8 @@ void Resources::clear() {
             curl_easy_cleanup(kv.second.handle);
             delete ctx;
         }
+    for (auto &kv : items)
+        wipe_payload(kv.second);
     items.clear();
     active = 0;
     received = 0;
@@ -101,6 +107,23 @@ Resource *Resources::request(const std::string &url, size_t limit) {
     }
     return &items.emplace(key, std::move(r)).first->second;
 }
+Resource *Resources::navigate_form(const Submission &form, const std::string &source,
+                                   const std::vector<std::string> &policies, size_t limit) {
+    if (!multi || items.size() >= 64 || form.body.size() > 65536 ||
+        (form.method != "GET" && form.method != "POST") ||
+        !form_action_allowed(policies, source, form.url))
+        return nullptr;
+    Resource r;
+    r.url = r.current_url = r.effective = form.url;
+    r.method = form.method;
+    r.post_body = form.body;
+    r.limit = limit;
+    r.critical = true;
+    r.form_navigation = true;
+    r.form_source = source;
+    r.form_rules = policies;
+    return &items.emplace("form:" + std::to_string(++next_navigation), std::move(r)).first->second;
+}
 size_t Resources::receive(char *data, size_t unit, size_t count, void *ctx) {
     auto *pair = static_cast<std::pair<Resources *, Resource *> *>(ctx);
     auto &r = *pair->second;
@@ -125,6 +148,7 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
     std::string line(data, bytes);
     if (line.rfind("HTTP/", 0) == 0) {
         r.policies.clear();
+        r.location.clear();
         r.header_bytes = 0;
     }
     if (bytes > 16384 - r.header_bytes)
@@ -135,6 +159,12 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
         auto key = line.substr(0, colon);
         for (char &ch : key)
             ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        if (key == "location") {
+            auto value = line.substr(colon + 1);
+            auto begin = value.find_first_not_of(" \t\r\n"),
+                 end = value.find_last_not_of(" \t\r\n");
+            r.location = begin == std::string::npos ? "" : value.substr(begin, end - begin + 1);
+        }
         if (key == "content-security-policy") {
             if (r.policies.size() >= 8)
                 return 0;
@@ -151,12 +181,19 @@ void Resources::start(Resource &r) {
     if (!r.handle) {
         r.state = Resource::failed;
         r.error = "curl initialization failed";
+        wipe_payload(r);
         ++revision;
         return;
     }
     auto *ctx = new std::pair<Resources *, Resource *>(this, &r);
     curl_easy_setopt(r.handle, CURLOPT_PRIVATE, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_URL, r.url.c_str());
+    curl_easy_setopt(r.handle, CURLOPT_URL,
+                     (r.current_url.empty() ? r.url : r.current_url).c_str());
+    if (r.method == "POST") {
+        curl_easy_setopt(r.handle, CURLOPT_POST, 1L);
+        curl_easy_setopt(r.handle, CURLOPT_POSTFIELDS, r.post_body.c_str());
+        curl_easy_setopt(r.handle, CURLOPT_POSTFIELDSIZE_LARGE, curl_off_t(r.post_body.size()));
+    }
 #if LIBCURL_VERSION_NUM >= 0x075500
     curl_easy_setopt(r.handle, CURLOPT_PROTOCOLS_STR, "https");
     curl_easy_setopt(r.handle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
@@ -165,7 +202,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
 #endif
     curl_easy_setopt(r.handle, CURLOPT_DISALLOW_USERNAME_IN_URL, 1L);
-    curl_easy_setopt(r.handle, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(r.handle, CURLOPT_FOLLOWLOCATION, r.form_navigation ? 0L : 1L);
     curl_easy_setopt(r.handle, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(r.handle, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(r.handle, CURLOPT_TIMEOUT, 15L);
@@ -174,13 +211,14 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.3.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.4.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();
         r.state = Resource::failed;
         curl_easy_cleanup(r.handle);
         r.handle = nullptr;
+        wipe_payload(r);
         delete ctx;
         ++revision;
         return;
@@ -213,6 +251,41 @@ bool Resources::pump() {
             curl_easy_getinfo(r.handle, CURLINFO_EFFECTIVE_URL, &effective);
             if (effective)
                 r.effective = effective;
+            if (r.form_navigation && msg->data.result == CURLE_OK &&
+                (http == 301 || http == 302 || http == 303 || http == 307 || http == 308) &&
+                !r.location.empty()) {
+                auto next = resolve(r.effective, r.location);
+                bool follow =
+                    r.redirects < 5 && form_action_allowed(r.form_rules, r.form_source, next);
+                browser_profile_log(r.url.c_str(), "form-redirect", http, msg->data.result);
+                curl_multi_remove_handle(multi, r.handle);
+                curl_easy_cleanup(r.handle);
+                r.handle = nullptr;
+                delete ctx;
+                --active;
+                received -= r.data.size();
+                r.data.clear();
+                if (!follow) {
+                    r.state = Resource::failed;
+                    r.transfer_ok = false;
+                    r.error = "Переход после формы заблокирован или превышен лимит";
+                    wipe_payload(r);
+                    ++revision;
+                    continue;
+                }
+                ++r.redirects;
+                r.current_url = r.effective = next;
+                r.state = Resource::queued;
+                r.http_status = 0;
+                r.transfer_ok = false;
+                r.error.clear();
+                if (http == 303 || ((http == 301 || http == 302) && r.method == "POST")) {
+                    r.method = "GET";
+                    wipe_payload(r);
+                }
+                ++revision;
+                continue;
+            }
             r.http_status = http;
             r.transfer_ok = msg->data.result == CURLE_OK && http > 0;
             r.state = msg->data.result == CURLE_OK && http >= 200 && http < 300 ? Resource::ready
@@ -228,6 +301,7 @@ bool Resources::pump() {
             curl_multi_remove_handle(multi, r.handle);
             curl_easy_cleanup(r.handle);
             r.handle = nullptr;
+            wipe_payload(r);
             delete ctx;
             --active;
             ++revision;

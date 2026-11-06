@@ -97,6 +97,19 @@
     get classList(){const el=this;return {add(...a){el.className=[...new Set([...el.className.split(/\s+/).filter(Boolean),...a])].join(' ');},remove(...a){el.className=el.className.split(/\s+/).filter(x=>!a.includes(x)).join(' ');},contains(x){return el.className.split(/\s+/).includes(x);},toggle(x,force){const yes=force===undefined?!this.contains(x):!!force;yes?this.add(x):this.remove(x);return yes;}};}
     get dataset(){const el=this;return new Proxy({}, {get(_,k){return el.getAttribute('data-'+String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()))??undefined;},set(_,k,v){el.setAttribute('data-'+String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),v);return true;}});}
     get style(){const el=this;const pairs=()=>new Map((el.getAttribute('style')||'').split(';').map(x=>{const i=x.indexOf(':');return i<0?['','']:[x.slice(0,i).trim(),x.slice(i+1).trim()];}).filter(x=>x[0]));const css=k=>String(k).replace(/[A-Z]/g,c=>'-'+c.toLowerCase());return new Proxy({setProperty(k,v,p=''){const a=pairs();a.set(String(k),String(v)+(p?' !important':''));el.setAttribute('style',[...a].map(x=>x.join(':')).join(';'));},removeProperty(k){const a=pairs(),v=a.get(k)||'';a.delete(k);el.setAttribute('style',[...a].map(x=>x.join(':')).join(';'));return v;},getPropertyValue(k){return pairs().get(k)||'';}},{get(o,k){return k==='cssText'?el.getAttribute('style')||'':k in o?o[k]:o.getPropertyValue(css(k));},set(o,k,v){if(k==='cssText')el.setAttribute('style',v);else o.setProperty(css(k),v);return true;}});}
+    get type(){return bridge('type',this._key);}set type(v){this.setAttribute('type',v);}
+    get checked(){return bridge('checked',this._key);}set checked(v){bridge('checked',this._key,!!v);}
+    get defaultChecked(){return this.hasAttribute('checked');}set defaultChecked(v){v?this.setAttribute('checked',''):this.removeAttribute('checked');}
+    get selected(){return bridge('selected',this._key);}set selected(v){bridge('selected',this._key,!!v);}
+    get defaultSelected(){return this.hasAttribute('selected');}set defaultSelected(v){v?this.setAttribute('selected',''):this.removeAttribute('selected');}
+    get selectedIndex(){return bridge('selectedIndex',this._key);}set selectedIndex(v){bridge('selectedIndex',this._key,v);}
+    get options(){return bridge('options',this._key).map(wrap);}get selectedOptions(){return this.options.filter(o=>o.selected);}
+    get form(){const key=bridge('formOwner',this._key);return key===null?null:wrap(key);}
+    get defaultValue(){return this.tagName==='TEXTAREA'?this.textContent:this.getAttribute('value')||'';}set defaultValue(v){if(this.tagName==='TEXTAREA')this.textContent=v;else this.setAttribute('value',v);}
+    submit(){if(this.tagName!=='FORM')throw new TypeError('Expected form');bridge('submitForm',this._key);}
+    requestSubmit(submitter=null){if(this.tagName!=='FORM')throw new TypeError('Expected form');const target=submitter||this;if(submitter&&submitter.form!==this)throw new TypeError('Wrong submitter');if(!bridge('validateForm',target._key,true))return;const event=new Event('submit',{bubbles:true,cancelable:true});event.submitter=submitter;if(this.dispatchEvent(event))bridge('submitForm',target._key);}
+    reset(){if(this.tagName!=='FORM')throw new TypeError('Expected form');if(this.dispatchEvent(new Event('reset',{bubbles:true,cancelable:true})))bridge('resetForm',this._key);}
+    checkValidity(){return bridge('validateForm',this._key,false);}reportValidity(){return bridge('validateForm',this._key,true);}
     get value(){return bridge('value',this._key);}set value(v){bridge('value',this._key,String(v));}
     get disabled(){return this.hasAttribute('disabled');}set disabled(v){v?this.setAttribute('disabled',''):this.removeAttribute('disabled');}
     get hidden(){return this.hasAttribute('hidden');}set hidden(v){v?this.setAttribute('hidden',''):this.removeAttribute('hidden');}
@@ -112,7 +125,7 @@
     blur(){if(activeElement===this)activeElement=null;this.dispatchEvent(new Event('blur'));}
     click(){this.dispatchEvent(new Event('click',{bubbles:true,cancelable:true}));}
   }
-  for(const name of ['lang','dir','title','type','rel','target','placeholder'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
+  for(const name of ['lang','dir','title','rel','target','placeholder'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
   Object.defineProperty(Node.prototype,'src',{get(){const value=this.getAttribute('src');return value?bridge('resolve',0,value):'';},set(v){this.setAttribute('src',v);}});
   Object.assign(Node.prototype,eventMethods);
   function wrap(key){if(!nodes.has(key))nodes.set(key,new Node(key));return nodes.get(key);}
@@ -131,9 +144,9 @@
     URL:{get:()=>bridge('url',0)}
   });
   Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
-  const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){this.href=this.href;}};
+  const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.3.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.4.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -185,7 +198,7 @@
   globalThis.__visualHooks={
     tick(now){const viewport=bridge('viewport',0);if(viewport.width!==lastViewport.width||viewport.height!==lastViewport.height){lastViewport=viewport;globalThis.dispatchEvent(new Event('resize'));for(const media of mediaLists){const matches=media.matches;if(matches!==media._previous){media._previous=matches;const event=new Event('change');event.matches=matches;event.media=media.media;media.dispatchEvent(event);}}}let count=0;for(const [id,t] of [...timers]){if(count>=32)break;if(t.due>now||!timers.has(id))continue;if(t.repeat)t.due=now+t.repeat;else timers.delete(id);++count;try{t.fn(...t.args);}catch(e){bridge('report',0,String(e));}}},
     ready(){readyState='interactive';document.dispatchEvent(new Event('DOMContentLoaded',{bubbles:true}));readyState='complete';document.dispatchEvent(new Event('readystatechange'));globalThis.dispatchEvent(new Event('load'));},
-    event(id,type,cancelable){return wrap(id).dispatchEvent(new Event(type,{bubbles:!['focus','blur'].includes(type),cancelable}));},
+    event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched(id,ok,status,url,body,error){const f=fetches.get(id);if(!f)return;fetches.delete(id);if(error){f.reject(new TypeError(error));return;}f.resolve({ok,status,url,text:()=>Promise.resolve(body),json:()=>Promise.resolve().then(()=>JSON.parse(body))});},
     blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])Object.defineProperty(Object.getPrototypeOf(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}

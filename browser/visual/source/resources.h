@@ -1,4 +1,5 @@
 #pragma once
+#include "forms.h"
 #include <curl/curl.h>
 #include <map>
 #include <string>
@@ -7,6 +8,10 @@ namespace visual {
 struct Resource {
     enum State { queued, loading, ready, failed } state = queued;
     std::string url, effective, error;
+    std::string method = "GET", current_url, location, post_body, form_source;
+    std::vector<std::string> form_rules;
+    bool form_navigation = false;
+    unsigned redirects = 0;
     std::vector<unsigned char> data;
     std::vector<std::string> policies;
     size_t header_bytes = 0;
@@ -20,7 +25,7 @@ class Resources {
     std::string local_root;
     std::map<std::string, Resource> items;
     size_t received = 0;
-    unsigned active = 0;
+    unsigned active = 0, next_navigation = 0;
     static size_t receive(char *, size_t, size_t, void *);
     static size_t header(char *, size_t, size_t, void *);
     void start(Resource &);
@@ -35,6 +40,8 @@ class Resources {
     void clear();
     static std::string resolve(const std::string &base, const std::string &reference);
     Resource *request(const std::string &, size_t limit);
+    Resource *navigate_form(const Submission &, const std::string &source,
+                            const std::vector<std::string> &policies, size_t limit = 1024u * 1024u);
     bool pump();
     bool pending() const;
     bool pending_styles() const;

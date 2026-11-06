@@ -1,4 +1,4 @@
-# Switch visual browser — 0.3.0
+# Switch visual browser — 0.4.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -23,9 +23,19 @@ path; it is not a production engine selection or a playable Keldurn client.
   anchored two-contact pinch zoom (100–250%); contact/focus cancellation.
 - Native input/textarea boxes with values, placeholders, readonly/disabled states,
   password masking and the Switch keyboard. Values stay in memory for the current
-  navigation and survive image/style-driven relayout and viewport changes. Basic
-  GET forms serialize named text/textarea/hidden fields and the chosen submitter;
-  POST, password submission and other control types report that they are unsupported.
+  navigation and survive image/style-driven relayout and viewport changes.
+- Native GET/POST forms with URL-encoded text, textarea, hidden fields, checked
+  checkboxes/radio groups, single/multiple selects and the chosen submitter.
+  Select menus support touch dragging, right-stick scrolling and D-pad/A selection;
+  B closes the menu. Disabled options cannot be chosen. Labels activate controls.
+  Reset restores markup defaults; required/email/number checks catch basic errors.
+  This is a subset of HTML constraint validation, not the full standard.
+- Form POST redirects handle 301/302/303 as GET and preserve POST for 307/308.
+  HTTPS and the supported CSP form-action rules are checked before each hop.
+  Cookies are shared with page resources. POST bodies are bounded to 64 KiB,
+  omitted from history/diagnostics, and released after transport. Reload does not
+  replay a POST response; back skips POST response entries. A GET response reached
+  by redirect can be reloaded. Password fields require POST.
 - Separate native chrome hit regions, an HTTPS address keyboard on Switch,
   back/reload, left-stick pointer + A, D-pad scroll and ZL/ZR zoom. The right stick
   scrolls vertically with an 18% dead zone and quadratic speed up to 2,200 screen
@@ -42,7 +52,9 @@ path; it is not a production engine selection or a playable Keldurn client.
   uses its own SD profile `/switch/switch-visual-browser`.
 - Bundled offline document with an external stylesheet, PNG/JPEG/WebP assets, flex
   cards, editable search, a JavaScript counter and async JSON-loading button, and a
-  below-the-fold anchor. It works without Wi-Fi.
+  below-the-fold anchor. A second form demo exercises checkboxes, radio groups,
+  scrollable single/multiple selects, validation and reset without sending data.
+  It works without Wi-Fi.
 
 ## Build
 
@@ -86,7 +98,8 @@ Limits: 1 MiB HTML, 8,192 '<' characters before parsing, 512 KiB per stylesheet,
 text textures. DejaVu is the only font family and font size is clamped 6–144 px.
 These quotas do not make this an isolated or standards-complete web runtime.
 
-Not implemented: JavaScript modules/workers, complete DOM/web forms and POST, selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
+Not implemented: JavaScript modules/workers, complete DOM/web forms, multipart/file
+uploads, POST fetch, text selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
 CSS grid/transforms, advanced gradient color spaces, rounded image/overflow clipping, rounded border
 strokes or complete border styles. Text case conversion is ASCII-only. Buttons can dispatch JavaScript click/submit handlers; compatibility depends on the APIs their scripts use. Pinch zoom magnifies the selected layout width; Minus explicitly changes that width.
 Text/search fields use native keyboard editing and emit input/change when a committed edit changes the value; per-keystroke keyboard events are not supplied. No long-press action
@@ -112,7 +125,7 @@ pointer work on the console. Website composition is imperfect; web inputs were
 missing. VK reports an outdated browser and YouTube did not open. The precise
 cause of those two failures is not established by that feedback. Version 0.1.0 had no page JavaScript, media playback, MSE or WebRTC, so no compatibility claim
 is made for VK, YouTube or cloud gaming. Changing the user agent does not supply
-those capabilities. The 0.2.0 and 0.3.0 additions require their own device checks.
+those capabilities. The 0.2.0–0.4.0 additions require their own device checks.
 
 ## JavaScript bridge — 0.3.0
 
@@ -137,7 +150,12 @@ it is not a standards-complete DOM or CSSOM.
 
 Implemented events include capture/bubbling, once/removal, stopPropagation,
 preventDefault, DOMContentLoaded/load, native click, input/change on keyboard
-commit, and cancelable form submit. Promise jobs, function-only timers and rAF
+commit, and cancelable form submit/reset. Checkboxes/radios activate before click
+handlers run; canceling click restores their checked state. Form properties include
+checked/defaultChecked, selected/defaultSelected, selectedIndex, options and
+selectedOptions. Native submit(), requestSubmit(submitter) and reset() are supplied.
+checkValidity()/reportValidity() use the basic native submission validator and may
+also reject unsupported destinations/encodings; they are not full constraint validation. Promise jobs, function-only timers and rAF
 run on the UI loop. URL/URLSearchParams, origin-scoped storage/cookies, and the
 existing ru/en UTC Intl subset are available. Pointer/touch/keyboard web events,
 programmatic activation defaults, selection and complete focus semantics remain
@@ -155,7 +173,9 @@ supported script directives, checks redirect destinations, and blocks unsupporte
 source expressions conservatively. Inline handlers require inline permission;
 string code generation is disabled for restricted policies. Connect restrictions
 are checked for fetch. This is not complete CSP enforcement across resource types,
-nonce/hash/strict-dynamic policies, navigations and forms.
+nonce/hash/strict-dynamic policies or arbitrary navigations. Native forms separately
+intersect initial HTTP/meta and current meta form-action policies and check each
+redirect destination. Unsupported source expressions are rejected conservatively.
 
 Tests exercise the actual rendered native tree, stable node identity across
 resource/viewport refresh, CSS selector rematching, live style changes, events,
@@ -169,3 +189,19 @@ acquisition.js / mega.js / lang.js script phase without a JS error after the DOM
 reflection/prepend fixes; all three WebP images decoded. This is a landing-page
 observation, not game-client execution, a device test or a guarantee for future
 versions of the site. CSS Grid composition remains incomplete.
+
+## Form verification — 0.4.0
+
+Eight host suites cover successful controls, Cyrillic/special characters, CRLF
+normalization, fieldset/legend and external form ownership, dirty/default state,
+CSS :checked reflection, reset, JS submission/cancellation and form-action policy.
+A loopback HTTPS server verifies POST payloads, cookies, 303/307 redirects, server
+error pages, redirect blocking, redirect limits, cancellation and no idle replay.
+The actual UI test taps radio/checkbox controls, drags a select popup independently
+of the page, chooses single/multiple values, validates and resets the offline form.
+CI publishes page/popup BMP previews alongside the ARM64 NRO build.
+
+Select size/listbox presentation, full dynamic option normalization, date/color/range
+widgets, validity patterns/step, form target browsing contexts, IME composition and
+per-keystroke web events remain incomplete. Native form POST support does not add
+POST fetch, XHR, WebSocket, media or GPU support.

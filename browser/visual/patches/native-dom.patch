@@ -31,6 +31,19 @@ index 365453a..3f59db1 100644
          void compute_styles(bool recursive) override;
          bool is_text() const override
          {
+diff --git a/include/litehtml/element.h b/include/litehtml/element.h
+index ca9fc38..b2258a5 100644
+--- a/include/litehtml/element.h
++++ b/include/litehtml/element.h
+@@ -45,6 +45,8 @@ namespace litehtml
+       public:
+         explicit element(const std::shared_ptr<document>& doc);
+         virtual ~element() = default;
++        virtual bool is_checked() const { return get_attr("checked") || get_attr("selected"); }
++        virtual bool is_disabled() const { return get_attr("disabled") != nullptr; }
+ 
+         const css_properties& css() const;
+         css_properties&       css();
 diff --git a/include/litehtml/html_tag.h b/include/litehtml/html_tag.h
 index 779d423..2a38bac 100644
 --- a/include/litehtml/html_tag.h
@@ -109,9 +122,25 @@ index 315749a..67a2eae 100644
      {
          // parent must belong to this document
 diff --git a/src/html_tag.cpp b/src/html_tag.cpp
-index a32b90f..0e6e2ab 100644
+index a32b90f..a7793dc 100644
 --- a/src/html_tag.cpp
 +++ b/src/html_tag.cpp
+@@ -675,13 +675,13 @@ namespace litehtml
+         case _checked_:
+             // Form state: matches either the dynamic pseudo-class (set_pseudo_class)
+             // or the standard HTML checked attribute.
+-            if(!(sel.name in m_pseudo_classes) && !get_attr("checked"))
++            if(!(sel.name in m_pseudo_classes) && !is_checked())
+             {
+                 return select_no_match;
+             }
+             break;
+         case _disabled_:
+-            if(!(sel.name in m_pseudo_classes) && !get_attr("disabled"))
++            if(!(sel.name in m_pseudo_classes) && !is_disabled())
+             {
+                 return select_no_match;
+             }
 @@ -1474,6 +1474,28 @@ namespace litehtml
          handle_counter_properties();
      }

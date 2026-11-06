@@ -1,3 +1,4 @@
+#include "choices.h"
 #include "container.h"
 #include "diagnostics.h"
 #include "interaction.h"
@@ -21,7 +22,11 @@ void text(SDL_Renderer *renderer, TTF_Font *font, int x, int y, const std::strin
           SDL_Color color, int maxwidth = 1250) {
     if (s.empty())
         return;
-    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, s.c_str(), color);
+    auto bounded = s.substr(0, 1024);
+    while (bounded.size() < s.size() && !bounded.empty() &&
+           (static_cast<unsigned char>(s[bounded.size()]) & 0xc0) == 0x80)
+        bounded.pop_back();
+    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, bounded.c_str(), color);
     if (!surface)
         return;
     SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
@@ -39,10 +44,17 @@ struct Browser {
     visual::Container container;
     litehtml::document::ptr document;
     std::unique_ptr<visual::Scripts> scripts;
+    std::unique_ptr<visual::Choices> choices;
+    visual::Resource *root_resource = nullptr;
+    std::vector<std::string> submission_rules;
     visual::View view;
     visual::Gestures gestures;
     std::string url = "demo:/index.html", notice;
-    std::vector<std::string> history;
+    struct History {
+        std::string url;
+        bool post = false;
+    };
+    std::vector<History> history;
     unsigned built_revision = 0;
     bool rebuild = true, js_failed = false, js_reported = false;
     int viewport_mode = 0;
@@ -56,35 +68,40 @@ struct Browser {
         navigate(url, false);
     }
     ~Browser() {
+        choices.reset();
         scripts.reset();
         document.reset();
         container.reset();
         TTF_CloseFont(ui);
     }
-    void navigate(const std::string &next, bool record = true) {
+    void navigate(std::string next, bool record = true, const visual::Submission *form = nullptr,
+                  const std::string &source = {}, const std::vector<std::string> &policies = {}) {
         if (next.empty())
             return;
-        if (next.front() == '#') {
+        if (!form && next.front() == '#') {
             jump(next.substr(1));
             return;
         }
         auto fragment = next.find('#');
-        if (fragment != std::string::npos &&
+        if (!form && fragment != std::string::npos &&
             (next.substr(0, fragment) == url.substr(0, url.find('#')) ||
              next.substr(0, fragment) == container.base.substr(0, container.base.find('#')))) {
             jump(next.substr(fragment + 1));
             return;
         }
         if (record) {
-            history.push_back(url);
+            history.push_back({url, root_resource && root_resource->method == "POST"});
             if (history.size() > 16)
                 history.erase(history.begin());
         }
+        choices.reset();
         scripts.reset();
         document.reset();
         container.reset();
+        root_resource = nullptr;
         resources.clear();
         container.forms.clear();
+        submission_rules.clear();
         gestures.cancel();
         view = {};
         view.base_scale = 1280.f / container.viewport_width;
@@ -95,15 +112,32 @@ struct Browser {
         js_failed = js_reported = false;
         built_revision = 0;
         rebuild = true;
-        resources.request(url, 1024u * 1024u);
+        root_resource = form ? resources.navigate_form(*form, source, policies)
+                             : resources.request(url, 1024u * 1024u);
+        if (!root_resource)
+            notice = "Не удалось подготовить загрузку страницы";
     }
     void back() {
-        if (!history.empty()) {
+        if (choices) {
+            choices.reset();
+            return;
+        }
+        while (!history.empty()) {
             auto previous = history.back();
             history.pop_back();
-            navigate(previous, false);
-        } else
-            navigate("demo:/index.html", false);
+            if (previous.post)
+                continue;
+            navigate(previous.url, false);
+            return;
+        }
+        navigate("demo:/index.html", false);
+    }
+    void reload() {
+        if (root_resource && root_resource->method == "POST") {
+            notice = "Чтобы обновить эту страницу, отправьте форму заново.";
+            return;
+        }
+        navigate(root_resource ? root_resource->effective : url, false);
     }
     void jump(const std::string &id) {
         if (!document)
@@ -122,17 +156,18 @@ struct Browser {
             }
     }
     void build() {
-        auto *r = resources.request(url, 1024u * 1024u);
+        auto *r = root_resource;
         if (!r)
             return;
-        if (r->state == visual::Resource::failed) {
+        if (r->state == visual::Resource::failed && !r->transfer_ok) {
             notice = r->error;
             built_revision = resources.revision;
             rebuild = false;
             return;
         }
-        if (r->state != visual::Resource::ready)
+        if (r->state != visual::Resource::ready && !r->transfer_ok)
             return;
+        url = r->effective;
         container.base = r->effective;
         container.page_url = r->effective;
         container.zoom = view.scale();
@@ -146,6 +181,7 @@ struct Browser {
                     html, &container, litehtml::master_css + visual::control_styles());
                 if (!document)
                     throw std::runtime_error("HTML parse failed");
+                submission_rules = visual::form_policies(document, r->policies);
                 document->render(container.viewport_width);
             } else if (scripts && scripts->changed())
                 scripts->flush();
@@ -174,6 +210,31 @@ struct Browser {
             built_revision = resources.revision;
         }
     }
+    bool apply_script_navigation() {
+        if (!scripts)
+            return false;
+        auto form = scripts->submission();
+        if (form) {
+            auto policies = visual::form_policies(document, submission_rules);
+            if (!visual::form_action_allowed(policies, container.page_url, form.url)) {
+                notice = "Отправка формы запрещена политикой сайта";
+                return true;
+            }
+            auto source = container.page_url;
+            navigate(form.url, true, &form, source, policies);
+            return true;
+        }
+        auto target = scripts->navigation();
+        if (!target.empty()) {
+            navigate(target);
+            return true;
+        }
+        if (scripts->reload_requested()) {
+            reload();
+            return true;
+        }
+        return false;
+    }
     void pump() {
         container.scroll_x = view.x;
         container.scroll_y = view.y;
@@ -183,7 +244,7 @@ struct Browser {
         if (!document)
             return;
         if (!scripts && !js_failed && !resources.pending_styles()) {
-            auto *root = resources.request(url, 1024u * 1024u);
+            auto *root = root_resource;
             try {
                 visual::diagnostic("js.start", "QuickJS native DOM");
                 scripts = std::make_unique<visual::Scripts>(document, container, resources,
@@ -213,10 +274,11 @@ struct Browser {
                 }
                 if (!scripts->error().empty())
                     notice = "JS: " + scripts->error();
-                auto target = scripts->navigation();
-                if (!target.empty()) {
-                    navigate(target);
+                if (apply_script_navigation())
                     return;
+                if (!container.form_notice.empty()) {
+                    notice = std::move(container.form_notice);
+                    container.form_notice.clear();
                 }
             } catch (const std::exception &e) {
                 notice = e.what();
@@ -225,8 +287,43 @@ struct Browser {
                 visual::diagnostic("js.failed", "script or layout error");
             }
         }
+        if (choices) {
+            auto node = std::static_pointer_cast<litehtml::element>(choices->control);
+            while (node && node != document->root())
+                node = node->parent();
+            if (!node || choices->control->disabled() ||
+                choices->control->css().get_display() == litehtml::display_none)
+                choices.reset();
+            else {
+                auto items = choices->control->options();
+                if (items != choices->items) {
+                    choices->gestures.cancel();
+                    choices->items = std::move(items);
+                    choices->view.content_height =
+                        float(choices->items.size() * visual::Choices::row);
+                    choices->hover =
+                        std::clamp(choices->hover, 0, std::max(0, int(choices->items.size()) - 1));
+                    choices->view.clamp();
+                }
+            }
+        }
     }
     void click(visual::Point p) {
+        if (choices) {
+            int index = choices->hit(p);
+            if (index >= 0) {
+                choose_option(index);
+                return;
+            }
+            if (p.y >= visual::Choices::footer_y && p.y < visual::Choices::footer_y + 60) {
+                choices.reset();
+                return;
+            }
+            if (p.x < visual::Choices::x || p.x >= visual::Choices::x + visual::Choices::width ||
+                p.y < visual::Choices::y || p.y >= visual::Choices::footer_y + 60)
+                choices.reset();
+            return;
+        }
         if (p.y < 0) {
             if (p.x < 130)
                 back();
@@ -244,15 +341,17 @@ struct Browser {
         auto redraw = [](const litehtml::position &) {};
         document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
         auto hit = std::const_pointer_cast<litehtml::element>(document->get_over_element());
+        if (auto check = std::dynamic_pointer_cast<visual::Control>(hit))
+            if (check->type() == "checkbox" || check->type() == "radio") {
+                activate_check(check, true);
+                return;
+            }
         if (scripts && hit) {
             if (!scripts->dispatch(hit, "click"))
                 return;
             document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
-            auto target = scripts->navigation();
-            if (!target.empty()) {
-                navigate(target);
+            if (apply_script_navigation())
                 return;
-            }
         }
         document->on_lbutton_down(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
         document->on_lbutton_up(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
@@ -279,10 +378,151 @@ struct Browser {
         gestures.cancel();
         rebuild = true;
     }
-    void activate_control(const litehtml::element::ptr &el) {
-        if (el->get_attr("disabled"))
+    void control_changed(const litehtml::element::ptr &el) {
+        rebuild = true;
+        if (scripts) {
+            scripts->dispatch(el, "input", false);
+            scripts->dispatch(el, "change", false);
+        }
+    }
+    void activate_check(const std::shared_ptr<visual::Control> &control, bool emit_click) {
+        if (control->disabled())
             return;
+        std::vector<std::pair<std::shared_ptr<visual::Control>, visual::Control::CheckedState>>
+            saved;
+        auto owner = visual::form_owner(control);
+        std::string name = control->get_attr("name", "");
+        if (control->type() == "radio" && !name.empty()) {
+            for (auto &el : document->root()->select_all("input"))
+                if (auto peer = std::dynamic_pointer_cast<visual::Control>(el))
+                    if (peer->type() == "radio" && name == peer->get_attr("name", "") &&
+                        visual::form_owner(peer) == owner)
+                        saved.push_back({peer, peer->checked_state()});
+        } else
+            saved.push_back({control, control->checked_state()});
+        bool before = control->checked();
+        control->checked(control->type() == "radio" || !before);
+        if (emit_click && scripts && !scripts->dispatch(control, "click")) {
+            for (auto &state : saved)
+                state.first->restore_checked(state.second);
+            rebuild = true;
+            return;
+        }
+        if (apply_script_navigation())
+            return;
+        if (before != control->checked())
+            control_changed(control);
+    }
+    void choose_option(int index) {
+        if (!choices || index < 0 || size_t(index) >= choices->items.size())
+            return;
+        auto control = choices->control;
+        auto parent = std::static_pointer_cast<litehtml::element>(control);
+        while (parent && parent != document->root())
+            parent = parent->parent();
+        if (!parent) {
+            choices.reset();
+            return;
+        }
+        auto option = choices->items[size_t(index)];
+        if (control->disabled() || visual::form_disabled(option))
+            return;
+        auto selected = control->selected_options();
+        bool yes = !control->multiple() ||
+                   std::find(selected.begin(), selected.end(), option) == selected.end();
+        if (control->select_option(option, yes))
+            control_changed(control);
+        if (!control->multiple())
+            choices.reset();
+    }
+    void cancel_input() {
+        gestures.cancel();
+        if (choices)
+            choices->gestures.cancel();
+    }
+    void touch_down(int64_t id, visual::Point p, uint32_t now) {
+        if (choices)
+            choices->gestures.down(id, choices->local(p), now);
+        else
+            gestures.down(id, p, now);
+    }
+    void touch_move(int64_t id, visual::Point p, uint32_t now) {
+        if (choices)
+            choices->gestures.move(id, choices->local(p), now);
+        else
+            gestures.move(id, p, now);
+    }
+    void touch_up(int64_t id, visual::Point p, uint32_t now) {
+        if (choices) {
+            auto tap = choices->gestures.up(id, choices->local(p), now);
+            if (tap)
+                click(p);
+        } else {
+            auto tap = gestures.up(id, p, now);
+            if (tap)
+                click(*tap);
+        }
+    }
+    void scroll(float dx, float dy) {
+        if (choices)
+            choices->scroll(dy);
+        else
+            view.drag(dx, dy);
+    }
+    void send_form(const litehtml::element::ptr &el) {
+        auto prepared = visual::prepare_form(el, container.base, notice, true);
+        if (!prepared)
+            return;
+        auto form = visual::form_owner(el);
+        if (scripts && form && !scripts->dispatch(form, "submit", true, el))
+            return;
+        if (apply_script_navigation())
+            return;
+        prepared = visual::prepare_form(el, container.base, notice, false);
+        if (!prepared)
+            return;
+        auto policies = visual::form_policies(document, submission_rules);
+        if (!visual::form_action_allowed(policies, container.page_url, prepared.url)) {
+            notice = "Отправка формы запрещена политикой сайта";
+            return;
+        }
+        auto source = container.page_url;
+        navigate(prepared.url, true, &prepared, source, policies);
+    }
+    void activate_control(const litehtml::element::ptr &el) {
+        if (visual::form_disabled(el))
+            return;
+        if (std::string(el->get_tagName()) == "label") {
+            auto id = std::string(el->get_attr("for", ""));
+            litehtml::element::ptr target;
+            if (!id.empty()) {
+                for (auto &item : document->root()->select_all("[id]"))
+                    if (id == item->get_attr("id", "")) {
+                        target = item;
+                        break;
+                    }
+            } else
+                for (auto &item : el->select_all("*"))
+                    if (std::dynamic_pointer_cast<visual::Control>(item)) {
+                        target = item;
+                        break;
+                    }
+            if (target && target != el &&
+                (std::dynamic_pointer_cast<visual::Control>(target) ||
+                 std::string(target->get_tagName()) == "button"))
+                activate_control(target);
+            return;
+        }
         auto control = std::dynamic_pointer_cast<visual::Control>(el);
+        if (control && (control->type() == "checkbox" || control->type() == "radio")) {
+            activate_check(control, true);
+            return;
+        }
+        if (control && control->type() == "select") {
+            gestures.cancel();
+            choices = std::make_unique<visual::Choices>(control);
+            return;
+        }
         if (control && control->editable()) {
 #ifdef __SWITCH__
             gestures.cancel();
@@ -304,10 +544,8 @@ struct Browser {
             if (R_SUCCEEDED(rc)) {
                 bool changed = control->value() != value;
                 control->value(value);
-                if (changed && scripts) {
-                    scripts->dispatch(el, "input", false);
-                    scripts->dispatch(el, "change", false);
-                }
+                if (changed)
+                    control_changed(el);
             }
 #else
             notice = "Поле выбрано. Экранная клавиатура доступна на Switch.";
@@ -315,19 +553,19 @@ struct Browser {
             return;
         }
         std::string type = control ? control->type() : el->get_attr("type", "submit");
-        if (type == "submit") {
-            auto form = el;
-            while (form && std::string(form->get_tagName()) != "form")
-                form = form->parent();
-            if (scripts && form && !scripts->dispatch(form, "submit"))
+        if (type == "submit")
+            send_form(el);
+        else if (type == "reset") {
+            auto form = visual::form_owner(el);
+            if (scripts && form && !scripts->dispatch(form, "reset"))
                 return;
-            auto next = visual::form_get(el, container.base, notice);
-            if (!next.empty())
-                navigate(next);
+            visual::reset_form(el);
+            rebuild = true;
         } else if (type != "button" && !el->get_attr("readonly"))
             notice = "Этот тип элемента пока не подключён";
     }
     void edit_address() {
+        choices.reset();
 #ifdef __SWITCH__
         gestures.cancel();
         SwkbdConfig keyboard;
@@ -351,6 +589,56 @@ struct Browser {
 #else
         notice = "Host: pass an HTTPS address as an argument";
 #endif
+    }
+    void paint_choices() {
+        if (!choices)
+            return;
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 165);
+        SDL_Rect shade = {0, 0, 1280, 720};
+        SDL_RenderFillRect(renderer, &shade);
+        SDL_SetRenderDrawColor(renderer, 245, 248, 252, 255);
+        SDL_Rect panel = {visual::Choices::x, visual::Choices::y + 84, visual::Choices::width,
+                          visual::Choices::footer_y + 60 - visual::Choices::y};
+        SDL_RenderFillRect(renderer, &panel);
+        text(renderer, ui, visual::Choices::x + 20, visual::Choices::y + 96,
+             choices->control->get_attr("aria-label", "Выберите вариант"), {24, 42, 66, 255}, 860);
+        SDL_Rect clip = {visual::Choices::x + 8, visual::Choices::list_y + 84,
+                         visual::Choices::width - 16,
+                         visual::Choices::row * visual::Choices::visible};
+        SDL_RenderSetClipRect(renderer, &clip);
+        auto selected = choices->control->selected_options();
+        int first = int(choices->view.y / visual::Choices::row);
+        for (int i = first; i < int(choices->items.size()) && i <= first + visual::Choices::visible;
+             i++) {
+            auto option = choices->items[size_t(i)];
+            int y = visual::Choices::list_y + 84 + i * visual::Choices::row - int(choices->view.y);
+            bool chosen = std::find(selected.begin(), selected.end(), option) != selected.end();
+            SDL_Rect row = {visual::Choices::x + 8, y, visual::Choices::width - 16,
+                            visual::Choices::row - 1};
+            SDL_SetRenderDrawColor(renderer,
+                                   chosen                ? 191
+                                   : choices->hover == i ? 222
+                                                         : 245,
+                                   chosen                ? 225
+                                   : choices->hover == i ? 233
+                                                         : 248,
+                                   chosen                ? 233
+                                   : choices->hover == i ? 244
+                                                         : 252,
+                                   255);
+            SDL_RenderFillRect(renderer, &row);
+            text(renderer, ui, visual::Choices::x + 22, y + 10, chosen ? "●" : "○",
+                 {30, 95, 122, 255}, 30);
+            text(renderer, ui, visual::Choices::x + 62, y + 10, visual::option_label(option),
+                 visual::form_disabled(option) ? SDL_Color{135, 140, 148, 255}
+                                               : SDL_Color{24, 42, 66, 255},
+                 820);
+        }
+        SDL_RenderSetClipRect(renderer, nullptr);
+        text(renderer, ui, visual::Choices::x + 20, visual::Choices::footer_y + 100,
+             choices->control->multiple() ? "Готово · B — закрыть" : "B — закрыть · A — выбрать",
+             {20, 88, 117, 255}, 860);
     }
     void paint() {
         SDL_SetRenderDrawColor(renderer, 245, 247, 250, 255);
@@ -382,6 +670,7 @@ struct Browser {
              {174, 190, 211, 255}, 1250);
         if (!document && notice.empty())
             text(renderer, ui, 40, 140, "Загрузка страницы…", {25, 40, 60, 255});
+        paint_choices();
         if (document && !gestures.active()) {
             SDL_SetRenderDrawColor(renderer, 15, 100, 160, 200);
             SDL_RenderDrawLine(renderer, pointer_x - 7, pointer_y + 84, pointer_x + 7,
@@ -394,7 +683,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.3.0");
+    visual::diagnostic("boot", "0.4.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -479,26 +768,40 @@ int main(int argc, char **argv) {
                 if (down & HidNpadButton_B)
                     app.back();
                 if (down & HidNpadButton_Y)
-                    app.navigate(app.url, false);
-                if (down & HidNpadButton_A)
-                    app.click({float(app.pointer_x), float(app.pointer_y)});
-                if (held & HidNpadButton_Down)
-                    app.view.drag(0, -10);
-                if (held & HidNpadButton_Up)
-                    app.view.drag(0, 10);
+                    app.reload();
+                if (down & HidNpadButton_A) {
+                    if (app.choices && app.choices->pad_navigation)
+                        app.choose_option(app.choices->hover);
+                    else
+                        app.click({float(app.pointer_x), float(app.pointer_y)});
+                }
+                if (app.choices) {
+                    if (down & HidNpadButton_Down)
+                        app.choices->move(1);
+                    if (down & HidNpadButton_Up)
+                        app.choices->move(-1);
+                } else {
+                    if (held & HidNpadButton_Down)
+                        app.scroll(0, -10);
+                    if (held & HidNpadButton_Up)
+                        app.scroll(0, 10);
+                }
                 HidAnalogStickState right = padGetStickPos(&pad, 1);
                 float scroll_speed = visual::stick_scroll_speed(right.y / 32767.f);
-                if (scroll_speed != 0 && !app.gestures.active()) {
+                if (scroll_speed != 0 && !app.gestures.active() &&
+                    (!app.choices || !app.choices->gestures.active())) {
                     app.gestures.stop_inertia();
                     float seconds = std::min(.05f, (SDL_GetTicks() - previous) / 1000.f);
-                    app.view.drag(0, scroll_speed * seconds);
+                    app.scroll(0, scroll_speed * seconds);
                 }
                 HidAnalogStickState stick = padGetStickPos(&pad, 0);
+                if (app.choices && (std::abs(stick.x) > 4096 || std::abs(stick.y) > 4096))
+                    app.choices->pad_navigation = false;
                 app.pointer_x = std::clamp(app.pointer_x + stick.x / 4096, 0, 1279);
                 app.pointer_y = std::clamp(app.pointer_y - stick.y / 4096, 0, 635);
-                if (down & HidNpadButton_ZR)
+                if (!app.choices && (down & HidNpadButton_ZR))
                     app.view.pinch({640, 318}, {640, 318}, 1.2f);
-                if (down & HidNpadButton_ZL)
+                if (!app.choices && (down & HidNpadButton_ZL))
                     app.view.pinch({640, 318}, {640, 318}, 1 / 1.2f);
 #endif
                 SDL_Event event;
@@ -507,42 +810,36 @@ int main(int argc, char **argv) {
                         quit = true;
                     else if (event.type == SDL_WINDOWEVENT &&
                              event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-                        app.gestures.cancel();
+                        app.cancel_input();
                     else if (event.type == SDL_FINGERDOWN)
-                        app.gestures.down(event.tfinger.fingerId,
-                                          {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
-                                          event.tfinger.timestamp);
+                        app.touch_down(event.tfinger.fingerId,
+                                       {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
+                                       event.tfinger.timestamp);
                     else if (event.type == SDL_FINGERMOTION)
-                        app.gestures.move(event.tfinger.fingerId,
-                                          {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
-                                          event.tfinger.timestamp);
-                    else if (event.type == SDL_FINGERUP) {
-                        auto tap =
-                            app.gestures.up(event.tfinger.fingerId,
-                                            {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
-                                            event.tfinger.timestamp);
-                        if (tap)
-                            app.click(*tap);
-                    } else if (event.type == SDL_MOUSEBUTTONDOWN &&
-                               event.button.which != SDL_TOUCH_MOUSEID &&
-                               event.button.button == SDL_BUTTON_LEFT)
-                        app.gestures.down(-1, {float(event.button.x), float(event.button.y - 84)},
-                                          event.button.timestamp);
+                        app.touch_move(event.tfinger.fingerId,
+                                       {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
+                                       event.tfinger.timestamp);
+                    else if (event.type == SDL_FINGERUP)
+                        app.touch_up(event.tfinger.fingerId,
+                                     {event.tfinger.x * 1280, event.tfinger.y * 720 - 84},
+                                     event.tfinger.timestamp);
+                    else if (event.type == SDL_MOUSEBUTTONDOWN &&
+                             event.button.which != SDL_TOUCH_MOUSEID &&
+                             event.button.button == SDL_BUTTON_LEFT)
+                        app.touch_down(-1, {float(event.button.x), float(event.button.y - 84)},
+                                       event.button.timestamp);
                     else if (event.type == SDL_MOUSEMOTION &&
                              event.motion.which != SDL_TOUCH_MOUSEID &&
                              (event.motion.state & SDL_BUTTON_LMASK))
-                        app.gestures.move(-1, {float(event.motion.x), float(event.motion.y - 84)},
-                                          event.motion.timestamp);
+                        app.touch_move(-1, {float(event.motion.x), float(event.motion.y - 84)},
+                                       event.motion.timestamp);
                     else if (event.type == SDL_MOUSEBUTTONUP &&
                              event.button.which != SDL_TOUCH_MOUSEID &&
-                             event.button.button == SDL_BUTTON_LEFT) {
-                        auto tap =
-                            app.gestures.up(-1, {float(event.button.x), float(event.button.y - 84)},
-                                            event.button.timestamp);
-                        if (tap)
-                            app.click(*tap);
-                    } else if (event.type == SDL_MOUSEWHEEL)
-                        app.view.drag(0, event.wheel.y * 72.f);
+                             event.button.button == SDL_BUTTON_LEFT)
+                        app.touch_up(-1, {float(event.button.x), float(event.button.y - 84)},
+                                     event.button.timestamp);
+                    else if (event.type == SDL_MOUSEWHEEL)
+                        app.scroll(0, event.wheel.y * 72.f);
                     else if (event.type == SDL_KEYDOWN) {
                         if (event.key.keysym.sym == SDLK_ESCAPE)
                             quit = true;
@@ -553,13 +850,16 @@ int main(int argc, char **argv) {
                         else if (event.key.keysym.sym == SDLK_HOME)
                             app.navigate("demo:/index.html");
                         else if (event.key.keysym.sym == SDLK_DOWN)
-                            app.view.drag(0, -60);
+                            app.scroll(0, -60);
                         else if (event.key.keysym.sym == SDLK_UP)
-                            app.view.drag(0, 60);
+                            app.scroll(0, 60);
                     }
                 }
                 uint32_t now = SDL_GetTicks();
-                app.gestures.tick((now - previous) / 1000.f);
+                if (app.choices)
+                    app.choices->gestures.tick((now - previous) / 1000.f);
+                else
+                    app.gestures.tick((now - previous) / 1000.f);
                 previous = now;
                 app.pump();
                 app.paint();
@@ -697,6 +997,88 @@ int main(int argc, char **argv) {
                     if (fetch_text.find("JSON загружен") == std::string::npos)
                         throw std::runtime_error("painted async JavaScript button failed: " +
                                                  app.scripts->error());
+                    auto tap_element = [&](const char *id) {
+                        auto el = app.document->root()->select_one(std::string("#") + id);
+                        if (!el)
+                            throw std::runtime_error("Missing form demo control");
+                        auto box = el->get_placement();
+                        app.view.y = std::max(0.f, float(box.y) - 80);
+                        app.view.clamp();
+                        app.click({(float(box.x) + 5 - app.view.x) * app.view.scale(),
+                                   (float(box.y) + 5 - app.view.y) * app.view.scale()});
+                        app.pump();
+                    };
+                    auto widget = [&](const char *id) {
+                        return std::dynamic_pointer_cast<visual::Control>(
+                            app.document->root()->select_one(std::string("#") + id));
+                    };
+                    tap_element("demo-check");
+                    std::string state;
+                    app.document->root()->select_one("#forms-state")->get_text(state);
+                    if (widget("demo-check")->checked() || state != "Выключено")
+                        throw std::runtime_error("checkbox preactivation/event state failed");
+                    tap_element("demo-radio-b");
+                    if (widget("demo-radio-a")->checked() || !widget("demo-radio-b")->checked())
+                        throw std::runtime_error("radio activation failed");
+                    tap_element("demo-select");
+                    if (!app.choices)
+                        throw std::runtime_error("select did not open");
+                    app.paint();
+                    SDL_Surface *menu =
+                        SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);
+                    if (!menu ||
+                        SDL_RenderReadPixels(renderer, nullptr, menu->format->format, menu->pixels,
+                                             menu->pitch) ||
+                        SDL_SaveBMP(menu, (std::string(argv[4]) + ".choices.bmp").c_str()))
+                        throw std::runtime_error(SDL_GetError());
+                    SDL_FreeSurface(menu);
+                    app.click({float(visual::Choices::x + 80),
+                               float(visual::Choices::list_y + 2 * visual::Choices::row + 20)});
+                    if (!app.choices || widget("demo-select")->value() != "ru")
+                        throw std::runtime_error("disabled option selected");
+                    float page_scroll = app.view.y;
+                    app.touch_down(41, {300, 300}, 1000);
+                    app.touch_move(41, {300, 180}, 1050);
+                    app.touch_up(41, {300, 180}, 1060);
+                    if (!app.choices || app.choices->view.y <= 0 || app.view.y != page_scroll)
+                        throw std::runtime_error("select gesture/page isolation failed");
+                    app.scroll(0, 10000);
+                    app.click({float(visual::Choices::x + 80),
+                               float(visual::Choices::list_y + visual::Choices::row + 20)});
+                    app.pump();
+                    if (app.choices || widget("demo-select")->value() != "en")
+                        throw std::runtime_error("option hit-test failed");
+                    tap_element("demo-multi");
+                    if (!app.choices)
+                        throw std::runtime_error("multiple select did not open");
+                    app.click({float(visual::Choices::x + 80),
+                               float(visual::Choices::list_y + visual::Choices::row + 20)});
+                    app.pump();
+                    if (!app.choices || widget("demo-multi")->selected_options().size() != 2)
+                        throw std::runtime_error("multiple selection failed");
+                    app.click(
+                        {float(visual::Choices::x + 80), float(visual::Choices::footer_y + 20)});
+                    if (app.choices)
+                        throw std::runtime_error("select menu did not close");
+                    widget("demo-email")->value("bad");
+                    tap_element("demo-submit");
+                    if (app.notice.find("Проверьте поле") == std::string::npos)
+                        throw std::runtime_error("form validation failed");
+                    widget("demo-email")->value("demo@example.test");
+                    tap_element("demo-submit");
+                    std::string submitted;
+                    app.document->root()->select_one("#forms-result")->get_text(submitted);
+                    if (submitted != "Готово: en / demo-submit" || app.url != "demo:/index.html")
+                        throw std::runtime_error("cancelable form submit/submitter failed");
+                    tap_element("demo-reset");
+                    if (!widget("demo-check")->checked() || !widget("demo-radio-a")->checked() ||
+                        widget("demo-select")->value() != "ru")
+                        throw std::runtime_error("native reset failed");
+                    app.reload();
+                    for (int i = 0; i < 5; i++)
+                        app.pump();
+                    if (!app.document || app.url != "demo:/index.html")
+                        throw std::runtime_error("GET reload failed");
                     quit = true;
                 }
 #endif

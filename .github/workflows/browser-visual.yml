@@ -40,7 +40,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: visual-browser-preview
-          path: browser/visual/build/host/visual-preview.bmp
+          path: browser/visual/build/host/visual-preview*.bmp
           if-no-files-found: error
   visual-switch:
     name: Visual browser NRO (ARM64)

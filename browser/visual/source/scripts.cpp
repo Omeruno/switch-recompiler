@@ -154,6 +154,8 @@ struct Scripts::Impl {
     std::vector<Fetch> fetches;
     std::vector<std::string> policies;
     std::string last_error, next_url;
+    Submission next_form;
+    bool next_reload = false;
     uint64_t now = 0, deadline = 0;
     unsigned checks = 0, created = 0;
     size_t mutated_bytes = 0;
@@ -480,10 +482,18 @@ struct Scripts::Impl {
         if (op == "resolve")
             return js(Resources::resolve(argc > 3 && !str(3).empty() ? str(3) : container.base,
                                          str(2, 2048)));
+        if (op == "reload") {
+            next_url.clear();
+            next_form = {};
+            next_reload = true;
+            return JS_UNDEFINED;
+        }
         if (op == "navigate") {
             auto url = Resources::resolve(container.base, str(2, 2048));
             if (url.empty())
                 throw std::runtime_error("Navigation requires HTTPS");
+            next_form = {};
+            next_reload = false;
             next_url = url;
             return JS_UNDEFINED;
         }
@@ -684,12 +694,104 @@ struct Scripts::Impl {
                 el->remove_attr(key.c_str());
             else
                 el->set_attr(key.c_str(), value.c_str());
+            if (auto control = std::dynamic_pointer_cast<Control>(el))
+                control->parse_attributes();
+            else if (std::string(el->get_tagName()) == "option") {
+                auto parent = el->parent();
+                while (parent && std::string(parent->get_tagName()) != "select")
+                    parent = parent->parent();
+                if (auto control = std::dynamic_pointer_cast<Control>(parent))
+                    control->parse_attributes();
+            }
+            return JS_UNDEFINED;
+        }
+        if (op == "formOwner") {
+            auto form = form_owner(el);
+            return form ? JS_NewInt32(context, int(handle(form))) : JS_NULL;
+        }
+        if (op == "type") {
+            auto control = std::dynamic_pointer_cast<Control>(el);
+            if (control) {
+                auto t = control->type();
+                return js(t == "select" ? (control->multiple() ? "select-multiple" : "select-one")
+                                        : t);
+            }
+            return js(
+                el->get_attr("type", std::string(el->get_tagName()) == "button" ? "submit" : ""));
+        }
+        if (op == "checked") {
+            auto control = std::dynamic_pointer_cast<Control>(el);
+            if (!control || (control->type() != "checkbox" && control->type() != "radio"))
+                return JS_NewBool(context, false);
+            if (argc > 2) {
+                quota(0);
+                control->checked(JS_ToBool(context, a[2]) > 0);
+            }
+            return JS_NewBool(context, control->checked());
+        }
+        if (op == "selectedIndex" || op == "options") {
+            auto control = std::dynamic_pointer_cast<Control>(el);
+            if (!control || control->type() != "select")
+                throw std::runtime_error("Expected select");
+            if (op == "selectedIndex") {
+                if (argc > 2) {
+                    quota(0);
+                    control->selected_index(integer(2));
+                }
+                return JS_NewInt32(context, control->selected_index());
+            }
+            auto out = JS_NewArray(context);
+            uint32_t i = 0;
+            for (auto &option : control->options())
+                JS_SetPropertyUint32(context, out, i++, JS_NewInt32(context, int(handle(option))));
+            return out;
+        }
+        if (op == "selected") {
+            auto parent = el->parent();
+            while (parent && std::string(parent->get_tagName()) != "select")
+                parent = parent->parent();
+            auto control = std::dynamic_pointer_cast<Control>(parent);
+            if (!control)
+                return JS_NewBool(context, el->get_attr("selected") != nullptr);
+            if (argc > 2) {
+                quota(0);
+                control->select_option(el, JS_ToBool(context, a[2]) > 0);
+            }
+            auto selected = control->selected_options();
+            return JS_NewBool(context,
+                              std::find(selected.begin(), selected.end(), el) != selected.end());
+        }
+        if (op == "validateForm" || op == "submitForm" || op == "resetForm") {
+            auto form = form_owner(el);
+            if (!form)
+                throw std::runtime_error("No form owner");
+            if (op == "resetForm") {
+                quota(0);
+                reset_form(form);
+                return JS_UNDEFINED;
+            }
+            std::string error;
+            auto request = prepare_form(el, container.base, error, op == "validateForm");
+            if (op == "validateForm") {
+                if (!request && argc > 2 && JS_ToBool(context, a[2]))
+                    container.form_notice = error;
+                return JS_NewBool(context, bool(request));
+            }
+            if (!request)
+                throw std::runtime_error(error);
+            if (!form_action_allowed(form_policies(doc, policies), container.page_url, request.url))
+                throw std::runtime_error("Form blocked by CSP");
+            next_url.clear();
+            next_reload = false;
+            next_form = std::move(request);
             return JS_UNDEFINED;
         }
         if (op == "value") {
             auto c = std::dynamic_pointer_cast<Control>(el);
             if (argc < 3)
-                return js(c ? c->value() : el->get_attr("value", ""));
+                return js(c                                            ? c->value()
+                          : std::string(el->get_tagName()) == "option" ? option_value(el)
+                                                                       : el->get_attr("value", ""));
             auto value = str(2, 4096);
             quota(value.size());
             if (c)
@@ -857,7 +959,8 @@ struct Scripts::Impl {
         }
         throw std::runtime_error("Unsupported DOM operation");
     }
-    bool event(const litehtml::element::ptr &el, const std::string &type, bool cancelable) {
+    bool event(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
+               const litehtml::element::ptr &submitter = {}) {
         if (!usable_runtime)
             return true;
         budget(30);
@@ -881,7 +984,8 @@ struct Scripts::Impl {
         }
         auto result =
             call("event", {JS_NewInt32(context, el ? int(handle(el)) : 0),
-                           JS_NewString(context, type.c_str()), JS_NewBool(context, cancelable)});
+                           JS_NewString(context, type.c_str()), JS_NewBool(context, cancelable),
+                           JS_NewInt32(context, submitter ? int(handle(submitter)) : -1)});
         bool ok = JS_IsException(result) ? false : JS_ToBool(context, result) > 0;
         JS_FreeValue(context, result);
         drain();
@@ -954,8 +1058,9 @@ Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,
     : impl(std::make_unique<Impl>(d, c, r, std::move(p))) {}
 Scripts::~Scripts() = default;
 bool Scripts::poll(uint64_t n) { return impl->poll(n); }
-bool Scripts::dispatch(const litehtml::element::ptr &el, const std::string &type, bool cancelable) {
-    return impl->event(el, type, cancelable);
+bool Scripts::dispatch(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
+                       const litehtml::element::ptr &submitter) {
+    return impl->event(el, type, cancelable, submitter);
 }
 bool Scripts::eval(const std::string &source, unsigned ms) {
     impl->budget(ms);
@@ -976,6 +1081,16 @@ std::string Scripts::navigation() {
     auto url = std::move(impl->next_url);
     impl->next_url.clear();
     return url;
+}
+Submission Scripts::submission() {
+    auto request = std::move(impl->next_form);
+    impl->next_form = {};
+    return request;
+}
+bool Scripts::reload_requested() {
+    bool result = impl->next_reload;
+    impl->next_reload = false;
+    return result;
 }
 std::string Scripts::error() const { return impl->last_error; }
 bool Scripts::ready() const { return impl->loaded; }

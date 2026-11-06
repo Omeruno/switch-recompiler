@@ -419,13 +419,17 @@ litehtml::element::ptr Container::create_element(const char *tag, const litehtml
                                                  const std::shared_ptr<litehtml::document> &doc) {
     if (std::string(tag) == "script" || std::string(tag) == "style")
         return std::make_shared<SourceElement>(doc);
-    if (std::string(tag) == "input" || std::string(tag) == "textarea")
+    if (std::string(tag) == "option")
+        return std::make_shared<Option>(doc);
+    if (std::string(tag) == "input" || std::string(tag) == "textarea" ||
+        std::string(tag) == "select")
         return std::make_shared<Control>(doc, forms, forms.next++);
     return {};
 }
 bool Container::on_element_click(const litehtml::element::ptr &el) {
     std::string tag = el->get_tagName();
-    if (tag == "input" || tag == "textarea" || tag == "button") {
+    if (tag == "input" || tag == "textarea" || tag == "button" || tag == "select" ||
+        tag == "label") {
         clicked = el;
         return true;
     }

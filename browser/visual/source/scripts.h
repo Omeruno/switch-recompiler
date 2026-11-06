@@ -15,11 +15,14 @@ class Scripts {
     Scripts &operator=(const Scripts &) = delete;
     static uint64_t clock_ms();
     bool poll(uint64_t now);
-    bool dispatch(const litehtml::element::ptr &, const std::string &type, bool cancelable = true);
+    bool dispatch(const litehtml::element::ptr &, const std::string &type, bool cancelable = true,
+                  const litehtml::element::ptr &submitter = {});
     bool eval(const std::string &, unsigned budget_ms = 50);
     bool changed() const;
     void flush();
     std::string navigation();
+    Submission submission();
+    bool reload_requested();
     std::string error() const;
     bool ready() const;
 };
