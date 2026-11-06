@@ -107,6 +107,14 @@ int main(int argc, char **argv) {
                "&');if(u.origin!=='https://example.test'||u.searchParams.get('q')!=='Русский + "
                "&'||!u.href.endsWith('#h'))throw Error('URL params '+u.origin+' '+u.href+' "
                "'+u.searchParams.get('q'));");
+        run(s,
+            "document.documentElement.lang='ru';if(document.documentElement.lang!=='ru')throw "
+            "Error('lang reflection');const "
+            "p=document.createElement('p');p.id='prepended';document.body.prepend(p,'start');if("
+            "document.body.firstChild!==p||p.nextSibling.textContent!=='start')throw "
+            "Error('prepend order');document.body.prepend(p);if(document.body.firstChild!==p)throw "
+            "Error('existing-node prepend');");
+        s.flush();
         CHECK(!s.eval("while(true){}", 5));
         run(s, "if(2+2!==4)throw Error('runtime did not recover');");
     }

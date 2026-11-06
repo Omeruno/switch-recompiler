@@ -141,3 +141,25 @@ index a32b90f..0e6e2ab 100644
      void litehtml::html_tag::refresh_styles()
      {
          for(auto& el : m_children)
+diff --git a/src/style.cpp b/src/style.cpp
+index fc87b2d..feb1f66 100644
+--- a/src/style.cpp
++++ b/src/style.cpp
+@@ -1546,7 +1546,7 @@ namespace litehtml
+             if(token.type == IDENT)
+             {
+                 auto idx = css_values(style_text_decoration_line_strings).value_index(token.ident());
+-                if(idx.has_value())
++                if(idx.has_value() && idx.value() > 0)
+                 {
+                     val |= 1 << (idx.value() - 1);
+                 }
+@@ -1598,7 +1598,7 @@ namespace litehtml
+             if(token.type == IDENT)
+             {
+                 auto idx = css_values(style_text_emphasis_position_strings).value_index(token.ident());
+-                if(idx.has_value())
++                if(idx.has_value() && idx.value() > 0)
+                 {
+                     val |= 1 << (idx.value() - 1);
+                 }

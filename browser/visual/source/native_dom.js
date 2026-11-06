@@ -82,6 +82,8 @@
     get innerText(){return this.textContent;}set innerText(v){this.textContent=v;}
     appendChild(node){if(!(node instanceof Node))throw new TypeError('Expected Node');bridge('append',this._key,node._key);return node;}
     append(...items){for(const v of items)this.appendChild(v instanceof Node?v:document.createTextNode(String(v)));}
+    insertBefore(node,before){if(!(node instanceof Node))throw new TypeError('Expected Node');bridge('insert',this._key,node._key,before?before._key:-1);return node;}
+    prepend(...items){for(let i=items.length-1;i>=0;i--){const node=items[i] instanceof Node?items[i]:document.createTextNode(String(items[i]));this.insertBefore(node,this.firstChild);}}
     removeChild(node){bridge('remove',this._key,node._key);return node;}
     remove(){if(this.parentNode)this.parentNode.removeChild(this);}
     replaceChildren(...items){for(const node of this.childNodes)node.remove();this.append(...items);}
@@ -110,6 +112,8 @@
     blur(){if(activeElement===this)activeElement=null;this.dispatchEvent(new Event('blur'));}
     click(){this.dispatchEvent(new Event('click',{bubbles:true,cancelable:true}));}
   }
+  for(const name of ['lang','dir','title','type','rel','target','placeholder'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
+  Object.defineProperty(Node.prototype,'src',{get(){const value=this.getAttribute('src');return value?bridge('resolve',0,value):'';},set(v){this.setAttribute('src',v);}});
   Object.assign(Node.prototype,eventMethods);
   function wrap(key){if(!nodes.has(key))nodes.set(key,new Node(key));return nodes.get(key);}
   const document=wrap(0);
@@ -123,10 +127,11 @@
     title:{get:()=>document.querySelector('title')?.textContent||'',set:v=>{const t=document.querySelector('title');if(t)t.textContent=v;}},
     readyState:{get:()=>readyState},activeElement:{get:()=>activeElement||document.body},
     cookie:{get:()=>bridge('cookie',0),set:v=>bridge('cookie',0,String(v))},
+    referrer:{get:()=>''},
     URL:{get:()=>bridge('url',0)}
   });
   Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
-  const location={get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){this.href=this.href;}};
+  const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){this.href=this.href;}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
   Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.3.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {

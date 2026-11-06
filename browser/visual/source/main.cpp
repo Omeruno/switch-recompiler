@@ -182,7 +182,7 @@ struct Browser {
             build();
         if (!document)
             return;
-        if (!scripts && !js_failed && !resources.pending()) {
+        if (!scripts && !js_failed && !resources.pending_styles()) {
             auto *root = resources.request(url, 1024u * 1024u);
             try {
                 visual::diagnostic("js.start", "QuickJS native DOM");
@@ -247,6 +247,7 @@ struct Browser {
         if (scripts && hit) {
             if (!scripts->dispatch(hit, "click"))
                 return;
+            document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
             auto target = scripts->navigation();
             if (!target.empty()) {
                 navigate(target);

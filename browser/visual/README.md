@@ -34,8 +34,9 @@ path; it is not a production engine selection or a playable Keldurn client.
   Each width reruns media queries/layout; pinch zoom remains separate. Rendering,
   hit testing, drag and pinch coordinates use the combined layout/zoom scale.
   This does not implement CSS Grid or repair every site's layout.
-- Four concurrent libcurl-multi requests pumped by the UI loop, HTTPS certificate
-  validation and the reader's tested root importer. Relative stylesheet/image
+- Up to four concurrent libcurl-multi requests pumped by the UI loop, HTTPS certificate
+  validation and the reader's tested root importer. One slot is reserved for
+  styles/scripts/fetch instead of being occupied by image requests. Relative stylesheet/image
   URLs resolve against the document, stylesheet base or redirect target. Page
   navigation cancels pending transfers and clears the page caches. This NRO
   uses its own SD profile `/switch/switch-visual-browser`.
@@ -116,20 +117,21 @@ those capabilities. The 0.2.0 and 0.3.0 additions require their own device check
 ## JavaScript bridge — 0.3.0
 
 Classic scripts use one QuickJS realm per navigation. Inline and external sources
-are scheduled in document order after initial visual resources settle. This is not
+are scheduled in document order after initial stylesheets settle (images do not block startup). This is not
 full browser parser-blocking/async/defer/module scheduling. Up to 16 sources,
 128 KiB/source, 32 MiB JS heap, 256 KiB JS stack, 64 timers and 256 listeners are
 allowed. Script evaluation has a 50 ms interrupt budget; timer/job turns use 8 ms
 and drain at most 32 jobs. A navigation destroys the realm before its document,
 resources or profile can be replaced.
 
-The facade directly delegates to native nodes: selectors, IDs, attributes,
-textContent/innerHTML, append/remove/create, classList/dataset/inline styles,
+The facade directly delegates to native nodes: selectors, IDs, reflected attributes,
+textContent/innerHTML, append/prepend/insertBefore/remove/create, classList/dataset/inline styles,
 input values and bounding rectangles. CSS and render items are recomputed from
 the retained native tree. There is no separate JS document snapshot to overwrite
 native user input. The tree/handle traversal cap is 8,192; dynamic creation has a
 4,096-node lifetime quota, fragments are capped at 16 KiB/128 '<' characters and
-cumulative mutation strings at 8 MiB/navigation. This is a DOM subset, with snapshot
+cumulative mutation strings at 8 MiB/navigation. The renderer patch also fixes an
+upstream negative shift when parsing text-decoration:none, found by UBSan. This is a DOM subset, with snapshot
 node lists, partial CSSStyleDeclaration/getComputedStyle and text-layout limits;
 it is not a standards-complete DOM or CSSOM.
 
@@ -148,7 +150,7 @@ CORS implementation, XHR, WebSocket or media API. Fetch uses the existing bounde
 page resource cache, not a complete HTTP cache or arbitrary long-lived polling
 implementation.
 
-The script loader intersects final HTTP CSP headers and meta policies for its
+The script loader intersects final HTTP CSP headers and initial meta policies for its
 supported script directives, checks redirect destinations, and blocks unsupported
 source expressions conservatively. Inline handlers require inline permission;
 string code generation is disabled for restricted policies. Connect restrictions
@@ -161,3 +163,9 @@ form cancellation, timers, infinite-loop interruption, authenticated external
 script loading, cookie visibility, async fetch and real HTTPS failures. The NRO
 still does not establish VK/YouTube/game compatibility: modules, broader web APIs,
 Grid, GPU and media remain separate work.
+
+A live host capture of `https://keldurn.com/ru/` on 2026-11-06 completed the
+acquisition.js / mega.js / lang.js script phase without a JS error after the DOM
+reflection/prepend fixes; all three WebP images decoded. This is a landing-page
+observation, not game-client execution, a device test or a guarantee for future
+versions of the site. CSS Grid composition remains incomplete.

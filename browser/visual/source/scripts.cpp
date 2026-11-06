@@ -237,6 +237,8 @@ struct Scripts::Impl {
                     continue;
                 entry.external = true;
                 entry.resource = resources.request(entry.url, 128u * 1024u);
+                if (entry.resource)
+                    entry.resource->critical = true;
                 if (!entry.resource)
                     continue;
             }
@@ -524,6 +526,7 @@ struct Scripts::Impl {
             auto *r = resources.request(url, 512u * 1024u);
             if (!r)
                 throw std::runtime_error("Resource quota exceeded");
+            r->critical = true;
             fetches.push_back({integer(2), r, url});
             return JS_UNDEFINED;
         }
@@ -693,6 +696,39 @@ struct Scripts::Impl {
                 c->value(value);
             else
                 el->set_attr("value", value.c_str());
+            return JS_UNDEFINED;
+        }
+        if (op == "insert") {
+            if (!id || el->is_text())
+                throw std::runtime_error("Invalid parent");
+            auto child = node(integer(2));
+            int before_id = integer(3);
+            auto before = before_id < 0 ? litehtml::element::ptr{} : node(before_id);
+            if (before && before->parent() != el)
+                throw std::runtime_error("Reference is not a child");
+            if (before == child)
+                return JS_UNDEFINED;
+            unsigned depth = 0;
+            for (auto parent = el; parent; parent = parent->parent()) {
+                if (++depth > 256)
+                    throw std::runtime_error("DOM depth limit");
+                if (parent == child)
+                    throw std::runtime_error("DOM cycle");
+            }
+            if (child == doc->root())
+                throw std::runtime_error("Cannot move root");
+            auto tag = std::dynamic_pointer_cast<litehtml::html_tag>(el);
+            if (!tag)
+                throw std::runtime_error("Invalid parent");
+            quota(0);
+            if (auto old = child->parent())
+                old->removeChild(child);
+            el->appendChild(child);
+            if (before) {
+                auto &list = tag->children();
+                list.splice(std::find(list.begin(), list.end(), before), list,
+                            std::find(list.begin(), list.end(), child));
+            }
             return JS_UNDEFINED;
         }
         if (op == "append" || op == "remove") {
@@ -893,7 +929,8 @@ struct Scripts::Impl {
                 ++it;
                 continue;
             }
-            bool ok = r->transfer_ok && origin(r->effective) == origin(container.page_url) &&
+            bool ok = r->transfer_ok && r->data.size() <= 512u * 1024u &&
+                      origin(r->effective) == origin(container.page_url) &&
                       allowed("connect-src", r->effective, false);
             std::string body = ok ? std::string(r->data.begin(), r->data.end()) : "";
             budget(8);

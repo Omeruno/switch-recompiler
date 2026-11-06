@@ -193,7 +193,11 @@ bool Resources::pump() {
     if (!multi)
         return false;
     for (auto &kv : items)
-        if (active < 4 && kv.second.state == Resource::queued)
+        if (active < 4 && kv.second.state == Resource::queued && kv.second.critical)
+            start(kv.second);
+    // Keep a slot available for scripts/styles/user fetch while images are in flight.
+    for (auto &kv : items)
+        if (active < 3 && kv.second.state == Resource::queued && !kv.second.critical)
             start(kv.second);
     int running = 0;
     curl_multi_perform(multi, &running);
@@ -229,6 +233,13 @@ bool Resources::pump() {
             ++revision;
         }
     return old != revision;
+}
+bool Resources::pending_styles() const {
+    for (const auto &kv : items)
+        if (kv.second.stylesheet &&
+            (kv.second.state == Resource::queued || kv.second.state == Resource::loading))
+            return true;
+    return false;
 }
 bool Resources::pending() const {
     for (const auto &kv : items)

@@ -105,6 +105,7 @@ void Control::draw(litehtml::uint_ptr hdc, litehtml::pixel_t x, litehtml::pixel_
 }
 const std::string &control_styles() {
     static const std::string s = R"CSS(
+main,figure,figcaption,search {display:block;} [hidden] {display:none;}
 input,textarea,button {font-family:inherit; font-size:16px; line-height:1.3; vertical-align:middle; padding:8px 10px; border:1px solid #7a8699; border-radius:5px; background-color:#fff; color:#172438; }
 input[type=hidden] {display:none;} input[type=submit],input[type=button],button {background-color:#e5ebf2;cursor:pointer;}
 input[disabled],textarea[disabled],button[disabled] {background-color:#e5e7eb;color:#747d8c;}

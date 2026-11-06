@@ -384,6 +384,10 @@ void Container::transform_text(std::string &s, litehtml::text_transform t) {
 void Container::import_css(std::string &text, const std::string &url, std::string &baseurl) {
     auto resolved = Resources::resolve(baseurl.empty() ? base : baseurl, url);
     auto *r = resources.request(resolved, 512u * 1024u);
+    if (r) {
+        r->stylesheet = true;
+        r->critical = true;
+    }
     if (r && r->state == Resource::ready) {
         text.assign(r->data.begin(), r->data.end());
         baseurl = r->effective;

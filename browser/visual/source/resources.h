@@ -11,7 +11,7 @@ struct Resource {
     std::vector<std::string> policies;
     size_t header_bytes = 0;
     long http_status = 0;
-    bool transfer_ok = false;
+    bool transfer_ok = false, critical = false, stylesheet = false;
     CURL *handle = nullptr;
     size_t limit = 0;
 };
@@ -37,6 +37,7 @@ class Resources {
     Resource *request(const std::string &, size_t limit);
     bool pump();
     bool pending() const;
+    bool pending_styles() const;
     size_t count() const { return items.size(); }
     std::string status() const;
 };
