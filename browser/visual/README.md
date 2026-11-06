@@ -1,4 +1,4 @@
-# Switch visual browser — 0.2.0
+# Switch visual browser — 0.3.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -8,6 +8,10 @@ path; it is not a production engine selection or a playable Keldurn client.
 
 ## What is implemented
 
+- Persistent QuickJS session bound to the same native litehtml document that is
+  painted/hit-tested. Resource completion and viewport changes preserve element
+  identity, handlers and JavaScript state. A checksum-locked renderer patch rebuilds
+  CSS/render state without replacing the document or accumulating old font caches.
 - Retained HTML document, external/inline CSS, engine cascade and layout,
   flex layout, font metrics and engine link hit testing.
 - Cyrillic DejaVu text, solid backgrounds with rounded fills, rectangular solid
@@ -36,7 +40,8 @@ path; it is not a production engine selection or a playable Keldurn client.
   navigation cancels pending transfers and clears the page caches. This NRO
   uses its own SD profile `/switch/switch-visual-browser`.
 - Bundled offline document with an external stylesheet, PNG/JPEG/WebP assets, flex
-  cards and a below-the-fold anchor. It works without Wi-Fi.
+  cards, editable search, a JavaScript counter and async JSON-loading button, and a
+  below-the-fold anchor. It works without Wi-Fi.
 
 ## Build
 
@@ -80,10 +85,10 @@ Limits: 1 MiB HTML, 8,192 '<' characters before parsing, 512 KiB per stylesheet,
 text textures. DejaVu is the only font family and font size is clamped 6–144 px.
 These quotas do not make this an isolated or standards-complete web runtime.
 
-Not implemented: JavaScript/QuickJS DOM synchronization, POST and complete web forms, selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
+Not implemented: JavaScript modules/workers, complete DOM/web forms and POST, selection, full accessibility/focus navigation, WebGPU/WebGL, SVG/video,
 CSS grid/transforms, advanced gradient color spaces, rounded image/overflow clipping, rounded border
-strokes or complete border styles. Text case conversion is ASCII-only. Buttons requiring JavaScript do not work merely because they are painted. Pinch zoom magnifies the selected layout width; Minus explicitly changes that width.
-Text/search fields use native keyboard editing, without DOM input/change events. No long-press action
+strokes or complete border styles. Text case conversion is ASCII-only. Buttons can dispatch JavaScript click/submit handlers; compatibility depends on the APIs their scripts use. Pinch zoom magnifies the selected layout width; Minus explicitly changes that width.
+Text/search fields use native keyboard editing and emit input/change when a committed edit changes the value; per-keystroke keyboard events are not supplied. No long-press action
 menu is supplied. CSS/script compatibility and performance remain separate gates.
 
 The game requires WebGPU and a substantial JS/WASM bridge. Neither is provided
@@ -104,7 +109,55 @@ The user confirms 0.1.0 loads Google and the Keldurn website; both the root and
 `/ru/` load when entered directly. Touch, drag/pinch gestures and the left-stick
 pointer work on the console. Website composition is imperfect; web inputs were
 missing. VK reports an outdated browser and YouTube did not open. The precise
-cause of those two failures is not established by that feedback. This runtime
-has no page JavaScript, media playback, MSE or WebRTC, so no compatibility claim
+cause of those two failures is not established by that feedback. Version 0.1.0 had no page JavaScript, media playback, MSE or WebRTC, so no compatibility claim
 is made for VK, YouTube or cloud gaming. Changing the user agent does not supply
-those capabilities. The 0.2.0 additions require a new device check.
+those capabilities. The 0.2.0 and 0.3.0 additions require their own device checks.
+
+## JavaScript bridge — 0.3.0
+
+Classic scripts use one QuickJS realm per navigation. Inline and external sources
+are scheduled in document order after initial visual resources settle. This is not
+full browser parser-blocking/async/defer/module scheduling. Up to 16 sources,
+128 KiB/source, 32 MiB JS heap, 256 KiB JS stack, 64 timers and 256 listeners are
+allowed. Script evaluation has a 50 ms interrupt budget; timer/job turns use 8 ms
+and drain at most 32 jobs. A navigation destroys the realm before its document,
+resources or profile can be replaced.
+
+The facade directly delegates to native nodes: selectors, IDs, attributes,
+textContent/innerHTML, append/remove/create, classList/dataset/inline styles,
+input values and bounding rectangles. CSS and render items are recomputed from
+the retained native tree. There is no separate JS document snapshot to overwrite
+native user input. The tree/handle traversal cap is 8,192; dynamic creation has a
+4,096-node lifetime quota, fragments are capped at 16 KiB/128 '<' characters and
+cumulative mutation strings at 8 MiB/navigation. This is a DOM subset, with snapshot
+node lists, partial CSSStyleDeclaration/getComputedStyle and text-layout limits;
+it is not a standards-complete DOM or CSSOM.
+
+Implemented events include capture/bubbling, once/removal, stopPropagation,
+preventDefault, DOMContentLoaded/load, native click, input/change on keyboard
+commit, and cancelable form submit. Promise jobs, function-only timers and rAF
+run on the UI loop. URL/URLSearchParams, origin-scoped storage/cookies, and the
+existing ru/en UTC Intl subset are available. Pointer/touch/keyboard web events,
+programmatic activation defaults, selection and complete focus semantics remain
+unimplemented; native gestures continue to work independently.
+
+`fetch` is a bounded same-origin GET-only API returning text/JSON Promises and
+status/ok/url. HTTP error responses resolve with ok=false; TLS/transport, disallowed
+origins and redirects reject. There is no streaming, custom-header/body fetch,
+CORS implementation, XHR, WebSocket or media API. Fetch uses the existing bounded
+page resource cache, not a complete HTTP cache or arbitrary long-lived polling
+implementation.
+
+The script loader intersects final HTTP CSP headers and meta policies for its
+supported script directives, checks redirect destinations, and blocks unsupported
+source expressions conservatively. Inline handlers require inline permission;
+string code generation is disabled for restricted policies. Connect restrictions
+are checked for fetch. This is not complete CSP enforcement across resource types,
+nonce/hash/strict-dynamic policies, navigations and forms.
+
+Tests exercise the actual rendered native tree, stable node identity across
+resource/viewport refresh, CSS selector rematching, live style changes, events,
+form cancellation, timers, infinite-loop interruption, authenticated external
+script loading, cookie visibility, async fetch and real HTTPS failures. The NRO
+still does not establish VK/YouTube/game compatibility: modules, broader web APIs,
+Grid, GPU and media remain separate work.

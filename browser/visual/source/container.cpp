@@ -17,6 +17,25 @@ size_t Container::decoded_images() const {
             ++count;
     return count;
 }
+void Container::invalidate_text() {
+    for (auto &kv : texts)
+        SDL_DestroyTexture(kv.second.texture);
+    texts.clear();
+    text_bytes = 0;
+}
+namespace {
+class SourceElement : public litehtml::html_tag {
+  public:
+    explicit SourceElement(const litehtml::document::ptr &doc) : html_tag(doc) {}
+    void parse_attributes() override {
+        if (std::string(get_tagName()) == "style") {
+            std::string css;
+            get_text(css);
+            get_document()->add_stylesheet(css.c_str(), nullptr, get_attr("media"));
+        }
+    }
+};
+} // namespace
 void Container::reset() {
     for (auto &kv : images)
         if (kv.second.texture)
@@ -394,6 +413,8 @@ void Container::get_media_features(litehtml::media_features &m) const {
 }
 litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
                                                  const std::shared_ptr<litehtml::document> &doc) {
+    if (std::string(tag) == "script" || std::string(tag) == "style")
+        return std::make_shared<SourceElement>(doc);
     if (std::string(tag) == "input" || std::string(tag) == "textarea")
         return std::make_shared<Control>(doc, forms, forms.next++);
     return {};

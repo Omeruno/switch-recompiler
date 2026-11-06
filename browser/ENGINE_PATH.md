@@ -171,3 +171,14 @@ scroll and selectable CSS viewport width. Grid, JavaScript and media playback
 remain separate missing capabilities. VK and YouTube feedback is recorded in
 visual/device-evidence-2026-11-06.json without attributing their exact failures
 to user-agent detection. A CSS viewport toggle does not implement Grid.
+
+### Visual 0.3.0: JavaScript and the rendered native DOM
+
+A separate QuickJS-to-litehtml bridge now owns one realm and native document per
+navigation. Classic scripts, handlers, timers/Promises, direct DOM/CSS mutation,
+input/submit events and same-origin GET fetch connect to that document. Resource
+completion and viewport changes rebuild rendering without replacing node identity.
+The renderer patch is checksum-locked and fetched reproducibly. This replaces the
+previous visual candidate's lack of JavaScript; it does not attach the old reader's
+independent JS document model. Modules, complete DOM/CSP/network APIs, Grid, POST,
+GPU and media remain missing. See visual/README.md for tested behavior and limits.

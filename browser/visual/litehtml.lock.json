@@ -1,4 +1,15 @@
 {
   "repository": "https://github.com/litehtml/litehtml.git",
-  "commit": "ab7caef1d54f2265f919c299d29c135863675d96"
+  "commit": "ab7caef1d54f2265f919c299d29c135863675d96",
+  "patch": {
+    "file": "patches/native-dom.patch",
+    "sha256": "a220c5b1923c2992a5f92ac000c55697766db7ca836c40342dda27f78dc28881",
+    "files": {
+      "include/litehtml/document.h": "ac7d2c1b81bf78b1fe9e329ba2bd606969d6880dd95a77c22b0e12e2cb1ba28d",
+      "include/litehtml/html_tag.h": "9b8b0274b40dd93d6472dad9f3b6132676f462cd766aca0ef721bf5f4ad48aa7",
+      "src/document.cpp": "2a496f6e08422698160c577c57db6f3e7474f06e850535d48d4f4b30b6234691",
+      "src/html_tag.cpp": "5b52e7666e6a0dfedba03a83c28bf8913c0190e59587cab1dac810ae893a61dd",
+      "include/litehtml/el_text.h": "2fffb1219a5577b07965341b08446b215807effa5b5315cfadf89aef5c1bf887"
+    }
+  }
 }

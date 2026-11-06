@@ -1,0 +1,143 @@
+diff --git a/include/litehtml/document.h b/include/litehtml/document.h
+index ea27155..3403d02 100644
+--- a/include/litehtml/document.h
++++ b/include/litehtml/document.h
+@@ -58,6 +58,7 @@ namespace litehtml
+         document_container*                     m_container;
+         fonts_map                               m_fonts;
+         css_text::vector                        m_css;
++        std::string m_native_master_source, m_native_user_source;
+         litehtml::css                           m_styles;
+         litehtml::web_color                     m_def_color;
+         litehtml::css                           m_master_css;
+@@ -126,6 +127,8 @@ namespace litehtml
+             return m_over_element;
+         }
+ 
++        void refresh_native_dom();
++
+         void append_children_from_string(element& parent, const char* str, bool replace_existing);
+         void dump(dumper& cout);
+ 
+diff --git a/include/litehtml/el_text.h b/include/litehtml/el_text.h
+index 365453a..3f59db1 100644
+--- a/include/litehtml/el_text.h
++++ b/include/litehtml/el_text.h
+@@ -19,6 +19,7 @@ namespace litehtml
+         el_text(const char* text, const document::ptr& doc);
+ 
+         void get_text(std::string& text) const override;
++        void set_native_text(const std::string& text) { m_text = text; }
+         void compute_styles(bool recursive) override;
+         bool is_text() const override
+         {
+diff --git a/include/litehtml/html_tag.h b/include/litehtml/html_tag.h
+index 779d423..2a38bac 100644
+--- a/include/litehtml/html_tag.h
++++ b/include/litehtml/html_tag.h
+@@ -60,6 +60,8 @@ namespace litehtml
+         const char* get_attr(const char* name, const char* def = nullptr) const override;
+         void        apply_stylesheet(const litehtml::css& stylesheet) override;
+         void        refresh_styles() override;
++        void        reset_native_styles();
++        const string_map& native_attributes() const { return m_attrs; }
+ 
+         bool is_white_space() const override;
+         bool is_body() const override;
+diff --git a/src/document.cpp b/src/document.cpp
+index 315749a..67a2eae 100644
+--- a/src/document.cpp
++++ b/src/document.cpp
+@@ -105,6 +105,8 @@ namespace litehtml
+             return;
+         }
+         m_finalized = true;
++        m_native_master_source = master_styles;
++        m_native_user_source = user_styles;
+ 
+         m_root = root;
+ 
+@@ -1134,6 +1136,50 @@ namespace litehtml
+         }
+     }
+ 
++    void document::refresh_native_dom()
++    {
++        if(!m_root) return;
++        m_active_element = nullptr;
++        m_over_element = nullptr;
++        m_root_render.reset();
++        m_tabular_elements.clear();
++        m_fixed_boxes.clear();
++        if(auto root_tag = std::dynamic_pointer_cast<html_tag>(m_root))
++            root_tag->reset_native_styles();
++        for(auto& item : m_fonts) m_container->delete_font(item.second.font);
++        m_fonts.clear();
++        m_css.clear();
++        m_media_lists.clear();
++        m_master_css = css();
++        m_user_css = css();
++        m_styles = css();
++        container()->get_media_features(m_media);
++        m_master_css.parse_css_stylesheet(m_native_master_source, "", shared_from_this());
++        m_master_css.sort_selectors();
++        m_user_css.parse_css_stylesheet(m_native_user_source, "", shared_from_this());
++        m_user_css.sort_selectors();
++        m_root->apply_stylesheet(m_master_css);
++        m_root->parse_attributes();
++        for(const auto& sheet : m_css)
++        {
++            media_query_list_list::ptr media;
++            if(!sheet.media.empty())
++            {
++                media = std::make_shared<media_query_list_list>();
++                media->add(parse_media_query_list(sheet.media, shared_from_this()));
++            }
++            m_styles.parse_css_stylesheet(sheet.text, sheet.baseurl, shared_from_this(), media);
++        }
++        m_styles.sort_selectors();
++        update_media_lists(m_media);
++        m_root->apply_stylesheet(m_styles);
++        m_root->apply_stylesheet(m_user_css);
++        m_root->compute_styles();
++        m_root_render = m_root->create_render_item(nullptr);
++        fix_tables_layout();
++        if(m_root_render) m_root_render = m_root_render->init();
++    }
++
+     void document::append_children_from_string(element& parent, const char* str, bool replace_existing)
+     {
+         // parent must belong to this document
+diff --git a/src/html_tag.cpp b/src/html_tag.cpp
+index a32b90f..0e6e2ab 100644
+--- a/src/html_tag.cpp
++++ b/src/html_tag.cpp
+@@ -1474,6 +1474,28 @@ namespace litehtml
+         handle_counter_properties();
+     }
+ 
++    void litehtml::html_tag::reset_native_styles()
++    {
++        std::sort(m_pseudo_classes.begin(), m_pseudo_classes.end());
++        m_pseudo_classes.erase(std::unique(m_pseudo_classes.begin(), m_pseudo_classes.end()), m_pseudo_classes.end());
++        m_style.clear();
++        m_used_styles.clear();
++        for(auto it = m_children.begin(); it != m_children.end();)
++        {
++            if((*it)->tag() == __tag_before_ || (*it)->tag() == __tag_after_)
++            {
++                (*it)->parent(nullptr);
++                it = m_children.erase(it);
++            }
++            else
++            {
++                if(auto child = std::dynamic_pointer_cast<html_tag>(*it))
++                    child->reset_native_styles();
++                ++it;
++            }
++        }
++    }
++
+     void litehtml::html_tag::refresh_styles()
+     {
+         for(auto& el : m_children)

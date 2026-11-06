@@ -3,6 +3,7 @@ extern "C" {
 #include "profile.h"
 }
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -72,7 +73,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         std::string name = key.substr(6);
         // Local assets are an explicit allowlist, never a URL-to-path mapping.
         if (name != "index.html" && name != "style.css" && name != "landscape.png" &&
-            name != "landscape.jpg" && name != "landscape.webp") {
+            name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
+            name != "state.json") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -88,6 +90,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
             } else {
                 received += r.data.size();
                 r.state = Resource::ready;
+                r.http_status = 200;
+                r.transfer_ok = true;
             }
         }
         ++revision;
@@ -110,6 +114,36 @@ size_t Resources::receive(char *data, size_t unit, size_t count, void *ctx) {
     }
     r.data.insert(r.data.end(), data, data + bytes);
     self.received += bytes;
+    return bytes;
+}
+size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
+    auto *ctx = static_cast<std::pair<Resources *, Resource *> *>(opaque);
+    auto &r = *ctx->second;
+    if (unit && count > std::numeric_limits<size_t>::max() / unit)
+        return 0;
+    size_t bytes = unit * count;
+    std::string line(data, bytes);
+    if (line.rfind("HTTP/", 0) == 0) {
+        r.policies.clear();
+        r.header_bytes = 0;
+    }
+    if (bytes > 16384 - r.header_bytes)
+        return 0;
+    r.header_bytes += bytes;
+    auto colon = line.find(':');
+    if (colon != std::string::npos) {
+        auto key = line.substr(0, colon);
+        for (char &ch : key)
+            ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        if (key == "content-security-policy") {
+            if (r.policies.size() >= 8)
+                return 0;
+            auto value = line.substr(colon + 1);
+            while (!value.empty() && (value.back() == '\r' || value.back() == '\n'))
+                value.pop_back();
+            r.policies.push_back(value);
+        }
+    }
     return bytes;
 }
 void Resources::start(Resource &r) {
@@ -136,9 +170,11 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(r.handle, CURLOPT_TIMEOUT, 15L);
     curl_easy_setopt(r.handle, CURLOPT_ACCEPT_ENCODING, "");
+    curl_easy_setopt(r.handle, CURLOPT_HEADERFUNCTION, header);
+    curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.2.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.3.0");
     CURLcode code = browser_profile_configure(r.handle);
     if (code != CURLE_OK || curl_multi_add_handle(multi, r.handle) != CURLM_OK) {
         r.error = browser_profile_status();
@@ -173,12 +209,14 @@ bool Resources::pump() {
             curl_easy_getinfo(r.handle, CURLINFO_EFFECTIVE_URL, &effective);
             if (effective)
                 r.effective = effective;
+            r.http_status = http;
+            r.transfer_ok = msg->data.result == CURLE_OK && http > 0;
             r.state = msg->data.result == CURLE_OK && http >= 200 && http < 300 ? Resource::ready
                                                                                 : Resource::failed;
             if (r.state == Resource::failed && r.error.empty())
                 r.error = msg->data.result == CURLE_OK ? "HTTP " + std::to_string(http)
                                                        : curl_easy_strerror(msg->data.result);
-            if (r.state == Resource::failed) {
+            if (!r.transfer_ok) {
                 received -= r.data.size();
                 r.data.clear();
             }

@@ -45,6 +45,12 @@ extendedKeyUsage=serverAuth
             cookies=self.headers.get('Cookie','')
             if self.path.startswith('/redirect-http'):
                 self.send_response(302);self.send_header('Location',f'http://localhost:{self.server.server_port}/must-not-load');self.end_headers();return
+            if self.path.startswith('/visual-404'):
+                body=b'missing'
+                self.send_response(404);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+            if self.path.startswith('/visual-json'):
+                body='{"value":42,"message":"Загрузка выполнена"}'.encode('utf-8')
+                self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             self.send_response(200)
             if self.path.startswith('/set'):
                 self.send_header('Set-Cookie','auth=HTTP_ONLY_SECRET; Path=/; Secure; HttpOnly; Max-Age=3600')

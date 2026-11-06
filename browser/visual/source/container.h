@@ -42,13 +42,15 @@ class Container final : public litehtml::document_container {
     litehtml::element::ptr clicked;
     int viewport_width = 1280;
     float viewport_height = 636;
-    float zoom = 1;
+    float zoom = 1, scroll_x = 0, scroll_y = 0;
+    std::string page_url = "demo:/index.html";
     std::string base = "demo:/index.html", caption, anchor, cursor;
     unsigned unsupported = 0, painted_text = 0, painted_images = 0, painted_gradients = 0;
     Container(SDL_Renderer *, Resources &, std::string font);
     ~Container() override;
     size_t decoded_images() const;
     void reset();
+    void invalidate_text();
     void begin_paint();
     void end_paint();
     litehtml::uint_ptr create_font(const litehtml::font_description &, const litehtml::document *,

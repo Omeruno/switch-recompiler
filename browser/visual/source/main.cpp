@@ -1,6 +1,7 @@
 #include "container.h"
 #include "diagnostics.h"
 #include "interaction.h"
+#include "scripts.h"
 extern "C" {
 #include "profile.h"
 }
@@ -37,12 +38,13 @@ struct Browser {
     visual::Resources resources;
     visual::Container container;
     litehtml::document::ptr document;
+    std::unique_ptr<visual::Scripts> scripts;
     visual::View view;
     visual::Gestures gestures;
     std::string url = "demo:/index.html", notice;
     std::vector<std::string> history;
     unsigned built_revision = 0;
-    bool rebuild = true;
+    bool rebuild = true, js_failed = false, js_reported = false;
     int viewport_mode = 0;
     TTF_Font *ui = nullptr;
     int pointer_x = 640, pointer_y = 318;
@@ -54,6 +56,7 @@ struct Browser {
         navigate(url, false);
     }
     ~Browser() {
+        scripts.reset();
         document.reset();
         container.reset();
         TTF_CloseFont(ui);
@@ -77,6 +80,7 @@ struct Browser {
             if (history.size() > 16)
                 history.erase(history.begin());
         }
+        scripts.reset();
         document.reset();
         container.reset();
         resources.clear();
@@ -86,7 +90,9 @@ struct Browser {
         view.base_scale = 1280.f / container.viewport_width;
         url = next;
         container.base = url;
+        container.page_url = url;
         notice.clear();
+        js_failed = js_reported = false;
         built_revision = 0;
         rebuild = true;
         resources.request(url, 1024u * 1024u);
@@ -127,22 +133,27 @@ struct Browser {
         }
         if (r->state != visual::Resource::ready)
             return;
-        document.reset();
-        container.reset();
         container.base = r->effective;
+        container.page_url = r->effective;
         container.zoom = view.scale();
-        std::string html(r->data.begin(), r->data.end());
-        if (std::count(html.begin(), html.end(), '<') > 8192) {
-            notice = "Превышен лимит сложности страницы";
-            rebuild = false;
-            return;
-        }
         try {
-            document = litehtml::document::createFromString(
-                html, &container, litehtml::master_css + visual::control_styles());
-            if (!document)
-                throw std::runtime_error("HTML parse failed");
-            document->render(container.viewport_width);
+            if (!document) {
+                container.reset();
+                std::string html(r->data.begin(), r->data.end());
+                if (std::count(html.begin(), html.end(), '<') > 8192)
+                    throw std::runtime_error("Превышен лимит сложности страницы");
+                document = litehtml::document::createFromString(
+                    html, &container, litehtml::master_css + visual::control_styles());
+                if (!document)
+                    throw std::runtime_error("HTML parse failed");
+                document->render(container.viewport_width);
+            } else if (scripts && scripts->changed())
+                scripts->flush();
+            else {
+                container.invalidate_text();
+                document->refresh_native_dom();
+                document->render(container.viewport_width);
+            }
             view.content_width =
                 std::max(float(container.viewport_width), float(document->width()));
             view.content_height = std::max(container.viewport_height, float(document->height()));
@@ -157,15 +168,63 @@ struct Browser {
         } catch (const std::exception &e) {
             notice = e.what();
             visual::diagnostic("layout.failed", notice);
+            scripts.reset();
             document.reset();
             rebuild = false;
             built_revision = resources.revision;
         }
     }
     void pump() {
+        container.scroll_x = view.x;
+        container.scroll_y = view.y;
         resources.pump();
         if (rebuild || built_revision != resources.revision)
             build();
+        if (!document)
+            return;
+        if (!scripts && !js_failed && !resources.pending()) {
+            auto *root = resources.request(url, 1024u * 1024u);
+            try {
+                visual::diagnostic("js.start", "QuickJS native DOM");
+                scripts = std::make_unique<visual::Scripts>(document, container, resources,
+                                                            root ? root->policies
+                                                                 : std::vector<std::string>{});
+            } catch (const std::exception &e) {
+                notice = e.what();
+                js_failed = true;
+                return;
+            }
+        }
+        if (scripts) {
+            try {
+                scripts->poll(visual::Scripts::clock_ms());
+                if (scripts->changed()) {
+                    scripts->flush();
+                    view.content_width =
+                        std::max(float(container.viewport_width), float(document->width()));
+                    view.content_height =
+                        std::max(container.viewport_height, float(document->height()));
+                    view.clamp();
+                    built_revision = resources.revision;
+                }
+                if (scripts->ready() && !js_reported) {
+                    js_reported = true;
+                    visual::diagnostic("js.ready", "page script phase complete");
+                }
+                if (!scripts->error().empty())
+                    notice = "JS: " + scripts->error();
+                auto target = scripts->navigation();
+                if (!target.empty()) {
+                    navigate(target);
+                    return;
+                }
+            } catch (const std::exception &e) {
+                notice = e.what();
+                scripts.reset();
+                js_failed = true;
+                visual::diagnostic("js.failed", "script or layout error");
+            }
+        }
     }
     void click(visual::Point p) {
         if (p.y < 0) {
@@ -184,6 +243,16 @@ struct Browser {
         auto q = view.document(p);
         auto redraw = [](const litehtml::position &) {};
         document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
+        auto hit = std::const_pointer_cast<litehtml::element>(document->get_over_element());
+        if (scripts && hit) {
+            if (!scripts->dispatch(hit, "click"))
+                return;
+            auto target = scripts->navigation();
+            if (!target.empty()) {
+                navigate(target);
+                return;
+            }
+        }
         document->on_lbutton_down(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
         document->on_lbutton_up(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
         if (container.clicked) {
@@ -231,8 +300,14 @@ struct Browser {
             char value[4097] = {};
             Result rc = swkbdShow(&keyboard, value, sizeof(value));
             swkbdClose(&keyboard);
-            if (R_SUCCEEDED(rc))
+            if (R_SUCCEEDED(rc)) {
+                bool changed = control->value() != value;
                 control->value(value);
+                if (changed && scripts) {
+                    scripts->dispatch(el, "input", false);
+                    scripts->dispatch(el, "change", false);
+                }
+            }
 #else
             notice = "Поле выбрано. Экранная клавиатура доступна на Switch.";
 #endif
@@ -240,10 +315,15 @@ struct Browser {
         }
         std::string type = control ? control->type() : el->get_attr("type", "submit");
         if (type == "submit") {
+            auto form = el;
+            while (form && std::string(form->get_tagName()) != "form")
+                form = form->parent();
+            if (scripts && form && !scripts->dispatch(form, "submit"))
+                return;
             auto next = visual::form_get(el, container.base, notice);
             if (!next.empty())
                 navigate(next);
-        } else if (!el->get_attr("readonly"))
+        } else if (type != "button" && !el->get_attr("readonly"))
             notice = "Этот тип элемента пока не подключён";
     }
     void edit_address() {
@@ -294,7 +374,9 @@ struct Browser {
                                   std::string(viewport_mode == 0   ? "ПК"
                                               : viewport_mode == 1 ? "Планшет"
                                                                    : "Мобильный") +
-                                  " · без JavaScript"
+                                  " · " +
+                                  std::string(scripts ? (scripts->ready() ? "JS" : "JS: загрузка")
+                                                      : "JS: ожидание")
                             : notice,
              {174, 190, 211, 255}, 1250);
         if (!document && notice.empty())
@@ -311,7 +393,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.2.0");
+    visual::diagnostic("boot", "0.3.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -481,7 +563,7 @@ int main(int argc, char **argv) {
                 app.pump();
                 app.paint();
 #ifndef __SWITCH__
-                if (capture && !app.resources.pending()) {
+                if (capture && !app.resources.pending() && app.scripts && app.scripts->ready()) {
                     if (!app.document)
                         throw std::runtime_error(app.notice.empty() ? "No rendered document"
                                                                     : app.notice);
@@ -502,6 +584,11 @@ int main(int argc, char **argv) {
                 }
                 if (capture && SDL_GetTicks() - capture_start > 30000)
                     throw std::runtime_error("Capture timed out");
+                if (test && app.scripts && !app.scripts->ready()) {
+                    SDL_RenderPresent(renderer);
+                    SDL_Delay(10);
+                    continue;
+                }
                 if (test) {
                     if (!app.document)
                         throw std::runtime_error("demo document missing");
@@ -585,6 +672,30 @@ int main(int argc, char **argv) {
                                (float(mobile_box.y) + 5 - app.view.y) * app.view.scale()});
                     if (app.notice.find("Поле выбрано") == std::string::npos)
                         throw std::runtime_error("mobile input hit-test failed");
+                    auto action = app.document->root()->select_one("#js-action");
+                    auto action_box = action->get_placement();
+                    app.view.y = std::max(0.f, float(action_box.y) - 80);
+                    app.view.clamp();
+                    app.click({(float(action_box.x) + 5 - app.view.x) * app.view.scale(),
+                               (float(action_box.y) + 5 - app.view.y) * app.view.scale()});
+                    app.pump();
+                    std::string action_text;
+                    app.document->root()->select_one("#js-result")->get_text(action_text);
+                    if (action_text != "Нажатий: 1")
+                        throw std::runtime_error("painted JavaScript button failed");
+                    auto fetch_button = app.document->root()->select_one("#js-fetch");
+                    auto fetch_box = fetch_button->get_placement();
+                    app.view.y = std::max(0.f, float(fetch_box.y) - 80);
+                    app.view.clamp();
+                    app.click({(float(fetch_box.x) + 5 - app.view.x) * app.view.scale(),
+                               (float(fetch_box.y) + 5 - app.view.y) * app.view.scale()});
+                    app.pump();
+                    app.pump();
+                    std::string fetch_text;
+                    app.document->root()->select_one("#fetch-result")->get_text(fetch_text);
+                    if (fetch_text.find("JSON загружен") == std::string::npos)
+                        throw std::runtime_error("painted async JavaScript button failed: " +
+                                                 app.scripts->error());
                     quit = true;
                 }
 #endif

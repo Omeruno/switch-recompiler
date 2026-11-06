@@ -8,6 +8,10 @@ struct Resource {
     enum State { queued, loading, ready, failed } state = queued;
     std::string url, effective, error;
     std::vector<unsigned char> data;
+    std::vector<std::string> policies;
+    size_t header_bytes = 0;
+    long http_status = 0;
+    bool transfer_ok = false;
     CURL *handle = nullptr;
     size_t limit = 0;
 };
@@ -18,6 +22,7 @@ class Resources {
     size_t received = 0;
     unsigned active = 0;
     static size_t receive(char *, size_t, size_t, void *);
+    static size_t header(char *, size_t, size_t, void *);
     void start(Resource &);
 
   public:
