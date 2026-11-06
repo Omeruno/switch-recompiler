@@ -1,4 +1,4 @@
-# Switch visual browser — 0.7.0
+# Switch visual browser — 0.7.1
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -356,3 +356,31 @@ URLs, late src, error events, observer-driven updates, policy restrictions,
 resource-size limits and navigation cancellation. Host sanitizer checks also
 exercise deferred styling of detached innerHTML to avoid reading uninitialized
 inherited font properties. Fourteen host suites cover this release.
+
+## DOM interface compatibility — 0.7.1
+
+The user's 0.7.0 device feedback confirms faster browsing and shows
+`ReferenceError: HTMLScriptElement is not defined` on play.keldurn.com. Registration
+security verification fails and Google's sign-in rejection page reports unsupported
+JavaScript/browser support. Those screenshots do not establish the exact cause of
+either service's rejection or prove that one missing interface explains them all.
+
+Native wrappers now have distinct EventTarget/Node/Element/HTMLElement and common
+HTML element prototypes, including HTMLScriptElement. Script src/text/textContent/
+async/defer descriptors are exposed on its prototype with receiver checks;
+Element attribute/innerHTML descriptors and Document prototype factories also work.
+Text/DocumentFragment construction preserves native wrapper identity. Script.supports
+reports classic=true and module/importmap=false, matching implemented capabilities.
+These interfaces remain a subset, with some generic inherited facade properties;
+they are not a full Web IDL or browser isolation implementation.
+
+The JS-enabled renderer hides noscript fallback content and does not prepare
+scripts below noscript. Gumbo's complete scripting-aware tokenizer is still absent.
+This fixes fallback visibility/inertness without claiming that security verification
+or account sign-in has succeeded.
+
+A shared own interface/prototype fixture passes in native QuickJS/DOM and Chromium
+151.0.7922.34. Regenerate its result with tools/reference_dom_interfaces.py. Native
+regressions also check unsupported capability reporting and noscript behavior.
+All fourteen existing host suites remain part of the release gate. Actual Switch
+verification of 0.7.1, Google sign-in and the site's security check remains pending.

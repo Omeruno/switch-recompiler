@@ -666,7 +666,8 @@ struct Scripts::Impl {
     }
     bool connected_script(const Element &el) const {
         for (auto n = el; n; n = n->parent()) {
-            if (std::string(n->get_tagName()) == "template")
+            if (std::string(n->get_tagName()) == "template" ||
+                std::string(n->get_tagName()) == "noscript")
                 return false;
             if (n == doc->root())
                 return true;

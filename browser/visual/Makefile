@@ -5,7 +5,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET := switch-visual-browser
 APP_TITLE := Switch Visual Browser
 APP_AUTHOR := switch-recompiler
-APP_VERSION := 0.7.0
+APP_VERSION := 0.7.1
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mno-outline-atomics -mtp=soft -ftls-model=local-exec -fPIE
 PORTLIBS := $(DEVKITPRO)/portlibs/switch
 PORT_CFLAGS := $(shell PKG_CONFIG_LIBDIR=$(PORTLIBS)/lib/pkgconfig pkg-config --cflags sdl2 SDL2_ttf SDL2_image libwebp libcurl)

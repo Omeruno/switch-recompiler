@@ -1,0 +1,3 @@
+Chromium 151.0.7922.34
+SHA256 52579fc94674035cacc4966e4c9be923830dfdd3556b84825597292a8b4251bb
+typed-elements|script-descriptors|loader-instrumentation|text-fragment|document-factory|event-target

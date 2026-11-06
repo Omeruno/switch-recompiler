@@ -488,7 +488,8 @@ void Container::get_media_features(litehtml::media_features &m) const {
 }
 litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
                                                  const std::shared_ptr<litehtml::document> &doc) {
-    if (std::string(tag) == "script" || std::string(tag) == "style")
+    if (std::string(tag) == "script" || std::string(tag) == "style" ||
+        std::string(tag) == "noscript")
         return std::make_shared<SourceElement>(doc);
     if (std::string(tag) == "option")
         return std::make_shared<Option>(doc);

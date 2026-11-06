@@ -7,7 +7,7 @@ text, and work with the Switch touchscreen and controllers. The text reader is
 an intermediate diagnostic tool, not the final browser interface. Work stays on
 feature/switch-browser. No Horizon update or PC streaming is part of this plan.
 
-## Current status — visual 0.7.0, 2026-11-06
+## Current status — visual 0.7.1, 2026-11-06
 
 - The reader remains a separate 0.3.2 diagnostic browser; visual pages use
   `browser/visual` and its independent `switch-visual-browser.nro`.
@@ -16,7 +16,7 @@ feature/switch-browser. No Horizon update or PC streaming is part of this plan.
   fields accept input but some remain invisible on Google; VK/YouTube still fail.
   Version 0.4.1 corrections await device checks; a network restriction is unproven.
   VPN is deferred by the user.
-- Visual 0.7.0 retains the native document through HTML/CSS layout and QuickJS
+- Visual 0.7.1 retains the native document through HTML/CSS layout and QuickJS
   mutations. It supports flex/media queries, PNG/JPEG/WebP, gradients, viewport
   width modes, right-stick scrolling, keyboard text inputs, native GET/POST forms,
   checkbox/radio groups, scrollable single/multiple selects, basic validation/reset,
@@ -100,7 +100,7 @@ reference fixtures, build results and device results. Keep unverified capabiliti
 explicit. The current reader remains labelled as reading mode until website
 layout and direct interaction are implemented.
 
-## Implemented candidate — visual 0.1.0–0.7.0
+## Implemented candidate — visual 0.1.0–0.7.1
 
 `browser/visual` ports pinned litehtml/Gumbo layout to SDL painting and binds
 QuickJS directly to that retained native tree. Host rendering, input, DOM and
@@ -155,3 +155,12 @@ navigation cancellation. Detached fragments defer computed style until the norma
 refresh, fixing a sanitizer-reported uninitialized font-style read. Device checks
 are documented in visual/TESTING.md; ResizeObserver, IntersectionObserver, modules,
 workers and the other network/layout/graphics gates remain separate.
+
+## Device-directed compatibility fix — 0.7.1
+
+The user confirms faster 0.7.0 browsing. A photo exposes the missing
+HTMLScriptElement global; site security verification and Google sign-in still fail.
+Typed DOM wrappers/prototypes and script/element descriptors are now implemented
+and checked with a shared Chromium/native fixture. noscript fallback is hidden and
+its scripts inert in the JS-enabled configuration. Service acceptance and broader
+Web API compatibility remain unverified; no UA spoof or successful sign-in is claimed.

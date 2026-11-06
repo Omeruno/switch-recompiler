@@ -26,12 +26,25 @@ int main(int argc, char **argv) {
         visual::Resources resources(argv[1]);
         visual::Container c(renderer, resources, argv[2]);
         auto doc = litehtml::document::createFromString(
-            "<!doctype html><html><head></head><body></body></html>", &c);
+            "<!doctype html><html><head></head><body><noscript id=warning><p>Enable "
+            "JavaScript</p><script>globalThis.badNoscript=true;</script></noscript></body></html>",
+            &c, litehtml::master_css + visual::control_styles());
         doc->render(1280);
         visual::Scripts js(doc, c, resources);
         uint64_t now = visual::Scripts::clock_ms();
         for (int i = 0; i < 8 && !js.ready(); ++i)
             js.poll(now + i);
+        CHECK(js.eval("if(globalThis.badNoscript||getComputedStyle(document.getElementById('"
+                      "warning')).display!=='none')throw Error('active noscript');"));
+        std::ifstream type_input(std::string(argv[3]) + "/dom-interfaces.js");
+        CHECK(type_input);
+        std::string type_source((std::istreambuf_iterator<char>(type_input)), {});
+        if (!js.eval(type_source)) {
+            fprintf(stderr, "Interfaces: %s\n", js.error().c_str());
+            return 1;
+        }
+        CHECK(js.eval("if(HTMLScriptElement.supports('module')||HTMLScriptElement.supports('"
+                      "importmap'))throw Error('unsupported script capability advertised');"));
         std::ifstream input(std::string(argv[3]) + "/dynamic-dom.js");
         CHECK(input);
         std::string source((std::istreambuf_iterator<char>(input)), {});
@@ -47,13 +60,17 @@ int main(int argc, char **argv) {
         }
         js.flush();
         // A bounded observer loop must not create an unbounded native queue.
-        CHECK(js.eval("globalThis.limitObserver=new "
+        // This stresses queue capacity, not callback timing; allow sanitizer overhead.
+        if (!js.eval("globalThis.limitObserver=new "
                       "MutationObserver(()=>{});limitObserver.observe(document.body,{attributes:"
                       "true});for(let "
                       "i=0;i<400;i++)document.body.setAttribute('data-quota',i);globalThis."
                       "quotaRecords=limitObserver.takeRecords().length;limitObserver.disconnect();"
                       "if(quotaRecords!==256)throw Error('observer quota');",
-                      500));
+                      2000)) {
+            fprintf(stderr, "Quota JS: %s\n", js.error().c_str());
+            return 1;
+        }
         bool limit = false;
         for (const auto &issue : js.issues().entries())
             if (issue.category == "limit" && issue.code == "mutation-observer")

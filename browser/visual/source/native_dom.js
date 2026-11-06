@@ -60,8 +60,11 @@
     const results=new Set();for(const part of selectorParts(selector))for(const key of bridge('query',id,part))results.add(key);
     return bridge('order',id,[...results]).map(wrap);
   };
-  class Node {
-    constructor(key){Object.defineProperty(this,'_key',{value:key});}
+  class EventTarget {}
+  Object.assign(EventTarget.prototype,eventMethods);
+  const nodeToken=Symbol();
+  class Node extends EventTarget {
+    constructor(key,token){super();if(token!==nodeToken)throw new TypeError('Illegal constructor');Object.defineProperty(this,'_key',{value:key});}
     get nodeType(){return this._key===0?9:bridge('kind',this._key);}
     get nodeName(){return this.nodeType===9?'#document':this.nodeType===3?'#text':this.nodeType===11?'#document-fragment':this.tagName;}
     get tagName(){return this.nodeType===1?bridge('tag',this._key).toUpperCase():undefined;}
@@ -137,6 +140,67 @@
   Object.defineProperty(Node.prototype,'httpEquiv',{get(){return this.getAttribute('http-equiv')||'';},set(v){this.setAttribute('http-equiv',v);}});
   Object.defineProperty(Node.prototype,'src',{get(){const value=this.getAttribute('src');return value?bridge('resolve',0,value):'';},set(v){this.setAttribute('src',v);}});
   Object.assign(Node.prototype,eventMethods);
+  const elementBrand=new WeakSet();
+  class Element extends Node {constructor(key,token){super(key,token);elementBrand.add(this);}}
+  class HTMLElement extends Element {}
+  class Document extends Node {}
+  class HTMLDocument extends Document {}
+  class CharacterData extends Node {}
+  class Text extends CharacterData {
+    constructor(data='',token){const internal=token===nodeToken;const key=internal?data:bridge('createText',0,String(data));super(key,nodeToken);if(!internal)nodes.set(key,this);}
+  }
+  class DocumentFragment extends Node {
+    constructor(tokenOrKey,token){const internal=token===nodeToken;const key=internal?tokenOrKey:bridge('createFragment',0);super(key,nodeToken);if(!internal)nodes.set(key,this);}
+  }
+  const scriptBrand=new WeakSet();
+  class HTMLScriptElement extends HTMLElement {
+    constructor(key,token){super(key,token);scriptBrand.add(this);}
+    static supports(type){return String(type)==='classic';}
+  }
+  class HTMLInputElement extends HTMLElement {}
+  class HTMLTextAreaElement extends HTMLElement {}
+  class HTMLSelectElement extends HTMLElement {}
+  class HTMLOptionElement extends HTMLElement {}
+  class HTMLButtonElement extends HTMLElement {}
+  class HTMLFormElement extends HTMLElement {}
+  class HTMLImageElement extends HTMLElement {}
+  class HTMLAnchorElement extends HTMLElement {}
+  class HTMLLinkElement extends HTMLElement {}
+  class HTMLStyleElement extends HTMLElement {}
+  class HTMLMetaElement extends HTMLElement {}
+  class HTMLDivElement extends HTMLElement {}
+  class HTMLSpanElement extends HTMLElement {}
+  class HTMLBodyElement extends HTMLElement {}
+  class HTMLHeadElement extends HTMLElement {}
+  class HTMLHtmlElement extends HTMLElement {}
+  const htmlInterfaces={script:HTMLScriptElement,input:HTMLInputElement,textarea:HTMLTextAreaElement,
+    select:HTMLSelectElement,option:HTMLOptionElement,button:HTMLButtonElement,form:HTMLFormElement,
+    img:HTMLImageElement,a:HTMLAnchorElement,link:HTMLLinkElement,style:HTMLStyleElement,meta:HTMLMetaElement,
+    div:HTMLDivElement,span:HTMLSpanElement,body:HTMLBodyElement,head:HTMLHeadElement,html:HTMLHtmlElement};
+  const domInterfaces={EventTarget,Node,Element,HTMLElement,Document,HTMLDocument,DocumentFragment,CharacterData,Text,
+    HTMLScriptElement,HTMLInputElement,HTMLTextAreaElement,HTMLSelectElement,HTMLOptionElement,
+    HTMLButtonElement,HTMLFormElement,HTMLImageElement,HTMLAnchorElement,HTMLLinkElement,HTMLStyleElement,
+    HTMLMetaElement,HTMLDivElement,HTMLSpanElement,HTMLBodyElement,HTMLHeadElement,HTMLHtmlElement};
+  for(const [name,ctor] of Object.entries(domInterfaces))Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});
+  for(const [name,value] of Object.entries({ELEMENT_NODE:1,ATTRIBUTE_NODE:2,TEXT_NODE:3,CDATA_SECTION_NODE:4,
+    ENTITY_REFERENCE_NODE:5,ENTITY_NODE:6,PROCESSING_INSTRUCTION_NODE:7,COMMENT_NODE:8,DOCUMENT_NODE:9,
+    DOCUMENT_TYPE_NODE:10,DOCUMENT_FRAGMENT_NODE:11,NOTATION_NODE:12})){
+    Object.defineProperty(Node,name,{value,enumerable:true});Object.defineProperty(Node.prototype,name,{value,enumerable:true});
+  }
+  for(const name of ['innerHTML','tagName','id','className','classList','getAttribute','setAttribute','removeAttribute','hasAttribute','matches','closest','getBoundingClientRect']){
+    const descriptor=Object.getOwnPropertyDescriptor(Node.prototype,name);
+    const checked=fn=>function(...args){if(!elementBrand.has(this))throw new TypeError('Illegal invocation');return Reflect.apply(fn,this,args);};
+    Object.defineProperty(Element.prototype,name,descriptor.value?{value:checked(descriptor.value),writable:true,enumerable:true,configurable:true}:
+      {get:descriptor.get?checked(descriptor.get):undefined,set:descriptor.set?checked(descriptor.set):undefined,enumerable:true,configurable:true});
+  }
+  // Script loaders often instrument these native-facing property descriptors.
+  // Brand checks prevent treating arbitrary elements as scripts.
+  for(const name of ['src','type','text','textContent','innerText','async','defer','noModule','integrity','crossOrigin']){
+    const descriptor=Object.getOwnPropertyDescriptor(Node.prototype,name);
+    const checked=fn=>function(...args){if(!scriptBrand.has(this))throw new TypeError('Illegal invocation');return Reflect.apply(fn,this,args);};
+    Object.defineProperty(HTMLScriptElement.prototype,name,{get:descriptor.get?checked(descriptor.get):undefined,
+      set:descriptor.set?checked(descriptor.set):undefined,enumerable:true,configurable:true});
+  }
   function currentFocus(){const key=bridge('activeElement',0);return key===null?null:wrap(key);}
   function setFocus(target){
     const old=currentFocus();bridge('focus',target?target._key:0);const next=currentFocus();
@@ -145,14 +209,22 @@
     // A blur handler may already have moved focus elsewhere.
     if(next&&currentFocus()===next){const focus=new Event('focus');focus.relatedTarget=old;next.dispatchEvent(focus);if(currentFocus()===next){const into=new Event('focusin',{bubbles:true});into.relatedTarget=old;next.dispatchEvent(into);}}
   }
-  function wrap(key){if(!nodes.has(key))nodes.set(key,new Node(key));return nodes.get(key);}
+  function wrap(key){
+    if(!nodes.has(key)){
+      const kind=key===0?9:bridge('kind',key);
+      const ctor=kind===9?HTMLDocument:kind===3?Text:kind===11?DocumentFragment:htmlInterfaces[bridge('tag',key)]||HTMLElement;
+      nodes.set(key,new ctor(key,nodeToken));
+    }
+    return nodes.get(key);
+  }
   const document=wrap(0);
-  document.createElement=tag=>wrap(bridge('create',0,String(tag)));
-  document.createTextNode=text=>wrap(bridge('createText',0,String(text)));
-  document.createDocumentFragment=()=>wrap(bridge('createFragment',0));
-  document.getElementById=id=>{const key=bridge('id',0,String(id));return key?wrap(key):null;};
-  document.getElementsByClassName=s=>query(0,'.'+String(s).trim().split(/\s+/).join('.'));
-  document.getElementsByTagName=s=>query(0,String(s));
+  function documentReceiver(value){if(value!==document)throw new TypeError('Illegal invocation');}
+  Document.prototype.createElement=function(tag){documentReceiver(this);return wrap(bridge('create',0,String(tag)));};
+  Document.prototype.createTextNode=function(text){documentReceiver(this);return wrap(bridge('createText',0,String(text)));};
+  Document.prototype.createDocumentFragment=function(){documentReceiver(this);return wrap(bridge('createFragment',0));};
+  Document.prototype.getElementById=function(id){documentReceiver(this);const key=bridge('id',0,String(id));return key?wrap(key):null;};
+  Document.prototype.getElementsByClassName=function(s){documentReceiver(this);return query(0,'.'+String(s).trim().split(/\s+/).join('.'));};
+  Document.prototype.getElementsByTagName=function(s){documentReceiver(this);return query(0,String(s));};
   Object.defineProperties(document,{
     documentElement:{get:()=>wrap(bridge('root',0))},body:{get:()=>document.querySelector('body')},head:{get:()=>document.querySelector('head')},
     title:{get:()=>document.querySelector('title')?.textContent||'',set:v=>{const t=document.querySelector('title');if(t)t.textContent=v;}},
@@ -162,10 +234,10 @@
     referrer:{get:()=>''},
     URL:{get:()=>bridge('url',0)}
   });
-  Object.assign(globalThis,eventMethods,{window:globalThis,self:globalThis,document,Node,Element:Node,HTMLElement:Node,Event,CustomEvent});
+  Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.7.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.7.1'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;

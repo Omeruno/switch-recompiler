@@ -187,3 +187,20 @@ innerHTML у нового detached-родителя. В закреплённый
 Это закрывает согласованный блок dynamic scripts + MutationObserver в описанном
 подмножестве. Modules/workers, ResizeObserver/IntersectionObserver, полный Fetch/CORS,
 XHR/WebSocket, Grid, media/GPU и перенос полного движка остаются в дорожной карте.
+
+## Проверка на Switch и исправление 0.7.1
+
+Пользователь отмечает ускорение 0.7.0. На фото play.keldurn.com виден
+ReferenceError об отсутствующем HTMLScriptElement; проверка безопасности не
+завершилась. Отдельно Google показывает страницу отказа входа с сообщением о
+неподдерживаемом JavaScript/браузере. Причина отказа сервисов целиком не установлена.
+
+Исправлены типы native DOM-обёрток, цепочки прототипов, Script/Element property
+descriptors и Document factories. Одна общая Node-обёртка больше не подменяет все
+типы элементов. Добавлены Text/DocumentFragment constructors и корректные отрицательные
+ответы supports() для неподдержанных модулей/import maps. Общий сценарий проверен
+в Chromium и native runtime; вывод/хэш хранятся рядом с fixture.
+
+Для включённого JS noscript скрывается, а скрипты внутри него остаются неактивными.
+Полный HTML scripting tokenizer и остальные браузерные API остаются за рамками
+этой правки. Успешный вход Google/проверка безопасности на устройстве не заявляются.
