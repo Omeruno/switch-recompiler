@@ -745,7 +745,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.10.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.11.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -766,9 +766,9 @@ struct Browser {
             if (scripts->issues().truncated())
                 report_lines.push_back("Достигнут лимит: 24 группы JavaScript.");
         }
-        report_lines.push_back("Известные пробелы: Grid, полный DOM/CSSOM, модули, workers.");
+        report_lines.push_back("Известные пробелы: Grid, полный DOM/CSSOM, import maps, workers.");
         report_lines.push_back(
-            "Также отсутствуют: WebSocket/XHR, полный CORS, GPU, видео и аудио.");
+            "Также отсутствуют: полный CORS, GPU, видео и аудио.");
         report_lines.push_back(
             "Счётчики не определяют причину отказа сайта без дальнейшей проверки.");
         std::string report;
@@ -855,7 +855,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.10.0");
+    visual::diagnostic("boot", "0.11.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));

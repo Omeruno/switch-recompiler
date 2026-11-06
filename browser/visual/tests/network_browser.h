@@ -95,6 +95,8 @@ void browser_network_checks(Browser &app, const std::string &base) {
     eval("scrollBy(0,100);");
     app.pump();
     check(app.view.y == 180, "relative script scroll did not reach view");
+    eval("const oldSocket=new WebSocket('/ws-slow');");
+    app.pump(); // Begin connecting before the cancellation checks install callbacks.
     eval("scrollTo(0,0);new "
          "ResizeObserver(()=>localStorage.setItem('layout_leak','resize')).observe(tall);new "
          "IntersectionObserver(()=>localStorage.setItem('layout_leak','intersection')).observe("
@@ -105,6 +107,9 @@ void browser_network_checks(Browser &app, const std::string &base) {
          "XMLHttpRequest();oldXHR.open('GET','/"
          "api-slow');oldXHR.onload=()=>localStorage.setItem('xhr_leak','1');oldXHR.send();");
     eval("import('/esm-delay.js').then(()=>localStorage.setItem('module_callback_leak','1'));");
+    eval("oldSocket.onopen=()=>localStorage.setItem('websocket_leak','open');oldSocket.onmessage=()"
+         "=>localStorage.setItem('websocket_leak','message');oldSocket.onclose=()=>localStorage."
+         "setItem('websocket_leak','close');");
     app.resources.pump(); // Start the delayed transfer, then cancel the old realm/page.
     app.navigate(base + "/loop-clean", false);
     pump_until([&] { return app.scripts && app.scripts->ready(); });
@@ -120,6 +125,8 @@ void browser_network_checks(Browser &app, const std::string &base) {
     check(!browser_storage_get(base.c_str(), 0, "module_leak") &&
               !browser_storage_get(base.c_str(), 0, "module_callback_leak"),
           "old module realm survived navigation");
+    check(!browser_storage_get(base.c_str(), 0, "websocket_leak"),
+          "WebSocket callback survived navigation");
     puts("PASS delayed async/defer/classic scripts, timer during load, DCL/load order, JSON "
          "without layout, image-only relayout, late CSS and coalesced DOM changes");
 }

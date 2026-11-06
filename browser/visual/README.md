@@ -1,4 +1,4 @@
-# Switch visual browser — 0.10.0
+# Switch visual browser — 0.11.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -7,6 +7,11 @@ recommend it as a full browser engine. This prototype tests a native rendering
 path; it is not a production engine selection or a playable Keldurn client.
 
 ## What is implemented
+
+- Persistent TLS WebSocket connections (`wss:`), text/binary messages, subprotocols,
+  buffered sends, ping/pong and close events. The event loop cancels old sockets
+  on navigation. A buffered immutable Blob supports binary messages and HTTP bodies.
+  See the 0.11.0 section below for transport, credentials and memory limits.
 
 - URL-based ES modules with static/dynamic imports, live exports and top-level await;
   sources load asynchronously through the browser module map. Import maps, workers,
@@ -576,3 +581,77 @@ remains to be verified.
 References: [HTML module scripts](https://html.spec.whatwg.org/multipage/webappapis.html#module-script),
 [HTML script processing](https://html.spec.whatwg.org/multipage/scripting.html#processing-model),
 [ECMAScript modules](https://tc39.es/ecma262/#sec-modules).
+
+
+## Persistent WebSocket — 0.11.0
+
+`WebSocket` is connected to a native RFC 6455 transport, with real TLS and an
+asynchronous `open` / `message` / `error` / `close` lifecycle. Connections use
+libcurl connect-only HTTPS handles kept in a dedicated multi handle, then
+`curl_easy_send/recv`. This works with devkitPro's curl 7.69.1 and does not require
+curl's newer WebSocket API. HTTP/1.1 is forced during TLS negotiation. Certificate
+and hostname checks use the same root importer as ordinary HTTPS.
+
+- Relative and HTTPS URLs normalize to `wss:`. Plaintext `ws:`/HTTP, URL credentials,
+  fragments and redirects are rejected. `connect-src`/`default-src` are checked
+  before opening the connection. An `Origin` header identifies the initiating
+  page; opaque demo pages send `null`.
+- A fresh OS random nonce and fresh client frame masks are used. The upgrade
+  verifies status 101, Upgrade/Connection, the RFC SHA-1 accept value, and the
+  selected offered subprotocol. Extensions/compression are not requested or accepted.
+- Incremental framing supports text and binary messages, fragmented messages with
+  interleaved controls, automatic pong, strict UTF-8/close-code checks, canonical
+  lengths and partial TLS reads/writes. Invalid/masked server frames fail the socket.
+- JavaScript exposes the four states, `url`, `protocol`, `extensions`, `binaryType`,
+  `bufferedAmount`, `send` and `close`. Binary messages default to immutable `Blob`;
+  `arraybuffer` is also supported. Typed-array views are copied at send time.
+  MessageEvent and CloseEvent provide readonly payload/origin/close fields.
+- The minimal buffered `Blob` supports `size`, `type`, `slice`, `text` and
+  `arrayBuffer`, up to 64 parts / 512 KiB. Fetch Request/Response and XHR request
+  bodies accept it; Request/Response provide `.blob()`. Blob streams, object URLs,
+  File, multipart FormData and XHR's `responseType='blob'` remain unsupported.
+- Same-origin upgrades use the native cookie jar, including HttpOnly cookies;
+  validated upgrade responses can set host-bound cookies. These native cookie
+  helpers are not exposed to JavaScript. Cross-origin sockets are anonymous and
+  ignore Set-Cookie until a complete SameSite/partitioning policy is implemented.
+  This differs from general browser WebSocket credential behavior.
+- Page limits: 8 live / 32 created sockets; 16 protocols of at most 128 bytes;
+  16 KiB upgrade headers; 512 KiB per message. Outgoing application data is bounded
+  to 1 MiB/socket, 4 MiB/page and 64 queued frames/socket. Incoming message events
+  are bounded to 1 MiB/socket, 2 MiB/page and approximately 32 events/socket, with
+  reads paused under pressure. Decoder storage is also bounded; quotas are not
+  a replacement for measuring total memory on the Switch.
+- Each network pump processes at most 8 frames, 64 KiB reads and 16 KiB writes per
+  connection, with a soft 8 ms total processing budget. Fetch, socket events,
+  module progress and timer/observer tasks rotate, each followed by a microtask
+  checkpoint. Connect/upgrade has a 10-second deadline (5-second TLS connect);
+  close handshakes have 5 seconds. There is no automatic reconnect or heartbeat.
+- Navigation cancels transports before destroying the JS realm. Reports contain
+  bounded failure categories and the socket origin, without messages, close
+  reasons, cookies or URL paths/queries. The network log likewise records only
+  the origin, stage and status. No payload capture is added.
+
+The demo's **«Сетевая проверка WebSocket»** section opens a connection only when
+pressed. Its editable default is a public echo endpoint; availability is outside
+our control. Send transmits the fixed Russian test string, and the page displays
+a message count. This online check is independent of the offline module demo.
+
+Nineteen host suites include an RFC known-vector/parser suite and a real local
+TLS upgrade/echo suite: text, binary/Blob, maximum-size messages, fragmentation,
+ping/pong, protocol/Origin/cookies, close, invalid frames/upgrade, TLS failure,
+connection cancellation, live quotas and CSP. The actual Browser navigation test
+checks that old socket callbacks do not survive navigation. Host and sanitizer
+results do not establish Switch performance, successful Google/Cloudflare login,
+or playable Keldurn: Worker, JS-to-WASM, GPU and media integration still remain.
+
+Optional Chromium reference (install Playwright/Chromium separately):
+
+```sh
+python3 browser/tests/https_fixture.py browser/visual/tests/chromium_websocket.py
+```
+
+The shared fixture checks text/binary/Blob, controls/close, API validation and
+protocol failures. It explicitly accounts for anonymous cross-origin cookies,
+native quotas and certificate rejection. Chromium's CSP failure is checked via
+its error event because that path does not deliver close in the reference build.
+Chromium 151.0.7922.34 passed this scenario; it is not a general compatibility test.

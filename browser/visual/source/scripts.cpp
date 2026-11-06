@@ -1,4 +1,5 @@
 #include "scripts.h"
+#include "websocket.h"
 extern "C" {
 #include "profile.h"
 #include "quickjs.h"
@@ -227,7 +228,8 @@ struct Scripts::Impl {
     bool dirty = false, interactive = false, dom_ready = false, complete = false, loaded = false,
          usable_runtime = false;
     uint64_t previous_frame = 0;
-    bool fetch_turn = false;
+    unsigned task_source = 0;
+    WebSockets sockets;
 #include "module_loader.inc"
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
          std::vector<std::string> policy)
@@ -285,6 +287,7 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        sockets.clear();
         release_modules();
         for (auto &f : fetches)
             resources.cancel(*f.resource);
@@ -503,7 +506,9 @@ struct Scripts::Impl {
                  const std::string &keyword = "'unsafe-inline'") const {
         if (policy_overflow)
             return false;
-        if (!inline_code && (url.empty() || Resources::resolve("", url).empty()) &&
+        const bool socket = directive == "connect-src" && url.rfind("wss://", 0) == 0;
+        const auto checked_url = socket ? "https:" + url.substr(4) : url;
+        if (!inline_code && (url.empty() || Resources::resolve("", checked_url).empty()) &&
             url.rfind("demo:/", 0) != 0)
             return false;
         for (const auto &policy : policies) {
@@ -540,9 +545,16 @@ struct Scripts::Impl {
                 if (inline_code) {
                     if (token == keyword)
                         yes = true;
-                } else if (token == "*" || token == "https:" ||
-                           (token == "'self'" && origin(url) == origin(container.page_url)) ||
-                           token == origin(url) || token == origin(url) + "/")
+                } else if (token == "*" || token == "https:" || (socket && token == "wss:") ||
+                           (token == "'self'" &&
+                            origin(checked_url) == origin(container.page_url)) ||
+                           (socket &&
+                            (token == origin(checked_url) || token == origin(checked_url) + "/")) ||
+                           token ==
+                               (socket ? "wss:" + origin(checked_url).substr(6) : origin(url)) ||
+                           token ==
+                               (socket ? "wss:" + origin(checked_url).substr(6) : origin(url)) +
+                                   "/")
                     yes = true;
             }
             if (!yes)
@@ -1100,6 +1112,53 @@ struct Scripts::Impl {
             curl_free(part);
             curl_url_cleanup(u);
             return result;
+        }
+        if (op == "wsURL") {
+            return js(WebSockets::normalize(container.base, str(2, 2048)).url);
+        }
+        if (op == "wsCreate") {
+            auto url = WebSockets::normalize(container.base, str(2, 2048));
+            auto list = str(3, 4096);
+            std::vector<std::string> protocols;
+            size_t start = 0;
+            while (start < list.size()) {
+                auto end = list.find('\n', start);
+                auto item = list.substr(start, end == std::string::npos ? end : end - start);
+                if (item.empty() || item.size() > 128 || protocols.size() >= 16 ||
+                    std::find(protocols.begin(), protocols.end(), item) != protocols.end())
+                    throw std::runtime_error("Invalid WebSocket protocols");
+                for (unsigned char c : item)
+                    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                          (c >= '0' && c <= '9')) &&
+                        std::string("!#$%&'*+-.^_`|~").find(char(c)) == std::string::npos)
+                        throw std::runtime_error("Invalid WebSocket protocol");
+                protocols.push_back(item);
+                if (end == std::string::npos)
+                    break;
+                start = end + 1;
+            }
+            auto id = sockets.create(url, container.page_url, protocols,
+                                     allowed("connect-src", url.url, false), now);
+            if (!id)
+                throw std::runtime_error("WebSocket quota exceeded");
+            return JS_NewUint32(context, id);
+        }
+        if (op == "wsBuffered")
+            return JS_NewFloat64(context, double(sockets.buffered(unsigned(integer(2)))));
+        if (op == "wsSend" || op == "wsClose") {
+            size_t size = 0;
+            auto *bytes = argc > 4 ? JS_GetArrayBuffer(context, &size, a[4]) : nullptr;
+            if (!bytes || size > (op == "wsClose" ? 123u : ws::message_limit))
+                throw std::runtime_error("Invalid WebSocket buffer");
+            auto id = unsigned(integer(2));
+            if (op == "wsSend")
+                return JS_NewBool(context, sockets.send(id, integer(3) != 0, bytes, size));
+            auto code = unsigned(integer(3));
+            if ((code && code != 1000 && (code < 3000 || code > 4999)) || (!code && size) ||
+                !ws::valid_utf8(bytes, size))
+                throw std::runtime_error("Invalid WebSocket close");
+            sockets.close(id, code, bytes, size, argc > 5 && JS_ToBool(context, a[5]) > 0, now);
+            return JS_UNDEFINED;
         }
         if (op == "encode") {
             auto text = str(2, 512u * 1024u);
@@ -1841,12 +1900,36 @@ struct Scripts::Impl {
         }
         return false;
     }
+    bool settle_socket() {
+        WebSockets::Event event;
+        if (!sockets.pop(event))
+            return false;
+        if (!event.diagnostic.empty())
+            issue_log.add("websocket", event.diagnostic, event.origin);
+        auto payload =
+            event.binary
+                ? JS_NewArrayBufferCopy(context, event.data.data(), event.data.size())
+                : JS_NewStringLen(context, reinterpret_cast<const char *>(event.data.data()),
+                                  event.data.size());
+        auto result =
+            call("socket", {JS_NewUint32(context, event.id), JS_NewInt32(context, int(event.kind)),
+                            payload, JS_NewBool(context, event.binary),
+                            JS_NewStringLen(context, event.origin.data(), event.origin.size()),
+                            JS_NewStringLen(context, event.protocol.data(), event.protocol.size()),
+                            JS_NewUint32(context, event.code),
+                            JS_NewStringLen(context, event.reason.data(), event.reason.size()),
+                            JS_NewBool(context, event.clean),
+                            JS_NewFloat64(context, double(event.buffered))});
+        JS_FreeValue(context, result);
+        return true;
+    }
     bool poll(uint64_t time) {
         if (!usable_runtime)
             return dirty;
         if (container.prune_focus())
             dirty = true;
         now = std::max(time, origin_time);
+        sockets.pump(now);
         budget(50);
         if (!drain())
             return dirty;
@@ -1866,10 +1949,6 @@ struct Scripts::Impl {
             return dirty;
         }
         budget(50);
-        if (pump_modules()) {
-            drain();
-            return dirty;
-        }
         Job *ordered = nullptr, *deferred = nullptr, *async = nullptr, *dynamic_order = nullptr;
         bool all_done = true;
         for (auto &j : jobs) {
@@ -1921,22 +2000,25 @@ struct Scripts::Impl {
             drain();
             return dirty;
         }
-        // One callback per task, with a checkpoint after each; fetch and timer task
-        // sources alternate when both are ready. Waiting scripts do not freeze them.
+        // Rotate independent task sources; checkpoint after every callback.
         uint64_t turn_end = Scripts::clock_ms() + 8;
         for (unsigned task = 0; task < 8 && Scripts::clock_ms() < turn_end; ++task) {
             budget(50);
             bool ran = false;
-            if (fetch_turn)
-                ran = settle_fetch();
-            if (!ran) {
-                auto result = call("task", {JS_NewFloat64(context, double(now - origin_time))});
-                ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
-                JS_FreeValue(context, result);
+            for (unsigned attempt = 0; attempt < 4 && !ran; ++attempt) {
+                auto source = task_source++ % 4;
+                if (source == 0)
+                    ran = settle_fetch();
+                else if (source == 1)
+                    ran = settle_socket();
+                else if (source == 2)
+                    ran = pump_modules();
+                else {
+                    auto result = call("task", {JS_NewFloat64(context, double(now - origin_time))});
+                    ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+                    JS_FreeValue(context, result);
+                }
             }
-            if (!ran && !fetch_turn)
-                ran = settle_fetch();
-            fetch_turn = !fetch_turn;
             if (!ran || !drain())
                 break;
         }

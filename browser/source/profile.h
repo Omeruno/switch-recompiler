@@ -22,4 +22,7 @@ size_t browser_storage_length(const char *url, int session);
 const char *browser_storage_key(const char *url, int session, size_t index);
 void browser_cookie_get(const char *url, char *output, size_t capacity);
 int browser_cookie_set(const char *url, const char *assignment);
+// Native HTTP/WebSocket only. Never exposed by the document.cookie bridge.
+int browser_cookie_network_get(const char *url, char *output, size_t capacity);
+int browser_cookie_network_set(const char *url, const char *assignment);
 #endif

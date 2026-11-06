@@ -636,6 +636,85 @@ void browser_cookie_get(const char *url, char *out, size_t capacity) {
     curl_free(host);
     curl_free(request);
 }
+typedef struct {
+    char *record;
+    Cookie cookie;
+    size_t order;
+} NetworkCookie;
+static int compare_network_cookies(const void *a, const void *b) {
+    const NetworkCookie *x = a, *y = b;
+    size_t xl = strlen(x->cookie.path), yl = strlen(y->cookie.path);
+    if (xl != yl)
+        return xl > yl ? -1 : 1;
+    return x->order < y->order ? -1 : x->order > y->order ? 1 : 0;
+}
+int browser_cookie_network_get(const char *url, char *out, size_t capacity) {
+    if (!capacity)
+        return 0;
+    out[0] = 0;
+    char *host = NULL, *request = NULL;
+    if (!ensure_cookies() || !url_cookie_parts(url, &host, &request)) {
+        curl_free(host);
+        curl_free(request);
+        return 0;
+    }
+    struct curl_slist *list = NULL;
+    curl_easy_getinfo(cookies, CURLINFO_COOKIELIST, &list);
+    NetworkCookie selected[128];
+    size_t count = 0, order = 0, used = 0;
+    int valid = 1;
+    for (struct curl_slist *p = list; p; p = p->next, ++order) {
+        char *record = strdup(p->data);
+        Cookie c = {0};
+        if (record && cookie_fields(record, &c) && cookie_host(&c, host) &&
+            cookie_path(c.path, request) && (!c.expires || c.expires > (long long)time(NULL))) {
+            if (count == 128) {
+                free(record);
+                valid = 0;
+                break;
+            }
+            selected[count++] = (NetworkCookie){record, c, order};
+        } else
+            free(record);
+    }
+    qsort(selected, count, sizeof(selected[0]), compare_network_cookies);
+    for (size_t i = 0; i < count && valid; i++) {
+        Cookie *c = &selected[i].cookie;
+        for (const unsigned char *v = (const unsigned char *)c->name; *v; v++)
+            if (*v < 0x21 || *v > 0x7e || strchr(";=\r\n", *v))
+                valid = 0;
+        for (const unsigned char *v = (const unsigned char *)c->value; *v; v++)
+            if (*v < 0x20 || *v > 0x7e)
+                valid = 0;
+        size_t n = strlen(c->name) + 1 + strlen(c->value) + (used ? 2 : 0);
+        if (n >= capacity - used) {
+            valid = 0;
+            break;
+        }
+        if (valid) {
+            if (used) {
+                memcpy(out + used, "; ", 2);
+                used += 2;
+            }
+            size_t k = strlen(c->name);
+            memcpy(out + used, c->name, k);
+            used += k;
+            out[used++] = '=';
+            k = strlen(c->value);
+            memcpy(out + used, c->value, k);
+            used += k;
+            out[used] = 0;
+        }
+    }
+    for (size_t i = 0; i < count; i++)
+        free(selected[i].record);
+    curl_slist_free_all(list);
+    curl_free(host);
+    curl_free(request);
+    if (!valid)
+        out[0] = 0;
+    return valid;
+}
 static char *trim(char *s) {
     while (*s == ' ' || *s == '\t')
         s++;
@@ -644,7 +723,7 @@ static char *trim(char *s) {
         s[--n] = 0;
     return s;
 }
-int browser_cookie_set(const char *url, const char *assignment) {
+static int set_cookie(const char *url, const char *assignment, int network) {
     if (!assignment || strlen(assignment) > 4096 || strpbrk(assignment, "\r\n\t") ||
         !ensure_cookies())
         return 0;
@@ -682,7 +761,7 @@ int browser_cookie_set(const char *url, const char *assignment) {
         strcpy(cookie_path_value, "/");
     else
         *last = 0;
-    int secure = 0, domain_attr = 0, path_attr = 0, has_max_age = 0;
+    int secure = 0, domain_attr = 0, path_attr = 0, has_max_age = 0, http_only = 0;
     long long expires = 0;
     for (char *part = strtok_r(NULL, ";", &state); part; part = strtok_r(NULL, ";", &state)) {
         part = trim(part);
@@ -693,8 +772,11 @@ int browser_cookie_set(const char *url, const char *assignment) {
             attribute_value = trim(eq + 1);
         }
         part = trim(part);
-        if (!strcasecmp(part, "HttpOnly"))
-            goto done;
+        if (!strcasecmp(part, "HttpOnly")) {
+            if (!network)
+                goto done;
+            http_only = 1;
+        }
         if (!strcasecmp(part, "Secure"))
             secure = 1;
         else if (!strcasecmp(part, "Domain")) {
@@ -741,11 +823,12 @@ int browser_cookie_set(const char *url, const char *assignment) {
         free(line);
     }
     curl_slist_free_all(list);
-    if (protected)
+    if (protected && !network)
         goto done;
     char record[6144];
-    int n = snprintf(record, sizeof(record), "%s\tFALSE\t%s\t%s\t%lld\t%s\t%s", host,
-                     cookie_path_value, secure ? "TRUE" : "FALSE", expires, name, value);
+    int n = snprintf(record, sizeof(record), "%s%s\tFALSE\t%s\t%s\t%lld\t%s\t%s",
+                     http_only ? "#HttpOnly_" : "", host, cookie_path_value,
+                     secure ? "TRUE" : "FALSE", expires, name, value);
     if (n <= 0 || (size_t)n >= sizeof(record))
         goto done;
     result = curl_easy_setopt(cookies, CURLOPT_COOKIELIST, record) == CURLE_OK;
@@ -754,6 +837,12 @@ done:
     curl_free(host);
     curl_free(request);
     return result;
+}
+int browser_cookie_set(const char *url, const char *assignment) {
+    return set_cookie(url, assignment, 0);
+}
+int browser_cookie_network_set(const char *url, const char *assignment) {
+    return set_cookie(url, assignment, 1);
 }
 int browser_profile_clear(void) {
     Entry old[RECORDS];

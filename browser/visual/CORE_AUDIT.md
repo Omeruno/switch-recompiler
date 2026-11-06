@@ -26,7 +26,7 @@ Chromium/Blink, Firefox/Gecko и WebKit разделяют несколько з
 
 | Подсистема | Реализовано | Чего существенно не хватает |
 |---|---|---|
-| Сеть | curl-multi, HTTPS/CA, cookies, Fetch/body/XHR, анонимный CORS/preflight, навигационные POST, CSP | полная модель Fetch/CORS/cookies, streams, WebSocket, HTTP-кэш, MIME/charset-политики |
+| Сеть | curl-multi, HTTPS/CA, cookies, Fetch/body/XHR, TLS WebSocket/Blob, анонимный CORS/preflight, навигационные POST, CSP | полная модель Fetch/CORS/cookies, streams, полные credentials WebSocket, HTTP-кэш, MIME/charset-политики |
 | Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, iframe, editing/selection/accessibility |
 | CSS/layout | каскад, обычный поток, таблицы, flex, media queries, размеры и поля | Grid, полное современное intrinsic sizing, дополнительные правила текста, transforms |
 | Paint | SDL, DejaVu, PNG/JPEG/WebP, заливки, часть границ и градиентов | SVG, web fonts/shaping/fallback, полные тени/outline/clip, display list/compositor |
@@ -272,3 +272,24 @@ rejected Promise QuickJS при синхронном падении модуля
 reference с хэшами исходников. На Switch добавлено офлайн-демо с настоящими
 static/dynamic imports. Import maps/attributes, Worker, WebSocket, WASM/GPU и
 медиа ещё не реализованы; работоспособность входа и игры не установлена.
+
+
+## Постоянные соединения — 0.11.0
+
+Добавлен нативный RFC 6455 поверх проверяемого TLS libcurl (connect-only,
+HTTP/1.1), без зависимости от curl_ws API, отсутствующего в Switch curl 7.69.1.
+Рукопожатие, клиентские маски, фрагменты, ping/pong, UTF-8 и close проходят
+проверки на локальном TLS-сервере. JS получает WebSocket, MessageEvent, CloseEvent
+и ограниченный buffered Blob; Blob также подключён к HTTP bodies.
+
+Соединения отменяются до уничтожения старой страницы. Очереди и размеры
+ограничены; события сокетов чередуются с fetch, таймерами и загрузкой модулей.
+Same-origin использует cookie jar, включая HttpOnly; JS не получает native cookie
+header. Cross-origin работает без cookies/Set-Cookie до реализации полной
+SameSite/partitioning политики. Plaintext ws, компрессия/расширения, редиректы,
+reconnect/heartbeat и полноценный WebSocketStream не реализованы.
+
+Добавлены два host-набора (всего 19), проверка отмены в Browser и проверка общего
+JS-сценария в Chromium с явными отличиями квот/credentials/TLS fixture. Требуется
+проверка NRO на Switch и профилирование памяти. Снятие сетевого барьера не даёт
+WASM game imports, Worker, WebGPU/WebGL, звук/видео или успешный вход на сайты.

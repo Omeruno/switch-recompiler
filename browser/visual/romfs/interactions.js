@@ -60,3 +60,23 @@ document.addEventListener('DOMContentLoaded',()=>{
     }).catch(()=>document.getElementById('fetch-result').textContent='Не удалось загрузить данные');
   });
 });
+document.addEventListener('DOMContentLoaded',()=>{
+  let socket=null,received=0;
+  const state=document.getElementById('websocket-status');
+  document.getElementById('websocket-connect').onclick=()=>{
+    if(socket&&socket.readyState<2){state.textContent='Сначала закрой текущее соединение.';return;}
+    try{
+      socket=new WebSocket(document.getElementById('websocket-url').value.trim());received=0;
+      state.textContent='Соединение…';
+      socket.onopen=()=>{state.textContent='Соединение открыто. Можно отправить проверку.';};
+      socket.onmessage=event=>{received++;state.textContent='Получено сообщений: '+received+' · '+(typeof event.data==='string'?'текст':'бинарные данные');};
+      socket.onerror=()=>{state.textContent='Не удалось обменяться данными. Проверь адрес и сеть.';};
+      socket.onclose=event=>{state.textContent='Соединение закрыто: '+event.code+(event.wasClean?' · корректно':' · обрыв');};
+    }catch(error){state.textContent='Не удалось открыть соединение. Нужен адрес wss://.';}
+  };
+  document.getElementById('websocket-send').onclick=()=>{
+    if(!socket||socket.readyState!==WebSocket.OPEN){state.textContent='Сначала открой соединение.';return;}
+    socket.send('Привет со Switch!');state.textContent='Проверочное сообщение отправлено.';
+  };
+  document.getElementById('websocket-close').onclick=()=>{if(socket)socket.close(1000);};
+});

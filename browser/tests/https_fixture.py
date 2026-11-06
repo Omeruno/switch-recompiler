@@ -100,9 +100,74 @@ extendedKeyUsage=serverAuth
                 response=json.dumps({'accepted':valid,'method':'POST'}).encode();self.send_response(200)
             self.send_header('Content-Length',str(len(response)));self.end_headers();self.wfile.write(response)
 
+        def websocket(self):
+            parsed=urllib.parse.urlsplit(self.path)
+            if not parsed.path.startswith('/ws-'):return False
+            import base64,hashlib,struct,socket
+            self.close_connection=True
+            self.connection.settimeout(3)
+            def frame(op,data=b'',fin=True):
+                n=len(data);header=bytes([op|(128 if fin else 0)])
+                header+=bytes([n]) if n<126 else b'\x7e'+struct.pack('!H',n) if n<65536 else b'\x7f'+struct.pack('!Q',n)
+                return header+data
+            incoming=bytearray();fragmented=0
+            def receive():
+                nonlocal incoming,fragmented
+                def read(n):
+                    result=b''
+                    while len(result)<n:
+                        part=self.rfile.read(n-len(result))
+                        if not part:raise EOFError()
+                        result+=part
+                    return result
+                while True:
+                    a,b=read(2);assert b&128,'client frame must be masked'
+                    n=b&127
+                    if n==126:n=struct.unpack('!H',read(2))[0]
+                    elif n==127:n=struct.unpack('!Q',read(8))[0]
+                    assert n<=524288
+                    mask=read(4);raw=read(n);data=bytes(v^mask[i%4] for i,v in enumerate(raw));op=a&15
+                    if op>=8:return op,data
+                    if op:assert not fragmented;fragmented=op
+                    else:assert fragmented
+                    incoming.extend(data);assert len(incoming)<=524288
+                    if a&128:
+                        result=fragmented,bytes(incoming);incoming.clear();fragmented=0;return result
+            try:
+                if parsed.path=='/ws-slow':time.sleep(.2)
+                key=self.headers.get('Sec-WebSocket-Key','');assert len(base64.b64decode(key))==16
+                accept=base64.b64encode(hashlib.sha1((key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+                if parsed.path=='/ws-bad-accept':accept='wrong'
+                protocol=self.headers.get('Sec-WebSocket-Protocol','').split(',')[0].strip()
+                if parsed.path=='/ws-bad-protocol':protocol='unoffered'
+                response='HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n'
+                if protocol:response+='Sec-WebSocket-Protocol: '+protocol+'\r\n'
+                response+='Set-Cookie: ws_secret=1; Path=/; Secure; HttpOnly\r\n\r\n'
+                wire=response.encode()
+                # Partial TLS records exercise incremental handshake and decoder.
+                self.connection.sendall(wire[:17]);time.sleep(.005);self.connection.sendall(wire[17:])
+                if parsed.path.startswith('/ws-bad-'):return True
+                if parsed.path=='/ws-invalid-utf8':self.connection.sendall(frame(1,b'\xff'));return True
+                if parsed.path=='/ws-masked':self.connection.sendall(b'\x81\x80'+b'1234');return True
+                if parsed.path=='/ws-oversize':self.connection.sendall(b'\x82\x7f'+struct.pack('!Q',524289));return True
+                if parsed.path=='/ws-fast-close':self.connection.sendall(frame(1,b'last message')+frame(8,struct.pack('!H',1000)));receive();return True
+                if parsed.path=='/ws-peer-close':self.connection.sendall(frame(8,struct.pack('!H',4001)+'пока'.encode()));receive();return True
+                if parsed.path=='/ws-eof':return True
+                meta=json.dumps({'origin':self.headers.get('Origin'),'cookie':self.headers.get('Cookie',''),'protocol':protocol}).encode()
+                if parsed.path=='/ws-meta':self.connection.sendall(frame(1,meta))
+                if parsed.path=='/ws-fragments':
+                    text='Живой сокет'.encode();self.connection.sendall(frame(1,text[:1],False)+frame(9,b'ping')+frame(0,text[1:]));op,data=receive();assert op==10 and data==b'ping'
+                while True:
+                    op,data=receive()
+                    if op==8:self.connection.sendall(frame(8,data));break
+                    if op in (1,2):self.connection.sendall(frame(op,data))
+            except (EOFError,ConnectionError,ssl.SSLError,socket.timeout):pass
+            return True
+
         def log_message(self,*args):
             pass
         def do_GET(self):
+            if self.websocket():return
             if self.api():return
             route=urllib.parse.urlsplit(self.path).path
             if route.startswith('/dyn-'):

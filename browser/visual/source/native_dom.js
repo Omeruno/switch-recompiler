@@ -237,7 +237,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.10.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.11.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -534,10 +534,69 @@
     constructor(label='utf-8',options={}){options=options??{};if(!['utf-8','utf8','unicode-1-1-utf-8'].includes(String(label).trim().toLowerCase())||options.fatal)throw new RangeError('Only nonfatal UTF-8 decoding is supported');Object.defineProperties(this,{encoding:{value:'utf-8'},fatal:{value:false},ignoreBOM:{value:!!options.ignoreBOM}});}
     decode(input=new ArrayBuffer(0),options={}){if(options.stream)throw new TypeError('Streaming decoding unavailable');let text=bridge('decode',0,byteBuffer(input));return !this.ignoreBOM&&text.charCodeAt(0)===0xfeff?text.slice(1):text;}
   }
-  const encodeBody=(value,headers)=>{if(value==null)return null;if(value instanceof URLSearchParams){if(!headers.has('content-type'))headers.set('content-type','application/x-www-form-urlencoded;charset=UTF-8');return bridge('encode',0,value.toString());}if(typeof value==='string'){if(!headers.has('content-type'))headers.set('content-type','text/plain;charset=UTF-8');return bridge('encode',0,scalarText(value));}return byteBuffer(value);};
+  const blobStates=new WeakMap();
+  class Blob {
+    constructor(parts=[],options={}){
+      if(parts==null||(typeof parts!=='object'&&typeof parts!=='function')||typeof parts[Symbol.iterator]!=='function')throw new TypeError('Expected Blob parts');
+      const arrays=[];let length=0,count=0;
+      for(const part of parts){if(++count>64)throw new RangeError('Blob part limit');let bytes;
+        if(blobStates.has(part))bytes=blobStates.get(part).bytes;
+        else if(part instanceof ArrayBuffer||ArrayBuffer.isView(part))bytes=new Uint8Array(byteBuffer(part));
+        else bytes=new TextEncoder().encode(scalarText(part));
+        length+=bytes.byteLength;if(length>524288)throw new RangeError('Blob size limit');arrays.push(bytes);
+      }
+      const bytes=new Uint8Array(length);let offset=0;for(const part of arrays){bytes.set(part,offset);offset+=part.byteLength;}
+      let type=String(options?.type??'');if(/[^\x20-\x7e]/.test(type))type='';else type=type.toLowerCase();
+      blobStates.set(this,{bytes,type});
+    }
+    get size(){return blobStates.get(this).bytes.byteLength;}get type(){return blobStates.get(this).type;}
+    slice(start=0,end=this.size,type=''){const size=this.size;const relative=value=>{value=Number(value);value=Number.isNaN(value)?0:Math.trunc(value);return value<0?Math.max(size+value,0):Math.min(value,size);};start=relative(start);end=Math.max(start,relative(end));return new Blob([blobStates.get(this).bytes.subarray(start,end)],{type});}
+    arrayBuffer(){return Promise.resolve(blobStates.get(this).bytes.buffer.slice(0));}
+    text(){return Promise.resolve(new TextDecoder().decode(blobStates.get(this).bytes));}
+  }
+  const messageEvents=new WeakMap(),closeEvents=new WeakMap(),socketStates=new WeakMap(),sockets=new Map();
+  class MessageEvent extends Event {constructor(type,options={}){super(type,options);messageEvents.set(this,{data:options.data??null,origin:String(options.origin??''),lastEventId:String(options.lastEventId??''),source:options.source??null,ports:Object.freeze([...(options.ports??[])])});}}
+  readonlyFields(MessageEvent,messageEvents,['data','origin','lastEventId','source','ports']);
+  class CloseEvent extends Event {constructor(type,options={}){super(type,options);closeEvents.set(this,{code:(Number(options.code)||0)&65535,reason:String(options.reason??''),wasClean:!!options.wasClean});}}
+  readonlyFields(CloseEvent,closeEvents,['code','reason','wasClean']);
+  const socketState=socket=>{const state=socketStates.get(socket);if(!state)throw new TypeError('Illegal invocation');return state;};
+  class WebSocket extends EventTarget {
+    constructor(url,protocols=[]){super();if(arguments.length<1)throw new TypeError('WebSocket requires a URL');
+      let address;try{address=bridge('wsURL',0,scalarText(url));}catch{throw new DOMException('Invalid or insecure WebSocket URL','SyntaxError');}
+      if(typeof protocols==='string')protocols=[protocols];else protocols=[...protocols];
+      if(protocols.length>16)throw new DOMException('WebSocket protocol quota','SyntaxError');
+      const selected=new Set();for(let i=0;i<protocols.length;i++){const protocol=String(protocols[i]);if(!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(protocol)||protocol.length>128||selected.has(protocol))throw new DOMException('Invalid WebSocket protocol','SyntaxError');selected.add(protocol);protocols[i]=protocol;}
+      const id=bridge('wsCreate',0,address,protocols.join('\n'));socketStates.set(this,{id,url:address,readyState:0,protocol:'',extensions:'',binaryType:'blob',discarded:0,remaining:0});sockets.set(id,this);
+    }
+    get url(){return socketState(this).url;}get readyState(){return socketState(this).readyState;}get protocol(){return socketState(this).protocol;}get extensions(){return socketState(this).extensions;}
+    get bufferedAmount(){const state=socketState(this);return state.discarded+(state.readyState===3?state.remaining:bridge('wsBuffered',0,state.id));}
+    get binaryType(){return socketState(this).binaryType;}set binaryType(value){const state=socketState(this);value=String(value);if(value==='blob'||value==='arraybuffer')state.binaryType=value;}
+    send(value){if(arguments.length<1)throw new TypeError('send requires data');const state=socketState(this);if(state.readyState===0)throw new DOMException('WebSocket is connecting','InvalidStateError');
+      let bytes,binary=true;if(blobStates.has(value))bytes=blobStates.get(value).bytes.buffer.slice(0);else if(value instanceof ArrayBuffer||ArrayBuffer.isView(value))bytes=byteBuffer(value);else{bytes=new TextEncoder().encode(scalarText(value)).buffer;binary=false;}
+      if(bytes.byteLength>524288)throw new RangeError('WebSocket message limit');
+      if(state.readyState>=2){state.discarded+=bytes.byteLength;return;}
+      if(!bridge('wsSend',0,state.id,binary?1:0,bytes))state.discarded+=bytes.byteLength;
+    }
+    close(code,reason=''){const state=socketState(this);let number=code===undefined?0:((Number(code)||0)&65535);
+      if(code!==undefined&&number!==1000&&(number<3000||number>4999))throw new DOMException('Invalid close code','InvalidAccessError');
+      const bytes=new TextEncoder().encode(scalarText(reason));if(bytes.byteLength>123)throw new DOMException('Close reason exceeds 123 bytes','SyntaxError');
+      if(state.readyState>=2)return;if(number===0&&bytes.byteLength)number=1000;
+      bridge('wsClose',0,state.id,number,bytes.buffer,state.readyState===0);state.readyState=2;
+    }
+  }
+  for(const [name,value] of Object.entries({CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3})){Object.defineProperty(WebSocket,name,{value,enumerable:true});Object.defineProperty(WebSocket.prototype,name,{value,enumerable:true});}
+  for(const name of ['open','message','error','close'])Object.defineProperty(WebSocket.prototype,'on'+name,{value:null,writable:true,enumerable:true,configurable:true});
+  function socketEvent(id,kind,data,binary,origin,protocol,code,reason,clean,buffered){const socket=sockets.get(id);if(!socket)return;const state=socketState(socket);
+    if(kind===0){if(state.readyState!==0)return;state.protocol=protocol;state.readyState=1;socket.dispatchEvent(new Event('open'));}
+    else if(kind===1){if(state.readyState!==1)return;socket.dispatchEvent(new MessageEvent('message',{origin,data:binary?(state.binaryType==='blob'?new Blob([data]):data):data}));}
+    else if(kind===2){state.readyState=3;state.remaining=buffered;socket.dispatchEvent(new Event('error'));}
+    else {state.readyState=3;state.remaining=buffered;sockets.delete(id);socket.dispatchEvent(new CloseEvent('close',{code,reason,wasClean:clean}));}
+  }
+  for(const [name,ctor] of Object.entries({Blob,MessageEvent,CloseEvent,WebSocket})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  const encodeBody=(value,headers)=>{if(value==null)return null;if(blobStates.has(value)){if(value.type&&!headers.has('content-type'))headers.set('content-type',value.type);return blobStates.get(value).bytes.buffer.slice(0);}if(value instanceof URLSearchParams){if(!headers.has('content-type'))headers.set('content-type','application/x-www-form-urlencoded;charset=UTF-8');return bridge('encode',0,value.toString());}if(typeof value==='string'){if(!headers.has('content-type'))headers.set('content-type','text/plain;charset=UTF-8');return bridge('encode',0,scalarText(value));}return byteBuffer(value);};
   function bodyObject(owner,bytes,signal=null){bodyStates.set(owner,{bytes,used:false,signal});}
-  function consumeBody(owner,format){const state=bodyStates.get(owner);if(state.signal?.aborted)return Promise.reject(state.signal.reason);if(state.used)return Promise.reject(new TypeError('Body already consumed'));if(state.bytes!==null)state.used=true;return Promise.resolve().then(()=>{if(state.signal?.aborted)throw state.signal.reason;const bytes=state.bytes===null?new ArrayBuffer(0):state.bytes.slice(0);if(format==='arrayBuffer')return bytes;const text=new TextDecoder().decode(bytes);return format==='json'?JSON.parse(text):text;});}
-  function addBodyMethods(ctor){Object.defineProperty(ctor.prototype,'bodyUsed',{get(){return bodyStates.get(this).used;},enumerable:true});for(const format of ['text','json','arrayBuffer'])Object.defineProperty(ctor.prototype,format,{value:function(){return consumeBody(this,format);},writable:true,configurable:true});}
+  function consumeBody(owner,format){const state=bodyStates.get(owner);if(state.signal?.aborted)return Promise.reject(state.signal.reason);if(state.used)return Promise.reject(new TypeError('Body already consumed'));if(state.bytes!==null)state.used=true;return Promise.resolve().then(()=>{if(state.signal?.aborted)throw state.signal.reason;const bytes=state.bytes===null?new ArrayBuffer(0):state.bytes.slice(0);if(format==='arrayBuffer')return bytes;if(format==='blob')return new Blob([bytes],{type:owner.headers.get('content-type')??''});const text=new TextDecoder().decode(bytes);return format==='json'?JSON.parse(text):text;});}
+  function addBodyMethods(ctor){Object.defineProperty(ctor.prototype,'bodyUsed',{get(){return bodyStates.get(this).used;},enumerable:true});for(const format of ['text','json','arrayBuffer','blob'])Object.defineProperty(ctor.prototype,format,{value:function(){return consumeBody(this,format);},writable:true,configurable:true});}
   class Request {
     constructor(input,init={}){
       init=init??{};const old=input instanceof Request?requestStates.get(input):null;
@@ -623,6 +682,7 @@
     event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur','load','error'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched,
+    socket:socketEvent,
     blockEval(){const blocked=()=>{throw new EvalError('String compilation blocked by CSP');};for(const fn of [function(){},async function(){},function*(){},async function*(){}])defineNativeProperty(nativePrototype(fn),'constructor',{value:blocked,writable:false,configurable:false});globalThis.eval=blocked;globalThis.Function=blocked;}
   };
 })();
