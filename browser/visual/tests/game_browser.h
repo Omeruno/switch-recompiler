@@ -57,15 +57,20 @@ void browser_game_checks(Browser &app, const char *screenshot) {
     auto box = canvas->get_placement();
     app.view.y = std::max(0.f, float(box.y) - 12);
     app.pump();
-    visual::Point client{(float(box.x) + 25 - app.view.x) * app.view.scale(),
-                         (float(box.y) + 25 - app.view.y) * app.view.scale()};
+    visual::Point client{
+        (float(box.x) + 97.f * float(box.width) / 128.f - app.view.x) * app.view.scale(),
+        (float(box.y) + 22.f * float(box.height) / 80.f - app.view.y) * app.view.scale()};
     app.touch_down(22, client, SDL_GetTicks());
     check(!app.canvas_touches.empty() && app.canvas_touches.begin()->second.exclusive,
           "canvas pointer capture did not suppress browser gestures");
+    drive(2);
     app.touch_move(22, {client.x + 40, client.y + 20}, SDL_GetTicks() + 20);
     drive(2);
     app.touch_up(22, {client.x + 40, client.y + 20}, SDL_GetTicks() + 30);
     check(app.canvas_touches.empty(), "pointer capture leaked");
+    eval("if(!document.getElementById('game-status').textContent.startsWith('Собрано огоньков: 1 "
+         "'))throw Error('cross-module score callback: "
+         "'+document.getElementById('game-status').textContent);");
     app.paint();
     check(app.container.painted_canvases > 0 && app.container.canvases->frames > 0,
           "Wasm frame did not reach SDL texture");

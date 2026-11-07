@@ -1,4 +1,4 @@
-# Switch visual browser — 0.12.0
+# Switch visual browser — 0.13.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -722,7 +722,8 @@ budget after imports are installed. Emscripten constructors are called only when
 explicitly requested by page code. Original JS import exceptions are preserved;
 CompileError/LinkError/RuntimeError, traps and post-trap recovery are covered.
 
-The bridge rejects memory/table imports, mutable global imports, reference/SIMD
+The 0.12 bridge rejected memory/table imports and mutable global imports; 0.13 adds
+unshared memory and mutable numeric globals as described below. It still rejects table imports, reference/SIMD
 function values, shared JS memory and cross-instance table references. There are
 no Worker/SharedArrayBuffer web bindings, WebGL/WebGPU, WebAudio/video, WASI web
 host, full Emscripten compatibility or background streaming compiler. API presence
@@ -770,3 +771,42 @@ locked embedding patch defers start/constructor execution, preserves browser
 memory page/growth semantics, notifies buffer detachment and fixes C API multi-result
 import frame sizing/copying and 64-bit frame/table alignment. Modified runtime files are SHA-256 checked before
 building. Owned WAT/WASM fixtures and the packaged game are also hash checked.
+
+## Imported game state and module cooperation — 0.13.0
+
+Unshared `WebAssembly.Memory` and numeric `WebAssembly.Global` objects can now be
+imported by multiple instances. Modules access the **same native storage**, not
+copies synchronized between calls. Memory/global re-exports preserve JS object
+identity. JS and Wasm mutations are visible across instances. Mutable globals must
+be actual Global objects with matching type/mutability; immutable numeric literals
+remain supported. User overrides of a Global object's `.value` getter are not
+consulted during linking. Current values are snapshotted after JS conversions for
+constant initializer expressions; mutable accesses retain the canonical address.
+
+Imported memory checks its current size and declared maximum against the module's
+requirements. A memory created without a maximum cannot satisfy an import requiring
+one. All previous physical allocation quotas still apply. Growth by either module
+or JavaScript immediately detaches the canonical old ArrayBuffer, including inside
+a nested Wasm→JS→Wasm callback and on grow(0). Failed growth retains the old buffer.
+Already running callers refresh their bounds after imported host callbacks.
+
+The owned demo now uses JS-created memory and score Global, a companion Wasm module
+reading that score, and an imported companion function called by the game core.
+The controls and gameplay are unchanged. Two ordinary unshared-memory modules are
+not Web Workers or multithreaded Wasm. Browser navigation destroys all instances
+and their retained imports together. Borrowed backing is not freed by an importer;
+the backing's owner remains in the realm's store until teardown. Instantiation
+stages bindings synchronously before data/global initialization; guest start runs
+only after that construction context has been cleared.
+
+Out-of-bounds active data initialization produces RuntimeError. Imported memory
+and global side effects from a failing start remain visible, as in Chromium; the
+original JS exception survives and later instantiation remains usable. Import
+limit/type failures produce LinkError before native linking.
+
+Still unsupported: imported tables and cross-instance table references, web
+Worker/SharedArrayBuffer bindings, GPU and audio. The C API's upstream table import
+path silently ignores imports, so this bridge explicitly rejects it. No positive
+EmulatorJS, RetroArch, gam.onl or Keldurn game-compatibility claim follows from this
+release. This closes an unshared-memory/global loader barrier; it is not complete
+Emscripten or general game-engine support.

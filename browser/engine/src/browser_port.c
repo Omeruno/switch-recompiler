@@ -4,6 +4,72 @@
 #include "wasm_export.h"
 #include "wasm_runtime.h"
 #include <stdio.h>
+#include <string.h>
+// Instantiation is synchronous on the realm's UI thread. No guest start executes
+// while this context is installed; nested starts run only after link_end.
+static struct {
+    WASMModule *module;
+    WASMMemoryInstance *memory;
+    uint8 *globals[256];
+    uint32 global_count;
+} linking;
+const void *browser_wasm_memory_identity(const wasm_memory_t *m) {
+    if (!m || !m->inst_comm_rt)
+        return NULL;
+    WASMModuleInstance *inst = (WASMModuleInstance *)m->inst_comm_rt;
+    return m->memory_idx_rt < inst->memory_count ? inst->memories[m->memory_idx_rt] : NULL;
+}
+void *browser_wasm_global_identity(const wasm_global_t *g) {
+    if (!g || !g->inst_comm_rt)
+        return NULL;
+    WASMModuleInstance *inst = (WASMModuleInstance *)g->inst_comm_rt;
+    WASMGlobalInstance *global = &inst->e->globals[g->global_idx_rt];
+    return global->browser_data ? global->browser_data : inst->global_data + global->data_offset;
+}
+void browser_wasm_global_refresh(wasm_global_t *g) { wasm_global_get(g, g->init); }
+bool browser_wasm_memory_compatible(const wasm_module_t *module, const wasm_memory_t *source) {
+    WASMModule *wanted = (WASMModule *)*module;
+    if (!wanted->import_memory_count || !source || !source->inst_comm_rt)
+        return false;
+    WASMModuleInstance *inst = (WASMModuleInstance *)source->inst_comm_rt;
+    WASMModule *owner = inst->module;
+    const WASMMemory *actual =
+        source->memory_idx_rt < owner->import_memory_count
+            ? &owner->import_memories[source->memory_idx_rt].u.memory.mem_type
+            : &owner->memories[source->memory_idx_rt - owner->import_memory_count];
+    const WASMMemory *required = &wanted->import_memories[0].u.memory.mem_type;
+    return wasm_memory_size(source) >= required->init_page_count &&
+           (!(required->flags & 1) ||
+            ((actual->flags & 1) && actual->max_page_count <= required->max_page_count));
+}
+bool browser_wasm_link_begin(const wasm_module_t *m, const wasm_extern_vec_t *imports) {
+    if (linking.module)
+        return false;
+    memset(&linking, 0, sizeof(linking));
+    linking.module = (WASMModule *)*m;
+    for (size_t i = 0; i < imports->num_elems; i++) {
+        const wasm_extern_t *e = imports->data[i];
+        if (e->kind == WASM_EXTERN_MEMORY)
+            linking.memory =
+                (WASMMemoryInstance *)browser_wasm_memory_identity((const wasm_memory_t *)e);
+        if (e->kind == WASM_EXTERN_GLOBAL) {
+            if (linking.global_count >= 256) {
+                browser_wasm_link_end();
+                return false;
+            }
+            linking.globals[linking.global_count++] =
+                browser_wasm_global_identity((const wasm_global_t *)e);
+        }
+    }
+    return true;
+}
+void browser_wasm_link_end(void) { memset(&linking, 0, sizeof(linking)); }
+void *visual_wasm_import_memory(void *m, unsigned index) {
+    return m == linking.module && index == 0 ? linking.memory : NULL;
+}
+void *visual_wasm_import_global(void *m, unsigned index) {
+    return m == linking.module && index < linking.global_count ? linking.globals[index] : NULL;
+}
 bool browser_wasm_module_supported(const wasm_module_t *module, char *error, size_t size) {
     WASMModule *m = (WASMModule *)*module;
     if (m->module_type != Wasm_Module_Bytecode) {
@@ -38,16 +104,18 @@ bool browser_wasm_module_supported(const wasm_module_t *module, char *error, siz
 }
 uint32_t browser_wasm_memory_cap(const wasm_module_t *module) {
     WASMModule *m = (WASMModule *)*module;
-    return m->memory_count && m->memories[0].max_page_count < BROWSER_WASM_MAX_PAGES
-               ? m->memories[0].max_page_count
-               : BROWSER_WASM_MAX_PAGES;
+    uint32_t maximum = m->import_memory_count
+                           ? m->import_memories[0].u.memory.mem_type.max_page_count
+                       : m->memory_count ? m->memories[0].max_page_count
+                                         : BROWSER_WASM_MAX_PAGES;
+    return maximum < BROWSER_WASM_MAX_PAGES ? maximum : BROWSER_WASM_MAX_PAGES;
 }
 void visual_wasm_memory_grown(void *module) {
     struct BrowserWasmState *s = wasm_runtime_get_custom_data(module);
     if (s) {
         s->generation++;
         if (s->grown)
-            s->grown(s->owner, s);
+            s->grown(s->owner, wasm_get_default_memory((WASMModuleInstance *)module));
     }
 }
 bool browser_wasm_start(wasm_instance_t *instance, struct BrowserWasmState *state, char *error,
@@ -94,11 +162,11 @@ bool browser_wasm_same_external(const wasm_extern_t *a, const wasm_extern_t *b) 
         return browser_wasm_same_function((const wasm_func_t *)a, (const wasm_func_t *)b);
     case WASM_EXTERN_MEMORY: {
         const wasm_memory_t *x = (const wasm_memory_t *)a, *y = (const wasm_memory_t *)b;
-        return x->inst_comm_rt == y->inst_comm_rt && x->memory_idx_rt == y->memory_idx_rt;
+        return browser_wasm_memory_identity(x) == browser_wasm_memory_identity(y);
     }
     case WASM_EXTERN_GLOBAL: {
         const wasm_global_t *x = (const wasm_global_t *)a, *y = (const wasm_global_t *)b;
-        return x->inst_comm_rt == y->inst_comm_rt && x->global_idx_rt == y->global_idx_rt;
+        return browser_wasm_global_identity(x) == browser_wasm_global_identity(y);
     }
     case WASM_EXTERN_TABLE: {
         const wasm_table_t *x = (const wasm_table_t *)a, *y = (const wasm_table_t *)b;

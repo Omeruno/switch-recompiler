@@ -1,12 +1,15 @@
 ;; Owned test game. No third-party game code or ROM data.
 (module
- (memory (export "memory") 1 1)
+ (import "env" "memory" (memory 1 1))
+ (import "env" "score" (global $score (mut i32)))
+ (import "env" "observe" (func $observe (result i32)))
+ (export "memory" (memory 0))
+ (export "score" (global $score))
  (global $x (mut i32) (i32.const 64))
  (global $y (mut i32) (i32.const 40))
  (global $cx (mut i32) (i32.const 95))
  (global $cy (mut i32) (i32.const 20))
  (global $tick (mut i32) (i32.const 0))
- (global $score (export "score") (mut i32) (i32.const 0))
  (func (export "reset")
   i32.const 64 global.set $x i32.const 40 global.set $y
   i32.const 95 global.set $cx i32.const 20 global.set $cy
@@ -31,6 +34,7 @@
   global.get $y global.get $cy i32.const 5 call $near i32.and
   if
    global.get $score i32.const 1 i32.add global.set $score
+   call $observe drop
    global.get $cx i32.const 37 i32.add i32.const 110 i32.rem_u i32.const 8 i32.add global.set $cx
    global.get $cy i32.const 23 i32.add i32.const 62 i32.rem_u i32.const 8 i32.add global.set $cy
   end

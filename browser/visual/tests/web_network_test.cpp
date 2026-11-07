@@ -70,7 +70,10 @@ int main(int argc, char **argv) {
             "Error(globalThis.networkTypesError||'types "
             "unfinished');");
         run("globalThis.gameNetworkDone=false;globalThis.gameNetworkError='';(async()=>{"
-            "const good=await WebAssembly.instantiateStreaming(fetch('/api-wasm?large=1'));"
+            "const good=await "
+            "WebAssembly.instantiateStreaming(fetch('/api-wasm?large=1'),{env:{memory:new "
+            "WebAssembly.Memory({initial:1,maximum:1}),score:new "
+            "WebAssembly.Global({value:'i32',mutable:true},0),observe:()=>0}});"
             "good.instance.exports.step(0,0,0,95,20,1);if(good.instance.exports.score.value!==1)"
             "throw Error('real streamed game');"
             "const remote=await WebAssembly.compileStreaming(fetch(cross+'/api-wasm'));if(!(remote "

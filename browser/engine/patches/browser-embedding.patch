@@ -1,5 +1,5 @@
 diff --git a/core/iwasm/common/wasm_c_api.c b/core/iwasm/common/wasm_c_api.c
-index 8b6d4ba..b211024 100644
+index 8b6d4ba..b720350 100644
 --- a/core/iwasm/common/wasm_c_api.c
 +++ b/core/iwasm/common/wasm_c_api.c
 @@ -3294,7 +3294,7 @@ params_to_argv(const wasm_val_vec_t *params,
@@ -20,6 +20,81 @@ index 8b6d4ba..b211024 100644
                  argv += 2;
                  break;
              case WASM_V128:
+@@ -3647,6 +3647,9 @@ interp_global_set(const WASMModuleInstance *inst_interp, uint16 global_idx_rt,
+                       : inst_interp->global_data + global_interp->data_offset;
+ #else
+     uint8 *data = inst_interp->global_data + global_interp->data_offset;
++#ifdef VISUAL_WASM_EMBEDDING
++    if (global_interp->browser_data) data = global_interp->browser_data;
++#endif
+ #endif
+
+     return wasm_val_to_rt_val((WASMModuleInstanceCommon *)inst_interp,
+@@ -3666,6 +3669,9 @@ interp_global_get(const WASMModuleInstance *inst_interp, uint16 global_idx_rt,
+                       : inst_interp->global_data + global_interp->data_offset;
+ #else
+     uint8 *data = inst_interp->global_data + global_interp->data_offset;
++#ifdef VISUAL_WASM_EMBEDDING
++    if (global_interp->browser_data) data = global_interp->browser_data;
++#endif
+ #endif
+
+     return rt_val_to_wasm_val(data, val_type_rt, out);
+@@ -4589,7 +4595,10 @@ interp_link_global(const WASMModule *module_interp, uint16 global_idx_rt,
+             return false;
+     }
+
+-    import->global_idx_rt = global_idx_rt;
++#ifdef VISUAL_WASM_EMBEDDING
++    if (!import->inst_comm_rt)
++#endif
++        import->global_idx_rt = global_idx_rt;
+     imported_global_interp->u.global.is_linked = true;
+     return true;
+ }
+@@ -4926,7 +4935,13 @@ do_link(const wasm_instance_t *inst, const wasm_module_t *module,
+                 import_global_i++;
+                 break;
+             }
++#ifdef VISUAL_WASM_EMBEDDING
++            case WASM_EXTERN_MEMORY:
++                /* Validated/staged by the browser adapter before instantiation. */
++                break;
++#else
+             case WASM_EXTERN_MEMORY:
++#endif
+             case WASM_EXTERN_TABLE:
+             {
+                 LOG_WARNING("doesn't support import memories and tables for "
+@@ -5092,16 +5107,22 @@ wasm_instance_new_with_args_ex(wasm_store_t *store, const wasm_module_t *module,
+                     instance->inst_comm_rt;
+                 break;
+             case WASM_EXTERN_GLOBAL:
+-                wasm_extern_as_global(import)->inst_comm_rt =
+-                    instance->inst_comm_rt;
++#ifdef VISUAL_WASM_EMBEDDING
++                if (!wasm_extern_as_global(import)->inst_comm_rt)
++#endif
++                    wasm_extern_as_global(import)->inst_comm_rt = instance->inst_comm_rt;
+                 break;
+             case WASM_EXTERN_MEMORY:
+-                wasm_extern_as_memory(import)->inst_comm_rt =
+-                    instance->inst_comm_rt;
++#ifdef VISUAL_WASM_EMBEDDING
++                if (!wasm_extern_as_memory(import)->inst_comm_rt)
++#endif
++                    wasm_extern_as_memory(import)->inst_comm_rt = instance->inst_comm_rt;
+                 break;
+             case WASM_EXTERN_TABLE:
+-                wasm_extern_as_table(import)->inst_comm_rt =
+-                    instance->inst_comm_rt;
++#ifdef VISUAL_WASM_EMBEDDING
++                if (!wasm_extern_as_table(import)->inst_comm_rt)
++#endif
++                    wasm_extern_as_table(import)->inst_comm_rt = instance->inst_comm_rt;
+                 break;
+             default:
+                 snprintf(sub_error_buf, sizeof(sub_error_buf),
 diff --git a/core/iwasm/common/wasm_memory.c b/core/iwasm/common/wasm_memory.c
 index 7a20a7a..e1d5e68 100644
 --- a/core/iwasm/common/wasm_memory.c
@@ -63,7 +138,7 @@ index 1416405..0230a61 100644
 
  void
 diff --git a/core/iwasm/interpreter/wasm_interp_classic.c b/core/iwasm/interpreter/wasm_interp_classic.c
-index 612f4c2..66374e8 100644
+index 612f4c2..243fc69 100644
 --- a/core/iwasm/interpreter/wasm_interp_classic.c
 +++ b/core/iwasm/interpreter/wasm_interp_classic.c
 @@ -1223,6 +1223,10 @@ wasm_interp_call_func_native(WASMModuleInstance *module_inst,
@@ -90,7 +165,17 @@ index 612f4c2..66374e8 100644
          prev_frame->sp[0] = argv_ret[0];
          prev_frame->sp++;
      }
-@@ -6788,6 +6796,8 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
+@@ -1536,6 +1544,9 @@ wasm_interp_call_func_import(WASMModuleInstance *module_inst,
+ static inline uint8 *
+ get_global_addr(uint8 *global_data, WASMGlobalInstance *global)
+ {
++#ifdef VISUAL_WASM_EMBEDDING
++    if (global->browser_data) return global->browser_data;
++#endif
+ #if WASM_ENABLE_MULTI_MODULE == 0
+     return global_data + global->data_offset;
+ #else
+@@ -6788,6 +6799,8 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
              cell_num_of_local_stack = cur_func->param_cell_num
                                        + cur_func->local_cell_num
                                        + max_stack_cell_num;
@@ -99,7 +184,7 @@ index 612f4c2..66374e8 100644
              all_cell_num = cell_num_of_local_stack
                             + cur_wasm_func->max_block_num
                                   * (uint32)sizeof(WASMBranchBlock) / 4;
-@@ -6818,7 +6828,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
+@@ -6818,7 +6831,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
              frame->sp_boundary = frame->sp_bottom + max_stack_cell_num;
 
              frame_csp = frame->csp_bottom =
@@ -126,10 +211,51 @@ index a1241ad..a79d5b2 100644
          if (aux_data_end_global && aux_heap_base_global
              && aux_stack_top_global) {
 diff --git a/core/iwasm/interpreter/wasm_runtime.c b/core/iwasm/interpreter/wasm_runtime.c
-index a5e7268..d836530 100644
+index a5e7268..2e0e7a2 100644
 --- a/core/iwasm/interpreter/wasm_runtime.c
 +++ b/core/iwasm/interpreter/wasm_runtime.c
-@@ -1648,6 +1648,12 @@ static bool
+@@ -241,6 +241,11 @@ memories_deinstantiate(WASMModuleInstance *module_inst,
+     if (memories) {
+         for (i = 0; i < count; i++) {
+             if (memories[i]) {
++#ifdef VISUAL_WASM_EMBEDDING
++                if (i < module_inst->module->import_memory_count
++                    && memories[i] != &module_inst->global_table_data.memory_instances[i])
++                    continue;
++#endif
+ #if WASM_ENABLE_MULTI_MODULE != 0
+                 WASMModule *module = module_inst->module;
+                 if (i < module->import_memory_count
+@@ -529,6 +534,17 @@ memories_instantiate(const WASMModule *module, WASMModuleInstance *module_inst,
+             import->u.memory.mem_type.max_page_count);
+         uint32 flags = import->u.memory.mem_type.flags;
+         uint32 actual_heap_size = heap_size;
++#ifdef VISUAL_WASM_EMBEDDING
++        extern void *visual_wasm_import_memory(void *, unsigned);
++        WASMMemoryInstance *borrowed = visual_wasm_import_memory((void *)module, i);
++        if (!borrowed) {
++            set_error_buf(error_buf, error_buf_size, "Missing browser memory import");
++            memories_deinstantiate(module_inst, memories, memory_count);
++            return NULL;
++        }
++        memories[mem_index++] = borrowed;
++        continue;
++#endif
+
+ #if WASM_ENABLE_MULTI_MODULE != 0
+         if (import->u.memory.import_module != NULL) {
+@@ -1274,6 +1290,10 @@ globals_instantiate(WASMModule *module, WASMModuleInstance *module_inst,
+         WASMGlobalImport *global_import = &import->u.global;
+         global->type = global_import->type.val_type;
+         global->is_mutable = global_import->type.is_mutable;
++#ifdef VISUAL_WASM_EMBEDDING
++        extern void *visual_wasm_import_global(void *, unsigned);
++        global->browser_data = visual_wasm_import_global(module, i);
++#endif
+ #if WASM_ENABLE_GC != 0
+         global->ref_type = global_import->ref_type;
+ #endif
+@@ -1648,6 +1668,12 @@ static bool
  execute_post_instantiate_functions(WASMModuleInstance *module_inst,
                                     bool is_sub_inst, WASMExecEnv *exec_env_main)
  {
@@ -142,7 +268,7 @@ index a5e7268..d836530 100644
      WASMFunctionInstance *start_func = module_inst->e->start_function;
      WASMFunctionInstance *initialize_func = NULL;
      WASMFunctionInstance *post_inst_func = NULL;
-@@ -2477,6 +2483,9 @@ wasm_instantiate(WASMModule *module, WASMModuleInstance *parent,
+@@ -2477,6 +2503,9 @@ wasm_instantiate(WASMModule *module, WASMModuleInstance *parent,
      total_size = (uint64)module_inst_struct_size + module_inst_mem_inst_size
                   + module->global_data_size;
 
@@ -152,7 +278,7 @@ index a5e7268..d836530 100644
      /* Calculate the size of table data */
      for (i = 0; i < module->import_table_count; i++) {
          WASMTableImport *import_table = &module->import_tables[i].u.table;
-@@ -2617,8 +2626,8 @@ wasm_instantiate(WASMModule *module, WASMModuleInstance *parent,
+@@ -2617,8 +2646,8 @@ wasm_instantiate(WASMModule *module, WASMModuleInstance *parent,
      module_inst->global_data = (uint8 *)module_inst + module_inst_struct_size
                                 + module_inst_mem_inst_size;
      module_inst->global_data_size = module->global_data_size;
@@ -163,3 +289,18 @@ index a5e7268..d836530 100644
 
      module_inst->memory_count =
          module->import_memory_count + module->memory_count;
+diff --git a/core/iwasm/interpreter/wasm_runtime.h b/core/iwasm/interpreter/wasm_runtime.h
+index 98913e9..267764c 100644
+--- a/core/iwasm/interpreter/wasm_runtime.h
++++ b/core/iwasm/interpreter/wasm_runtime.h
+@@ -192,6 +192,10 @@ struct WASMTableInstance {
+ };
+
+ struct WASMGlobalInstance {
++#ifdef VISUAL_WASM_EMBEDDING
++    /* Canonical storage of a browser-imported numeric Global. */
++    uint8 *browser_data;
++#endif
+     /* value type, VALUE_TYPE_I32/I64/F32/F64 */
+     uint8 type;
+     /* mutable or constant */

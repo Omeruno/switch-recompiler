@@ -883,7 +883,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.12.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.13.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -922,7 +922,7 @@ struct Browser {
                                " · загрузок кадров " +
                                std::to_string(container.canvases->frames));
         report_lines.push_back(
-            "WebAssembly: числовые импорты/экспорты и память; Canvas: часть 2D API.");
+            "WebAssembly: функции, импорт памяти и globals; Canvas: часть 2D API.");
         report_lines.push_back("WebGPU/WebGL: не реализованы; Keldurn пока не запускается.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
@@ -1030,7 +1030,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.12.0");
+    visual::diagnostic("boot", "0.13.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));

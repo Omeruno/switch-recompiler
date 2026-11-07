@@ -343,3 +343,26 @@ AddressSanitizer/UndefinedBehaviorSanitizer (включая alignment и leak de
 Применение runtime patch проверено на чистом checkout и повторным checksum-check.
 Результаты не подтверждают выполнение на физическом Switch: это следующий
 обязательный пользовательский тест после получения ARM64 NRO.
+
+## 0.13.0: импортируемая память и globals
+
+Добавлена нативная привязка unshared Memory и numeric Global между экземплярами:
+без копирования backing, с правильным identity re-export, проверкой min/max,
+канонической инвалидизацией JS-буфера и общим mutable storage. Сохранены quota,
+CSP, бюджет выполнения и teardown. Границы памяти обновляются после вложенного
+WASM→JS→WASM growth; bounds trap при активном data initializer — RuntimeError.
+Неподдержанные таблицы отвергаются до upstream C API, который их игнорирует.
+
+Два новых набора: `wasm-external-imports`, `wasm-link-traps`; мини-игра переведена
+на основной и вспомогательный WASM-модули с импортами памяти, globals и функции.
+Тестируется shared state (без потоков), current size/declared maximum, mutable i32/i64,
+исключения start, отсутствие ложного чтения JS getter Global.value, повторная
+инстанциация, failure recovery и навигация. Общие fixtures сверяются с Chromium.
+Базовая игра 0.12.0 проверена пользователем на Switch и работает; изменённый путь
+0.13.0 требует отдельной проверки устройства. Полная поддержка сторонних игр,
+таблиц, workers/shared JS memory, GPU и аудио остаётся открытой.
+
+Проверка 0.13.0 в облаке: 25/25 Release и 25/25 ASan/UBSan с leak detection;
+Chromium reference, 14 проверок отдельного engine probe и тест отказов linear
+memory прошли. Новый runtime patch применён и повторно проверен на чистом
+checkout закреплённой версии. Проверка на физическом Switch для 0.13.0 ожидается.

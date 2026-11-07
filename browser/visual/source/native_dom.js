@@ -239,7 +239,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.12.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.13.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -763,13 +763,13 @@
     if(imports!==undefined&&(imports===null||typeof imports!=='object'&&typeof imports!=='function'))throw new TypeError('Expected WebAssembly imports object');
     return wasmState(wasmModules,module).imports.map(item=>{
       const namespace=imports?.[item.module];if(namespace===null||typeof namespace!=='object'&&typeof namespace!=='function')throw new TypeError('Expected WebAssembly import namespace');
-      let value=namespace[item.name],functionId=0;
+      let value=namespace[item.name],functionId=0,globalId=0,memoryId=0;
       if(item.kind==='function'){
         if(typeof value!=='function')throw new LinkError('WebAssembly import must be callable');
         const fn=value;functionId=wasmFunctions.get(fn)||0;
         if(item.results.length>1)value=function(...args){const source=Reflect.apply(fn,undefined,args);if(source==null||typeof source[Symbol.iterator]!=='function')throw new TypeError('Expected iterable WebAssembly results');const iterator=source[Symbol.iterator](),result=[];for(let i=0;i<=item.results.length;i++){const step=iterator.next();if(typeof step!=='object')throw new TypeError('Invalid iterator result');if(step.done){if(result.length!==item.results.length)throw new TypeError('WebAssembly result arity');return result;}result.push(step.value);}iterator.return?.();throw new TypeError('WebAssembly result arity');};
-      }else if(item.kind==='global'&&wasmGlobals.has(value)){const state=wasmGlobals.get(value);if(state.valueType!==item.valueType||state.mutable!==item.mutable)throw new LinkError('WebAssembly global import type mismatch');value=value.value;}
-      return {value,functionId};
+      }else if(item.kind==='global'&&wasmGlobals.has(value)){const state=wasmGlobals.get(value);if(state.valueType!==item.valueType||state.mutable!==item.mutable)throw new LinkError('WebAssembly global import type mismatch');globalId=state.id;value=undefined;}else if(item.kind==='memory'){memoryId=wasmMemories.get(value)||0;if(!memoryId)throw new LinkError('Memory imports require a WebAssembly.Memory');}
+      return {value,functionId,globalId,memoryId};
     });
   }
   class Instance {
@@ -777,7 +777,7 @@
     get exports(){return wasmState(wasmInstances,this);}
   }
   class Memory {
-    constructor(descriptor){if(descriptor===null||typeof descriptor!=='object')throw new TypeError('Expected WebAssembly memory descriptor');if(descriptor.shared)throw new TypeError('Shared memory requires the worker bridge');const initial=wasmIndex(descriptor.initial??descriptor.minimum),maximum=descriptor.maximum===undefined?65536:wasmIndex(descriptor.maximum);if(initial>maximum||maximum>65536)throw new RangeError('Invalid WebAssembly memory limits');return wrapWasm(bridge('wasmStandalone',0,3,initial,maximum));}
+    constructor(descriptor){if(descriptor===null||typeof descriptor!=='object')throw new TypeError('Expected WebAssembly memory descriptor');if(descriptor.shared)throw new TypeError('Shared memory requires the worker bridge');const initial=wasmIndex(descriptor.initial??descriptor.minimum),limit=descriptor.maximum,maximum=limit===undefined?65536:wasmIndex(limit);if(initial>maximum||maximum>65536)throw new RangeError('Invalid WebAssembly memory limits');return wrapWasm(bridge('wasmStandalone',0,3,initial,maximum,limit!==undefined));}
     get buffer(){return bridge('wasmMemoryBuffer',0,wasmState(wasmMemories,this));}
     grow(delta){if(arguments.length<1)throw new TypeError('Memory.grow requires a delta');return bridge('wasmMemoryGrow',0,wasmState(wasmMemories,this),wasmIndex(delta));}
   }

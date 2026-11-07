@@ -27,13 +27,15 @@ fixture = 'globalThis.wasmBinaries=' + json.dumps({
 }, separators=(',', ':')) + ';\n'
 manifest = folder / 'manifest.json'
 js = root / 'tests/fixtures/wasm-binaries.js'
-asset = root / 'romfs/game-core.wasm'
+assets = ['game-core.wasm', 'game-sidecar.wasm']
 if check:
     assert json.loads(manifest.read_text()) == records, 'Owned Wasm manifest mismatch'
     assert js.read_text() == fixture, 'Owned JS fixtures mismatch'
-    assert asset.read_bytes() == (folder / 'game-core.wasm').read_bytes(), 'Game asset mismatch'
+    for name in assets:
+        assert (root/'romfs'/name).read_bytes() == (folder/name).read_bytes(), 'Game asset mismatch: '+name
 else:
     manifest.write_text(json.dumps(records, indent=2) + '\n')
     js.write_text(fixture)
-    asset.write_bytes((folder / 'game-core.wasm').read_bytes())
+    for name in assets:
+        (root/'romfs'/name).write_bytes((folder/name).read_bytes())
 print(f'Verified {len(records)} owned Wasm modules' if check else f'Built {len(records)} owned Wasm modules')

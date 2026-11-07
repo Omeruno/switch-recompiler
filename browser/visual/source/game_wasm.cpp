@@ -415,11 +415,12 @@ struct GameWasm::Impl {
         wasm_byte_vec_delete(&message);
         return trap;
     }
-    static void grew(void *owner, BrowserWasmState *state) noexcept {
+    static void grew(void *owner, const void *identity) noexcept {
         auto &self = *static_cast<Impl *>(owner);
         for (auto &item : self.externals) {
-            auto found = self.instances.find(item.second.instance);
-            if (found != self.instances.end() && &found->second->state == state &&
+            if (wasm_extern_kind(item.second.value) == WASM_EXTERN_MEMORY &&
+                browser_wasm_memory_identity(wasm_extern_as_memory(item.second.value)) ==
+                    identity &&
                 !JS_IsUndefined(item.second.buffer)) {
                 JS_DetachArrayBuffer(self.ctx, item.second.buffer);
                 JS_FreeValue(self.ctx, item.second.buffer);
@@ -525,14 +526,34 @@ struct GameWasm::Impl {
                 binding = wasm_func_as_extern(function);
             } else if (kind == WASM_EXTERN_GLOBAL) {
                 auto *global = wasm_externtype_as_globaltype_const(type);
-                if (wasm_globaltype_mutability(global) != WASM_CONST)
-                    throw Failure{1, "Mutable global imports are not supported by this bridge"};
-                auto v = from_js(value.value, wasm_valtype_kind(wasm_globaltype_content(global)));
-                auto *g = wasm_global_new(store, global, &v);
+                Val reference(ctx, JS_GetPropertyStr(ctx, item.value, "globalId"));
+                auto global_id = number(reference.value);
+                wasm_global_t *g = nullptr;
+                if (global_id) {
+                    g = wasm_global_copy(
+                        wasm_extern_as_global(external(global_id, WASM_EXTERN_GLOBAL).value));
+                } else {
+                    if (wasm_globaltype_mutability(global) != WASM_CONST)
+                        throw Failure{1, "Mutable global imports require a WebAssembly.Global"};
+                    auto v =
+                        from_js(value.value, wasm_valtype_kind(wasm_globaltype_content(global)));
+                    g = wasm_global_new(store, global, &v);
+                }
                 if (g)
                     binding = wasm_global_as_extern(g);
+            } else if (kind == WASM_EXTERN_MEMORY) {
+                Val reference(ctx, JS_GetPropertyStr(ctx, item.value, "memoryId"));
+                auto memory_id = number(reference.value);
+                if (!memory_id)
+                    throw Failure{1, "Memory imports require a WebAssembly.Memory"};
+                auto *source = wasm_extern_as_memory(external(memory_id, WASM_EXTERN_MEMORY).value);
+                if (!browser_wasm_memory_compatible(m.module, source))
+                    throw Failure{1, "WebAssembly memory import limits mismatch"};
+                auto *copy = wasm_memory_copy(source);
+                if (copy)
+                    binding = wasm_memory_as_extern(copy);
             } else
-                throw Failure{1, "Imported memory and tables require the shared runtime bridge"};
+                throw Failure{1, "Cross-instance imported tables are not supported"};
             if (!binding)
                 throw Failure{1, "WebAssembly import allocation failed"};
             host_values.push_back(binding);
@@ -542,9 +563,20 @@ struct GameWasm::Impl {
                                     sizeof(wasm_extern_t *), nullptr};
         InstantiationArgs limits{64u * 1024u, 0, browser_wasm_memory_cap(m.module)};
         wasm_trap_t *trap = nullptr;
+        // All JS coercions have finished. Snapshot immutable initializer values
+        // now; mutable accesses keep the canonical storage pointer throughout.
+        for (auto *binding : bindings)
+            if (wasm_extern_kind(binding) == WASM_EXTERN_GLOBAL) {
+                auto *g = wasm_extern_as_global(binding);
+                if (browser_wasm_global_identity(g))
+                    browser_wasm_global_refresh(g);
+            }
+        if (!browser_wasm_link_begin(m.module, &vector))
+            throw Failure{1, "WebAssembly instantiation is already linking"};
         auto *native = wasm_instance_new_with_args_ex(store, m.module, &vector, &trap, &limits);
+        browser_wasm_link_end();
         if (!native)
-            throw Failure{1, trap_message(trap)};
+            throw Failure{2, trap_message(trap)};
         auto object = std::make_unique<Instance>();
         object->instance = native;
         object->state.owner = this;
@@ -632,12 +664,13 @@ struct GameWasm::Impl {
         return array;
     }
     unsigned synthetic(unsigned kind, unsigned initial, unsigned maximum, unsigned valkind = 0,
-                       bool mut = false, JSValueConst value = JS_UNDEFINED) {
+                       bool mut = false, JSValueConst value = JS_UNDEFINED, bool has_max = true) {
         std::vector<uint8_t> wasm{0, 97, 115, 109, 1, 0, 0, 0}, data{1};
         if (kind == WASM_EXTERN_MEMORY) {
-            data.push_back(1);
+            data.push_back(has_max ? 1 : 0);
             leb(data, initial);
-            leb(data, maximum);
+            if (has_max)
+                leb(data, maximum);
             section(wasm, 5, data);
         } else if (kind == WASM_EXTERN_TABLE) {
             data.push_back(0x70);
@@ -725,7 +758,9 @@ struct GameWasm::Impl {
                     throw Failure{3, "WebAssembly limits out of range"};
                 if (kind == WASM_EXTERN_MEMORY && initial > BROWSER_WASM_MAX_PAGES)
                     throw Failure{3, "WebAssembly memory quota"};
-                return export_info(synthetic(kind, initial, maximum));
+                return export_info(
+                    synthetic(kind, initial, maximum, 0, false, JS_UNDEFINED,
+                              kind != WASM_EXTERN_MEMORY || JS_ToBool(ctx, arg(5)) > 0));
             }
             return export_info(
                 synthetic(kind, 0, 0, number(arg(3)), JS_ToBool(ctx, arg(4)) > 0, arg(5)));

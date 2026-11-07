@@ -247,3 +247,13 @@ Next game gates, in dependency order:
    game startup/login/loading/gameplay acceptance. Each game requires its own gate.
 The current local demo does not complete those gates or establish gam.onl/Keldurn
 playability. Full browser compatibility is still a substantial engineering effort.
+
+## Unshared imported game state — 0.13.0
+
+Added canonical imported Memory and mutable numeric Global bindings across modules,
+including re-export identity, limits, growth detachment, nested calls, initialization
+traps, failure recovery and an owned two-module game. The 0.12 base demo has now been
+confirmed working by the user on a physical Switch; the changed 0.13 module path
+needs its own device check. Emscripten-host gate remains partial: imported tables and
+cross-instance function references in tables are still rejected. Those, Workers /
+shared JS memory, real GPU and audio remain the next major game-compatibility gates.

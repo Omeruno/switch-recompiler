@@ -1,6 +1,6 @@
 (()=>{
  const canvas=document.getElementById('game-screen'),status=document.getElementById('game-status'),start=document.getElementById('game-start'),pause=document.getElementById('game-pause'),reset=document.getElementById('game-reset');
- const context=canvas.getContext('2d'),keys=new Set();let instance,image,request=0,paused=false,last=0,accumulator=0,lastScore=-1,touch=null,previousStart=false,previousReset=false;
+ const context=canvas.getContext('2d'),keys=new Set();let instance,meter,image,request=0,paused=false,last=0,accumulator=0,lastScore=-1,touch=null,previousStart=false,previousReset=false;
  function message(text){status.textContent=text;}
  function draw(){const e=instance.exports;e.step(0,0,0,0,0,0);context.putImageData(image,0,0);}
  function frame(time){request=0;if(!instance)return;
@@ -14,11 +14,11 @@
   accumulator+=Math.min(64,last?time-last:16);last=time;
   for(let n=0;accumulator>=16&&n<4;n++,accumulator-=16)e.step(dx,dy,keys.has('Space')||pressed(0)||pressed(1)?1:0,touch?touch.x:0,touch?touch.y:0,touch?1:0);
   context.putImageData(image,0,0);
-  if(lastScore!==e.score.value){lastScore=e.score.value;message('Собрано огоньков: '+lastScore+' · WASM → canvas');}
+  if(lastScore!==meter.score()){lastScore=meter.score();message('Собрано огоньков: '+lastScore+' · два модуля WASM → canvas');}
   request=requestAnimationFrame(frame);
  }
  function setPaused(value){paused=value;pause.textContent=paused?'Продолжить':'Пауза';keys.clear();touch=null;if(request)cancelAnimationFrame(request);request=0;last=0;accumulator=0;if(instance)request=requestAnimationFrame(frame);}
- start.addEventListener('click',async()=>{start.disabled=true;try{if(!instance){message('Загрузка локального WASM…');const result=await WebAssembly.instantiateStreaming(fetch('game-core.wasm'));instance=result.instance;image=new ImageData(new Uint8ClampedArray(instance.exports.memory.buffer,0,128*80*4),128,80);}instance.exports.reset();lastScore=-1;setPaused(false);setTimeout(()=>{canvas.focus();scrollTo(0,scrollY+canvas.getBoundingClientRect().top-12);},0);}catch(e){message('Не удалось запустить: '+e.name+': '+e.message);}finally{start.disabled=false;}});
+ start.addEventListener('click',async()=>{start.disabled=true;try{if(!instance){message('Загрузка локального WASM…');const env={memory:new WebAssembly.Memory({initial:1,maximum:1}),score:new WebAssembly.Global({value:'i32',mutable:true},0)};const sidecar=await WebAssembly.instantiateStreaming(fetch('game-sidecar.wasm'),{env});env.observe=sidecar.instance.exports.score;const core=await WebAssembly.instantiateStreaming(fetch('game-core.wasm'),{env});instance=core.instance;meter=sidecar.instance.exports;if(instance.exports.memory!==env.memory||instance.exports.score!==env.score)throw Error('Game import identity');image=new ImageData(new Uint8ClampedArray(instance.exports.memory.buffer,0,128*80*4),128,80);}instance.exports.reset();lastScore=-1;setPaused(false);setTimeout(()=>{canvas.focus();scrollTo(0,scrollY+canvas.getBoundingClientRect().top-12);},0);}catch(e){message('Не удалось запустить: '+e.name+': '+e.message);}finally{start.disabled=false;}});
  pause.addEventListener('click',()=>{if(instance){setPaused(!paused);setTimeout(()=>canvas.focus(),0);}});
  reset.addEventListener('click',()=>{if(instance){instance.exports.reset();lastScore=-1;if(paused)draw();}});
  canvas.addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space'].includes(e.code)){e.preventDefault();keys.add(e.code);}});

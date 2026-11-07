@@ -11,8 +11,14 @@ extern "C" {
 struct BrowserWasmState {
     uint64_t generation;
     void *owner;
-    void (*grown)(void *, struct BrowserWasmState *);
+    void (*grown)(void *, const void *);
 };
+bool browser_wasm_link_begin(const wasm_module_t *, const wasm_extern_vec_t *);
+void browser_wasm_link_end(void);
+const void *browser_wasm_memory_identity(const wasm_memory_t *);
+void *browser_wasm_global_identity(const wasm_global_t *);
+void browser_wasm_global_refresh(wasm_global_t *);
+bool browser_wasm_memory_compatible(const wasm_module_t *, const wasm_memory_t *);
 bool browser_wasm_module_supported(const wasm_module_t *, char *, size_t);
 uint32_t browser_wasm_memory_cap(const wasm_module_t *);
 bool browser_wasm_start(wasm_instance_t *, struct BrowserWasmState *, char *, size_t);

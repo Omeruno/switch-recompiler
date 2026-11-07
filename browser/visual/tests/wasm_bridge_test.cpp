@@ -13,7 +13,8 @@ extern "C" {
         }                                                                                          \
     } while (0)
 int main(int argc, char **argv) {
-    CHECK(argc == 4);
+    CHECK(argc == 4 || argc == 5);
+    const bool imports_test = argc == 5;
     CHECK(SDL_Init(SDL_INIT_VIDEO) == 0);
     CHECK(TTF_Init() == 0);
     CHECK(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK);
@@ -33,7 +34,7 @@ int main(int argc, char **argv) {
         auto now = visual::Scripts::clock_ms();
         for (int i = 0; i < 12; i++)
             js.poll(now + i * 20);
-        for (const char *name : {"wasm-binaries.js", "wasm-bridge.js"}) {
+        for (const char *name : {"wasm-binaries.js", imports_test ? argv[4] : "wasm-bridge.js"}) {
             std::ifstream file(std::string(argv[3]) + "/" + name);
             CHECK(file);
             std::string text((std::istreambuf_iterator<char>(file)), {});
@@ -42,7 +43,10 @@ int main(int argc, char **argv) {
                 return 1;
             }
         }
-        CHECK(js.eval("if(!globalThis.wasmBridgeDone)throw Error('Wasm bridge unfinished');", 500));
+        CHECK(js.eval(imports_test
+                          ? "if(!globalThis.wasmImportsDone)throw Error('Wasm imports unfinished');"
+                          : "if(!globalThis.wasmBridgeDone)throw Error('Wasm bridge unfinished');",
+                      500));
     }
     for (const auto &policy :
          {std::string("script-src 'self'"), std::string("script-src 'self' 'wasm-unsafe-eval'"),

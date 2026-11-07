@@ -130,7 +130,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
             name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
             name != "state.json" && name != "dynamic-demo.js" && name != "modules-demo.js" &&
             name != "module-state.js" && name != "module-step.js" && name != "game-demo.js" &&
-            name != "game-core.wasm") {
+            name != "game-core.wasm" && name != "game-sidecar.wasm") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -149,7 +149,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
                 r.state = Resource::ready;
                 r.http_status = 200;
                 r.transfer_ok = true;
-                if (name == "game-core.wasm")
+                if (name == "game-core.wasm" || name == "game-sidecar.wasm")
                     r.response_headers["content-type"] = "application/wasm";
             }
         }
@@ -645,7 +645,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.12.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.13.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;
