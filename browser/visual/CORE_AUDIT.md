@@ -335,3 +335,11 @@ memory/workers, WebGL/WebGPU, WebAudio/видео, полный Canvas и Emscri
 производительности/лимитов Switch. gam.onl — портал RetroArch/EmulatorJS: наличие
 WASM API не доказывает работу его загрузчиков и игровых ядер. Keldurn требует GPU
 и workers/shared memory. Полноценный запуск обоих сайтов остаётся отдельным gate.
+
+Проверено в облаке 2026-11-07: все 23 host-suite прошли в Release и с
+AddressSanitizer/UndefinedBehaviorSanitizer (включая alignment и leak detection).
+Отдельный engine probe: engine-features и linear-memory-failures прошли,
+14 функциональных проверок сохранены. Playwright Chromium reference прошёл.
+Применение runtime patch проверено на чистом checkout и повторным checksum-check.
+Результаты не подтверждают выполнение на физическом Switch: это следующий
+обязательный пользовательский тест после получения ARM64 NRO.

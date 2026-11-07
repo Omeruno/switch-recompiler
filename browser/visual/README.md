@@ -750,11 +750,13 @@ PointerEvent/capture and gamepad connect/disconnect are bound to native input.
 On desktop R captures a focused canvas, Escape releases it; WASD/arrows move and
 Space accelerates. Only one physical controller is exposed; no haptics.
 
-Per page limits: 64 MiB JS heap, lazy 64 MiB WAMR allocation pool, 8 MiB/module,
+Per page limits: 64 MiB JS heap, lazy 64 MiB WAMR metadata allocation pool, 8 MiB/module,
 16 MiB cumulative successful module sources, 16 modules/instance attempts,
 32 compilation attempts, 512 pages (32 MiB) per memory, 65,536 table entries,
 256 imports, 512 retained exports, 64 parameters/16 results, 8 JS/Wasm call nesting
-levels and 5,000,000 interpreted instructions per exported call/start. Retained
+levels and 5,000,000 interpreted instructions per exported call/start. Linear-memory
+backing is separate from that metadata pool and uses the existing port with a
+256 MiB global backing quota; reservation alone is not physical allocation. Retained
 module handles live until navigation. Canvas: at most 32 elements, 2048 per axis,
 16 MiB total pixel storage plus up to 16 MiB SDL textures. HTTP GET responses with
 application/wasm may reach 8 MiB; other Fetch bodies remain 512 KiB. The existing
