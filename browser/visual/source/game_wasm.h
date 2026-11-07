@@ -1,13 +1,11 @@
 #pragma once
+#include "game_stats.h"
 extern "C" {
 #include "quickjs.h"
 }
 #include <memory>
 #include <string>
 namespace visual {
-struct GameStats {
-    unsigned modules = 0, instances = 0, calls = 0, traps = 0;
-};
 class GameWasm {
     struct Impl;
     std::unique_ptr<Impl> impl;

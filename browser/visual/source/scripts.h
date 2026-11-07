@@ -1,6 +1,6 @@
 #pragma once
 #include "container.h"
-#include "game_wasm.h"
+#include "game_stats.h"
 #include "issues.h"
 #include <cstdint>
 #include <memory>
