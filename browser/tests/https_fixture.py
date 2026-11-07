@@ -51,7 +51,7 @@ extendedKeyUsage=serverAuth
             self.api_counts[parsed.path+':'+self.command]=self.api_counts.get(parsed.path+':'+self.command,0)+1
             length=int(self.headers.get('Content-Length','0'));data=self.rfile.read(min(length,65537)) if length else b''
             if parsed.path=='/api-slow':time.sleep(.25)
-            status=200;extra=[]
+            status=200;extra=[];mime='application/json'
             if self.command=='OPTIONS':
                 body=b'';status=204
                 extra=[('Access-Control-Allow-Methods','GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS'),('Access-Control-Allow-Headers',self.headers.get('Access-Control-Request-Headers',''))]
@@ -60,6 +60,18 @@ extendedKeyUsage=serverAuth
             elif parsed.path=='/api-state':body=json.dumps(self.api_counts).encode()
             elif parsed.path=='/api-redirect':
                 status=int(query.get('code',['307'])[0]);extra=[('Location',query.get('target',['/api-echo'])[0])];body=b''
+            elif parsed.path=='/api-wasm':
+                body=(Path(__file__).resolve().parents[1]/'visual/tests/wasm/game-core.wasm').read_bytes()
+                if query.get('large')==['1']:
+                    def leb(n):
+                        out=bytearray()
+                        while n>127:out.append((n&127)|128);n>>=7
+                        out.append(n);return bytes(out)
+                    payload=b'\x04test'+b'x'*600000
+                    body+=b'\0'+leb(len(payload))+payload
+                if query.get('over')==['1']:body=b'x'*(8*1024*1024+1)
+                mime='text/plain' if query.get('mime')==['bad'] else 'application/wasm'
+                if query.get('status')==['404']:status=404
             elif parsed.path=='/api-large':body=b'x'*600000
             else:
                 status=404 if parsed.path=='/api-404' else 200
@@ -71,7 +83,7 @@ extendedKeyUsage=serverAuth
             self.send_header('X-Visible','shown');self.send_header('X-Hidden','private')
             self.send_header('Access-Control-Expose-Headers','X-Visible')
             if parsed.path=='/api-set':self.send_header('Set-Cookie','network_set=1; Path=/; Secure; HttpOnly')
-            self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers()
+            self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)));self.end_headers()
             if self.command!='HEAD':self.wfile.write(body)
             return True
         def do_OPTIONS(self):self.api()

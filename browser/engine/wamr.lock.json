@@ -2,5 +2,17 @@
   "repository": "https://github.com/bytecodealliance/wasm-micro-runtime.git",
   "commit": "3a6fb9a8e7871f20471c48592390b9d2342287b1",
   "license": "Apache-2.0 WITH LLVM-exception",
-  "purpose": "Interpreter compatibility candidate; not a selected production game engine"
+  "purpose": "Pinned interpreter for engine probe and bounded browser game bridge; no GPU/worker support",
+  "patch": {
+    "file": "patches/browser-embedding.patch",
+    "sha256": "7693162efc6950921f6ed38d50cd8744615a66a37cdbbadc222087a4cac857ea",
+    "files": {
+      "core/iwasm/common/wasm_c_api.c": "d8c5d1e5ba5e0bc26692d6a80543715b65c6ae63ab45bebf347dd741069516aa",
+      "core/iwasm/common/wasm_memory.c": "312f3ef6c7dd37619236531702746080bb8c8802fafb6667def101dbf8623ce9",
+      "core/iwasm/interpreter/wasm_interp.h": "0d50704548be41ae01658a51df7e797f843409c0f571da79586ccc44032e248c",
+      "core/iwasm/interpreter/wasm_interp_classic.c": "9380661a5acccee4b3a294abb8bb6a0b0cf0c72ecc802e2a716b233121e63b10",
+      "core/iwasm/interpreter/wasm_loader.c": "369b990853b3220597afea4e966a016477ef063065156d2dcd5275ff63a18e40",
+      "core/iwasm/interpreter/wasm_runtime.c": "c068c05773571041e72d5dde353314003c0006ad28198a54c2728800d6be33a3"
+    }
+  }
 }

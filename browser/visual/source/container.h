@@ -1,5 +1,7 @@
 #pragma once
 #include "forms.h"
+#include "game_canvas.h"
+#include "game_input.h"
 #include "resources.h"
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -38,7 +40,11 @@ class Container final : public litehtml::document_container {
 
   public:
     static constexpr int width = 1280, height = 720, toolbar = 84;
+    GameInput game_input;
     Forms forms;
+    std::shared_ptr<CanvasBudget> canvases = std::make_shared<CanvasBudget>();
+    unsigned painted_canvases = 0;
+    void draw_canvas(SDL_Texture *, const litehtml::position &);
     unsigned style_passes = 0, layout_passes = 0;
     void restyle(const litehtml::document::ptr &);
     void relayout(const litehtml::document::ptr &);

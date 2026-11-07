@@ -54,6 +54,8 @@ class SourceElement : public litehtml::html_tag {
 };
 } // namespace
 void Container::reset() {
+    game_input = {};
+    canvases = std::make_shared<CanvasBudget>();
     scroll_requested = false;
     style_passes = layout_passes = 0;
     focus({});
@@ -98,7 +100,8 @@ bool Container::focus(const litehtml::element::ptr &el) {
             return false;
         auto control = std::dynamic_pointer_cast<Control>(el);
         std::string tag = el->get_tagName();
-        if ((!control && tag != "button" && tag != "a" && !el->get_attr("tabindex")) ||
+        if ((!control && tag != "button" && tag != "a" && tag != "canvas" &&
+             !el->get_attr("tabindex")) ||
             (control && control->type() == "hidden"))
             return false;
         auto old = focused_node;
@@ -143,7 +146,16 @@ void Container::apply_clip() {
     }
     SDL_RenderSetClipRect(renderer, &r);
 }
+void Container::draw_canvas(SDL_Texture *texture, const litehtml::position &position) {
+    auto target = screen(position);
+    apply_clip();
+    if (SDL_RenderCopy(renderer, texture, nullptr, &target) == 0)
+        ++painted_canvases;
+    else
+        ++unsupported;
+}
 void Container::begin_paint() {
+    painted_canvases = 0;
     painted_text = painted_images = painted_gradients = unsupported = 0;
     clips.clear();
     apply_clip();
@@ -489,6 +501,8 @@ void Container::get_media_features(litehtml::media_features &m) const {
 }
 litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
                                                  const std::shared_ptr<litehtml::document> &doc) {
+    if (std::string(tag) == "canvas")
+        return std::make_shared<GameCanvas>(doc, renderer, canvases);
     if (std::string(tag) == "script" || std::string(tag) == "style" ||
         std::string(tag) == "noscript")
         return std::make_shared<SourceElement>(doc);

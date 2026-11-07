@@ -129,7 +129,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
         if (name != "index.html" && name != "style.css" && name != "landscape.png" &&
             name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
             name != "state.json" && name != "dynamic-demo.js" && name != "modules-demo.js" &&
-            name != "module-state.js" && name != "module-step.js") {
+            name != "module-state.js" && name != "module-step.js" && name != "game-demo.js" &&
+            name != "game-core.wasm") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -148,6 +149,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
                 r.state = Resource::ready;
                 r.http_status = 200;
                 r.transfer_ok = true;
+                if (name == "game-core.wasm")
+                    r.response_headers["content-type"] = "application/wasm";
             }
         }
         completed(r);
@@ -446,7 +449,8 @@ size_t Resources::receive(char *data, size_t unit, size_t count, void *ctx) {
     if (unit && count > std::numeric_limits<size_t>::max() / unit)
         return 0;
     size_t bytes = unit * count;
-    if (bytes > r.limit - r.data.size() || bytes > total_limit - self.received) {
+    if (r.data.size() > r.limit || bytes > r.limit - r.data.size() ||
+        bytes > total_limit - self.received) {
         r.error = "Resource byte quota exceeded";
         r.byte_limit = true;
         return 0;
@@ -474,6 +478,8 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
     if (status_line) {
         r.policies.clear();
         r.response_headers.clear();
+        if (r.web_request)
+            r.limit = 512u * 1024u;
         r.status_text.clear();
         auto space = line.find(' ');
         if (space != std::string::npos) {
@@ -492,6 +498,14 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
     r.header_bytes += bytes;
     if (status_line)
         return bytes;
+    if (r.web_request && r.method == "GET" && (line == "\r\n" || line == "\n")) {
+        auto mime = net_lower(r.response_headers["content-type"]);
+        mime = mime.substr(0, mime.find(';'));
+        while (!mime.empty() && mime.back() == ' ')
+            mime.pop_back();
+        if (mime == "application/wasm")
+            r.limit = 8u * 1024u * 1024u;
+    }
     auto colon = line.find(':');
     if (colon != std::string::npos) {
         auto key = line.substr(0, colon);
@@ -631,7 +645,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.11.1");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.12.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;

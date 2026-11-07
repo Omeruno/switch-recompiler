@@ -228,3 +228,22 @@ reproduces as blank in the cloud check, but redirects to a service traffic check
 normal search/CAPTCHA and restored jutsu.ru access await device validation. Keldurn
 fails its actual WebGPU capability check; implementing GPU and JS↔WASM remains
 required rather than changing Horizon or claiming a supported graphics adapter.
+
+## Game foundation — 0.12.0
+
+Completed a first executable JS↔WASM + Canvas + input path, including an owned
+local playable framebuffer game and native Browser integration tests. WAMR remains
+an interpreter with strict quotas; no JIT or fake GPU/shared-memory capabilities.
+See visual/README.md for supported import types and limitations.
+
+Next game gates, in dependency order:
+1. Broaden the Emscripten host/DOM surface against a minimal owned EmulatorJS-like
+   fixture, including imported memories/tables and correct cross-instance refs.
+2. Worker/message/event lifecycles and safe SharedArrayBuffer/shared Wasm memory.
+3. Real GPU backend and WebGL/WebGPU binding sufficient for a chosen open test
+   workload; then the actual selected game renderer (Keldurn needs WebGPU).
+4. WebAudio/media timing, save lifecycle and service-specific compatibility.
+5. On-device memory/performance, suspend/resume and long-session tests; then real
+   game startup/login/loading/gameplay acceptance. Each game requires its own gate.
+The current local demo does not complete those gates or establish gam.onl/Keldurn
+playability. Full browser compatibility is still a substantial engineering effort.

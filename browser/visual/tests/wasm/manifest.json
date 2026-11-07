@@ -1,0 +1,47 @@
+{
+  "bridge.wat": {
+    "wat_sha256": "eac4bdd32bcff1c014eee38d3b1c6c26eac343798fabf5720451a9f7ac251a98",
+    "wasm": "bridge.wasm",
+    "sha256": "8326c3cf7f07c4a9992b97fad51859c56457e092abffabedada48b8bd9ec203c"
+  },
+  "game-core.wat": {
+    "wat_sha256": "e2dab99d9155c562fb10a23625b64e3f0196a9aa1cf20c57a42e1cfb7b9f0fe4",
+    "wasm": "game-core.wasm",
+    "sha256": "6715a9ed5108b2855ca15b3b14573e4778206a4c57c3befc4a19409da02ee068"
+  },
+  "global-import.wat": {
+    "wat_sha256": "586939feb1ea81e32e44cd5f7cc482bb2d7cdea82bdfebdbac0520705ea94f90",
+    "wasm": "global-import.wasm",
+    "sha256": "ff755d229b9634bd716635d06889cba736c573e95ff1b582512b5b2fafc98ad9"
+  },
+  "import-memory.wat": {
+    "wat_sha256": "c6c31d552d4c4b7284a9e87db596dd4c8ed87769bbeb9ca2a9ebe1bbd5f625fd",
+    "wasm": "import-memory.wasm",
+    "sha256": "c4001be5bfcf5cf68f791c08bd0fd80520abdd256a96a274b57f345771afde51"
+  },
+  "multi-import.wat": {
+    "wat_sha256": "67bdc8ab6f0740f52acac0a9787705df02df5f0750a43110277dc6e7440e33b3",
+    "wasm": "multi-import.wasm",
+    "sha256": "0a78c6fe38e3ae02553d024deb08f5b0c47171321c7c1063b7347dfce4dbb91f"
+  },
+  "mutable-import.wat": {
+    "wat_sha256": "126fb78c3d99ec1e72be1a7519ed24a470d34df43436330c8e403833f5c29d7b",
+    "wasm": "mutable-import.wasm",
+    "sha256": "cf1d661edaf4f185192075557ab4ab69e7f935b8648ac65f4b80497c8a157f41"
+  },
+  "start-import.wat": {
+    "wat_sha256": "5beba5ba0986f4a4181f05a39ac5b3f5646f4eee6f25ae20b02f304b980d4a5a",
+    "wasm": "start-import.wasm",
+    "sha256": "2a7a3e888e4b17da8838ef1f1c57f4059e72ea24d32058acb405dd881cafb554"
+  },
+  "start-loop.wat": {
+    "wat_sha256": "b357033bd93e29181d517cda9eef6eb35d60809569963f108140027f4ffd3615",
+    "wasm": "start-loop.wasm",
+    "sha256": "9a495cb60b66e79a0220d368b3110c8d5626bc9c2f36445841a800d4ee871b80"
+  },
+  "start.wat": {
+    "wat_sha256": "9c0e71a9d225271d875276a036c83e3391a274b1eddf1e5b22653a469f8e29ec",
+    "wasm": "start.wasm",
+    "sha256": "b404d359921a4709f0d9e53e3d0157a1bc5e1f232a05dcfd76d388177c1da72b"
+  }
+}

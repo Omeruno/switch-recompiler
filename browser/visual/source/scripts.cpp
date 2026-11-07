@@ -1,4 +1,5 @@
 #include "scripts.h"
+#include "game_wasm.h"
 #include "websocket.h"
 extern "C" {
 #include "profile.h"
@@ -230,6 +231,7 @@ struct Scripts::Impl {
     uint64_t previous_frame = 0;
     unsigned task_source = 0;
     WebSockets sockets;
+    std::unique_ptr<GameWasm> game;
 #include "module_loader.inc"
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
          std::vector<std::string> policy)
@@ -248,7 +250,7 @@ struct Scripts::Impl {
         runtime = JS_NewRuntime2(&allocator, nullptr);
         if (!runtime)
             throw std::runtime_error("JavaScript runtime allocation failed");
-        JS_SetMemoryLimit(runtime, 32u * 1024u * 1024u);
+        JS_SetMemoryLimit(runtime, 64u * 1024u * 1024u);
         JS_SetMaxStackSize(runtime, 256u * 1024u);
         JS_SetInterruptHandler(runtime, interrupt, this);
         JS_SetHostPromiseRejectionTracker(runtime, rejection_tracker, this);
@@ -258,6 +260,7 @@ struct Scripts::Impl {
             runtime = nullptr;
             throw std::runtime_error("JavaScript context allocation failed");
         }
+        game = std::make_unique<GameWasm>(context);
         JS_SetContextOpaque(context, this);
         JS_SetModuleLoaderFunc2(runtime, module_normalize, module_load, module_attributes, this);
         JS_SetHostImportModuleFunc(runtime, module_dynamic, this);
@@ -287,6 +290,7 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        game.reset();
         sockets.clear();
         release_modules();
         for (auto &f : fetches)
@@ -391,8 +395,9 @@ struct Scripts::Impl {
             auto value = JS_GetPropertyStr(context, ex, "name");
             const char *name = JS_ToCString(context, value);
             if (name) {
-                for (auto known : {"TypeError", "ReferenceError", "SyntaxError", "RangeError",
-                                   "InternalError", "EvalError"})
+                for (auto known :
+                     {"CompileError", "LinkError", "RuntimeError", "TypeError", "ReferenceError",
+                      "SyntaxError", "RangeError", "InternalError", "EvalError"})
                     if (std::strcmp(name, known) == 0)
                         kind = known;
                 JS_FreeCString(context, name);
@@ -540,7 +545,7 @@ struct Scripts::Impl {
             if (it == entries.end())
                 continue;
             const bool script = directive == "script-src" || directive == "script-src-attr";
-            const bool evaluation = keyword == "'unsafe-eval'";
+            const bool evaluation = keyword == "'unsafe-eval'" || keyword == "'wasm-unsafe-eval'";
             bool nonce_source = false, nonce_match = false, hashed = false, strict = false;
             for (const auto &token : it->second) {
                 auto normalized = lower(token);
@@ -576,7 +581,9 @@ struct Scripts::Impl {
                 if (script && !evaluation && strict)
                     continue;
                 if (inline_code) {
-                    if (token == keyword && (evaluation || !script || !(nonce_source || hashed)))
+                    if ((token == keyword ||
+                         (keyword == "'wasm-unsafe-eval'" && token == "'unsafe-eval'")) &&
+                        (evaluation || !script || !(nonce_source || hashed)))
                         yes = true;
                 } else if (token == "*" || token == "https:" || (socket && token == "wss:") ||
                            (token == "'self'" &&
@@ -1008,6 +1015,8 @@ struct Scripts::Impl {
         auto *s = static_cast<Impl *>(JS_GetContextOpaque(ctx));
         try {
             return s->operation(argc, argv);
+        } catch (const std::range_error &e) {
+            return JS_ThrowRangeError(ctx, "%s", e.what());
         } catch (const std::exception &e) {
             return JS_ThrowTypeError(ctx, "%s", e.what());
         } catch (...) {
@@ -1029,10 +1038,32 @@ struct Scripts::Impl {
             return value;
         };
         const std::string op = str(0, 32);
+        if (op.rfind("wasm", 0) == 0) {
+            if (op == "wasmCompile" && !allowed("script-src", "", true, "'wasm-unsafe-eval'"))
+                return game->operation("wasmBlocked", argc, a);
+            return game->operation(op, argc, a);
+        }
         int id = integer(1);
         auto js = [&](const std::string &text) {
             return JS_NewStringLen(context, text.data(), text.size());
         };
+        if (op == "gamepad") {
+            const auto &input = container.game_input;
+            if (!input.connected)
+                return JS_NULL;
+            auto out = JS_NewObject(context), axes = JS_NewArray(context),
+                 buttons = JS_NewArray(context);
+            for (unsigned i = 0; i < input.axes.size(); ++i)
+                JS_SetPropertyUint32(context, axes, i,
+                                     JS_NewFloat64(context, std::clamp(input.axes[i], -1.f, 1.f)));
+            for (unsigned i = 0; i < input.buttons.size(); ++i)
+                JS_SetPropertyUint32(context, buttons, i, JS_NewBool(context, input.buttons[i]));
+            JS_SetPropertyStr(context, out, "axes", axes);
+            JS_SetPropertyStr(context, out, "buttons", buttons);
+            JS_SetPropertyStr(context, out, "timestamp",
+                              JS_NewFloat64(context, double(now - origin_time)));
+            return out;
+        }
         if (op == "microtask") {
             if (argc < 3 || !JS_IsFunction(context, a[2]))
                 return JS_ThrowTypeError(context, "Microtask requires function");
@@ -1361,6 +1392,73 @@ struct Scripts::Impl {
             return JS_NewInt32(context, int(handle(el)));
         }
         auto el = node(id);
+        if (op.rfind("canvas", 0) == 0) {
+            auto canvas = std::dynamic_pointer_cast<GameCanvas>(el);
+            if (!canvas)
+                throw std::runtime_error("Expected canvas element");
+            auto number = [&](int i) {
+                double n;
+                if (i >= argc || JS_ToFloat64(context, &n, a[i]) < 0)
+                    throw std::runtime_error("Expected canvas coordinate");
+                return n;
+            };
+            if (op == "canvasSize") {
+                auto out = JS_NewObject(context);
+                JS_SetPropertyStr(context, out, "width", JS_NewUint32(context, canvas->width()));
+                JS_SetPropertyStr(context, out, "height", JS_NewUint32(context, canvas->height()));
+                return out;
+            }
+            if (op == "canvasFill" || op == "canvasClear") {
+                canvas->fill(number(2), number(3), number(4), number(5),
+                             op == "canvasFill" ? uint32_t(integer(6)) : 0,
+                             op == "canvasFill" ? number(7) : 1, op == "canvasClear");
+                return JS_UNDEFINED;
+            }
+            if (op == "canvasGet") {
+                auto w = integer(4), h = integer(5);
+                if (w <= 0 || h <= 0)
+                    throw std::range_error("ImageData dimensions");
+                auto bytes = canvas->get(integer(2), integer(3), unsigned(w), unsigned(h));
+                return JS_NewArrayBufferCopy(context, bytes.data(), bytes.size());
+            }
+            if (op == "canvasPut") {
+                auto w = integer(2), h = integer(3);
+                if (w <= 0 || h <= 0 || w > int(GameCanvas::axis_limit) ||
+                    h > int(GameCanvas::axis_limit))
+                    throw std::range_error("ImageData dimensions");
+                size_t offset = 0, length = 0, unit = 0;
+                auto buffer = JS_GetTypedArrayBuffer(context, a[4], &offset, &length, &unit);
+                if (JS_IsException(buffer))
+                    return buffer;
+                size_t size = 0;
+                auto *bytes = JS_GetArrayBuffer(context, &size, buffer);
+                bool valid = bytes && unit == 1 && length == size_t(w) * size_t(h) * 4 &&
+                             offset <= size && length <= size - offset;
+                if (!valid) {
+                    JS_FreeValue(context, buffer);
+                    return JS_ThrowTypeError(context, "Invalid ImageData buffer");
+                }
+                try {
+                    canvas->put(bytes + offset, w, h, integer(5), integer(6), integer(7),
+                                integer(8), integer(9), integer(10));
+                } catch (...) {
+                    JS_FreeValue(context, buffer);
+                    throw;
+                }
+                JS_FreeValue(context, buffer);
+                return JS_UNDEFINED;
+            }
+            if (op == "canvasImage") {
+                auto source = std::dynamic_pointer_cast<GameCanvas>(node(integer(2)));
+                if (!source)
+                    throw std::runtime_error("Canvas image source unsupported");
+                canvas->image(*source, number(3), number(4), number(5), number(6), number(7),
+                              number(8), number(9), number(10), number(11),
+                              argc > 12 && JS_ToBool(context, a[12]) > 0);
+                return JS_UNDEFINED;
+            }
+            throw std::runtime_error("Unknown canvas operation");
+        }
         if (op == "scriptAsync")
             return JS_NewBool(context,
                               script_states[el.get()].force_async || el->get_attr("async"));
@@ -1526,6 +1624,20 @@ struct Scripts::Impl {
                 el->remove_attr(key.c_str());
             else
                 el->set_attr(key.c_str(), value.c_str());
+            if (auto canvas = std::dynamic_pointer_cast<GameCanvas>(el);
+                canvas && (key == "width" || key == "height")) {
+                try {
+                    canvas->read_attributes(true);
+                    auto reset = call("canvasReset", {JS_NewInt32(context, id)});
+                    JS_FreeValue(context, reset);
+                } catch (...) {
+                    if (had_old)
+                        el->set_attr(key.c_str(), old.c_str());
+                    else
+                        el->remove_attr(key.c_str());
+                    throw;
+                }
+            }
             if (auto control = std::dynamic_pointer_cast<Control>(el))
                 control->parse_attributes();
             else if (std::string(el->get_tagName()) == "option") {
@@ -1914,7 +2026,7 @@ struct Scripts::Impl {
             }
             if (r->state == Resource::queued || r->state == Resource::loading)
                 continue;
-            bool ok = r->transfer_ok && r->data.size() <= 512u * 1024u &&
+            bool ok = r->transfer_ok && r->data.size() <= r->limit &&
                       allowed("connect-src", r->effective, false);
             auto headers = JS_NewArray(context);
             uint32_t index = 0;
@@ -2056,15 +2168,19 @@ struct Scripts::Impl {
         for (unsigned task = 0; task < 8 && Scripts::clock_ms() < turn_end; ++task) {
             budget(50);
             bool ran = false;
-            for (unsigned attempt = 0; attempt < 4 && !ran; ++attempt) {
-                auto source = task_source++ % 4;
+            for (unsigned attempt = 0; attempt < 5 && !ran; ++attempt) {
+                auto source = task_source++ % 5;
                 if (source == 0)
                     ran = settle_fetch();
                 else if (source == 1)
                     ran = settle_socket();
                 else if (source == 2)
                     ran = pump_modules();
-                else {
+                else if (source == 3) {
+                    auto result = call("inputTask", {});
+                    ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+                    JS_FreeValue(context, result);
+                } else {
                     auto result = call("task", {JS_NewFloat64(context, double(now - origin_time))});
                     ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
                     JS_FreeValue(context, result);
@@ -2152,6 +2268,48 @@ bool Scripts::eval(const std::string &source, unsigned ms) {
     impl->drain();
     return result;
 }
+bool Scripts::key(const std::string &type, const std::string &key, const std::string &code,
+                  bool repeat, unsigned modifiers) {
+    if (!impl->usable_runtime)
+        return true;
+    impl->budget(50);
+    auto focused = impl->container.focused();
+    auto value = impl->call(
+        "keyboard",
+        {JS_NewInt32(impl->context, focused ? int(impl->handle(focused)) : 0),
+         JS_NewString(impl->context, type.c_str()), JS_NewString(impl->context, key.c_str()),
+         JS_NewString(impl->context, code.c_str()), JS_NewBool(impl->context, repeat),
+         JS_NewUint32(impl->context, modifiers)});
+    bool allowed = !JS_IsException(value) && JS_ToBool(impl->context, value) > 0;
+    JS_FreeValue(impl->context, value);
+    impl->drain();
+    return allowed;
+}
+bool Scripts::pointer(const litehtml::element::ptr &target, const std::string &type, double x,
+                      double y, unsigned id, unsigned buttons, const std::string &pointer_type) {
+    if (!impl->usable_runtime)
+        return true;
+    impl->budget(50);
+    auto value = impl->call("pointer",
+                            {JS_NewUint32(impl->context, impl->handle(target)),
+                             JS_NewString(impl->context, type.c_str()),
+                             JS_NewFloat64(impl->context, x), JS_NewFloat64(impl->context, y),
+                             JS_NewUint32(impl->context, id), JS_NewUint32(impl->context, buttons),
+                             JS_NewString(impl->context, pointer_type.c_str())});
+    bool allowed = !JS_IsException(value) && JS_ToBool(impl->context, value) > 0;
+    JS_FreeValue(impl->context, value);
+    impl->drain();
+    return allowed;
+}
+void Scripts::reset_input() {
+    if (!impl->usable_runtime)
+        return;
+    impl->budget(50);
+    auto value = impl->call("inputReset", {});
+    JS_FreeValue(impl->context, value);
+    impl->drain();
+}
+GameStats Scripts::game_stats() const { return impl->game ? impl->game->stats() : GameStats{}; }
 bool Scripts::changed() const { return impl->dirty; }
 void Scripts::flush() { impl->flush_layout(); }
 void Scripts::render_frame(uint64_t now) { impl->render_frame(now); }

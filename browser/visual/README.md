@@ -1,4 +1,4 @@
-# Switch visual browser — 0.11.1
+# Switch visual browser — 0.12.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -15,7 +15,7 @@ path; it is not a production engine selection or a playable Keldurn client.
 
 - URL-based ES modules with static/dynamic imports, live exports and top-level await;
   sources load asynchronously through the browser module map. Import maps, workers,
-  WASM/game bindings and graphics remain separate milestones.
+  Workers and GPU graphics remain separate milestones; the numeric WASM bridge is described below.
 - Persistent QuickJS session bound to the same native litehtml document that is
   painted/hit-tested. Resource completion and viewport changes preserve element
   identity, handlers and JavaScript state. A checksum-locked renderer patch rebuilds
@@ -157,7 +157,7 @@ scripts run when ready; ordinary classic scripts retain source order, and extern
 defer scripts run in source order after the interactive transition. Inline async/defer
 attributes do not change inline ordering. This is scheduling on an already-parsed
 native DOM, not a streaming HTML parser or full parser-blocking/module implementation. Up to 16 sources,
-128 KiB/source, 32 MiB JS heap, 256 KiB JS stack, 64 timers and 256 listeners are
+128 KiB/source, 64 MiB JS heap, 256 KiB JS stack, 64 timers and 256 listeners are
 allowed. Initial scripts and scheduled callbacks have a 50 ms interrupt budget;
 UI task/frame batches have an 8 ms soft quantum and stop between callbacks. Host
 interrupts use thread CPU time where available; Switch uses monotonic elapsed time.
@@ -498,7 +498,7 @@ logs retain origins/statuses, never payloads, auth headers or query strings.
 Quotas: 32 live requests, the shared 64 resource/logical-request entries per page (preflights and redirects reuse entries), 64 KiB
 request body, 32/8 KiB request headers, 64/16 KiB response headers (8 KiB per value),
 512 KiB buffered response, 16 MiB resident native response/cache bytes. Delivered
-network bodies leave native storage after copying to JS; JS keeps its 32 MiB heap
+network bodies leave native storage after copying to JS; JS keeps its 64 MiB heap
 limit. Header/redirect/preflight work and callbacks remain bounded. These APIs do
 not provide unbounded polling, complete HTTP caching, streams, FormData/file uploads,
 workers/modules, WebSocket, WebGPU or media playback.
@@ -555,7 +555,7 @@ failures produce fresh SyntaxError objects on repeated imports. The UI can show 
 bounded error message; exported diagnostics retain only phase/class/origin.
 
 Limits: 64 module records, 512 parsed dependency edges, depth 64, 128 KiB per source,
-4 MiB cumulative source bytes, 32 pending dynamic imports and the existing 32 MiB
+4 MiB cumulative source bytes, 32 pending dynamic imports and the existing 64 MiB
 JS heap. Module requests share the page's 64-resource ceiling, response/native
 buffer limits and 15-second network deadlines. Compilation/evaluation uses the
 existing 50 ms interrupt budget; one source/graph-completion action runs per poll.
@@ -701,3 +701,70 @@ Twenty host suites cover the changes, including real TLS partial-document timeou
 and successful completion, nonce positive/negative/multiple-policy/eval checks,
 parser fallback inertness, delayed content and transport/meta/BOM precedence.
 Uploaded account/cookie/storage data is not copied into the repository or fixtures.
+
+## Game foundation — 0.12.0
+
+This release connects QuickJS to the pinned WAMR **classic interpreter**, without
+JIT or executable-code allocation. The standalone probe remains a separate NRO.
+The offline demo includes the owned «Собери огоньки» game: actual Wasm movement,
+coin collision/score and RGBA framebuffer, JavaScript animation scheduling,
+native Canvas2D pixel upload, touch/keyboard/controller input. No ROM or third-party
+game binary is included. Use the **Игра WASM** link at the top of the demo.
+
+Implemented WebAssembly subset: binary validation and compilation, Module/Instance,
+Promise compile/instantiate and buffered compileStreaming/instantiateStreaming,
+module imports/exports/customSections, numeric JS function imports/exports
+(i32/i64 BigInt/f32/f64, including multiple results), immutable global imports,
+exported/standalone numeric Global, unshared Memory with zero-copy ArrayBuffer
+views and immediate successful-grow detachment (including grow(0)), funcref Table
+access/growth and same-instance function references. Start sections run with a
+budget after imports are installed. Emscripten constructors are called only when
+explicitly requested by page code. Original JS import exceptions are preserved;
+CompileError/LinkError/RuntimeError, traps and post-trap recovery are covered.
+
+The bridge rejects memory/table imports, mutable global imports, reference/SIMD
+function values, shared JS memory and cross-instance table references. There are
+no Worker/SharedArrayBuffer web bindings, WebGL/WebGPU, WebAudio/video, WASI web
+host, full Emscripten compatibility or background streaming compiler. API presence
+does not establish compatibility with a complete emulator. `gam.onl` uses
+RetroArch/EmulatorJS loaders; those integrations require additional APIs and game
+assets. **Keldurn and gam.onl game startup are not verified or claimed.** No
+capability check, account verification or service restriction is bypassed.
+
+Canvas supports fillRect/clearRect, source-over/globalAlpha, save/restore,
+ImageData/create/get/putImageData and canvas-to-canvas drawImage with nearest or
+bilinear sampling. Width/height assignments reset the backing store and state;
+ordinary CSS recalculation preserves pixels. It is a real replaced layout element
+with native SDL texture painting, viewport scaling and clipping. Paths, transforms,
+text drawing, image/video sources, other compositing modes and serialization are
+not implemented. Fractional rectangle coverage is approximate, without antialiasing.
+Unsupported GPU contexts return null.
+
+A focused canvas can capture game controls with **R**. Joy-Con buttons/sticks then
+reach navigator.getGamepads instead of browser shortcuts. Standard mapping uses
+physical bottom/right buttons as 0/1 (Switch B/A), sticks as axes 0–3, triggers as
+buttons 6/7, Minus/Plus as 8/9. Home is reserved by the OS. **ZL + ZR + Plus** releases
+game control; Plus alone remains available to a captured game. Touch pointer
+capture/preventDefault suppresses browser gestures over the canvas. KeyboardEvent,
+PointerEvent/capture and gamepad connect/disconnect are bound to native input.
+On desktop R captures a focused canvas, Escape releases it; WASD/arrows move and
+Space accelerates. Only one physical controller is exposed; no haptics.
+
+Per page limits: 64 MiB JS heap, lazy 64 MiB WAMR allocation pool, 8 MiB/module,
+16 MiB cumulative successful module sources, 16 modules/instance attempts,
+32 compilation attempts, 512 pages (32 MiB) per memory, 65,536 table entries,
+256 imports, 512 retained exports, 64 parameters/16 results, 8 JS/Wasm call nesting
+levels and 5,000,000 interpreted instructions per exported call/start. Retained
+module handles live until navigation. Canvas: at most 32 elements, 2048 per axis,
+16 MiB total pixel storage plus up to 16 MiB SDL textures. HTTP GET responses with
+application/wasm may reach 8 MiB; other Fetch bodies remain 512 KiB. The existing
+16 MiB total native network-body quota, TLS, CORS, redirects, cancellation and CSP
+remain enforced. `wasm-unsafe-eval` or `unsafe-eval` is required when script CSP
+restricts Wasm; nonces alone cannot authorize compilation. Resource limits can
+reject games that exceed Switch memory or interpreter performance.
+
+WAMR is Apache-2.0 WITH LLVM-exception; its license is packaged with the NRO. The
+locked embedding patch defers start/constructor execution, preserves browser
+memory page/growth semantics, notifies buffer detachment and fixes C API multi-result
+import frame sizing/copying and 64-bit frame/table alignment. Modified runtime files are SHA-256 checked before
+building. Owned WAT/WASM fixtures and the packaged game are also hash checked.

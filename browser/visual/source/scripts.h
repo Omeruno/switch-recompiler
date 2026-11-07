@@ -1,5 +1,6 @@
 #pragma once
 #include "container.h"
+#include "game_wasm.h"
 #include "issues.h"
 #include <cstdint>
 #include <memory>
@@ -21,6 +22,12 @@ class Scripts {
     bool dispatch(const litehtml::element::ptr &, const std::string &type, bool cancelable = true,
                   const litehtml::element::ptr &submitter = {});
     bool eval(const std::string &, unsigned budget_ms = 50);
+    bool key(const std::string &, const std::string &, const std::string &, bool repeat = false,
+             unsigned modifiers = 0);
+    bool pointer(const litehtml::element::ptr &, const std::string &, double, double, unsigned,
+                 unsigned, const std::string &);
+    void reset_input();
+    GameStats game_stats() const;
     bool changed() const;
     void flush();
     std::string navigation();

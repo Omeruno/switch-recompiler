@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - browser/visual/**
+      - browser/engine/**
       - browser/third_party/quickjs/**
       - browser/tools/embed_js.py
       - browser/tests/https_fixture.py
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - browser/visual/**
+      - browser/engine/**
       - browser/third_party/quickjs/**
       - browser/tools/embed_js.py
       - browser/tests/https_fixture.py

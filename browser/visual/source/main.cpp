@@ -75,6 +75,10 @@ struct Browser {
         navigate(url, false);
     }
     ~Browser() {
+        game_mode = false;
+        ignore_shoulder = false;
+        canvas_touches.clear();
+        container.game_input = {};
         report_open = false;
         choices.reset();
         scripts.reset();
@@ -102,6 +106,10 @@ struct Browser {
             if (history.size() > 16)
                 history.erase(history.begin());
         }
+        game_mode = false;
+        ignore_shoulder = false;
+        canvas_touches.clear();
+        container.game_input = {};
         report_open = false;
         choices.reset();
         scripts.reset();
@@ -272,6 +280,11 @@ struct Browser {
         apply_script_scroll();
         if (container.prune_focus())
             rebuild = true;
+        if (game_mode) {
+            auto focus = container.focused();
+            if (!focus || std::string(focus->get_tagName()) != "canvas")
+                leave_game_input();
+        }
         container.scroll_x = view.x;
         container.scroll_y = view.y;
         resources.pump();
@@ -402,6 +415,8 @@ struct Browser {
                 activate_check(check, true);
                 return;
             }
+        if (hit && std::string(hit->get_tagName()) == "canvas")
+            focus(hit);
         if (scripts && hit) {
             if (!scripts->dispatch(hit, "click"))
                 return;
@@ -418,7 +433,8 @@ struct Browser {
             return;
         }
         if (!hit || (!std::dynamic_pointer_cast<visual::Control>(hit) &&
-                     std::string(hit->get_tagName()) != "button"))
+                     std::string(hit->get_tagName()) != "button" &&
+                     std::string(hit->get_tagName()) != "canvas"))
             focus({});
         if (!container.anchor.empty()) {
             auto next = container.anchor;
@@ -504,13 +520,120 @@ struct Browser {
         if (!control->multiple())
             choices.reset();
     }
+    struct CanvasTouch {
+        litehtml::element::ptr target;
+        unsigned pointer = 0;
+        bool exclusive = false;
+    };
+    std::map<int64_t, CanvasTouch> canvas_touches;
+    unsigned next_game_pointer = 0;
+    bool game_mode = false, ignore_shoulder = false;
+    bool enter_game_input(bool shoulder = false) {
+        auto focused = container.focused();
+        if (!focused || std::string(focused->get_tagName()) != "canvas" || report_open || choices)
+            return false;
+        game_mode = true;
+        ignore_shoulder = shoulder;
+        gestures.cancel();
+        notice.clear();
+        return true;
+    }
+    void leave_game_input() {
+        game_mode = false;
+        ignore_shoulder = false;
+        container.game_input = {};
+        if (scripts)
+            scripts->reset_input();
+    }
+    litehtml::element::ptr canvas_at(visual::Point point) {
+        if (!document || point.y < 0 || report_open || choices)
+            return {};
+        auto p = view.document(point);
+        document->on_mouse_over(p.x, p.y, point.x / view.scale(), point.y / view.scale(),
+                                [](const litehtml::position &) {});
+        auto node = std::const_pointer_cast<litehtml::element>(document->get_over_element());
+        for (auto el = node; el; el = el->parent())
+            if (std::string(el->get_tagName()) == "canvas")
+                return el;
+        return {};
+    }
+    bool canvas_pointer(CanvasTouch &touch, const char *type, visual::Point point, unsigned buttons,
+                        const char *device) {
+        return scripts ? scripts->pointer(touch.target, type, point.x / view.scale(),
+                                          point.y / view.scale(), touch.pointer, buttons, device)
+                       : true;
+    }
+    void game_key(const SDL_KeyboardEvent &event) {
+        if (!scripts)
+            return;
+        auto sym = event.keysym.sym;
+        std::string key = SDL_GetKeyName(sym), code = SDL_GetScancodeName(event.keysym.scancode);
+        if (sym >= SDLK_a && sym <= SDLK_z) {
+            key = char((event.keysym.mod & KMOD_SHIFT) ? sym - 'a' + 'A' : sym);
+            code = "Key" + std::string(1, char(sym - 'a' + 'A'));
+        } else if (sym >= SDLK_0 && sym <= SDLK_9) {
+            key = char(sym);
+            code = "Digit" + key;
+        } else
+            switch (sym) {
+            case SDLK_LEFT:
+                key = code = "ArrowLeft";
+                break;
+            case SDLK_RIGHT:
+                key = code = "ArrowRight";
+                break;
+            case SDLK_UP:
+                key = code = "ArrowUp";
+                break;
+            case SDLK_DOWN:
+                key = code = "ArrowDown";
+                break;
+            case SDLK_SPACE:
+                key = " ";
+                code = "Space";
+                break;
+            case SDLK_RETURN:
+                key = code = "Enter";
+                break;
+            case SDLK_ESCAPE:
+                key = code = "Escape";
+                break;
+            case SDLK_BACKSPACE:
+                key = code = "Backspace";
+                break;
+            default:
+                break;
+            }
+        unsigned modifiers =
+            (event.keysym.mod & KMOD_CTRL ? 1 : 0) | (event.keysym.mod & KMOD_SHIFT ? 2 : 0) |
+            (event.keysym.mod & KMOD_ALT ? 4 : 0) | (event.keysym.mod & KMOD_GUI ? 8 : 0);
+        scripts->key(event.type == SDL_KEYDOWN ? "keydown" : "keyup", key, code, event.repeat != 0,
+                     modifiers);
+    }
     void cancel_input() {
+        for (auto &entry : canvas_touches)
+            canvas_pointer(entry.second, "pointercancel", {}, 0,
+                           entry.first == -1 ? "mouse" : "touch");
+        canvas_touches.clear();
+        leave_game_input();
         report_gestures.cancel();
         gestures.cancel();
         if (choices)
             choices->gestures.cancel();
     }
     void touch_down(int64_t id, visual::Point p, uint32_t now) {
+        if (scripts && canvas_touches.size() < 10)
+            if (auto canvas = canvas_at(p)) {
+                focus(canvas);
+                CanvasTouch touch{canvas, ++next_game_pointer, false};
+                touch.exclusive =
+                    !canvas_pointer(touch, "pointerdown", p, 1, id == -1 ? "mouse" : "touch");
+                canvas_touches[id] = touch;
+                if (touch.exclusive) {
+                    gestures.cancel();
+                    return;
+                }
+            }
         if (report_open) {
             report_gestures.down(id, p, now);
             return;
@@ -521,6 +644,12 @@ struct Browser {
             gestures.down(id, p, now);
     }
     void touch_move(int64_t id, visual::Point p, uint32_t now) {
+        auto touch = canvas_touches.find(id);
+        if (touch != canvas_touches.end()) {
+            canvas_pointer(touch->second, "pointermove", p, 1, id == -1 ? "mouse" : "touch");
+            if (touch->second.exclusive)
+                return;
+        }
         if (report_open) {
             report_gestures.move(id, p, now);
             return;
@@ -531,6 +660,14 @@ struct Browser {
             gestures.move(id, p, now);
     }
     void touch_up(int64_t id, visual::Point p, uint32_t now) {
+        auto touch = canvas_touches.find(id);
+        if (touch != canvas_touches.end()) {
+            bool exclusive = touch->second.exclusive;
+            canvas_pointer(touch->second, "pointerup", p, 0, id == -1 ? "mouse" : "touch");
+            canvas_touches.erase(touch);
+            if (exclusive)
+                return;
+        }
         if (report_open) {
             if (report_gestures.up(id, p, now))
                 click(p);
@@ -746,7 +883,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.11.1 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.12.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -773,7 +910,20 @@ struct Browser {
             report_lines.push_back("Завершён: " + std::string(r.transfer_ok ? "да" : "нет") +
                                    " · время " + std::to_string(r.elapsed_ms) + " мс");
         }
-        report_lines.push_back("WebGPU и JS↔WASM: не реализованы; игровая графика недоступна.");
+        if (scripts) {
+            auto stats = scripts->game_stats();
+            report_lines.push_back("WASM: модулей " + std::to_string(stats.modules) +
+                                   " · экземпляров " + std::to_string(stats.instances) +
+                                   " · вызовов " + std::to_string(stats.calls) + " · traps " +
+                                   std::to_string(stats.traps));
+        }
+        report_lines.push_back("Canvas: " + std::to_string(container.canvases->count) +
+                               " · байт " + std::to_string(container.canvases->bytes) +
+                               " · загрузок кадров " +
+                               std::to_string(container.canvases->frames));
+        report_lines.push_back(
+            "WebAssembly: числовые импорты/экспорты и память; Canvas: часть 2D API.");
+        report_lines.push_back("WebGPU/WebGL: не реализованы; Keldurn пока не запускается.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
                 report_lines.push_back(issue.category + " / " + issue.code + " · x" +
@@ -840,15 +990,16 @@ struct Browser {
         text(renderer, ui, 280, 10, url, {230, 238, 250, 255}, 840);
         text(renderer, ui, 1135, 10, "Адрес X", {112, 220, 235, 255}, 135);
         text(renderer, ui, 16, 46,
-             notice.empty() ? "Отчёт L · " + resources.status() + " · масштаб " +
-                                  std::to_string(int(view.zoom * 100)) + "% · " +
-                                  std::string(viewport_mode == 0   ? "ПК"
-                                              : viewport_mode == 1 ? "Планшет"
-                                                                   : "Мобильный") +
-                                  " · " +
-                                  std::string(scripts ? (scripts->ready() ? "JS" : "JS: загрузка")
-                                                      : "JS: ожидание")
-                            : notice,
+             game_mode        ? "Игровой режим · ZL + ZR + Plus — вернуться к браузеру"
+             : notice.empty() ? "Отчёт L · " + resources.status() + " · масштаб " +
+                                    std::to_string(int(view.zoom * 100)) + "% · " +
+                                    std::string(viewport_mode == 0   ? "ПК"
+                                                : viewport_mode == 1 ? "Планшет"
+                                                                     : "Мобильный") +
+                                    " · " +
+                                    std::string(scripts ? (scripts->ready() ? "JS" : "JS: загрузка")
+                                                        : "JS: ожидание")
+                              : notice,
              {174, 190, 211, 255}, 1250);
         if (!document) {
             text(renderer, ui, 40, 140,
@@ -863,7 +1014,7 @@ struct Browser {
         }
         paint_choices();
         paint_report();
-        if (document && !gestures.active() && !report_open) {
+        if (document && !gestures.active() && !report_open && !game_mode) {
             SDL_SetRenderDrawColor(renderer, 15, 100, 160, 200);
             SDL_RenderDrawLine(renderer, pointer_x - 7, pointer_y + 84, pointer_x + 7,
                                pointer_y + 84);
@@ -872,13 +1023,14 @@ struct Browser {
     }
 };
 #ifndef __SWITCH__
+#include "../tests/game_browser.h"
 #include "../tests/network_browser.h"
 #endif
 } // namespace
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.11.1");
+    visual::diagnostic("boot", "0.12.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -950,6 +1102,9 @@ int main(int argc, char **argv) {
                 else
                     browser_network_checks(app, argv[5]);
             }
+            bool game_test = argc >= 5 && std::string(argv[3]) == "--game-test";
+            if (game_test)
+                browser_game_checks(app, argv[4]);
             bool test = argc >= 5 && std::string(argv[3]) == "--test";
             bool capture = argc >= 6 && std::string(argv[3]) == "--capture";
             uint32_t capture_start = SDL_GetTicks();
@@ -957,12 +1112,19 @@ int main(int argc, char **argv) {
                 capture && argc >= 7 ? unsigned(std::clamp(std::atoi(argv[6]), 0, 10000)) : 0;
             if (capture)
                 app.navigate(argv[4]);
-            else if (argc >= 4 && !test && !network_test)
+            else if (argc >= 4 && !test && !network_test && !game_test)
                 app.navigate(argv[3]);
 #endif
             bool quit = false;
 #ifndef __SWITCH__
-            quit = network_test;
+            quit = network_test || game_test;
+#endif
+#ifndef __SWITCH__
+            std::unique_ptr<SDL_GameController, decltype(&SDL_GameControllerClose)> controller(
+                nullptr, SDL_GameControllerClose);
+            for (int i = 0; i < SDL_NumJoysticks() && !controller; i++)
+                if (SDL_IsGameController(i))
+                    controller.reset(SDL_GameControllerOpen(i));
 #endif
             uint32_t previous = SDL_GetTicks();
             while (!quit) {
@@ -971,52 +1133,83 @@ int main(int argc, char **argv) {
                     break;
                 padUpdate(&pad);
                 u64 down = padGetButtonsDown(&pad), held = padGetButtons(&pad);
-                if (down & HidNpadButton_Plus)
-                    break;
-                if (down & HidNpadButton_Minus)
-                    app.cycle_viewport();
-                if (down & HidNpadButton_X)
-                    app.edit_address();
-                if (down & HidNpadButton_B)
-                    app.back();
-                if (down & HidNpadButton_Y)
-                    app.reload();
-                if (down & HidNpadButton_L)
-                    app.toggle_report();
-                if (down & HidNpadButton_A) {
-                    if (app.choices && app.choices->pad_navigation)
-                        app.choose_option(app.choices->hover);
-                    else
-                        app.click({float(app.pointer_x), float(app.pointer_y)});
+                bool exit_game = app.game_mode && (down & HidNpadButton_Plus) &&
+                                 ((held & (HidNpadButton_ZL | HidNpadButton_ZR)) ==
+                                  (HidNpadButton_ZL | HidNpadButton_ZR));
+                if (exit_game)
+                    app.leave_game_input();
+                else if (!app.game_mode && (down & HidNpadButton_R))
+                    app.enter_game_input(true);
+                if (!app.game_mode && !exit_game) {
+                    if (down & HidNpadButton_Plus)
+                        break;
+                    if (down & HidNpadButton_Minus)
+                        app.cycle_viewport();
+                    if (down & HidNpadButton_X)
+                        app.edit_address();
+                    if (down & HidNpadButton_B)
+                        app.back();
+                    if (down & HidNpadButton_Y)
+                        app.reload();
+                    if (down & HidNpadButton_L)
+                        app.toggle_report();
+                    if (down & HidNpadButton_A) {
+                        if (app.choices && app.choices->pad_navigation)
+                            app.choose_option(app.choices->hover);
+                        else
+                            app.click({float(app.pointer_x), float(app.pointer_y)});
+                    }
+                    if (app.choices) {
+                        if (down & HidNpadButton_Down)
+                            app.choices->move(1);
+                        if (down & HidNpadButton_Up)
+                            app.choices->move(-1);
+                    } else {
+                        if (held & HidNpadButton_Down)
+                            app.scroll(0, -10);
+                        if (held & HidNpadButton_Up)
+                            app.scroll(0, 10);
+                    }
+                    HidAnalogStickState right = padGetStickPos(&pad, 1);
+                    float scroll_speed = visual::stick_scroll_speed(right.y / 32767.f);
+                    if (scroll_speed != 0 && !app.gestures.active() &&
+                        (!app.choices || !app.choices->gestures.active())) {
+                        app.gestures.stop_inertia();
+                        float seconds = std::min(.05f, (SDL_GetTicks() - previous) / 1000.f);
+                        app.scroll(0, scroll_speed * seconds);
+                    }
+                    HidAnalogStickState stick = padGetStickPos(&pad, 0);
+                    if (app.choices && (std::abs(stick.x) > 4096 || std::abs(stick.y) > 4096))
+                        app.choices->pad_navigation = false;
+                    app.pointer_x = std::clamp(app.pointer_x + stick.x / 4096, 0, 1279);
+                    app.pointer_y = std::clamp(app.pointer_y - stick.y / 4096, 0, 635);
+                    if (!app.report_open && !app.choices && (down & HidNpadButton_ZR))
+                        app.view.pinch({640, 318}, {640, 318}, 1.2f);
+                    if (!app.report_open && !app.choices && (down & HidNpadButton_ZL))
+                        app.view.pinch({640, 318}, {640, 318}, 1 / 1.2f);
                 }
-                if (app.choices) {
-                    if (down & HidNpadButton_Down)
-                        app.choices->move(1);
-                    if (down & HidNpadButton_Up)
-                        app.choices->move(-1);
-                } else {
-                    if (held & HidNpadButton_Down)
-                        app.scroll(0, -10);
-                    if (held & HidNpadButton_Up)
-                        app.scroll(0, 10);
+                app.container.game_input = {};
+                if (app.game_mode) {
+                    auto &input = app.container.game_input;
+                    input.connected = padGetStyleSet(&pad) != 0;
+                    auto left = padGetStickPos(&pad, 0), right = padGetStickPos(&pad, 1);
+                    input.axes = {left.x / 32767.f, -left.y / 32767.f, right.x / 32767.f,
+                                  -right.y / 32767.f};
+                    const u64 mapping[16] = {
+                        HidNpadButton_B,    HidNpadButton_A,      HidNpadButton_Y,
+                        HidNpadButton_X,    HidNpadButton_L,      HidNpadButton_R,
+                        HidNpadButton_ZL,   HidNpadButton_ZR,     HidNpadButton_Minus,
+                        HidNpadButton_Plus, HidNpadButton_StickL, HidNpadButton_StickR,
+                        HidNpadButton_Up,   HidNpadButton_Down,   HidNpadButton_Left,
+                        HidNpadButton_Right};
+                    for (unsigned i = 0; i < 16; i++)
+                        input.buttons[i] = (held & mapping[i]) != 0;
+                    if (app.ignore_shoulder) {
+                        input.buttons[5] = false;
+                        if (!(held & HidNpadButton_R))
+                            app.ignore_shoulder = false;
+                    }
                 }
-                HidAnalogStickState right = padGetStickPos(&pad, 1);
-                float scroll_speed = visual::stick_scroll_speed(right.y / 32767.f);
-                if (scroll_speed != 0 && !app.gestures.active() &&
-                    (!app.choices || !app.choices->gestures.active())) {
-                    app.gestures.stop_inertia();
-                    float seconds = std::min(.05f, (SDL_GetTicks() - previous) / 1000.f);
-                    app.scroll(0, scroll_speed * seconds);
-                }
-                HidAnalogStickState stick = padGetStickPos(&pad, 0);
-                if (app.choices && (std::abs(stick.x) > 4096 || std::abs(stick.y) > 4096))
-                    app.choices->pad_navigation = false;
-                app.pointer_x = std::clamp(app.pointer_x + stick.x / 4096, 0, 1279);
-                app.pointer_y = std::clamp(app.pointer_y - stick.y / 4096, 0, 635);
-                if (!app.report_open && !app.choices && (down & HidNpadButton_ZR))
-                    app.view.pinch({640, 318}, {640, 318}, 1.2f);
-                if (!app.report_open && !app.choices && (down & HidNpadButton_ZL))
-                    app.view.pinch({640, 318}, {640, 318}, 1 / 1.2f);
 #endif
                 SDL_Event event;
                 while (SDL_PollEvent(&event)) {
@@ -1054,8 +1247,23 @@ int main(int argc, char **argv) {
                                      event.button.timestamp);
                     else if (event.type == SDL_MOUSEWHEEL)
                         app.scroll(0, event.wheel.y * 72.f);
-                    else if (event.type == SDL_KEYDOWN) {
-                        if (event.key.keysym.sym == SDLK_ESCAPE)
+#ifndef __SWITCH__
+                    else if (event.type == SDL_CONTROLLERDEVICEADDED && !controller &&
+                             SDL_IsGameController(event.cdevice.which))
+                        controller.reset(SDL_GameControllerOpen(event.cdevice.which));
+                    else if (event.type == SDL_CONTROLLERDEVICEREMOVED && controller &&
+                             !SDL_GameControllerGetAttached(controller.get()))
+                        controller.reset();
+#endif
+                    else if ((event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) &&
+                             app.game_mode) {
+                        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+                            app.leave_game_input();
+                        else
+                            app.game_key(event.key);
+                    } else if (event.type == SDL_KEYDOWN) {
+                        if (event.key.keysym.sym == SDLK_r && app.enter_game_input()) {
+                        } else if (event.key.keysym.sym == SDLK_ESCAPE)
                             quit = true;
                         else if (event.key.keysym.sym == SDLK_F1)
                             app.toggle_report();
@@ -1071,6 +1279,48 @@ int main(int argc, char **argv) {
                             app.scroll(0, 60);
                     }
                 }
+#ifndef __SWITCH__
+                app.container.game_input = {};
+                if (app.game_mode && controller &&
+                    SDL_GameControllerGetAttached(controller.get())) {
+                    auto &input = app.container.game_input;
+                    input.connected = true;
+                    const SDL_GameControllerAxis axes[4] = {
+                        SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY,
+                        SDL_CONTROLLER_AXIS_RIGHTX, SDL_CONTROLLER_AXIS_RIGHTY};
+                    for (unsigned i = 0; i < 4; i++)
+                        input.axes[i] =
+                            SDL_GameControllerGetAxis(controller.get(), axes[i]) / 32767.f;
+                    const SDL_GameControllerButton buttons[17] = {
+                        SDL_CONTROLLER_BUTTON_A,
+                        SDL_CONTROLLER_BUTTON_B,
+                        SDL_CONTROLLER_BUTTON_X,
+                        SDL_CONTROLLER_BUTTON_Y,
+                        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+                        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+                        SDL_CONTROLLER_BUTTON_INVALID,
+                        SDL_CONTROLLER_BUTTON_INVALID,
+                        SDL_CONTROLLER_BUTTON_BACK,
+                        SDL_CONTROLLER_BUTTON_START,
+                        SDL_CONTROLLER_BUTTON_LEFTSTICK,
+                        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
+                        SDL_CONTROLLER_BUTTON_DPAD_UP,
+                        SDL_CONTROLLER_BUTTON_DPAD_DOWN,
+                        SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+                        SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
+                        SDL_CONTROLLER_BUTTON_GUIDE};
+                    for (unsigned i = 0; i < 17; i++)
+                        if (buttons[i] != SDL_CONTROLLER_BUTTON_INVALID)
+                            input.buttons[i] =
+                                SDL_GameControllerGetButton(controller.get(), buttons[i]) != 0;
+                    input.buttons[6] =
+                        SDL_GameControllerGetAxis(controller.get(),
+                                                  SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16384;
+                    input.buttons[7] =
+                        SDL_GameControllerGetAxis(controller.get(),
+                                                  SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16384;
+                }
+#endif
                 uint32_t now = SDL_GetTicks();
                 if (app.choices)
                     app.choices->gestures.tick((now - previous) / 1000.f);

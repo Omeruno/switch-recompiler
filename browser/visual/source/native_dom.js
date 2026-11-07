@@ -164,6 +164,7 @@
   class HTMLButtonElement extends HTMLElement {}
   class HTMLFormElement extends HTMLElement {}
   class HTMLImageElement extends HTMLElement {}
+  class HTMLCanvasElement extends HTMLElement {}
   class HTMLAnchorElement extends HTMLElement {}
   class HTMLLinkElement extends HTMLElement {}
   class HTMLStyleElement extends HTMLElement {}
@@ -175,11 +176,11 @@
   class HTMLHtmlElement extends HTMLElement {}
   const htmlInterfaces={script:HTMLScriptElement,input:HTMLInputElement,textarea:HTMLTextAreaElement,
     select:HTMLSelectElement,option:HTMLOptionElement,button:HTMLButtonElement,form:HTMLFormElement,
-    img:HTMLImageElement,a:HTMLAnchorElement,link:HTMLLinkElement,style:HTMLStyleElement,meta:HTMLMetaElement,
+    canvas:HTMLCanvasElement,img:HTMLImageElement,a:HTMLAnchorElement,link:HTMLLinkElement,style:HTMLStyleElement,meta:HTMLMetaElement,
     div:HTMLDivElement,span:HTMLSpanElement,body:HTMLBodyElement,head:HTMLHeadElement,html:HTMLHtmlElement};
   const domInterfaces={EventTarget,Node,Element,HTMLElement,Document,HTMLDocument,DocumentFragment,CharacterData,Text,
     HTMLScriptElement,HTMLInputElement,HTMLTextAreaElement,HTMLSelectElement,HTMLOptionElement,
-    HTMLButtonElement,HTMLFormElement,HTMLImageElement,HTMLAnchorElement,HTMLLinkElement,HTMLStyleElement,
+    HTMLButtonElement,HTMLFormElement,HTMLCanvasElement,HTMLImageElement,HTMLAnchorElement,HTMLLinkElement,HTMLStyleElement,
     HTMLMetaElement,HTMLDivElement,HTMLSpanElement,HTMLBodyElement,HTMLHeadElement,HTMLHtmlElement};
   for(const [name,ctor] of Object.entries(domInterfaces))Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});
   for(const [name,value] of Object.entries({ELEMENT_NODE:1,ATTRIBUTE_NODE:2,TEXT_NODE:3,CDATA_SECTION_NODE:4,
@@ -238,7 +239,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.11.1'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.12.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -662,9 +663,153 @@
   }
   for(const [name,value] of Object.entries({UNSENT:0,OPENED:1,HEADERS_RECEIVED:2,LOADING:3,DONE:4})){Object.defineProperty(XMLHttpRequest,name,{value});Object.defineProperty(XMLHttpRequest.prototype,name,{value});}
   for(const [name,ctor] of Object.entries({DOMException,ProgressEvent,AbortSignal,AbortController,Headers,Request,Response,TextEncoder,TextDecoder,XMLHttpRequest})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  const canvasContexts=new WeakMap(),canvasContextStates=new WeakMap(),imageDataStates=new WeakMap();
+  const canvasToken=Symbol();
+  const canvasState=object=>{const state=canvasContextStates.get(object);if(!state)throw new TypeError('Illegal Canvas invocation');return state;};
+  function resetCanvas(canvas){const context=canvasContexts.get(canvas);if(context){const state=canvasState(context);state.fillStyle='#000000';state.color=0xff000000;state.alpha=1;state.smoothing=true;state.stack=[];}}
+  function canvasColor(value){
+    value=String(value).trim().toLowerCase();const named={black:'#000000',white:'#ffffff',red:'#ff0000',green:'#008000',lime:'#00ff00',blue:'#0000ff',yellow:'#ffff00',cyan:'#00ffff',magenta:'#ff00ff',transparent:'#00000000',gray:'#808080',grey:'#808080',orange:'#ffa500'};let normalized=named[value]??value,bytes;
+    if(/^#[0-9a-f]{3,4}$/.test(normalized))normalized='#'+[...normalized.slice(1)].map(c=>c+c).join('');
+    if(/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(normalized)){bytes=[0,2,4].map(i=>parseInt(normalized.slice(1+i,3+i),16));bytes.push(normalized.length===9?parseInt(normalized.slice(7),16):255);}
+    else{const match=/^rgba?\(\s*([+-]?[\d.]+)\s*,\s*([+-]?[\d.]+)\s*,\s*([+-]?[\d.]+)\s*(?:,\s*([+-]?[\d.]+)\s*)?\)$/.exec(normalized);if(!match)return null;bytes=match.slice(1,4).map(n=>Math.round(Math.max(0,Math.min(255,Number(n)))));bytes.push(match[4]===undefined?255:Math.round(Math.max(0,Math.min(1,Number(match[4])))*255));if(bytes.some(n=>!Number.isFinite(n)))return null;}
+    return {style:bytes[3]===255?'#'+bytes.slice(0,3).map(v=>v.toString(16).padStart(2,'0')).join(''):'rgba('+bytes.slice(0,3).join(', ')+', '+(bytes[3]/255)+')',color:(bytes[0]|bytes[1]<<8|bytes[2]<<16|bytes[3]<<24)>>>0};
+  }
+  function imageDimensions(w,h){w=Number(w);h=Number(h);if(!Number.isFinite(w)||!Number.isFinite(h))throw new TypeError('Invalid ImageData dimensions');w=Math.trunc(w);h=Math.trunc(h);if(w<=0||h<=0)throw new DOMException('ImageData dimensions must be positive','IndexSizeError');if(w>2048||h>2048)throw new RangeError('ImageData size quota');return [w,h];}
+  class ImageData {
+    constructor(data,width,height,settings={}){
+      let bytes,w,h,options=settings;
+      if(data instanceof Uint8ClampedArray){w=Math.trunc(Number(width));h=height===undefined?data.length/(4*w):Number(height);[w,h]=imageDimensions(w,h);if(data.length!==w*h*4||data.buffer.byteLength===0)throw new DOMException('ImageData size does not match pixels','IndexSizeError');bytes=data;}
+      else {options=height??{};[w,h]=imageDimensions(data,width);bytes=new Uint8ClampedArray(w*h*4);}
+      if(options.colorSpace!==undefined&&String(options.colorSpace)!=='srgb')throw new DOMException('Canvas color space unavailable','NotSupportedError');
+      if(options.pixelFormat!==undefined&&String(options.pixelFormat)!=='rgba-unorm8')throw new TypeError('Canvas pixel format unavailable');
+      imageDataStates.set(this,{data:bytes,width:w,height:h,colorSpace:'srgb',pixelFormat:'rgba-unorm8'});
+    }
+  }
+  readonlyFields(ImageData,imageDataStates,['data','width','height','colorSpace','pixelFormat']);
+  class CanvasRenderingContext2D {
+    constructor(canvas,token){if(token!==canvasToken)throw new TypeError('Illegal constructor');canvasContextStates.set(this,{canvas,fillStyle:'#000000',color:0xff000000,alpha:1,smoothing:true,stack:[]});}
+    get canvas(){return canvasState(this).canvas;}get fillStyle(){return canvasState(this).fillStyle;}set fillStyle(value){const state=canvasState(this),color=canvasColor(value);if(color){state.fillStyle=color.style;state.color=color.color;}}
+    get globalAlpha(){return canvasState(this).alpha;}set globalAlpha(value){const state=canvasState(this);value=Number(value);if(Number.isFinite(value)&&value>=0&&value<=1)state.alpha=value;}
+    get globalCompositeOperation(){canvasState(this);return 'source-over';}set globalCompositeOperation(value){canvasState(this);String(value);}
+    get imageSmoothingEnabled(){return canvasState(this).smoothing;}set imageSmoothingEnabled(value){canvasState(this).smoothing=!!value;}
+    save(){const state=canvasState(this);if(state.stack.length>=64)throw new RangeError('Canvas state quota');state.stack.push({fillStyle:state.fillStyle,color:state.color,alpha:state.alpha,smoothing:state.smoothing});}
+    restore(){const state=canvasState(this),saved=state.stack.pop();if(saved)Object.assign(state,saved);}
+    fillRect(x,y,w,h){if(arguments.length<4)throw new TypeError('fillRect requires four coordinates');const state=canvasState(this);bridge('canvasFill',state.canvas._key,Number(x),Number(y),Number(w),Number(h),state.color,state.alpha);}
+    clearRect(x,y,w,h){if(arguments.length<4)throw new TypeError('clearRect requires four coordinates');const state=canvasState(this);bridge('canvasClear',state.canvas._key,Number(x),Number(y),Number(w),Number(h));}
+    createImageData(width,height){canvasState(this);if(imageDataStates.has(width)){const image=imageDataStates.get(width);return new ImageData(image.width,image.height);}return new ImageData(Math.abs(Number(width)),Math.abs(Number(height)));}
+    getImageData(x,y,w,h){if(arguments.length<4)throw new TypeError('getImageData requires four coordinates');const state=canvasState(this);x=Number(x)>>0;y=Number(y)>>0;w=Number(w)>>0;h=Number(h)>>0;if(w<0){x+=w;w=-w;}if(h<0){y+=h;h=-h;}[w,h]=imageDimensions(w,h);return new ImageData(new Uint8ClampedArray(bridge('canvasGet',state.canvas._key,x,y,w,h)),w,h);}
+    putImageData(image,x,y,dirtyX=0,dirtyY=0,dirtyW=image?.width,dirtyH=image?.height){if(arguments.length<3)throw new TypeError('putImageData requires pixels and coordinates');const state=canvasState(this),data=imageDataStates.get(image);if(!data)throw new TypeError('Expected ImageData');if(data.data.buffer.byteLength===0)throw new DOMException('ImageData buffer detached','InvalidStateError');let sx=Number(dirtyX)>>0,sy=Number(dirtyY)>>0,sw=Number(dirtyW)>>0,sh=Number(dirtyH)>>0;if(sw<0){sx+=sw;sw=-sw;}if(sh<0){sy+=sh;sh=-sh;}bridge('canvasPut',state.canvas._key,data.width,data.height,data.data,Number(x)>>0,Number(y)>>0,sx,sy,sw,sh);}
+    drawImage(source,...args){const state=canvasState(this);if(!(source instanceof HTMLCanvasElement))throw new DOMException('Only canvas image sources are currently supported','NotSupportedError');let values;if(args.length===2)values=[0,0,source.width,source.height,...args,source.width,source.height];else if(args.length===4)values=[0,0,source.width,source.height,...args];else if(args.length===8)values=args;else throw new TypeError('drawImage requires 3, 5 or 9 arguments');bridge('canvasImage',state.canvas._key,source._key,...values.map(Number),state.alpha,state.smoothing);}
+    getContextAttributes(){canvasState(this);return {alpha:true,colorSpace:'srgb',desynchronized:false,willReadFrequently:true};}
+  }
+  for(const name of ['width','height'])Object.defineProperty(HTMLCanvasElement.prototype,name,{enumerable:true,configurable:true,get(){if(!(this instanceof HTMLCanvasElement))throw new TypeError('Illegal invocation');return bridge('canvasSize',this._key)[name];},set(value){if(!(this instanceof HTMLCanvasElement))throw new TypeError('Illegal invocation');this.setAttribute(name,String(Number(value)>>>0));}});
+  Object.defineProperty(HTMLCanvasElement.prototype,'getContext',{enumerable:true,configurable:true,writable:true,value:function(type){if(!(this instanceof HTMLCanvasElement))throw new TypeError('Illegal invocation');if(String(type)!=='2d')return null;let context=canvasContexts.get(this);if(!context){context=new CanvasRenderingContext2D(this,canvasToken);canvasContexts.set(this,context);}return context;}});
+  for(const [name,ctor] of Object.entries({ImageData,CanvasRenderingContext2D})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  const keyboardStates=new WeakMap(),mouseStates=new WeakMap(),pointerStates=new WeakMap(),gamepadStates=new WeakMap(),gamepadButtons=new WeakMap(),gamepadEvents=new WeakMap(),heldKeys=new Map(),activePointers=new Set(),capturedPointers=new Map();
+  class KeyboardEvent extends Event {
+    constructor(type,options={}){super(type,options);keyboardStates.set(this,{key:String(options.key??''),code:String(options.code??''),location:Number(options.location)||0,repeat:!!options.repeat,isComposing:!!options.isComposing,ctrlKey:!!options.ctrlKey,shiftKey:!!options.shiftKey,altKey:!!options.altKey,metaKey:!!options.metaKey,keyCode:Number(options.keyCode)||0,charCode:Number(options.charCode)||0,which:Number(options.which??options.keyCode)||0});}
+    getModifierState(key){return {Control:this.ctrlKey,Shift:this.shiftKey,Alt:this.altKey,Meta:this.metaKey}[String(key)]??false;}
+  }
+  readonlyFields(KeyboardEvent,keyboardStates,['key','code','location','repeat','isComposing','ctrlKey','shiftKey','altKey','metaKey','keyCode','charCode','which']);
+  class MouseEvent extends Event {
+    constructor(type,options={}){super(type,options);mouseStates.set(this,{clientX:Number(options.clientX)||0,clientY:Number(options.clientY)||0,screenX:Number(options.screenX)||0,screenY:Number(options.screenY)||0,pageX:Number(options.pageX??options.clientX)||0,pageY:Number(options.pageY??options.clientY)||0,offsetX:Number(options.offsetX)||0,offsetY:Number(options.offsetY)||0,movementX:Number(options.movementX)||0,movementY:Number(options.movementY)||0,button:Number(options.button)||0,buttons:Number(options.buttons)||0,relatedTarget:options.relatedTarget??null,ctrlKey:!!options.ctrlKey,shiftKey:!!options.shiftKey,altKey:!!options.altKey,metaKey:!!options.metaKey});}
+    get x(){return this.clientX;}get y(){return this.clientY;}
+    getModifierState(key){return {Control:this.ctrlKey,Shift:this.shiftKey,Alt:this.altKey,Meta:this.metaKey}[String(key)]??false;}
+  }
+  readonlyFields(MouseEvent,mouseStates,['clientX','clientY','screenX','screenY','pageX','pageY','offsetX','offsetY','movementX','movementY','button','buttons','relatedTarget','ctrlKey','shiftKey','altKey','metaKey']);
+  class PointerEvent extends MouseEvent {constructor(type,options={}){super(type,options);pointerStates.set(this,{pointerId:Number(options.pointerId)||0,pointerType:String(options.pointerType??''),isPrimary:!!options.isPrimary,pressure:Number(options.pressure)||0,tangentialPressure:Number(options.tangentialPressure)||0,width:Number(options.width??1),height:Number(options.height??1),tiltX:Number(options.tiltX)||0,tiltY:Number(options.tiltY)||0,twist:Number(options.twist)||0});}}
+  readonlyFields(PointerEvent,pointerStates,['pointerId','pointerType','isPrimary','pressure','tangentialPressure','width','height','tiltX','tiltY','twist']);
+  for(const [name,fn] of Object.entries({setPointerCapture(id){id=Number(id);if(!activePointers.has(id))throw new DOMException('Pointer is not active','NotFoundError');if(!this.isConnected)throw new DOMException('Element is detached','InvalidStateError');capturedPointers.set(id,this);this.dispatchEvent(new PointerEvent('gotpointercapture',{bubbles:true,pointerId:id}));},releasePointerCapture(id){id=Number(id);if(capturedPointers.get(id)===this){capturedPointers.delete(id);this.dispatchEvent(new PointerEvent('lostpointercapture',{bubbles:true,pointerId:id}));}},hasPointerCapture(id){return capturedPointers.get(Number(id))===this;}}))Object.defineProperty(Element.prototype,name,{value:fn,writable:true,configurable:true,enumerable:true});
+  class Gamepad {constructor(token){if(token!==canvasToken)throw new TypeError('Illegal constructor');}}
+  class GamepadButton {constructor(token){if(token!==canvasToken)throw new TypeError('Illegal constructor');}}
+  class GamepadEvent extends Event {constructor(type,options={}){super(type,options);if(!(options.gamepad instanceof Gamepad))throw new TypeError('Expected Gamepad');gamepadEvents.set(this,{gamepad:options.gamepad});}}
+  readonlyFields(Gamepad,gamepadStates,['id','index','connected','timestamp','mapping','axes','buttons','vibrationActuator','hapticActuators']);readonlyFields(GamepadButton,gamepadButtons,['pressed','touched','value']);readonlyFields(GamepadEvent,gamepadEvents,['gamepad']);
+  let gamepad=null,gamepadConnected=false;
+  function sampleGamepad(){const input=bridge('gamepad',0);if(!input&&!gamepad)return null;if(!gamepad){gamepad=new Gamepad(canvasToken);const buttons=Object.freeze(Array.from({length:17},()=>{const button=new GamepadButton(canvasToken);gamepadButtons.set(button,{pressed:false,touched:false,value:0});return button;}));gamepadStates.set(gamepad,{id:'Switch Controller',index:0,connected:false,timestamp:0,mapping:'standard',axes:Object.freeze([0,0,0,0]),buttons,vibrationActuator:null,hapticActuators:Object.freeze([])});}const state=gamepadStates.get(gamepad);state.connected=!!input;state.timestamp=input?.timestamp??state.timestamp;state.axes=Object.freeze(input?.axes??[0,0,0,0]);for(let i=0;i<17;i++)gamepadButtons.set(state.buttons[i],{pressed:!!input?.buttons[i],touched:!!input?.buttons[i],value:input?.buttons[i]?1:0});return gamepad;}
+  navigator.getGamepads=()=>{const pad=sampleGamepad();return [pad?.connected?pad:null,null,null,null];};
+  function inputTask(){const pad=sampleGamepad(),connected=!!pad?.connected;if(connected===gamepadConnected)return false;gamepadConnected=connected;globalThis.dispatchEvent(new GamepadEvent(connected?'gamepadconnected':'gamepaddisconnected',{gamepad:pad}));return true;}
+  function keyboardInput(id,type,key,code,repeat,modifiers){const target=id?wrap(id):document.body??document;const keyCode={ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40,Enter:13,Escape:27,' ':32,Backspace:8,Tab:9}[key]??(key.length===1?key.toUpperCase().charCodeAt(0):0),options={bubbles:true,cancelable:true,key,code,repeat,ctrlKey:!!(modifiers&1),shiftKey:!!(modifiers&2),altKey:!!(modifiers&4),metaKey:!!(modifiers&8),keyCode,which:keyCode};if(type==='keydown'&&heldKeys.size<64)heldKeys.set(code,{target,options});if(type==='keyup')heldKeys.delete(code);return target.dispatchEvent(new KeyboardEvent(type,options));}
+  function pointerInput(id,type,x,y,pointerId,buttons,pointerType){let target=capturedPointers.get(pointerId)??wrap(id);if(type==='pointerdown'){if(activePointers.size>=10)return true;activePointers.add(pointerId);}const rect=target.getBoundingClientRect(),event=new PointerEvent(type,{bubbles:true,cancelable:true,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,pointerId,pointerType,buttons,button:type==='pointermove'?-1:0,isPrimary:activePointers.values().next().value===pointerId,pressure:buttons?0.5:0});const allowed=target.dispatchEvent(event)&&!capturedPointers.has(pointerId);if(type==='pointerup'||type==='pointercancel'){if(capturedPointers.has(pointerId))capturedPointers.get(pointerId).releasePointerCapture(pointerId);activePointers.delete(pointerId);}return allowed;}
+  function inputReset(){for(const {target,options} of heldKeys.values())(target.isConnected?target:globalThis).dispatchEvent(new KeyboardEvent('keyup',{...options,repeat:false}));heldKeys.clear();for(const [id,target] of capturedPointers)target.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerId:id,pointerType:'touch'}));capturedPointers.clear();activePointers.clear();}
+  for(const [name,ctor] of Object.entries({KeyboardEvent,MouseEvent,PointerEvent,Gamepad,GamepadButton,GamepadEvent})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  const wasmModules=new WeakMap(),wasmInstances=new WeakMap(),wasmMemories=new WeakMap(),wasmGlobals=new WeakMap(),wasmTables=new WeakMap(),wasmFunctions=new WeakMap(),wasmObjects=new Map();
+  const wasmToken=Symbol();
+  class CompileError extends Error {}class LinkError extends Error {}class RuntimeError extends Error {}
+  for(const [name,ctor] of Object.entries({CompileError,LinkError,RuntimeError}))Object.defineProperty(ctor.prototype,'name',{value:name,writable:true,configurable:true});
+  bridge('wasmErrors',0,[CompileError.prototype,LinkError.prototype,RuntimeError.prototype]);
+  const wasmIndex=value=>{value=Number(value);if(!Number.isFinite(value)||value<0||Math.trunc(value)>4294967295)throw new TypeError('WebAssembly index out of range');return Math.trunc(value);};
+  const wasmState=(map,value)=>{const state=map.get(value);if(!state)throw new TypeError('Illegal WebAssembly invocation');return state;};
+  const wasmBytes=value=>byteBuffer(value);
+  class Module {
+    constructor(bytes){const id=bridge('wasmCompile',0,wasmBytes(bytes));wasmModules.set(this,{id,imports:bridge('wasmImports',0,id),exports:bridge('wasmExports',0,id)});}
+    static imports(module){return wasmState(wasmModules,module).imports.map(item=>({module:item.module,name:item.name,kind:item.kind}));}
+    static exports(module){return wasmState(wasmModules,module).exports.map(item=>({name:item.name,kind:item.kind}));}
+    static customSections(module,name){return bridge('wasmCustomSections',0,wasmState(wasmModules,module).id,String(name));}
+  }
+  function wrapWasm(info){
+    if(wasmObjects.has(info.id))return wasmObjects.get(info.id);
+    let object;
+    if(info.kind==='function'){
+      object=function(...args){return bridge('wasmCall',0,info.id,args);};
+      Object.defineProperty(object,'length',{value:info.parameters.length,configurable:true});
+      Object.defineProperty(object,'name',{value:String(info.id),configurable:true});wasmFunctions.set(object,info.id);
+    }else if(info.kind==='memory'){object=Object.create(Memory.prototype);wasmMemories.set(object,info.id);}
+    else if(info.kind==='global'){object=Object.create(Global.prototype);wasmGlobals.set(object,info);}
+    else if(info.kind==='table'){object=Object.create(Table.prototype);wasmTables.set(object,info.id);}
+    else throw new LinkError('Unsupported WebAssembly export');
+    wasmObjects.set(info.id,object);return object;
+  }
+  function importValues(module,imports){
+    if(imports!==undefined&&(imports===null||typeof imports!=='object'&&typeof imports!=='function'))throw new TypeError('Expected WebAssembly imports object');
+    return wasmState(wasmModules,module).imports.map(item=>{
+      const namespace=imports?.[item.module];if(namespace===null||typeof namespace!=='object'&&typeof namespace!=='function')throw new TypeError('Expected WebAssembly import namespace');
+      let value=namespace[item.name],functionId=0;
+      if(item.kind==='function'){
+        if(typeof value!=='function')throw new LinkError('WebAssembly import must be callable');
+        const fn=value;functionId=wasmFunctions.get(fn)||0;
+        if(item.results.length>1)value=function(...args){const source=Reflect.apply(fn,undefined,args);if(source==null||typeof source[Symbol.iterator]!=='function')throw new TypeError('Expected iterable WebAssembly results');const iterator=source[Symbol.iterator](),result=[];for(let i=0;i<=item.results.length;i++){const step=iterator.next();if(typeof step!=='object')throw new TypeError('Invalid iterator result');if(step.done){if(result.length!==item.results.length)throw new TypeError('WebAssembly result arity');return result;}result.push(step.value);}iterator.return?.();throw new TypeError('WebAssembly result arity');};
+      }else if(item.kind==='global'&&wasmGlobals.has(value)){const state=wasmGlobals.get(value);if(state.valueType!==item.valueType||state.mutable!==item.mutable)throw new LinkError('WebAssembly global import type mismatch');value=value.value;}
+      return {value,functionId};
+    });
+  }
+  class Instance {
+    constructor(module,imports){const state=wasmState(wasmModules,module),values=importValues(module,imports),list=bridge('wasmInstantiate',0,state.id,values),exports=Object.create(null);for(const item of list)Object.defineProperty(exports,item.name,{value:wrapWasm(item),enumerable:true});Object.preventExtensions(exports);wasmInstances.set(this,exports);}
+    get exports(){return wasmState(wasmInstances,this);}
+  }
+  class Memory {
+    constructor(descriptor){if(descriptor===null||typeof descriptor!=='object')throw new TypeError('Expected WebAssembly memory descriptor');if(descriptor.shared)throw new TypeError('Shared memory requires the worker bridge');const initial=wasmIndex(descriptor.initial??descriptor.minimum),maximum=descriptor.maximum===undefined?65536:wasmIndex(descriptor.maximum);if(initial>maximum||maximum>65536)throw new RangeError('Invalid WebAssembly memory limits');return wrapWasm(bridge('wasmStandalone',0,3,initial,maximum));}
+    get buffer(){return bridge('wasmMemoryBuffer',0,wasmState(wasmMemories,this));}
+    grow(delta){if(arguments.length<1)throw new TypeError('Memory.grow requires a delta');return bridge('wasmMemoryGrow',0,wasmState(wasmMemories,this),wasmIndex(delta));}
+  }
+  const wasmValueTypes={i32:0,i64:1,f32:2,f64:3};
+  class Global {
+    constructor(descriptor,value){if(descriptor===null||typeof descriptor!=='object')throw new TypeError('Expected WebAssembly global descriptor');const type=String(descriptor.value);if(!Object.hasOwn(wasmValueTypes,type))throw new TypeError('Unsupported WebAssembly global type');if(arguments.length<2)value=type==='i64'?0n:0;return wrapWasm(bridge('wasmStandalone',0,1,wasmValueTypes[type],!!descriptor.mutable,value));}
+    get value(){return bridge('wasmGlobalGet',0,wasmState(wasmGlobals,this).id);}set value(value){bridge('wasmGlobalSet',0,wasmState(wasmGlobals,this).id,value);}
+    valueOf(){return this.value;}
+  }
+  const wasmTableValue=value=>{if(value===null)return 0;const id=wasmFunctions.get(value);if(!id)throw new TypeError('Expected a WebAssembly function or null');return id;};
+  class Table {
+    constructor(descriptor,value=null){if(descriptor===null||typeof descriptor!=='object'||!['anyfunc','funcref'].includes(String(descriptor.element)))throw new TypeError('Only funcref tables are supported');if(value!==null)throw new TypeError('Cross-instance table initializers are unsupported');const initial=wasmIndex(descriptor.initial??descriptor.minimum),maximum=descriptor.maximum===undefined?65536:wasmIndex(descriptor.maximum);if(initial>maximum||maximum>65536)throw new RangeError('Invalid WebAssembly table limits');return wrapWasm(bridge('wasmStandalone',0,2,initial,maximum));}
+    get length(){return bridge('wasmTableLength',0,wasmState(wasmTables,this));}
+    get(index){if(!arguments.length)throw new TypeError('Table.get requires an index');const info=bridge('wasmTableGet',0,wasmState(wasmTables,this),wasmIndex(index));return info===null?null:wrapWasm(info);}
+    set(index,value){if(arguments.length<2)throw new TypeError('Table.set requires a value');bridge('wasmTableSet',0,wasmState(wasmTables,this),wasmIndex(index),wasmTableValue(value));}
+    grow(delta,value=null){if(!arguments.length)throw new TypeError('Table.grow requires a delta');return bridge('wasmTableGrow',0,wasmState(wasmTables,this),wasmIndex(delta),wasmTableValue(value));}
+  }
+  const compile=bytes=>{try{const copied=wasmBytes(bytes);return Promise.resolve().then(()=>new Module(copied));}catch(error){return Promise.reject(error);}};
+  const instantiate=(source,imports)=>{if(wasmModules.has(source))return Promise.resolve().then(()=>new Instance(source,imports));return compile(source).then(module=>({module,instance:new Instance(module,imports)}));};
+  async function streamBytes(source){const response=await source;if(!(response instanceof Response))throw new TypeError('Expected Response');if(!response.ok)throw new TypeError('WebAssembly response status');if((response.headers.get('content-type')??'').split(';')[0].trim().toLowerCase()!=='application/wasm')throw new TypeError('Expected application/wasm');return response.arrayBuffer();}
+  const WebAssembly={Module,Instance,Memory,Global,Table,CompileError,LinkError,RuntimeError,compile,instantiate,validate:bytes=>bridge('wasmValidate',0,wasmBytes(bytes)),compileStreaming:source=>streamBytes(source).then(compile),instantiateStreaming:(source,imports)=>streamBytes(source).then(bytes=>instantiate(bytes,imports))};
+  Object.defineProperty(WebAssembly,Symbol.toStringTag,{value:'WebAssembly'});
+  for(const [name,ctor] of Object.entries({Module,Instance,Memory,Global,Table}))Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:'WebAssembly.'+name,configurable:true});
+  globalThis.WebAssembly=WebAssembly;
   // Host hooks are captured by C++, then removed from the page global object.
   globalThis.__visualHooks={
     mutated:mutation,
+    canvasReset(id){resetCanvas(wrap(id));},
+    inputTask,
+    keyboard:keyboardInput,
+    pointer:pointerInput,
+    inputReset,
     moduleError(error,message){const event=new Event('error',{cancelable:true});event.error=error;event.message=message;globalThis.dispatchEvent(event);},
     focus(id){setFocus(id?wrap(id):null);},
     rejected(promise,reason,handled){const event=new Event(handled?'rejectionhandled':'unhandledrejection',{cancelable:!handled});event.promise=promise;event.reason=reason;return globalThis.dispatchEvent(event);},

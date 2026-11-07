@@ -16,8 +16,8 @@ A native condition-variable timeout checks lock reacquisition. Fourteen passes
 are needed for a successful host run; Switch adds a compiler-TLS case. No positive game-readiness status is
 inferred from these results.
 
-The runtime is pinned by commit in wamr.lock.json; fetch_wamr.py rejects local
-changes, and CMake rejects another revision. Runtime code is fetched into the
+The runtime is pinned by commit and a reviewed embedding patch in wamr.lock.json;
+fetch_wamr.py rejects unreviewed local changes, and CMake rejects another revision. Runtime code is fetched into the
 ignored build directory rather than committing a mutable external checkout.
 The license is included with the diagnostic NRO. Fixtures have WAT source,
 committed WASM bytes and SHA-256 metadata; embed_fixtures.py verifies their hashes.
@@ -149,3 +149,13 @@ checkpoints and native Result diagnostics saved in the same report. Host CI runs
 A passing new device case would establish reservation/commit/growth/cleanup for
 this allocation shape; it would not establish Keldurn startup, performance or
 rendering. The browser remains a separate reader NRO at version 0.3.2.
+
+## Browser embedding (0.12.0 visual candidate)
+
+The visual NRO reuses this interpreter through src/browser_port.c and its own
+QuickJS adapter. VISUAL_GAME_RUNTIME enables instruction metering and defers
+automatic start/constructor calls until imports and a budget are installed.
+The standalone probe keeps its original execution path. The hash-locked patch
+also fixes C API multiple-result import frames, 64-bit interpreter frame/table
+alignment, and preserves unshared browser memory growth/detachment semantics.
+See ../visual/README.md for the restricted bridge and remaining game gates.

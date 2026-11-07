@@ -315,3 +315,23 @@ www.jutsu.ru перенаправлял на jutsucdn.ru. Для основны�
 отсутствие WebGPU/JS↔WASM; заглушка успешного адаптера не добавлена. Всего 20 host
 наборов, включая отрицательные CSP и TLS partial-document сценарии. NRO требует
 повторной проверки на устройстве; переданные cookies/storage в тесты не попадают.
+
+## 0.12.0: игровая связка
+
+Реализован настоящий JS↔WAMR bridge числового WebAssembly, start/imports/exports,
+память с detachment, globals/tables, лимиты выполнения и явные ошибки неподдержанных
+импортов. Подключены native Canvas2D RGBA/SDL и ввод keyboard/pointer/gamepad.
+Собственная игра проверяет физику/сбор цели в WASM и вывод пикселей через весь Browser.
+Обновление canvas не должно вызывать CSS/layout; это отдельный интеграционный gate.
+
+Новые тесты: wasm-js-bridge (включая CSP), canvas-pixels, browser-game. HTTPS gate
+добавляет настоящий application/wasm >512 KiB, cross-origin compile, неправильный
+MIME/HTTP/CORS, превышение 8 MiB и AbortController. Chromium reference отдельно
+проверяет собственный модуль, RGBA, смешивание, resize/reset. Никакие пользовательские
+бинарники игр, аккаунты или ROM в тесты не включены.
+
+Открыто: imports memory/table/mutable global и cross-instance funcref, shared JS
+memory/workers, WebGL/WebGPU, WebAudio/видео, полный Canvas и Emscripten/DOM, проверка
+производительности/лимитов Switch. gam.onl — портал RetroArch/EmulatorJS: наличие
+WASM API не доказывает работу его загрузчиков и игровых ядер. Keldurn требует GPU
+и workers/shared memory. Полноценный запуск обоих сайтов остаётся отдельным gate.

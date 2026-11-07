@@ -69,6 +69,31 @@ int main(int argc, char **argv) {
         run("if(globalThis.networkTypesError||!globalThis.networkTypesResult)throw "
             "Error(globalThis.networkTypesError||'types "
             "unfinished');");
+        run("globalThis.gameNetworkDone=false;globalThis.gameNetworkError='';(async()=>{"
+            "const good=await WebAssembly.instantiateStreaming(fetch('/api-wasm?large=1'));"
+            "good.instance.exports.step(0,0,0,95,20,1);if(good.instance.exports.score.value!==1)"
+            "throw Error('real streamed game');"
+            "const remote=await WebAssembly.compileStreaming(fetch(cross+'/api-wasm'));if(!(remote "
+            "instanceof WebAssembly.Module))throw Error('CORS wasm');"
+            "for(const url of "
+            "['/api-wasm?mime=bad','/api-wasm?status=404',cross+'/api-wasm?cors=deny','/"
+            "api-wasm?over=1']){let rejected=false;try{await "
+            "WebAssembly.compileStreaming(fetch(url));}catch(e){rejected=e instanceof "
+            "TypeError;}if(!rejected)throw Error('stream rejection '+url);}"
+            "const abort=new AbortController();const "
+            "promise=WebAssembly.compileStreaming(fetch('/"
+            "api-slow',{signal:abort.signal}));abort.abort();try{await promise;throw "
+            "Error('missing abort');}catch(e){if(e.name!=='AbortError')throw e;}"
+            "globalThis.gameNetworkDone=true;})().catch(e=>{globalThis.gameNetworkError=e.name+': "
+            "'+e.message;});");
+        auto game_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+        while (std::chrono::steady_clock::now() < game_deadline) {
+            resources.pump();
+            js.poll(visual::Scripts::clock_ms());
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        run("if(gameNetworkError||!gameNetworkDone)throw Error(gameNetworkError||'Wasm network "
+            "unfinished');");
         std::ifstream input(TEST_FIXTURES "/web-network.js");
         CHECK(input);
         run(std::string((std::istreambuf_iterator<char>(input)), {}));
