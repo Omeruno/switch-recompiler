@@ -29,6 +29,18 @@ JSValue message_operation(const std::string &op, int argc, JSValueConst *args) {
         }
         return array;
     };
+    if (op == "msgBuffer") {
+        if (argc < 3)
+            return JS_ThrowTypeError(context, "Missing clone buffer");
+        size_t size = 0;
+        auto *bytes = JS_GetArrayBuffer(context, &size, args[2]);
+        if (!bytes && JS_HasException(context))
+            return JS_EXCEPTION;
+        if (size > MessageHub::packet_limit)
+            return JS_ThrowRangeError(context, "Clone buffer quota");
+        // Snapshot native bytes, without invoking a page's ArrayBuffer species constructor.
+        return JS_NewArrayBufferCopy(context, bytes, size);
+    }
     if (op == "msgInfo") {
         auto id = number(1);
         if (!id)

@@ -581,11 +581,19 @@
     cloneTag=Object.prototype.toString, cloneHas=Object.prototype.hasOwnProperty,
     bufferLength=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get,
     bufferResizable=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'resizable')?.get,
-    bufferSlice=ArrayBuffer.prototype.slice, cloneDateTime=Date.prototype.getTime,
+    cloneDateTime=Date.prototype.getTime,
     regexpSource=Object.getOwnPropertyDescriptor(RegExp.prototype,'source').get,
     regexpFlags=Object.getOwnPropertyDescriptor(RegExp.prototype,'flags').get,
     mapEach=Map.prototype.forEach, setEach=Set.prototype.forEach;
   const cloneErrors={Error,EvalError,RangeError,ReferenceError,SyntaxError,TypeError,URIError};
+  const cloneTypedPrototype=nativePrototype(Uint8Array.prototype),cloneViewCheck=ArrayBuffer.isView,
+    cloneTypedBuffer=Object.getOwnPropertyDescriptor(cloneTypedPrototype,'buffer').get,
+    cloneTypedOffset=Object.getOwnPropertyDescriptor(cloneTypedPrototype,'byteOffset').get,
+    cloneTypedLength=Object.getOwnPropertyDescriptor(cloneTypedPrototype,'length').get,
+    cloneTypedTag=Object.getOwnPropertyDescriptor(cloneTypedPrototype,Symbol.toStringTag).get,
+    cloneDataBuffer=Object.getOwnPropertyDescriptor(DataView.prototype,'buffer').get,
+    cloneDataOffset=Object.getOwnPropertyDescriptor(DataView.prototype,'byteOffset').get,
+    cloneDataLength=Object.getOwnPropertyDescriptor(DataView.prototype,'byteLength').get;
   const cloneViews={Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array,BigInt64Array,BigUint64Array,DataView};
   const portStates=new WeakMap(), portGet=portStates.get.bind(portStates), portSet=portStates.set.bind(portStates),
     portObjects=new Map(), portToken=Symbol(), localWindow=bridge('msgInfo',0).id;
@@ -624,11 +632,14 @@
       else {
         const tag=nativeApply(cloneTag,value,[]);
         if(tag==='[object ArrayBuffer]'){
-          let size,copy;try{size=nativeApply(bufferLength,value,[]);if(bufferResizable&&nativeApply(bufferResizable,value,[]))throw Error();if(size>262144-bytes)throw new RangeError();copy=nativeApply(bufferSlice,value,[0]);}catch{throw cloneFailure('Detached or excessive ArrayBuffer');}bytes+=size;node=['b',copy];
-        } else if(ArrayBuffer.isView(value)){
-          // Built-in getters validate backing stores; decoder recreates shared views.
-          const name=tag.slice(8,-1);if(!cloneViews[name])throw cloneFailure('Unsupported view');
-          node=['v',name,encode(value.buffer,depth+1),value.byteOffset,name==='DataView'?value.byteLength:value.length];
+          let size,copy;try{size=nativeApply(bufferLength,value,[]);if(bufferResizable&&nativeApply(bufferResizable,value,[]))throw Error();if(size>262144-bytes)throw new RangeError();copy=bridge('msgBuffer',0,value);}catch{throw cloneFailure('Detached or excessive ArrayBuffer');}bytes+=size;node=['b',copy];
+        } else if(cloneViewCheck(value)){
+          // Read internal slots, not overridable view properties or species.
+          let name=nativeApply(cloneTypedTag,value,[]),buffer,offset,length;
+          if(name){buffer=nativeApply(cloneTypedBuffer,value,[]);offset=nativeApply(cloneTypedOffset,value,[]);length=nativeApply(cloneTypedLength,value,[]);}
+          else{name='DataView';buffer=nativeApply(cloneDataBuffer,value,[]);offset=nativeApply(cloneDataOffset,value,[]);length=nativeApply(cloneDataLength,value,[]);}
+          if(!cloneViews[name])throw cloneFailure('Unsupported view');
+          node=['v',name,encode(buffer,depth+1),offset,length];
         } else if(tag==='[object Map]'){
           const entries=[];nativeApply(mapEach,value,[(v,k)=>entries.push([encode(k,depth+1),encode(v,depth+1)])]);node=['m',entries];
         } else if(tag==='[object Set]'){
