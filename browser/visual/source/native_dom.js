@@ -250,7 +250,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.14.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.15.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -567,11 +567,174 @@
     arrayBuffer(){return Promise.resolve(blobStates.get(this).bytes.buffer.slice(0));}
     text(){return Promise.resolve(new TextDecoder().decode(blobStates.get(this).bytes));}
   }
+  const messageHasOwn=Object.prototype.hasOwnProperty;
+  const cloneHasData=options=>nativeApply(messageHasOwn,options,['data']);
   const messageEvents=new WeakMap(),closeEvents=new WeakMap(),socketStates=new WeakMap(),sockets=new Map();
-  class MessageEvent extends Event {constructor(type,options={}){super(type,options);messageEvents.set(this,{data:options.data??null,origin:String(options.origin??''),lastEventId:String(options.lastEventId??''),source:options.source??null,ports:Object.freeze([...(options.ports??[])])});}}
+  class MessageEvent extends Event {constructor(type,options={}){super(type,options);messageEvents.set(this,{data:cloneHasData(options)?options.data:null,origin:String(options.origin??''),lastEventId:String(options.lastEventId??''),source:options.source??null,ports:Object.freeze([...(options.ports??[])])});}}
   readonlyFields(MessageEvent,messageEvents,['data','origin','lastEventId','source','ports']);
   class CloseEvent extends Event {constructor(type,options={}){super(type,options);closeEvents.set(this,{code:(Number(options.code)||0)&65535,reason:String(options.reason??''),wasClean:!!options.wasClean});}}
   readonlyFields(CloseEvent,closeEvents,['code','reason','wasClean']);
+  // Bounded structured cloning. The wire contains only owned descriptors and copied
+  // buffers; functions/DOM/host objects and bytecode never cross JS runtimes.
+  const cloneKeys=Object.keys, cloneIsArray=Array.isArray, CloneBytes=Uint8Array,
+    CloneArray=Array, CloneMap=Map, CloneSet=Set, CloneDate=Date, CloneRegExp=RegExp,
+    cloneTag=Object.prototype.toString, cloneHas=Object.prototype.hasOwnProperty,
+    bufferLength=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get,
+    bufferResizable=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'resizable')?.get,
+    bufferSlice=ArrayBuffer.prototype.slice, cloneDateTime=Date.prototype.getTime,
+    regexpSource=Object.getOwnPropertyDescriptor(RegExp.prototype,'source').get,
+    regexpFlags=Object.getOwnPropertyDescriptor(RegExp.prototype,'flags').get,
+    mapEach=Map.prototype.forEach, setEach=Set.prototype.forEach;
+  const cloneErrors={Error,EvalError,RangeError,ReferenceError,SyntaxError,TypeError,URIError};
+  const cloneViews={Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array,BigInt64Array,BigUint64Array,DataView};
+  const portStates=new WeakMap(), portGet=portStates.get.bind(portStates), portSet=portStates.set.bind(portStates),
+    portObjects=new Map(), portToken=Symbol(), localWindow=bridge('msgInfo',0).id;
+  const cloneFailure=message=>new DOMException(message,'DataCloneError');
+  const portKey=(id,epoch)=>id+':'+epoch;
+  function portState(port){const state=portGet(port);if(!state)throw new TypeError('Illegal invocation');return state;}
+  function messageTransfer(value){
+    const ports=[],buffers=[],objects=[],seen=new Set();
+    if(value===undefined)return {ports,buffers,objects};
+    if(value===null||typeof value[Symbol.iterator]!=='function')throw new TypeError('Transfer list must be iterable');
+    for(const item of value){
+      if(objects.length>=64)throw new DOMException('Transfer quota','QuotaExceededError');
+      if(seen.has(item))throw cloneFailure('Duplicate transferable');seen.add(item);objects.push(item);
+      const state=portGet(item);
+      if(state){if(state.detached)throw cloneFailure('Port is detached');ports.push([state.id,state.epoch]);continue;}
+      try{nativeApply(bufferLength,item,[]);if(bufferResizable&&nativeApply(bufferResizable,item,[]))throw Error();new CloneBytes(item);buffers.push(item);}catch{throw cloneFailure('Unsupported or detached transferable');}
+    }
+    return {ports,buffers,objects};
+  }
+  function encodeMessage(value,transfer){
+    const nodes=[],seen=new Map();let edges=0,bytes=0;
+    const portIndexes=new Map();for(let i=0;i<transfer.ports.length;i++)portIndexes.set(portKey(...transfer.ports[i]),i);
+    function encode(value,depth=0){
+      if(++edges>32768||depth>256)throw new DOMException('Clone graph quota','QuotaExceededError');
+      const type=typeof value;
+      if(type==='function'||type==='symbol')throw cloneFailure('Value cannot be cloned');
+      if(type==='string'){bytes+=value.length*2;if(bytes>262144)throw new DOMException('Clone byte quota','QuotaExceededError');}
+      if(value===null||type!=='object')return value;
+      if(seen.has(value))return {r:seen.get(value)};
+      if(nodes.length>=8192)throw new DOMException('Clone node quota','QuotaExceededError');
+      const index=nodes.length;seen.set(value,index);nodes.push(null);let node;
+      const port=portGet(value);
+      if(port){const at=portIndexes.get(portKey(port.id,port.epoch));if(at===undefined||port.detached)throw cloneFailure('MessagePort must be transferred');node=['p',at];}
+      else if(value instanceof EventTarget||value===globalThis||value instanceof Blob)throw cloneFailure('Host object cannot be cloned');
+      else if(cloneIsArray(value)){if(value.length>32768)throw new DOMException('Array quota','QuotaExceededError');node=['a',value.length,cloneKeys(value).map(key=>[key,encode(value[key],depth+1)])];}
+      else {
+        const tag=nativeApply(cloneTag,value,[]);
+        if(tag==='[object ArrayBuffer]'){
+          let size,copy;try{size=nativeApply(bufferLength,value,[]);if(bufferResizable&&nativeApply(bufferResizable,value,[]))throw Error();if(size>262144-bytes)throw new RangeError();copy=nativeApply(bufferSlice,value,[0]);}catch{throw cloneFailure('Detached or excessive ArrayBuffer');}bytes+=size;node=['b',copy];
+        } else if(ArrayBuffer.isView(value)){
+          // Built-in getters validate backing stores; decoder recreates shared views.
+          const name=tag.slice(8,-1);if(!cloneViews[name])throw cloneFailure('Unsupported view');
+          node=['v',name,encode(value.buffer,depth+1),value.byteOffset,name==='DataView'?value.byteLength:value.length];
+        } else if(tag==='[object Map]'){
+          const entries=[];nativeApply(mapEach,value,[(v,k)=>entries.push([encode(k,depth+1),encode(v,depth+1)])]);node=['m',entries];
+        } else if(tag==='[object Set]'){
+          const entries=[];nativeApply(setEach,value,[v=>entries.push(encode(v,depth+1))]);node=['s',entries];
+        } else if(tag==='[object Date]')node=['d',nativeApply(cloneDateTime,value,[])];
+        else if(tag==='[object RegExp]')node=['r',nativeApply(regexpSource,value,[]),nativeApply(regexpFlags,value,[])];
+        else if(tag==='[object Error]'){
+          const name=String(value.name),message=String(value.message),stack=typeof value.stack==='string'?value.stack:'';
+          const cause=Object.getOwnPropertyDescriptor(value,'cause');node=['e',Object.hasOwn(cloneErrors,name)?name:'Error',message,stack,cause&&'value'in cause,undefined];
+          if(node[4])node[5]=encode(cause.value,depth+1);
+        }
+        else if(tag==='[object Object]')node=['o',cloneKeys(value).map(key=>[key,encode(value[key],depth+1)])];
+        else throw cloneFailure('Unsupported clone type');
+      }
+      nodes[index]=node;return {r:index};
+    }
+    return {root:encode(value),nodes};
+  }
+  function decodeMessage(graph,ports){
+    const values=new CloneArray(graph.nodes.length),pending=new CloneSet();
+    function decode(ref){if(ref===null||typeof ref!=='object')return ref;return build(ref.r);}
+    function build(index){
+      if(nativeApply(cloneHas,values,[index]))return values[index];
+      if(pending.has(index))throw cloneFailure('Invalid cyclic view');pending.add(index);
+      const node=graph.nodes[index],type=node[0];let value;
+      if(type==='o')value={};else if(type==='a')value=new CloneArray(node[1]);
+      else if(type==='b')value=node[1];else if(type==='m')value=new CloneMap();else if(type==='s')value=new CloneSet();
+      else if(type==='e')value=new cloneErrors[node[1]](node[2]);
+      else if(type==='d')value=new CloneDate(node[1]);else if(type==='r')value=new CloneRegExp(node[1],node[2]);
+      else if(type==='p')value=ports[node[1]];
+      else if(type==='v')value=new cloneViews[node[1]](decode(node[2]),node[3],node[4]);
+      else throw cloneFailure('Unknown clone type');
+      values[index]=value;pending.delete(index);
+      if(type==='e'){defineNativeProperty(value,'stack',{value:node[3],writable:true,configurable:true});if(node[4])defineNativeProperty(value,'cause',{value:decode(node[5]),writable:true,configurable:true});}
+      if(type==='o'||type==='a')for(const [key,child] of node[type==='a'?2:1])defineNativeProperty(value,key,{value:decode(child),writable:true,enumerable:true,configurable:true});
+      else if(type==='m')for(const [key,child] of node[1])value.set(decode(key),decode(child));
+      else if(type==='s')for(const child of node[1])value.add(decode(child));
+      return value;
+    }
+    return decode(graph.root);
+  }
+  function transferredObjects(refs){return refs.map(ref=>makePort(ref[0],ref[1]));}
+  function detachPorts(transfer){for(const item of transfer.objects){const state=portGet(item);if(state){state.detached=true;portObjects.delete(portKey(state.id,state.epoch));}}}
+  function sendMessage(operation,id,extra,value,transferValue){
+    const transfer=messageTransfer(transferValue),graph=encodeMessage(value,transfer);
+    let accepted;
+    try{accepted=bridge(operation,id,graph,extra,transfer.ports,transfer.buffers);}catch(error){if(error instanceof TypeError&&error.message==='WebAssembly memory buffers cannot be transferred')throw error;if(error instanceof RangeError)throw new DOMException('Message quota exceeded','QuotaExceededError');throw cloneFailure('Message transfer failed');}
+    if(accepted)detachPorts(transfer);
+  }
+  class MessagePort extends EventTarget {
+    constructor(token,id,epoch){super();if(token!==portToken)throw new TypeError('Illegal constructor');portSet(this,{id,epoch,detached:false,closed:false,onmessage:null,onmessageerror:null});}
+    postMessage(value,options=[]){if(!arguments.length)throw new TypeError('postMessage requires data');const state=portState(this);if(state.detached||state.closed)return;sendMessage('msgPortSend',state.id,state.epoch,value,options!=null&&typeof options[Symbol.iterator]==='function'?options:options?.transfer);}
+    start(){const state=portState(this);if(!state.detached&&!state.closed)bridge('msgStart',state.id,state.epoch);}
+    close(){const state=portState(this);if(state.detached||state.closed)return;bridge('msgClose',state.id,state.epoch);state.closed=true;portObjects.delete(portKey(state.id,state.epoch));}
+    get onmessage(){return portState(this).onmessage;}set onmessage(fn){const state=portState(this);state.onmessage=typeof fn==='function'?fn:null;if(state.onmessage)this.start();}
+    get onmessageerror(){return portState(this).onmessageerror;}set onmessageerror(fn){portState(this).onmessageerror=typeof fn==='function'?fn:null;}
+  }
+  function makePort(id,epoch){const key=portKey(id,epoch);let port=portObjects.get(key);if(!port){port=new MessagePort(portToken,id,epoch);portObjects.set(key,port);}return port;}
+  class MessageChannel {
+    constructor(){const refs=bridge('msgChannel',0);defineNativeProperty(this,'port1',{value:makePort(...refs[0]),enumerable:true});defineNativeProperty(this,'port2',{value:makePort(...refs[1]),enumerable:true});}
+  }
+  // Foreign WindowProxy exposes messaging and topology, never a foreign DOM.
+  const windowProxies=new Map();
+  function windowProxy(id){
+    if(id===localWindow)return globalThis;
+    let proxy=windowProxies.get(id);if(proxy)return proxy;
+    const post=(value,originOrOptions='/',transfer=[])=>{
+      let targetOrigin=originOrOptions;
+      if(originOrOptions!==null&&typeof originOrOptions==='object'){targetOrigin=originOrOptions.targetOrigin??'/';transfer=originOrOptions.transfer;}
+      targetOrigin=String(targetOrigin);validateTargetOrigin(targetOrigin);
+      sendMessage('msgSend',id,targetOrigin,value,transfer);
+    };
+    proxy=new Proxy(Object.create(null),{get(target,key){
+      if(key==='postMessage')return post;
+      if(key==='self'||key==='window'||key==='frames')return proxy;
+      if(key==='closed')return bridge('msgInfo',id).closed;
+      if(key==='parent'||key==='top')return windowProxy(bridge('msgInfo',id)[key]);
+      if(key===Symbol.toStringTag)return 'Window';
+      if(key==='then')return undefined;
+      throw new DOMException('Foreign window access is unavailable','SecurityError');
+    },set(){throw new DOMException('Foreign window access is unavailable','SecurityError');},getPrototypeOf(){return null;}});
+    windowProxies.set(id,proxy);return proxy;
+  }
+  function validateTargetOrigin(value){if(value==='*'||value==='/')return;let parsed;try{parsed=bridge('origin',0,value);}catch{}if(!value.startsWith('https://')||!parsed)throw new DOMException('Invalid targetOrigin','SyntaxError');}
+  globalThis.postMessage=function postMessage(value,originOrOptions='/',transfer=[]){
+    if(!arguments.length)throw new TypeError('postMessage requires data');
+    let targetOrigin=originOrOptions;
+    if(originOrOptions!==null&&typeof originOrOptions==='object'){targetOrigin=originOrOptions.targetOrigin??'/';transfer=originOrOptions.transfer;}
+    targetOrigin=String(targetOrigin);validateTargetOrigin(targetOrigin);sendMessage('msgSend',localWindow,targetOrigin,value,transfer);
+  };
+  defineNativeProperty(globalThis,'parent',{get:()=>windowProxy(bridge('msgInfo',0).parent),enumerable:true});
+  defineNativeProperty(globalThis,'top',{get:()=>windowProxy(bridge('msgInfo',0).top),enumerable:true});
+  globalThis.structuredClone=function structuredClone(value,options={}){
+    if(!arguments.length)throw new TypeError('structuredClone requires data');
+    const transfer=messageTransfer(options?.transfer),graph=encodeMessage(value,transfer);let packet;
+    try{packet=bridge('msgClone',0,graph,0,transfer.ports,transfer.buffers);}catch(error){if(error instanceof TypeError&&error.message==='WebAssembly memory buffers cannot be transferred')throw error;if(error instanceof RangeError)throw new DOMException('Clone quota exceeded','QuotaExceededError');throw cloneFailure('Clone failed');}
+    detachPorts(transfer);return decodeMessage(packet.graph,transferredObjects(packet.ports));
+  };
+  for(const [name,ctor] of Object.entries({MessagePort,MessageChannel})){defineNativeProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
+  function messageTask(){
+    const packet=bridge('msgPop',0);if(!packet)return false;
+    const ports=transferredObjects(packet.ports),target=packet.port?portObjects.get(portKey(packet.port,packet.epoch)):globalThis;
+    if(!target){for(const port of ports)port.close();return true;}
+    let data;try{data=decodeMessage(packet.graph,ports);}catch{for(const port of ports)port.close();uaDispatch(target,new MessageEvent('messageerror'));return true;}
+    uaDispatch(target,new MessageEvent('message',{data,origin:packet.origin,source:packet.port?null:windowProxy(packet.source),ports}));return true;
+  }
   const socketState=socket=>{const state=socketStates.get(socket);if(!state)throw new TypeError('Illegal invocation');return state;};
   class WebSocket extends EventTarget {
     constructor(url,protocols=[]){super();if(arguments.length<1)throw new TypeError('WebSocket requires a URL');
@@ -829,6 +992,7 @@
     mutated:mutation,
     canvasReset(id){resetCanvas(wrap(id));},
     inputTask,
+    messageTask,
     keyboard:keyboardInput,
     pointer:pointerInput,
     inputReset,

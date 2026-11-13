@@ -14,6 +14,7 @@ class GameWasm {
     explicit GameWasm(JSContext *);
     ~GameWasm();
     JSValue operation(const std::string &, int, JSValueConst *);
+    bool owns_memory_buffer(JSValueConst) const;
     GameStats stats() const;
 };
 } // namespace visual

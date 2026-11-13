@@ -1,4 +1,4 @@
-# Switch visual browser — 0.14.0
+# Switch visual browser — 0.15.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -7,6 +7,12 @@ recommend it as a full browser engine. This prototype tests a native rendering
 path; it is not a production engine selection or a playable Keldurn client.
 
 ## What is implemented
+
+- Native asynchronous MessageChannel/MessagePort, transferable ports/ArrayBuffers,
+  bounded structuredClone and window postMessage. Window source/origin derive from
+  the native browsing-context group; separate QuickJS runtimes exchange cloned
+  wire data. **Iframe loading/painting is still absent**, so this does not yet make
+  a CAPTCHA widget usable. The offline demo includes a repeatable messaging check.
 
 - Persistent TLS WebSocket connections (`wss:`), text/binary messages, subprotocols,
   buffered sends, ping/pong and close events. The event loop cancels old sockets
@@ -837,3 +843,43 @@ Host builds require libmbedtls-dev; Switch builds require switch-mbedtls. The
 library's license is included in the NRO notices. Host-only VISUAL_HOST_TRACE=1
 prints raw exception stacks for explicitly selected debugging runs; normal device
 reports continue to contain class/origin groups, without stacks or form data.
+
+
+## Messaging foundation — 0.15.0
+
+A native MessageHub routes asynchronous window/port tasks between independent
+QuickJS runtimes. Each window has a native URL origin and lifecycle generation;
+ports have one owner and a transfer epoch. Stale wrappers cannot start, close or
+consume the moved endpoint. MessageEvent has native origin/source, transferred
+ports, explicit undefined data and trusted UA delivery. This does not establish
+human identity or service acceptance. WindowProxy permits messaging/topology and
+rejects foreign document access. Even same-origin foreign DOM access is currently
+unavailable. Actual iframe creation, loading, painting and input are a next step;
+the two-context host test is an isolated runtime harness, not an iframe renderer.
+
+The shared clone subset preserves primitives/BigInt, cycles, sparse arrays, plain
+objects, Map/Set, Date/RegExp, numeric typed arrays/DataView with shared backing,
+and Error message/stack/cause. ArrayBuffers detach only after native acceptance;
+ports transfer with new endpoint ownership, including already-queued messages.
+Live WebAssembly memory buffers can be copied but cannot be detached/transferred.
+Functions, symbols, DOM nodes and unsupported host objects fail with DataCloneError.
+SharedArrayBuffer, Blob cloning, DOMException serialization, resizable-buffer
+semantics and transferable streams are not implemented. Sending the receiving
+endpoint through itself is rejected; complete HTML structured-clone coverage is
+not claimed. This is not JSON serialization or a fake parent-window iframe.
+
+Limits per native browsing-context group: 128 lifetime port IDs, 64 lifetime
+window IDs (four live child reservations), 256 queued messages / 2 MiB total,
+64 pending messages per destination, 256 KiB serialized message, 64 transferables.
+The JS graph limit is 8192 objects / 32768 edges / 256 recursive levels. Quota
+rejection preserves the sender's transferables. Discarded messages close their
+in-transit endpoints; navigation/destroy cancels messages from the old generation.
+Ports require start() when using addEventListener; assigning onmessage starts them.
+The message task source rotates with HTTP, sockets, modules, input and timers.
+
+`message-broker` and `messaging-realms` join the host regression suites. The latter
+also runs the packaged Russian offline demo, checks two different native origins
+and runtimes, cyclic data/typed-buffer transfer, replies via event.source, access
+restrictions, quotas, teardown and successful reuse after a rejected operation.
+The common positive/negative fixture is separately run in Chromium using
+`python3 browser/tests/https_fixture.py python3 browser/visual/tests/chromium_messaging.py`.

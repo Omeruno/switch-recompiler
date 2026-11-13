@@ -899,5 +899,14 @@ JSValue GameWasm::operation(const std::string &op, int argc, JSValueConst *a) {
         return JS_ThrowOutOfMemory(impl->ctx);
     }
 }
+bool GameWasm::owns_memory_buffer(JSValueConst value) const {
+    if (!JS_IsObject(value))
+        return false;
+    for (const auto &entry : impl->externals)
+        if (JS_IsObject(entry.second.buffer) &&
+            JS_VALUE_GET_PTR(value) == JS_VALUE_GET_PTR(entry.second.buffer))
+            return true;
+    return false;
+}
 GameStats GameWasm::stats() const { return impl->counts; }
 } // namespace visual

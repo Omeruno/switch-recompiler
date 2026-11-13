@@ -885,7 +885,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.14.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.15.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -928,7 +928,7 @@ struct Browser {
         report_lines.push_back("Встроенных iframe: " + std::to_string(frames) +
                                " · не поддерживаются; капча может быть недоступна.");
         report_lines.push_back(
-            "Проверки сайтов: iframe/postMessage/MessageChannel ещё отсутствуют.");
+            "postMessage / MessageChannel: есть; iframe ещё не реализованы.");
         report_lines.push_back("WebGPU/WebGL: не реализованы; Keldurn пока не запускается.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
@@ -1036,7 +1036,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.14.0");
+    visual::diagnostic("boot", "0.15.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));

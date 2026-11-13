@@ -2,6 +2,7 @@
 #include "container.h"
 #include "game_stats.h"
 #include "issues.h"
+#include "message_hub.h"
 #include <cstdint>
 #include <memory>
 namespace visual {
@@ -11,7 +12,8 @@ class Scripts {
 
   public:
     Scripts(const litehtml::document::ptr &, Container &, Resources &,
-            std::vector<std::string> policies = {});
+            std::vector<std::string> policies = {}, std::shared_ptr<MessageHub> messages = {},
+            uint32_t window_id = 0);
     ~Scripts();
     Scripts(const Scripts &) = delete;
     Scripts &operator=(const Scripts &) = delete;

@@ -1,11 +1,11 @@
-# CAPTCHA compatibility audit — 0.14.0
+# CAPTCHA compatibility audit — 0.15.0
 
 ## Result
 
 **Interactive reCAPTCHA / Yandex SmartCaptcha completion is not supported yet.**
-This release fixes several confirmed loader and DOM failures. The browser still
-has no child browsing contexts, cross-window postMessage or MessageChannel/port
-transfer. A nonworking widget cannot be repaired by declaring those features
+This release fixes several confirmed loader and DOM failures. The browser still has no loaded/painted child iframe browsing contexts.
+0.15.0 adds native postMessage, MessageChannel/port transfer and cloning; the
+cross-runtime harness verifies the transport but does not render an iframe. A nonworking widget cannot be repaired by declaring those features
 supported. Sites can also independently reject an experimental browser.
 
 The reason Google/Yandex request verification on the user's network is not
@@ -31,7 +31,7 @@ on Switch or that search results are fully usable.
 The native host opened `https://www.google.com/recaptcha/api2/demo` without
 submitting the form or solving a challenge. After the loader fixes, its first
 observed TypeError was an Element.getElementsByTagName call. Live Element/Document
-HTMLCollection bindings remove that failure. The subsequent observed blocker is
+HTMLCollection bindings remove that failure. At the 0.14.0 checkpoint, the subsequent observed blocker was
 `ReferenceError: MessageChannel is not defined`; the native iframe limitation
 message is visible. A checkbox/challenge is still not rendered.
 
@@ -69,10 +69,32 @@ Real iframe support needs separate documents and JS realms, per-frame URL/origin
 clipped painting and native focus/input, lifecycle and navigation cancellation.
 Parent frame-src and child frame-ancestors/X-Frame-Options/sandbox must be enforced
 before rendering. Cross-origin WindowProxy must restrict DOM/storage access.
-postMessage needs source/origin validation and asynchronous delivery; MessagePort
-transfer needs real endpoint ownership, cloning, quotas and teardown. Same-origin
+The implemented postMessage/MessagePort broker supplies source/origin checks,
+asynchronous delivery, ownership, cloning, quotas and teardown; iframe lifecycle
+integration must preserve these guarantees. Same-origin
 frame DOM access and third-party credentials also require explicit policy.
 
 Those mechanisms need owned multi-origin tests before attempting provider
 compatibility. Sharing the parent's window/document with a foreign iframe would
 break the origin boundary and is not an acceptable implementation.
+
+
+## 0.15.0 follow-up
+
+The owned MessageChannel/structuredClone fixture passes both the native host and
+Chromium 151.0.7922.34. A separate host harness creates two QuickJS runtimes with
+native parent/child URL origins and checks source identity, cross-origin DOM denial,
+cyclic Map/typed-buffer cloning, transferred port replies, teardown and quota
+atomicity. Neither runtime is installed into an HTML iframe yet.
+
+A fresh native capture of the public Google reCAPTCHA demo on 2026-11-13 loaded
+its page scripts without the former MessageChannel ReferenceError. It still shows
+the unsupported-iframe explanation rather than a checkbox. The form was not
+submitted and no challenge was solved. No claim is made about SmartCaptcha or
+Google/Yandex search verification on the user's network.
+
+The next required integration remains actual child documents: separate resource
+and script lifecycles, per-frame origins, clipped painting and input; parent CSP
+frame-src/child-src and child frame-ancestors/X-Frame-Options checks on every
+navigation; sandbox policy and an explicit credential/storage policy. The native
+broker is ready for this integration, but it does not replace these boundaries.

@@ -234,12 +234,18 @@ struct Scripts::Impl {
          usable_runtime = false;
     uint64_t previous_frame = 0;
     unsigned task_source = 0;
+    std::shared_ptr<MessageHub> messages;
+    uint32_t message_window = 0;
+    bool message_bound = false, message_reserved = false;
     WebSockets sockets;
     std::unique_ptr<GameWasm> game;
 #include "module_loader.inc"
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
-         std::vector<std::string> policy)
-        : doc(d), container(c), resources(r), policies(std::move(policy)) {
+         std::vector<std::string> policy, std::shared_ptr<MessageHub> hub, uint32_t window_id)
+        : doc(d), container(c), resources(r), policies(std::move(policy)),
+          messages(hub ? std::move(hub) : std::make_shared<MessageHub>()) {
+        message_reserved = window_id == 0;
+        message_window = window_id ? window_id : messages->create_window();
         try {
             initialize();
         } catch (...) {
@@ -248,6 +254,8 @@ struct Scripts::Impl {
         }
     }
     void initialize() {
+        messages->bind(message_window, &container, origin(container.page_url));
+        message_bound = true;
         descendants(doc->root());
         now = origin_time = Scripts::clock_ms();
         const JSMallocFunctions allocator = {alloc, dealloc, resize, usable};
@@ -294,6 +302,9 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
+        if (message_window && (message_bound || message_reserved))
+            messages->close_window(message_window);
+        message_window = 0;
         game.reset();
         sockets.clear();
         release_modules();
@@ -1076,6 +1087,7 @@ struct Scripts::Impl {
             return JS_ThrowInternalError(ctx, "Native DOM failure");
         }
     }
+#include "message_ops.inc"
     JSValue operation(int argc, JSValueConst *a) {
         if (argc < 2)
             return JS_ThrowTypeError(context, "Invalid native call");
@@ -1096,6 +1108,8 @@ struct Scripts::Impl {
                 return game->operation("wasmBlocked", argc, a);
             return game->operation(op, argc, a);
         }
+        if (op.rfind("msg", 0) == 0)
+            return message_operation(op, argc, a);
         int id = integer(1);
         auto js = [&](const std::string &text) {
             return JS_NewStringLen(context, text.data(), text.size());
@@ -2308,8 +2322,8 @@ struct Scripts::Impl {
         for (unsigned task = 0; task < 8 && Scripts::clock_ms() < turn_end; ++task) {
             budget(50);
             bool ran = false;
-            for (unsigned attempt = 0; attempt < 5 && !ran; ++attempt) {
-                auto source = task_source++ % 5;
+            for (unsigned attempt = 0; attempt < 6 && !ran; ++attempt) {
+                auto source = task_source++ % 6;
                 if (source == 0)
                     ran = settle_fetch();
                 else if (source == 1)
@@ -2318,6 +2332,10 @@ struct Scripts::Impl {
                     ran = pump_modules();
                 else if (source == 3) {
                     auto result = call("inputTask", {});
+                    ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
+                    JS_FreeValue(context, result);
+                } else if (source == 4) {
+                    auto result = call("messageTask", {});
                     ran = !JS_IsException(result) && JS_ToBool(context, result) > 0;
                     JS_FreeValue(context, result);
                 } else {
@@ -2384,8 +2402,8 @@ struct Scripts::Impl {
     }
 };
 Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,
-                 std::vector<std::string> p)
-    : impl(std::make_unique<Impl>(d, c, r, std::move(p))) {}
+                 std::vector<std::string> p, std::shared_ptr<MessageHub> hub, uint32_t window_id)
+    : impl(std::make_unique<Impl>(d, c, r, std::move(p), std::move(hub), window_id)) {}
 Scripts::~Scripts() = default;
 bool Scripts::poll(uint64_t n) { return impl->poll(n); }
 void Scripts::focus(const litehtml::element::ptr &el) {
