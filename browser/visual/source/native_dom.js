@@ -3,10 +3,11 @@
   const bridge=globalThis.__native;
   const defineNativeProperty=Object.defineProperty, nativePrototype=Object.getPrototypeOf;
   delete globalThis.__native;
+  const nativeApply=Reflect.apply,eventTrust=new WeakSet(),trustHas=eventTrust.has.bind(eventTrust),trustAdd=eventTrust.add.bind(eventTrust),trustDelete=eventTrust.delete.bind(eventTrust),eventBrand=new WeakSet(),eventBrandAdd=eventBrand.add.bind(eventBrand),eventBrandHas=eventBrand.has.bind(eventBrand);
   const nodes=new Map(), listeners=new WeakMap();
   let listenerCount=0, readyState='loading';
   class Event {
-    constructor(type,options={}) {this.type=String(type);this.bubbles=!!options.bubbles;this.cancelable=!!options.cancelable;this.defaultPrevented=false;this.target=null;this.currentTarget=null;this.eventPhase=0;this._stop=false;this._immediate=false;}
+    constructor(type,options={}) {eventBrandAdd(this);defineNativeProperty(this,'isTrusted',{get:()=>trustHas(this),enumerable:true});this.type=String(type);this.bubbles=!!options.bubbles;this.cancelable=!!options.cancelable;this.defaultPrevented=false;this.target=null;this.currentTarget=null;this.eventPhase=0;this._stop=false;this._immediate=false;}
     preventDefault(){if(this.cancelable)this.defaultPrevented=true;}
     stopPropagation(){this._stop=true;}
     stopImmediatePropagation(){this._stop=this._immediate=true;}
@@ -28,7 +29,7 @@
       const at=list.findIndex(e=>e.fn===callback&&e.capture===capture);if(at>=0){list.splice(at,1);--listenerCount;}
     },
     dispatchEvent(event) {
-      if(!(event instanceof Event))throw new TypeError('Expected Event');
+      if(!(event instanceof Event)||!eventBrandHas(event))throw new TypeError('Expected Event');
       event._stop=event._immediate=false;event.target=this;
       const path=[this];let p=this;
       for(let i=0;i<256;i++){p=p===document?(event.type==='load'?null:globalThis):p===globalThis?null:p.parentNode;if(!p)break;path.push(p);}
@@ -50,6 +51,9 @@
       event.currentTarget=null;event.eventPhase=0;return !event.defaultPrevented;
     }
   };
+  const dispatchImplementation=eventMethods.dispatchEvent;
+  eventMethods.dispatchEvent=function(event){trustDelete(event);return nativeApply(dispatchImplementation,this,[event]);};
+  function uaDispatch(target,event){trustAdd(event);return nativeApply(dispatchImplementation,target,[event]);}
   function selectorParts(s){
     s=String(s);if(s.length>512)throw new RangeError('Selector limit');
     const result=[];let depth=0,quote='',start=0;
@@ -134,7 +138,7 @@
     get offsetWidth(){return this.getBoundingClientRect().width;}get offsetHeight(){return this.getBoundingClientRect().height;}
     focus(){setFocus(this);}
     blur(){if(currentFocus()===this)setFocus(null);}
-    click(){this.dispatchEvent(new Event('click',{bubbles:true,cancelable:true}));}
+    click(){this.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));}
   }
   for(const name of ['lang','dir','title','rel','target','placeholder','integrity','crossOrigin','content'])Object.defineProperty(Node.prototype,name,{get(){return this.getAttribute(name)||'';},set(value){this.setAttribute(name,value);}});
   Object.defineProperty(Node.prototype,'httpEquiv',{get(){return this.getAttribute('http-equiv')||'';},set(v){this.setAttribute('http-equiv',v);}});
@@ -219,14 +223,21 @@
     }
     return nodes.get(key);
   }
+  const collectionState=new WeakMap(),collectionToken=Symbol();
+  function collectionItems(value){const state=collectionState.get(value);if(!state)throw new TypeError('Illegal collection invocation');const revision=bridge('domRevision',0);if(state.revision!==revision){state.items=bridge(state.operation,state.root,state.name).map(wrap);state.revision=revision;}return state.items;}
+  class HTMLCollection {constructor(token){if(token!==collectionToken)throw new TypeError('Illegal constructor');}get length(){return collectionItems(this).length;}item(index){if(arguments.length===0)throw new TypeError('Index required');return collectionItems(this)[Number(index)>>>0]??null;}namedItem(name){if(arguments.length===0)throw new TypeError('Name required');name=String(name);return name?collectionItems(this).find(node=>node.id===name||node.getAttribute('name')===name)??null:null;}*[Symbol.iterator](){for(let i=0;i<this.length;i++)yield this.item(i);}}
+  defineNativeProperty(HTMLCollection.prototype,Symbol.toStringTag,{value:'HTMLCollection',configurable:true});globalThis.HTMLCollection=HTMLCollection;
+  function liveCollection(root,name,operation){const target=new HTMLCollection(collectionToken),state={root,name:String(name),operation,revision:-1,items:[]};collectionState.set(target,state);const numeric=k=>typeof k==='string'&&/^(0|[1-9][0-9]*)$/.test(k);const proxy=new Proxy(target,{get(object,key,receiver){if(numeric(key))return collectionItems(proxy)[Number(key)];if(typeof key==='string'&&!(key in object))return object.namedItem.call(proxy,key)??undefined;return Reflect.get(object,key,receiver);},set(object,key,value,receiver){if(key==='length'||numeric(key))return false;return Reflect.set(object,key,value,receiver);},defineProperty(object,key,descriptor){if(key==='length'||numeric(key))return false;return Reflect.defineProperty(object,key,descriptor);},has(object,key){return numeric(key)?Number(key)<collectionItems(proxy).length:typeof key==='string'&&!(key in object)?object.namedItem.call(proxy,key)!==null:key in object;},ownKeys(object){return [...Reflect.ownKeys(object),...collectionItems(proxy).map((_,i)=>String(i))];},getOwnPropertyDescriptor(object,key){if(numeric(key)){const value=collectionItems(proxy)[Number(key)];return value?{value,writable:false,enumerable:true,configurable:true}:undefined;}return Reflect.getOwnPropertyDescriptor(object,key);}});collectionState.set(proxy,state);return proxy;}
+  Element.prototype.getElementsByTagName=function(name){if(!elementBrand.has(this))throw new TypeError('Illegal invocation');return liveCollection(this._key,name,'tagCollection');};
+  Element.prototype.getElementsByClassName=function(name){if(!elementBrand.has(this))throw new TypeError('Illegal invocation');return liveCollection(this._key,name,'classCollection');};
   const document=wrap(0);
   function documentReceiver(value){if(value!==document)throw new TypeError('Illegal invocation');}
   Document.prototype.createElement=function(tag){documentReceiver(this);return wrap(bridge('create',0,String(tag)));};
   Document.prototype.createTextNode=function(text){documentReceiver(this);return wrap(bridge('createText',0,String(text)));};
   Document.prototype.createDocumentFragment=function(){documentReceiver(this);return wrap(bridge('createFragment',0));};
   Document.prototype.getElementById=function(id){documentReceiver(this);const key=bridge('id',0,String(id));return key?wrap(key):null;};
-  Document.prototype.getElementsByClassName=function(s){documentReceiver(this);return query(0,'.'+String(s).trim().split(/\s+/).join('.'));};
-  Document.prototype.getElementsByTagName=function(s){documentReceiver(this);return query(0,String(s));};
+  Document.prototype.getElementsByClassName=function(s){documentReceiver(this);return liveCollection(0,s,'classCollection');};
+  Document.prototype.getElementsByTagName=function(s){documentReceiver(this);return liveCollection(0,s,'tagCollection');};
   Object.defineProperties(document,{
     documentElement:{get:()=>wrap(bridge('root',0))},body:{get:()=>document.querySelector('body')},head:{get:()=>document.querySelector('head')},
     title:{get:()=>document.querySelector('title')?.textContent||'',set:v=>{const t=document.querySelector('title');if(t)t.textContent=v;}},
@@ -239,7 +250,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.13.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.14.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -667,6 +678,17 @@
   const canvasToken=Symbol();
   const canvasState=object=>{const state=canvasContextStates.get(object);if(!state)throw new TypeError('Illegal Canvas invocation');return state;};
   function resetCanvas(canvas){const context=canvasContexts.get(canvas);if(context){const state=canvasState(context);state.fillStyle='#000000';state.color=0xff000000;state.alpha=1;state.smoothing=true;state.stack=[];}}
+  function binaryString(value){if(typeof value==='symbol')throw new TypeError('Expected string');const text=String(value);if(text.length>1048576)throw new DOMException('Base64 quota exceeded','QuotaExceededError');return text;}
+  const base64Alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  globalThis.btoa=function btoa(value){const text=binaryString(value),out=[];for(let i=0;i<text.length;i+=3){const a=text.charCodeAt(i),b=i+1<text.length?text.charCodeAt(i+1):0,c=i+2<text.length?text.charCodeAt(i+2):0;if(a>255||b>255||c>255)throw new DOMException('Expected Latin-1 string','InvalidCharacterError');out.push(base64Alphabet[a>>2]+base64Alphabet[(a&3)<<4|b>>4]+(i+1<text.length?base64Alphabet[(b&15)<<2|c>>6]:'=')+(i+2<text.length?base64Alphabet[c&63]:'='));}return out.join('');};
+  globalThis.atob=function atob(value){let text=binaryString(value).replace(/[\t\n\f\r ]/g,'');if(text.length%4===0)text=text.replace(/==?$/,'');if(text.length%4===1||/[^A-Za-z0-9+/]/.test(text))throw new DOMException('Invalid base64 string','InvalidCharacterError');const out=[];let bits=0,accumulator=0;for(const c of text){accumulator=(accumulator<<6)|base64Alphabet.indexOf(c);bits+=6;if(bits>=8){bits-=8;out.push(String.fromCharCode((accumulator>>bits)&255));}}return out.join('');};
+  const CryptoBytes=Uint8Array;
+  const typedPrototype=nativePrototype(Uint8Array.prototype),typedTag=Object.getOwnPropertyDescriptor(typedPrototype,Symbol.toStringTag).get,typedBuffer=Object.getOwnPropertyDescriptor(typedPrototype,'buffer').get,typedOffset=Object.getOwnPropertyDescriptor(typedPrototype,'byteOffset').get,typedLength=Object.getOwnPropertyDescriptor(typedPrototype,'byteLength').get;
+  class Crypto {constructor(){throw new TypeError('Illegal constructor');}getRandomValues(array){if(this!==webCrypto)throw new TypeError('Illegal invocation');let tag;try{tag=Reflect.apply(typedTag,array,[]);}catch{}if(!['Int8Array','Uint8Array','Uint8ClampedArray','Int16Array','Uint16Array','Int32Array','Uint32Array','BigInt64Array','BigUint64Array'].includes(tag))throw new DOMException('Expected integer TypedArray','TypeMismatchError');const count=Reflect.apply(typedLength,array,[]);if(count>65536)throw new DOMException('Random byte quota exceeded','QuotaExceededError');const buffer=Reflect.apply(typedBuffer,array,[]),offset=Reflect.apply(typedOffset,array,[]);new CryptoBytes(buffer,offset,count);bridge('random',0,buffer,offset,count);return array;}}
+  const webCrypto=Object.create(Crypto.prototype);Object.defineProperty(Crypto.prototype,Symbol.toStringTag,{value:'Crypto'});
+  Object.assign(globalThis,{Crypto});
+  defineNativeProperty(globalThis,'crypto',{get:()=>webCrypto,enumerable:true,configurable:true});
+  defineNativeProperty(globalThis,'isSecureContext',{get:()=>bridge('secureContext',0),enumerable:true});
   function canvasColor(value){
     value=String(value).trim().toLowerCase();const named={black:'#000000',white:'#ffffff',red:'#ff0000',green:'#008000',lime:'#00ff00',blue:'#0000ff',yellow:'#ffff00',cyan:'#00ffff',magenta:'#ff00ff',transparent:'#00000000',gray:'#808080',grey:'#808080',orange:'#ffa500'};let normalized=named[value]??value,bytes;
     if(/^#[0-9a-f]{3,4}$/.test(normalized))normalized='#'+[...normalized.slice(1)].map(c=>c+c).join('');
@@ -712,11 +734,11 @@
   }
   readonlyFields(KeyboardEvent,keyboardStates,['key','code','location','repeat','isComposing','ctrlKey','shiftKey','altKey','metaKey','keyCode','charCode','which']);
   class MouseEvent extends Event {
-    constructor(type,options={}){super(type,options);mouseStates.set(this,{clientX:Number(options.clientX)||0,clientY:Number(options.clientY)||0,screenX:Number(options.screenX)||0,screenY:Number(options.screenY)||0,pageX:Number(options.pageX??options.clientX)||0,pageY:Number(options.pageY??options.clientY)||0,offsetX:Number(options.offsetX)||0,offsetY:Number(options.offsetY)||0,movementX:Number(options.movementX)||0,movementY:Number(options.movementY)||0,button:Number(options.button)||0,buttons:Number(options.buttons)||0,relatedTarget:options.relatedTarget??null,ctrlKey:!!options.ctrlKey,shiftKey:!!options.shiftKey,altKey:!!options.altKey,metaKey:!!options.metaKey});}
+    constructor(type,options={}){super(type,options);mouseStates.set(this,{detail:Number(options.detail)||0,clientX:Number(options.clientX)||0,clientY:Number(options.clientY)||0,screenX:Number(options.screenX)||0,screenY:Number(options.screenY)||0,pageX:Number(options.pageX??options.clientX)||0,pageY:Number(options.pageY??options.clientY)||0,offsetX:Number(options.offsetX)||0,offsetY:Number(options.offsetY)||0,movementX:Number(options.movementX)||0,movementY:Number(options.movementY)||0,button:Number(options.button)||0,buttons:Number(options.buttons)||0,relatedTarget:options.relatedTarget??null,ctrlKey:!!options.ctrlKey,shiftKey:!!options.shiftKey,altKey:!!options.altKey,metaKey:!!options.metaKey});}
     get x(){return this.clientX;}get y(){return this.clientY;}
     getModifierState(key){return {Control:this.ctrlKey,Shift:this.shiftKey,Alt:this.altKey,Meta:this.metaKey}[String(key)]??false;}
   }
-  readonlyFields(MouseEvent,mouseStates,['clientX','clientY','screenX','screenY','pageX','pageY','offsetX','offsetY','movementX','movementY','button','buttons','relatedTarget','ctrlKey','shiftKey','altKey','metaKey']);
+  readonlyFields(MouseEvent,mouseStates,['detail','clientX','clientY','screenX','screenY','pageX','pageY','offsetX','offsetY','movementX','movementY','button','buttons','relatedTarget','ctrlKey','shiftKey','altKey','metaKey']);
   class PointerEvent extends MouseEvent {constructor(type,options={}){super(type,options);pointerStates.set(this,{pointerId:Number(options.pointerId)||0,pointerType:String(options.pointerType??''),isPrimary:!!options.isPrimary,pressure:Number(options.pressure)||0,tangentialPressure:Number(options.tangentialPressure)||0,width:Number(options.width??1),height:Number(options.height??1),tiltX:Number(options.tiltX)||0,tiltY:Number(options.tiltY)||0,twist:Number(options.twist)||0});}}
   readonlyFields(PointerEvent,pointerStates,['pointerId','pointerType','isPrimary','pressure','tangentialPressure','width','height','tiltX','tiltY','twist']);
   for(const [name,fn] of Object.entries({setPointerCapture(id){id=Number(id);if(!activePointers.has(id))throw new DOMException('Pointer is not active','NotFoundError');if(!this.isConnected)throw new DOMException('Element is detached','InvalidStateError');capturedPointers.set(id,this);this.dispatchEvent(new PointerEvent('gotpointercapture',{bubbles:true,pointerId:id}));},releasePointerCapture(id){id=Number(id);if(capturedPointers.get(id)===this){capturedPointers.delete(id);this.dispatchEvent(new PointerEvent('lostpointercapture',{bubbles:true,pointerId:id}));}},hasPointerCapture(id){return capturedPointers.get(Number(id))===this;}}))Object.defineProperty(Element.prototype,name,{value:fn,writable:true,configurable:true,enumerable:true});
@@ -728,8 +750,8 @@
   function sampleGamepad(){const input=bridge('gamepad',0);if(!input&&!gamepad)return null;if(!gamepad){gamepad=new Gamepad(canvasToken);const buttons=Object.freeze(Array.from({length:17},()=>{const button=new GamepadButton(canvasToken);gamepadButtons.set(button,{pressed:false,touched:false,value:0});return button;}));gamepadStates.set(gamepad,{id:'Switch Controller',index:0,connected:false,timestamp:0,mapping:'standard',axes:Object.freeze([0,0,0,0]),buttons,vibrationActuator:null,hapticActuators:Object.freeze([])});}const state=gamepadStates.get(gamepad);state.connected=!!input;state.timestamp=input?.timestamp??state.timestamp;state.axes=Object.freeze(input?.axes??[0,0,0,0]);for(let i=0;i<17;i++)gamepadButtons.set(state.buttons[i],{pressed:!!input?.buttons[i],touched:!!input?.buttons[i],value:input?.buttons[i]?1:0});return gamepad;}
   navigator.getGamepads=()=>{const pad=sampleGamepad();return [pad?.connected?pad:null,null,null,null];};
   function inputTask(){const pad=sampleGamepad(),connected=!!pad?.connected;if(connected===gamepadConnected)return false;gamepadConnected=connected;globalThis.dispatchEvent(new GamepadEvent(connected?'gamepadconnected':'gamepaddisconnected',{gamepad:pad}));return true;}
-  function keyboardInput(id,type,key,code,repeat,modifiers){const target=id?wrap(id):document.body??document;const keyCode={ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40,Enter:13,Escape:27,' ':32,Backspace:8,Tab:9}[key]??(key.length===1?key.toUpperCase().charCodeAt(0):0),options={bubbles:true,cancelable:true,key,code,repeat,ctrlKey:!!(modifiers&1),shiftKey:!!(modifiers&2),altKey:!!(modifiers&4),metaKey:!!(modifiers&8),keyCode,which:keyCode};if(type==='keydown'&&heldKeys.size<64)heldKeys.set(code,{target,options});if(type==='keyup')heldKeys.delete(code);return target.dispatchEvent(new KeyboardEvent(type,options));}
-  function pointerInput(id,type,x,y,pointerId,buttons,pointerType){let target=capturedPointers.get(pointerId)??wrap(id);if(type==='pointerdown'){if(activePointers.size>=10)return true;activePointers.add(pointerId);}const rect=target.getBoundingClientRect(),event=new PointerEvent(type,{bubbles:true,cancelable:true,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,pointerId,pointerType,buttons,button:type==='pointermove'?-1:0,isPrimary:activePointers.values().next().value===pointerId,pressure:buttons?0.5:0});const allowed=target.dispatchEvent(event)&&!capturedPointers.has(pointerId);if(type==='pointerup'||type==='pointercancel'){if(capturedPointers.has(pointerId))capturedPointers.get(pointerId).releasePointerCapture(pointerId);activePointers.delete(pointerId);}return allowed;}
+  function keyboardInput(id,type,key,code,repeat,modifiers){const target=id?wrap(id):document.body??document;const keyCode={ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40,Enter:13,Escape:27,' ':32,Backspace:8,Tab:9}[key]??(key.length===1?key.toUpperCase().charCodeAt(0):0),options={bubbles:true,cancelable:true,key,code,repeat,ctrlKey:!!(modifiers&1),shiftKey:!!(modifiers&2),altKey:!!(modifiers&4),metaKey:!!(modifiers&8),keyCode,which:keyCode};if(type==='keydown'&&heldKeys.size<64)heldKeys.set(code,{target,options});if(type==='keyup')heldKeys.delete(code);return uaDispatch(target,new KeyboardEvent(type,options));}
+  function pointerInput(id,type,x,y,pointerId,buttons,pointerType){let target=capturedPointers.get(pointerId)??wrap(id);if(type==='pointerdown'){if(activePointers.size>=10)return true;activePointers.add(pointerId);}const rect=target.getBoundingClientRect(),event=new PointerEvent(type,{bubbles:true,cancelable:true,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,pointerId,pointerType,buttons,button:type==='pointermove'?-1:0,isPrimary:activePointers.values().next().value===pointerId,pressure:buttons?0.5:0});const allowed=uaDispatch(target,event)&&!capturedPointers.has(pointerId);if(type==='pointerup'||type==='pointercancel'){if(capturedPointers.has(pointerId))capturedPointers.get(pointerId).releasePointerCapture(pointerId);activePointers.delete(pointerId);}return allowed;}
   function inputReset(){for(const {target,options} of heldKeys.values())(target.isConnected?target:globalThis).dispatchEvent(new KeyboardEvent('keyup',{...options,repeat:false}));heldKeys.clear();for(const [id,target] of capturedPointers)target.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerId:id,pointerType:'touch'}));capturedPointers.clear();activePointers.clear();}
   for(const [name,ctor] of Object.entries({KeyboardEvent,MouseEvent,PointerEvent,Gamepad,GamepadButton,GamepadEvent})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
   const wasmModules=new WeakMap(),wasmInstances=new WeakMap(),wasmMemories=new WeakMap(),wasmGlobals=new WeakMap(),wasmTables=new WeakMap(),wasmFunctions=new WeakMap(),wasmObjects=new Map();
@@ -821,11 +843,11 @@
     task(now){let selected=null,due=Infinity;for(const [id,t] of timers){if(t.due<=now&&t.due<due){selected=id;due=t.due;}}if(intersectionPending.size&&(preferIntersection||selected===null)){preferIntersection=false;return intersectionTask();}if(selected===null)return false;preferIntersection=true;const t=timers.get(selected);if(t.repeat)t.due=now+t.repeat;else timers.delete(selected);try{Reflect.apply(t.fn,globalThis,t.args);}catch(e){bridge('report',0,String(e));}return true;},
     beginFrame(now){frameTime=now;frameIDs=[...frames.keys()];},
     frame(){while(frameIDs.length){const id=frameIDs.shift(),fn=frames.get(id);if(!fn)continue;frames.delete(id);try{Reflect.apply(fn,globalThis,[frameTime]);}catch(e){bridge('report',0,String(e));}return true;}return false;},
-    interactive(){readyState='interactive';document.dispatchEvent(new Event('readystatechange'));},
-    domReady(){document.dispatchEvent(new Event('DOMContentLoaded',{bubbles:true}));},
-    complete(){readyState='complete';document.dispatchEvent(new Event('readystatechange'));},
-    loaded(){globalThis.dispatchEvent(new Event('load'));},
-    event(id,type,cancelable,submitter){const event=new Event(type,{bubbles:!['focus','blur','load','error'].includes(type),cancelable});if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return wrap(id).dispatchEvent(event);},
+    interactive(){readyState='interactive';uaDispatch(document,new Event('readystatechange'));},
+    domReady(){uaDispatch(document,new Event('DOMContentLoaded',{bubbles:true}));},
+    complete(){readyState='complete';uaDispatch(document,new Event('readystatechange'));},
+    loaded(){uaDispatch(globalThis,new Event('load'));},
+    event(id,type,cancelable,submitter,x=0,y=0){const target=wrap(id),options={bubbles:!['focus','blur','load','error'].includes(type),cancelable};let event;if(['click','mousedown','mouseup','dblclick'].includes(type)){const rect=target.getBoundingClientRect();event=new MouseEvent(type,{...options,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,detail:1});}else event=new Event(type,options);if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return uaDispatch(target,event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched,
     socket:socketEvent,

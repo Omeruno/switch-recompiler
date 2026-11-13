@@ -43,7 +43,7 @@ class Container final : public litehtml::document_container {
     GameInput game_input;
     Forms forms;
     std::shared_ptr<CanvasBudget> canvases = std::make_shared<CanvasBudget>();
-    unsigned painted_canvases = 0;
+    unsigned painted_canvases = 0, painted_frames = 0;
     void draw_canvas(SDL_Texture *, const litehtml::position &);
     unsigned style_passes = 0, layout_passes = 0;
     void restyle(const litehtml::document::ptr &);

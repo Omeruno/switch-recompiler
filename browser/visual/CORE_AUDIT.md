@@ -366,3 +366,23 @@ WASM→JS→WASM growth; bounds trap при активном data initializer �
 Chromium reference, 14 проверок отдельного engine probe и тест отказов linear
 memory прошли. Новый runtime patch применён и повторно проверен на чистом
 checkout закреплённой версии. Проверка на физическом Switch для 0.13.0 ожидается.
+
+## 0.14.0: диагностика и загрузчик страниц проверки
+
+Подтверждены независимые барьеры: лимит classic script 128 КиБ, отвергаемые CORS/SRI,
+отсутствующий Element.getElementsByTagName и реальные child browsing contexts.
+Загрузчик принимает 2 МиБ/source при общей квоте 8 МиБ, проверяет SHA2 SRI/CORS,
+редиректы и nosniff. Добавлены base64, OS random integer views, native MouseEvent
+client coordinates/trust и live tag/class HTMLCollection. На месте видимого
+неподдержанного iframe выводится объяснение; это не работающий frame renderer.
+
+CAPTCHA_AUDIT.md фиксирует публичные наблюдения и оставшийся MessageChannel blocker
+в Google demo. postMessage, port transfer, отдельные iframe realms и политика
+встраивания ещё не реализованы. Прохождение капчи и изменение risk-score сервиса
+не подтверждены. UA/проверки сервисов не подменяются.
+
+Проверено 2026-11-13: 27/27 Release и 27/27 ASan/UBSan с leak detection;
+общие fixtures base64/Crypto/Event/HTMLCollection и classic CORS/SRI сверены с
+Chromium 151.0.7922.34. Публичная Google demo не проходит проверку: зафиксирован
+MessageChannel blocker и объяснение вместо iframe. Приём CAPTCHA сервисом не
+заявлен. ARM64 NRO должен пройти отдельную CI-сборку и проверку RomFS.

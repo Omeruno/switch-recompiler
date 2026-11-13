@@ -190,14 +190,24 @@ void browser_dynamic_checks(Browser &app, const std::string &base) {
     eval("script('large','/dyn-large.js',false);");
     for (int i = 0; i < 10; ++i)
         app.pump();
-    eval("if(largeExecuted||!dynEvents.includes('error:large'))throw Error('cached script byte "
-         "limit bypass');");
+    eval("if(!largeExecuted||!dynEvents.includes('load:large'))throw Error('provider-sized cached "
+         "script did not execute');");
+    check(app.resources.request(base + "/dyn-over.js", visual::Resources::script_limit + 128) !=
+              nullptr,
+          "oversized cache fixture");
+    until([&] { return !app.resources.pending(); });
+    eval("globalThis.overExecuted=false;script('over','/dyn-over.js',false);");
+    for (int i = 0; i < 10; i++)
+        app.pump();
+    eval("if(overExecuted||!dynEvents.includes('error:over'))throw Error('cached script byte limit "
+         "bypass');");
     eval("if(dynTrace.filter(x=>x==='fast').length!==2||!dynEvents.includes('error:missing')||!"
          "dynEvents.includes('load:late'))throw Error('cache/error/late-src');const "
          "sri=document.createElement('script');sri.integrity='sha256-not-supported';sri.src='/"
          "dyn-fast.js?integrity=1';sri.onerror=()=>dynEvents.push('error:sri');document.body."
          "appendChild(sri);");
-    for (int i = 0; i < 5; ++i)
+    until([&] { return !app.resources.pending(); });
+    for (int i = 0; i < 10; ++i)
         app.pump();
     eval(
         R"JS(if(!dynEvents.includes('error:sri'))throw Error('SRI ignored');globalThis.badInline=false;

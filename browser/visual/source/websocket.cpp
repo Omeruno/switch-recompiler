@@ -1,4 +1,5 @@
 #include "websocket.h"
+#include "secure_random.h"
 extern "C" {
 #include "profile.h"
 }
@@ -23,29 +24,8 @@ uint64_t ws_clock() {
     clock_gettime(CLOCK_MONOTONIC, &t);
     return uint64_t(t.tv_sec) * 1000 + uint64_t(t.tv_nsec) / 1000000;
 }
-bool entropy(uint8_t *p, size_t n) {
-#ifdef __SWITCH__
-    randomGet(p, n);
-    return true;
-#else
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-    if (fd < 0)
-        return false;
-    size_t offset = 0;
-    while (offset < n) {
-        auto got = read(fd, p + offset, n - offset);
-        if (got < 0 && errno == EINTR)
-            continue;
-        if (got <= 0) {
-            ::close(fd);
-            return false;
-        }
-        offset += size_t(got);
-    }
-    ::close(fd);
-    return true;
-#endif
-}
+bool entropy(uint8_t *p, size_t n) { return secure_random(p, n); }
+
 std::string lower_ws(std::string s) {
     for (char &c : s)
         c = char(std::tolower(static_cast<unsigned char>(c)));

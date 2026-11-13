@@ -1,5 +1,7 @@
 #include "scripts.h"
 #include "game_wasm.h"
+#include "script_integrity.h"
+#include "secure_random.h"
 #include "websocket.h"
 extern "C" {
 #include "profile.h"
@@ -192,7 +194,8 @@ struct Scripts::Impl {
     std::vector<litehtml::element::ptr> nodes{nullptr};
     std::unordered_map<const litehtml::element *, unsigned> ids;
     struct Job {
-        std::string source, url, module, nonce;
+        std::string source, url, module, nonce, integrity;
+        bool cors = false;
         Resource *resource = nullptr;
         enum Mode { ordered, asynchronous, deferred, dynamic_ordered } mode = ordered;
         bool external = false, done = false, dynamic = false;
@@ -204,6 +207,7 @@ struct Scripts::Impl {
     };
     std::unordered_map<const litehtml::element *, ScriptState> script_states;
     unsigned script_depth = 0;
+    uint64_t dom_revision = 1;
     bool eval_blocked = false;
     litehtml::element::ptr current_script;
     struct Fetch {
@@ -379,7 +383,9 @@ struct Scripts::Impl {
 #endif
         return Scripts::clock_ms();
     }
+    unsigned execution_budget = 50;
     void budget(unsigned ms) {
+        execution_budget = ms;
         deadline = execution_ms() + ms;
         checks = 0;
     }
@@ -389,6 +395,19 @@ struct Scripts::Impl {
     }
     void exception() {
         auto ex = JS_GetException(context);
+#ifndef __SWITCH__
+        // Explicit host debugging only; device reports remain class/origin-only.
+        if (const char *trace = std::getenv("VISUAL_HOST_TRACE");
+            trace && std::strcmp(trace, "1") == 0 && JS_IsObject(ex)) {
+            auto stack = JS_GetPropertyStr(context, ex, "stack");
+            const char *text = JS_ToCString(context, stack);
+            if (text) {
+                fprintf(stderr, "HOST JS STACK %s\n", text);
+                JS_FreeCString(context, text);
+            }
+            JS_FreeValue(context, stack);
+        }
+#endif
         // Class only: messages/stacks may contain form values or access tokens.
         std::string kind = "Error";
         if (JS_IsObject(ex)) {
@@ -417,7 +436,15 @@ struct Scripts::Impl {
     bool evaluate(const char *source, size_t n, const std::string &name) {
         auto previous = source_origin;
         source_origin = name.rfind("https://", 0) == 0 ? origin(name) : origin(container.page_url);
-        JSValue v = JS_Eval(context, source, n, name.c_str(), JS_EVAL_TYPE_GLOBAL);
+        // Parsing a bounded external bundle is distinct from executing it.
+        // Give guest execution its normal budget after compilation finishes.
+        auto compiled = JS_Eval(context, source, n, name.c_str(),
+                                JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+        JSValue v = compiled;
+        if (!JS_IsException(compiled)) {
+            budget(execution_budget);
+            v = JS_EvalFunction(context, compiled);
+        }
         bool ok = !JS_IsException(v);
         if (!ok)
             exception();
@@ -677,6 +704,7 @@ struct Scripts::Impl {
                   const std::vector<Element> &removed = {}, const Element &previous = {},
                   const Element &next = {}, const char *attribute = nullptr,
                   const std::string *old = nullptr) {
+        ++dom_revision;
         if (!observing)
             return;
         std::vector<Element> chain;
@@ -802,6 +830,8 @@ struct Scripts::Impl {
     std::set<std::string> seen_meta;
     bool policy_overflow = false;
     unsigned scripts_prepared = 0;
+    size_t classic_source_bytes = 0;
+    static constexpr size_t classic_total_limit = 8u * 1024u * 1024u;
     void absorb_meta() {
         for (auto &el : doc->root()->select_all("meta")) {
             if (lower(el->get_attr("http-equiv", "")) != "content-security-policy")
@@ -932,12 +962,20 @@ struct Scripts::Impl {
                 fail("policy", "external-script");
                 return;
             }
-            if (*el->get_attr("integrity", "")) {
-                fail("unsupported", "script-integrity");
+            entry.integrity = el->get_attr("integrity", "");
+            if (entry.integrity.size() > 8192) {
+                fail("limit", "script-integrity-bytes");
                 return;
             }
-            if (el->get_attr("crossorigin") && origin(entry.url) != origin(container.page_url)) {
-                fail("unsupported", "script-cors");
+            entry.cors = el->get_attr("crossorigin") != nullptr;
+            if (entry.cors && lower(el->get_attr("crossorigin", "")) == "use-credentials" &&
+                origin(entry.url) != origin(container.page_url)) {
+                fail("unsupported", "script-cors-credentials");
+                return;
+            }
+            if (!entry.integrity.empty() && !entry.cors &&
+                origin(entry.url) != origin(container.page_url)) {
+                fail("policy", "script-integrity-cors");
                 return;
             }
             entry.external = true;
@@ -946,14 +984,24 @@ struct Scripts::Impl {
                          : el->get_attr("async") ? Job::asynchronous
                          : el->get_attr("defer") ? Job::deferred
                                                  : Job::ordered;
-            entry.resource = resources.request(entry.url, 128u * 1024u);
+            if (entry.cors) {
+                WebRequest options;
+                options.source = container.page_url;
+                options.credentials = lower(el->get_attr("crossorigin", "")) == "use-credentials"
+                                          ? "include"
+                                          : "same-origin";
+                entry.resource = resources.network(entry.url, "GET", "", std::move(options));
+            } else
+                entry.resource = resources.request(entry.url, Resources::script_limit);
             if (!entry.resource) {
                 fail("limit", "script-resource");
                 return;
             }
             entry.resource->critical = true;
+            entry.resource->script = true;
+            entry.resource->limit = Resources::script_limit;
         } else {
-            if (source.size() > 128u * 1024u) {
+            if (source.size() > Resources::script_limit) {
                 fail("limit", "script-bytes");
                 return;
             }
@@ -961,6 +1009,11 @@ struct Scripts::Impl {
                 fail("policy", "inline-script");
                 return;
             }
+            if (source.size() > classic_total_limit - classic_source_bytes) {
+                fail("limit", "script-total-bytes");
+                return;
+            }
+            classic_source_bytes += source.size();
             entry.url = container.base;
             entry.source = std::move(source);
         }
@@ -1047,6 +1100,19 @@ struct Scripts::Impl {
         auto js = [&](const std::string &text) {
             return JS_NewStringLen(context, text.data(), text.size());
         };
+        if (op == "secureContext")
+            return JS_NewBool(context, container.page_url.rfind("https://", 0) == 0);
+        if (op == "random") {
+            size_t size = 0;
+            auto *data = argc > 2 ? JS_GetArrayBuffer(context, &size, a[2]) : nullptr;
+            auto offset = integer(3), count = integer(4);
+            if (offset < 0 || count < 0 || count > 65536 || size_t(offset) > size ||
+                size_t(count) > size - size_t(offset) || (!data && count))
+                return JS_ThrowRangeError(context, "Random buffer range");
+            if (count && !secure_random(data + offset, size_t(count)))
+                return JS_ThrowInternalError(context, "Secure random source unavailable");
+            return JS_UNDEFINED;
+        }
         if (op == "gamepad") {
             const auto &input = container.game_input;
             if (!input.connected)
@@ -1795,6 +1861,33 @@ struct Scripts::Impl {
             }
             return JS_UNDEFINED;
         }
+        if (op == "domRevision")
+            return JS_NewFloat64(context, double(dom_revision));
+        if (op == "tagCollection" || op == "classCollection") {
+            auto name = str(2, 512);
+            auto wanted = words(name);
+            auto out = JS_NewArray(context);
+            uint32_t index = 0;
+            for (auto &item : descendants(el, !id)) {
+                if (!std::dynamic_pointer_cast<litehtml::html_tag>(item))
+                    continue;
+                bool match;
+                if (op == "tagCollection")
+                    match = name == "*" || lower(item->get_tagName()) == lower(name);
+                else {
+                    auto classes = words(item->get_attr("class", ""));
+                    match = !wanted.empty() &&
+                            std::all_of(wanted.begin(), wanted.end(), [&](const auto &value) {
+                                return std::find(classes.begin(), classes.end(), value) !=
+                                       classes.end();
+                            });
+                }
+                if (match)
+                    JS_SetPropertyUint32(context, out, index++,
+                                         JS_NewInt32(context, int(handle(item))));
+            }
+            return out;
+        }
         if (op == "query" || op == "matches") {
             auto selector = str(2, 512);
             litehtml::css_selector parsed;
@@ -1918,7 +2011,8 @@ struct Scripts::Impl {
         throw std::runtime_error("Unsupported DOM operation");
     }
     bool event(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
-               const litehtml::element::ptr &submitter = {}) {
+               const litehtml::element::ptr &submitter = {}, double client_x = 0,
+               double client_y = 0) {
         if (!usable_runtime)
             return true;
         budget(50);
@@ -1943,7 +2037,8 @@ struct Scripts::Impl {
         auto result =
             call("event", {JS_NewInt32(context, el ? int(handle(el)) : 0),
                            JS_NewString(context, type.c_str()), JS_NewBool(context, cancelable),
-                           JS_NewInt32(context, submitter ? int(handle(submitter)) : -1)});
+                           JS_NewInt32(context, submitter ? int(handle(submitter)) : -1),
+                           JS_NewFloat64(context, client_x), JS_NewFloat64(context, client_y)});
         bool ok = JS_IsException(result) ? false : JS_ToBool(context, result) > 0;
         JS_FreeValue(context, result);
         drain();
@@ -1953,7 +2048,8 @@ struct Scripts::Impl {
         if (!j.module.empty())
             return module_graph(j.module) != 0;
         return !j.resource ||
-               (j.resource->state != Resource::queued && j.resource->state != Resource::loading);
+               (j.resource->state != Resource::queued && j.resource->state != Resource::loading &&
+                j.resource->state != Resource::checking);
     }
     void execute(Job &j, bool nested = false) {
         j.done = true;
@@ -1990,11 +2086,50 @@ struct Scripts::Impl {
                 script_event(j.element, "error");
                 return;
             }
-            if (j.resource->data.size() > 128u * 1024u) {
+            if (j.resource->data.size() > Resources::script_limit) {
                 issue_log.add("limit", "script-bytes", origin(j.url));
                 script_event(j.element, "error");
                 return;
             }
+            if (!j.integrity.empty() && !j.cors &&
+                origin(j.resource->effective) != origin(container.page_url)) {
+                issue_log.add("policy", "script-integrity-cors", origin(j.url));
+                script_event(j.element, "error");
+                return;
+            }
+            auto header = j.resource->response_headers.find("x-content-type-options");
+            auto content = j.resource->response_headers.find("content-type");
+            auto mime = content == j.resource->response_headers.end()
+                            ? std::string{}
+                            : lower(content->second.substr(0, content->second.find(';')));
+            auto end = mime.find_last_not_of(" \t");
+            if (end != std::string::npos)
+                mime.resize(end + 1);
+            bool js_mime = mime == "text/javascript" || mime == "application/javascript" ||
+                           mime == "application/ecmascript" || mime == "text/ecmascript" ||
+                           mime == "application/x-javascript";
+            auto sniff = header == j.resource->response_headers.end()
+                             ? std::string{}
+                             : lower(header->second.substr(0, header->second.find(',')));
+            while (!sniff.empty() && (sniff.back() == ' ' || sniff.back() == '\t'))
+                sniff.pop_back();
+            if (sniff == "nosniff" && !js_mime) {
+                issue_log.add("policy", "script-nosniff", origin(j.url));
+                script_event(j.element, "error");
+                return;
+            }
+            if (!script_integrity_matches(j.integrity, j.resource->data.data(),
+                                          j.resource->data.size())) {
+                issue_log.add("policy", "script-integrity-mismatch", origin(j.url));
+                script_event(j.element, "error");
+                return;
+            }
+            if (j.resource->data.size() > classic_total_limit - classic_source_bytes) {
+                issue_log.add("limit", "script-total-bytes", origin(j.url));
+                script_event(j.element, "error");
+                return;
+            }
+            classic_source_bytes += j.resource->data.size();
             j.source.assign(j.resource->data.begin(), j.resource->data.end());
         } else {
             absorb_meta();
@@ -2117,6 +2252,11 @@ struct Scripts::Impl {
         for (auto &j : jobs) {
             if (j.done)
                 continue;
+            if (j.resource && j.resource->state == Resource::checking) {
+                resources.follow(*j.resource, allowed("script-src", j.resource->pending_url, false,
+                                                      "'unsafe-inline'", j.nonce));
+                return dirty;
+            }
             all_done = false;
             if (j.mode == Job::ordered && !ordered)
                 ordered = &j;
@@ -2261,6 +2401,9 @@ void Scripts::focus(const litehtml::element::ptr &el) {
 bool Scripts::dispatch(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
                        const litehtml::element::ptr &submitter) {
     return impl->event(el, type, cancelable, submitter);
+}
+bool Scripts::click(const litehtml::element::ptr &el, double x, double y) {
+    return impl->event(el, "click", true, {}, x, y);
 }
 bool Scripts::eval(const std::string &source, unsigned ms) {
     impl->budget(ms);

@@ -1,4 +1,4 @@
-# Switch visual browser — 0.13.0
+# Switch visual browser — 0.14.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -810,3 +810,30 @@ path silently ignores imports, so this bridge explicitly rejects it. No positive
 EmulatorJS, RetroArch, gam.onl or Keldurn game-compatibility claim follows from this
 release. This closes an unshared-memory/global loader barrier; it is not complete
 Emscripten or general game-engine support.
+
+## Verification-page compatibility — 0.14.0
+
+Classic scripts now allow 2 MiB/source and 8 MiB total/page; the earlier 128 KiB
+source limit rejected current public CAPTCHA bundles. Anonymous classic CORS,
+SHA256/384/512 script integrity (Mbed TLS) and redirect eligibility are implemented.
+MIME nosniff, strongest-hash selection and negative CORS/integrity tests are gates.
+Compilation and guest execution are separate; execution still has its normal
+budget. Cross-site credentialed scripts remain blocked.
+
+Added bounded atob/btoa, OS-backed Crypto.getRandomValues for integer TypedArrays,
+secure-context reporting, native input trust and MouseEvent client coordinates.
+Synthetic clicks/dispatch remain untrusted. Element/Document tag/class queries
+return live HTMLCollection objects. Visible unsupported iframe elements show a
+noninteractive explanation instead of silently disappearing.
+
+**CAPTCHA completion is still unavailable:** iframe browsing contexts, cross-window
+postMessage and MessageChannel/port transfer are missing. The public reCAPTCHA demo
+still stops at MessageChannel after the earlier loader/Element query failures are
+fixed. The reason a service requests verification on a particular IP/session is
+not established. See CAPTCHA_AUDIT.md for observations and the next required
+architecture. This release does not establish Google/Yandex/Cloudflare acceptance.
+
+Host builds require libmbedtls-dev; Switch builds require switch-mbedtls. The
+library's license is included in the NRO notices. Host-only VISUAL_HOST_TRACE=1
+prints raw exception stacks for explicitly selected debugging runs; normal device
+reports continue to contain class/origin groups, without stacks or form data.

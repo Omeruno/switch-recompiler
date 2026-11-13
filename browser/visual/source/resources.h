@@ -32,7 +32,7 @@ struct Resource {
     std::vector<std::string> policies;
     size_t header_bytes = 0, web_header_bytes = 0;
     long http_status = 0;
-    bool transfer_ok = false, critical = false, stylesheet = false, image = false;
+    bool transfer_ok = false, critical = false, stylesheet = false, image = false, script = false;
     CURLcode result = CURLE_OK;
     bool byte_limit = false, policy_blocked = false;
     CURL *handle = nullptr;
@@ -55,6 +55,7 @@ class Resources {
     void discard(Resource &);
 
   public:
+    static constexpr size_t script_limit = 2u * 1024u * 1024u;
     static constexpr size_t total_limit = 16u * 1024u * 1024u;
     unsigned revision = 0, style_revision = 0, image_revision = 0;
     explicit Resources(std::string root);

@@ -1,5 +1,7 @@
 """Real loopback TLS tests: custom CA, hostname, expiry and redirects."""
 import http.server
+import hashlib
+import base64
 import json
 import urllib.parse
 import os
@@ -56,7 +58,7 @@ extendedKeyUsage=serverAuth
                 body=b'';status=204
                 extra=[('Access-Control-Allow-Methods','GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS'),('Access-Control-Allow-Headers',self.headers.get('Access-Control-Request-Headers',''))]
                 if query.get('allow_headers')==['wildcard']:extra[-1]=('Access-Control-Allow-Headers','*')
-            elif parsed.path=='/api-config':body=json.dumps({'cross':f'https://localhost:{cross}','expired':f'https://localhost:{expired}'}).encode()
+            elif parsed.path=='/api-config':body=json.dumps({'cross':f'https://localhost:{cross}','expired':f'https://localhost:{expired}','integrity':{name: name+'-'+base64.b64encode(getattr(hashlib,name)(b'globalThis.classicLoaded=(globalThis.classicLoaded||0)+1;\n//').digest()).decode() for name in ['sha256','sha384','sha512']}}).encode()
             elif parsed.path=='/api-state':body=json.dumps(self.api_counts).encode()
             elif parsed.path=='/api-redirect':
                 status=int(query.get('code',['307'])[0]);extra=[('Location',query.get('target',['/api-echo'])[0])];body=b''
@@ -72,6 +74,10 @@ extendedKeyUsage=serverAuth
                 if query.get('over')==['1']:body=b'x'*(8*1024*1024+1)
                 mime='text/plain' if query.get('mime')==['bad'] else 'application/wasm'
                 if query.get('status')==['404']:status=404
+            elif parsed.path=='/api-classic':
+                body=b'globalThis.classicLoaded=(globalThis.classicLoaded||0)+1;\n//'+b' '*min(2097153,max(0,int(query.get('size',['0'])[0])))
+                mime='application/json' if query.get('mime')==['bad'] else 'application/javascript'
+                if query.get('mime')==['bad']:extra.append(('X-Content-Type-Options','nosniff'))
             elif parsed.path=='/api-large':body=b'x'*600000
             else:
                 status=404 if parsed.path=='/api-404' else 200
@@ -198,6 +204,7 @@ extendedKeyUsage=serverAuth
                 elif route=='/dyn-fast.js':body=b"dynTrace.push('fast');document.getElementById('net-result').textContent='Fast';"
                 elif route=='/dyn-async.js':body=b"dynTrace.push('async');"
                 elif route=='/dyn-large.js':body=b'/*'+b'x'*140000+b'*/globalThis.largeExecuted=true;'
+                elif route=='/dyn-over.js':body=b'/*'+b'x'*(2*1024*1024)+b'*/globalThis.overExecuted=true;'
                 elif route=='/dyn-leak.js':body=b"localStorage.setItem('dynamic_leak','1');"
                 else:status=404;body=b'Not found'
                 self.send_response(status);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)))

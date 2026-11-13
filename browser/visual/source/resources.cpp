@@ -479,7 +479,7 @@ size_t Resources::header(char *data, size_t unit, size_t count, void *opaque) {
         r.policies.clear();
         r.response_headers.clear();
         if (r.web_request)
-            r.limit = 512u * 1024u;
+            r.limit = r.script ? script_limit : 512u * 1024u;
         r.status_text.clear();
         auto space = line.find(' ');
         if (space != std::string::npos) {
@@ -645,7 +645,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.13.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.14.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;

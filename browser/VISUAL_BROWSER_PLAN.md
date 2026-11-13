@@ -257,3 +257,13 @@ confirmed working by the user on a physical Switch; the changed 0.13 module path
 needs its own device check. Emscripten-host gate remains partial: imported tables and
 cross-instance function references in tables are still rejected. Those, Workers /
 shared JS memory, real GPU and audio remain the next major game-compatibility gates.
+
+## Verification-page investigation — 0.14.0
+
+Removed confirmed classic-source, CORS/SRI and Element collection failures in public
+verification loaders. Added OS random/base64 and correct native versus synthetic
+input semantics. Native reCAPTCHA demo reaches an actual unsupported iframe and
+MessageChannel; successful verification remains unimplemented. CAPTCHA_AUDIT.md
+specifies isolated frame documents/realms, embedding policy, WindowProxy,
+origin-checked messaging, port transfer and teardown gates. Those precede provider
+acceptance testing; an explanation panel is not a rendered security challenge.

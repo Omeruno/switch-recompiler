@@ -1,4 +1,5 @@
 #include "container.h"
+#include "unsupported_frame.h"
 #include <SDL_image.h>
 #include <algorithm>
 #include <cctype>
@@ -155,7 +156,7 @@ void Container::draw_canvas(SDL_Texture *texture, const litehtml::position &posi
         ++unsupported;
 }
 void Container::begin_paint() {
-    painted_canvases = 0;
+    painted_canvases = painted_frames = 0;
     painted_text = painted_images = painted_gradients = unsupported = 0;
     clips.clear();
     apply_clip();
@@ -501,6 +502,8 @@ void Container::get_media_features(litehtml::media_features &m) const {
 }
 litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
                                                  const std::shared_ptr<litehtml::document> &doc) {
+    if (std::string(tag) == "iframe")
+        return std::make_shared<UnsupportedFrame>(doc);
     if (std::string(tag) == "canvas")
         return std::make_shared<GameCanvas>(doc, renderer, canvases);
     if (std::string(tag) == "script" || std::string(tag) == "style" ||

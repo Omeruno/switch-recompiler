@@ -22,6 +22,7 @@ class Scripts {
     bool dispatch(const litehtml::element::ptr &, const std::string &type, bool cancelable = true,
                   const litehtml::element::ptr &submitter = {});
     bool eval(const std::string &, unsigned budget_ms = 50);
+    bool click(const litehtml::element::ptr &, double client_x, double client_y);
     bool key(const std::string &, const std::string &, const std::string &, bool repeat = false,
              unsigned modifiers = 0);
     bool pointer(const litehtml::element::ptr &, const std::string &, double, double, unsigned,

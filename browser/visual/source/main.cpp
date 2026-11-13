@@ -365,7 +365,9 @@ struct Browser {
             }
         }
     }
+    visual::Point click_position{};
     void click(visual::Point p) {
+        click_position = {p.x / view.scale(), p.y / view.scale()};
         if (report_open) {
             if (p.y < 70)
                 report_open = false;
@@ -418,7 +420,7 @@ struct Browser {
         if (hit && std::string(hit->get_tagName()) == "canvas")
             focus(hit);
         if (scripts && hit) {
-            if (!scripts->dispatch(hit, "click"))
+            if (!scripts->click(hit, click_position.x, click_position.y))
                 return;
             document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
             if (apply_script_navigation())
@@ -487,7 +489,7 @@ struct Browser {
             saved.push_back({control, control->checked_state()});
         bool before = control->checked();
         control->checked(control->type() == "radio" || !before);
-        if (emit_click && scripts && !scripts->dispatch(control, "click")) {
+        if (emit_click && scripts && !scripts->click(control, click_position.x, click_position.y)) {
             for (auto &state : saved)
                 state.first->restore_checked(state.second);
             rebuild = true;
@@ -883,7 +885,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.13.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.14.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -917,12 +919,16 @@ struct Browser {
                                    " · вызовов " + std::to_string(stats.calls) + " · traps " +
                                    std::to_string(stats.traps));
         }
-        report_lines.push_back("Canvas: " + std::to_string(container.canvases->count) +
-                               " · байт " + std::to_string(container.canvases->bytes) +
-                               " · загрузок кадров " +
+        report_lines.push_back("Canvas: " + std::to_string(container.canvases->count) + " · байт " +
+                               std::to_string(container.canvases->bytes) + " · загрузок кадров " +
                                std::to_string(container.canvases->frames));
         report_lines.push_back(
             "WebAssembly: функции, импорт памяти и globals; Canvas: часть 2D API.");
+        auto frames = document ? document->root()->select_all("iframe").size() : 0;
+        report_lines.push_back("Встроенных iframe: " + std::to_string(frames) +
+                               " · не поддерживаются; капча может быть недоступна.");
+        report_lines.push_back(
+            "Проверки сайтов: iframe/postMessage/MessageChannel ещё отсутствуют.");
         report_lines.push_back("WebGPU/WebGL: не реализованы; Keldurn пока не запускается.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
@@ -1030,7 +1036,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.13.0");
+    visual::diagnostic("boot", "0.14.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
