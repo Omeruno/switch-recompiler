@@ -11,6 +11,30 @@ namespace visual {
 Container::Container(SDL_Renderer *r, Resources &res, std::string font)
     : renderer(r), resources(res), font_path(std::move(font)) {}
 Container::~Container() { reset(); }
+bool Container::pending_frames() const {
+    for (const auto &weak : frames)
+        if (auto frame = weak.lock())
+            if (frame->pending())
+                return true;
+    return false;
+}
+void Container::poll_frames() {
+    // A callback may append another frame, so never keep vector iterators across a poll.
+    auto snapshot = frames;
+    for (auto &weak : snapshot)
+        if (auto frame = weak.lock())
+            frame->poll();
+    frames.erase(
+        std::remove_if(frames.begin(), frames.end(), [](const auto &w) { return w.expired(); }),
+        frames.end());
+}
+bool Container::frame_click(const litehtml::element::ptr &el, double x, double y) {
+    auto frame = std::dynamic_pointer_cast<UnsupportedFrame>(el);
+    if (!frame)
+        return false;
+    frame->click(x, y);
+    return true;
+}
 size_t Container::decoded_images() const {
     size_t count = 0;
     for (const auto &kv : images)
@@ -55,6 +79,7 @@ class SourceElement : public litehtml::html_tag {
 };
 } // namespace
 void Container::reset() {
+    frames.clear();
     game_input = {};
     canvases = std::make_shared<CanvasBudget>();
     scroll_requested = false;
@@ -131,7 +156,7 @@ bool Container::focus(const litehtml::element::ptr &el) {
 }
 bool Container::prune_focus() { return focused_node.lock() && !focused() ? focus({}) : false; }
 SDL_Rect Container::screen(const litehtml::position &p) const {
-    float x = float(p.x) * zoom, y = float(p.y) * zoom + toolbar;
+    float x = float(p.x) * zoom, y = float(p.y) * zoom + paint_toolbar;
     return {int(std::floor(x)), int(std::floor(y)), int(std::ceil(float(p.width) * zoom)),
             int(std::ceil(float(p.height) * zoom))};
 }
@@ -139,13 +164,18 @@ void Container::color(litehtml::web_color c) {
     SDL_SetRenderDrawColor(renderer, c.red, c.green, c.blue, c.alpha);
 }
 void Container::apply_clip() {
-    SDL_Rect r = {0, toolbar, width, height - toolbar};
+    SDL_Rect r = {0, paint_toolbar, paint_width, paint_height - paint_toolbar};
     for (auto c : clips) {
         SDL_Rect out;
         SDL_IntersectRect(&r, &c, &out);
         r = out;
     }
     SDL_RenderSetClipRect(renderer, &r);
+}
+void Container::draw_frame(SDL_Texture *texture, const litehtml::position &position) {
+    auto target = screen(position);
+    apply_clip();
+    SDL_RenderCopy(renderer, texture, nullptr, &target);
 }
 void Container::draw_canvas(SDL_Texture *texture, const litehtml::position &position) {
     auto target = screen(position);
@@ -216,7 +246,8 @@ void Container::draw_text(litehtml::uint_ptr, const char *text, litehtml::uint_p
     if (!text || !*text)
         return;
     auto dst = screen(pos);
-    if (dst.y + dst.h < toolbar || dst.y >= height || dst.x + dst.w < 0 || dst.x >= width)
+    if (dst.y + dst.h < paint_toolbar || dst.y >= paint_height || dst.x + dst.w < 0 ||
+        dst.x >= paint_width)
         return;
     std::string key = std::to_string(p) + ":" + std::to_string(c.red) + "," +
                       std::to_string(c.green) + "," + std::to_string(c.blue) + "," +
@@ -496,14 +527,17 @@ void Container::get_media_features(litehtml::media_features &m) const {
     m.width = viewport_width;
     m.height = viewport_height;
     m.device_width = viewport_width;
-    m.device_height = float(height) * viewport_width / width;
+    m.device_height = float(paint_height) * viewport_width / paint_width;
     m.color = 8;
-    m.resolution = 96.f * width / viewport_width;
+    m.resolution = 96.f * paint_width / viewport_width;
 }
 litehtml::element::ptr Container::create_element(const char *tag, const litehtml::string_map &,
                                                  const std::shared_ptr<litehtml::document> &doc) {
-    if (std::string(tag) == "iframe")
-        return std::make_shared<UnsupportedFrame>(doc);
+    if (std::string(tag) == "iframe") {
+        auto frame = std::make_shared<UnsupportedFrame>(doc);
+        frames.push_back(frame);
+        return frame;
+    }
     if (std::string(tag) == "canvas")
         return std::make_shared<GameCanvas>(doc, renderer, canvases);
     if (std::string(tag) == "script" || std::string(tag) == "style" ||

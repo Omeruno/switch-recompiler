@@ -1,7 +1,9 @@
 #include "scripts.h"
+#include "frame_policy.h"
 #include "game_wasm.h"
 #include "script_integrity.h"
 #include "secure_random.h"
+#include "unsupported_frame.h"
 #include "websocket.h"
 extern "C" {
 #include "profile.h"
@@ -236,14 +238,16 @@ struct Scripts::Impl {
     unsigned task_source = 0;
     std::shared_ptr<MessageHub> messages;
     uint32_t message_window = 0;
-    bool message_bound = false, message_reserved = false;
+    bool message_bound = false, message_reserved = false, preserve_window = false;
     WebSockets sockets;
     std::unique_ptr<GameWasm> game;
 #include "module_loader.inc"
     Impl(const litehtml::document::ptr &d, Container &c, Resources &r,
-         std::vector<std::string> policy, std::shared_ptr<MessageHub> hub, uint32_t window_id)
+         std::vector<std::string> policy, std::shared_ptr<MessageHub> hub, uint32_t window_id,
+         bool preserve)
         : doc(d), container(c), resources(r), policies(std::move(policy)),
           messages(hub ? std::move(hub) : std::make_shared<MessageHub>()) {
+        preserve_window = preserve;
         message_reserved = window_id == 0;
         message_window = window_id ? window_id : messages->create_window();
         try {
@@ -256,13 +260,15 @@ struct Scripts::Impl {
     void initialize() {
         messages->bind(message_window, &container, origin(container.page_url));
         message_bound = true;
+        container.messages = messages;
+        container.message_window = message_window;
         descendants(doc->root());
         now = origin_time = Scripts::clock_ms();
         const JSMallocFunctions allocator = {alloc, dealloc, resize, usable};
         runtime = JS_NewRuntime2(&allocator, nullptr);
         if (!runtime)
             throw std::runtime_error("JavaScript runtime allocation failed");
-        JS_SetMemoryLimit(runtime, 64u * 1024u * 1024u);
+        JS_SetMemoryLimit(runtime, (container.frame_context ? 32u : 64u) * 1024u * 1024u);
         JS_SetMaxStackSize(runtime, 256u * 1024u);
         JS_SetInterruptHandler(runtime, interrupt, this);
         JS_SetHostPromiseRejectionTracker(runtime, rejection_tracker, this);
@@ -302,8 +308,12 @@ struct Scripts::Impl {
     }
     ~Impl() { release(); }
     void release() {
-        if (message_window && (message_bound || message_reserved))
-            messages->close_window(message_window);
+        if (message_window && (message_bound || message_reserved)) {
+            if (preserve_window)
+                messages->navigate(message_window);
+            else
+                messages->close_window(message_window);
+        }
         message_window = 0;
         game.reset();
         sockets.clear();
@@ -576,6 +586,8 @@ struct Scripts::Impl {
                                        : directive);
             if (it == entries.end())
                 it = entries.find(directive);
+            if (it == entries.end() && directive == "frame-src")
+                it = entries.find("child-src");
             if (it == entries.end() && directive == "script-src-attr")
                 it = entries.find("script-src");
             if (it == entries.end())
@@ -1110,6 +1122,11 @@ struct Scripts::Impl {
         }
         if (op.rfind("msg", 0) == 0)
             return message_operation(op, argc, a);
+        if (container.frame_context && op == "cookie")
+            return argc > 2 ? JS_UNDEFINED : JS_NewString(context, "");
+        if (container.frame_context && (op.rfind("storage", 0) == 0 || op.rfind("ws", 0) == 0))
+            return JS_ThrowTypeError(context,
+                                     "Frame credentials/storage/WebSocket are unavailable");
         int id = integer(1);
         auto js = [&](const std::string &text) {
             return JS_NewStringLen(context, text.data(), text.size());
@@ -1976,6 +1993,10 @@ struct Scripts::Impl {
                 return js(std::to_string(float(p.height)) + "px");
             return js("");
         }
+        if (op == "frameWindow") {
+            auto frame = std::dynamic_pointer_cast<UnsupportedFrame>(el);
+            return frame ? JS_NewUint32(context, frame->window_id()) : JS_NULL;
+        }
         if (op == "rect" || op == "geometry" || op == "intersection") {
             flush_layout();
             auto b = box(el);
@@ -2303,10 +2324,12 @@ struct Scripts::Impl {
         } else if (!ordered && !deferred && !dom_ready) {
             dom_ready = true;
             phase = "domReady";
-        } else if (dom_ready && all_done && !resources.pending_load() && !complete) {
+        } else if (dom_ready && all_done && !resources.pending_load() &&
+                   !container.pending_frames() && !complete) {
             complete = true;
             phase = "complete";
-        } else if (complete && !loaded && !resources.pending_load()) {
+        } else if (complete && !loaded && !resources.pending_load() &&
+                   !container.pending_frames()) {
             loaded = true;
             phase = "loaded";
         }
@@ -2402,9 +2425,19 @@ struct Scripts::Impl {
     }
 };
 Scripts::Scripts(const litehtml::document::ptr &d, Container &c, Resources &r,
-                 std::vector<std::string> p, std::shared_ptr<MessageHub> hub, uint32_t window_id)
-    : impl(std::make_unique<Impl>(d, c, r, std::move(p), std::move(hub), window_id)) {}
-Scripts::~Scripts() = default;
+                 std::vector<std::string> p, std::shared_ptr<MessageHub> hub, uint32_t window_id,
+                 bool preserve)
+    : impl(std::make_unique<Impl>(d, c, r, std::move(p), std::move(hub), window_id, preserve)) {
+    c.script_runtime = this;
+}
+Scripts::~Scripts() {
+    if (impl->container.script_runtime == this)
+        impl->container.script_runtime = nullptr;
+}
+bool Scripts::allows_frame(const std::string &url) const {
+    return !impl->policy_overflow &&
+           frame_source_allowed(impl->policies, impl->container.page_url, url);
+}
 bool Scripts::poll(uint64_t n) { return impl->poll(n); }
 void Scripts::focus(const litehtml::element::ptr &el) {
     if (!impl->usable_runtime) {
@@ -2419,6 +2452,9 @@ void Scripts::focus(const litehtml::element::ptr &el) {
 bool Scripts::dispatch(const litehtml::element::ptr &el, const std::string &type, bool cancelable,
                        const litehtml::element::ptr &submitter) {
     return impl->event(el, type, cancelable, submitter);
+}
+bool Scripts::mouse(const litehtml::element::ptr &el, const std::string &type, double x, double y) {
+    return impl->event(el, type, true, {}, x, y);
 }
 bool Scripts::click(const litehtml::element::ptr &el, double x, double y) {
     return impl->event(el, "click", true, {}, x, y);

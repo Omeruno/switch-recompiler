@@ -4,6 +4,7 @@
 #include "document_source.h"
 #include "interaction.h"
 #include "scripts.h"
+#include "unsupported_frame.h"
 extern "C" {
 #include "profile.h"
 }
@@ -344,6 +345,7 @@ struct Browser {
                 visual::diagnostic("js.failed", "script or layout error");
             }
         }
+        container.poll_frames();
         if (choices) {
             auto node = std::static_pointer_cast<litehtml::element>(choices->control);
             while (node && node != document->root())
@@ -412,6 +414,8 @@ struct Browser {
         auto redraw = [](const litehtml::position &) {};
         document->on_mouse_over(q.x, q.y, p.x / view.scale(), p.y / view.scale(), redraw);
         auto hit = std::const_pointer_cast<litehtml::element>(document->get_over_element());
+        if (container.frame_click(hit, click_position.x, click_position.y))
+            return;
         if (auto check = std::dynamic_pointer_cast<visual::Control>(hit))
             if (check->type() == "checkbox" || check->type() == "radio") {
                 activate_check(check, true);
@@ -885,7 +889,7 @@ struct Browser {
         char site[384] = {};
         browser_origin(container.page_url.c_str(), site, sizeof(site));
         report_lines = {
-            "Switch visual browser 0.15.0 · " + std::string(site[0] ? site : "offline"),
+            "Switch visual browser 0.16.0 · " + std::string(site[0] ? site : "offline"),
             "Загрузка: HTTP " + std::to_string(failures.http) + " · TLS " +
                 std::to_string(failures.tls) + " · сеть " + std::to_string(failures.transport),
             "Лимиты загрузки: " + std::to_string(failures.limits) +
@@ -925,10 +929,17 @@ struct Browser {
         report_lines.push_back(
             "WebAssembly: функции, импорт памяти и globals; Canvas: часть 2D API.");
         auto frames = document ? document->root()->select_all("iframe").size() : 0;
-        report_lines.push_back("Встроенных iframe: " + std::to_string(frames) +
-                               " · не поддерживаются; капча может быть недоступна.");
+        unsigned loaded_frames = 0;
+        for (auto &weak : container.frames)
+            if (auto frame = weak.lock()) {
+                loaded_frames += frame->loaded();
+                if (!frame->status().empty())
+                    report_lines.push_back("iframe: " + frame->status().substr(0, 180));
+            }
+        report_lines.push_back("iframe: " + std::to_string(frames) + " · загружено " +
+                               std::to_string(loaded_frames));
         report_lines.push_back(
-            "postMessage / MessageChannel: есть; iframe ещё не реализованы.");
+            "iframe: отдельный JS, анонимная сеть; cookies/хранилище отключены.");
         report_lines.push_back("WebGPU/WebGL: не реализованы; Keldurn пока не запускается.");
         if (scripts) {
             for (const auto &issue : scripts->issues().entries())
@@ -1036,7 +1047,7 @@ struct Browser {
 int main(int argc, char **argv) {
     std::string root, font, ca;
 #ifdef __SWITCH__
-    visual::diagnostic("boot", "0.15.0");
+    visual::diagnostic("boot", "0.16.0");
     Result romfs = romfsInit();
     if (R_FAILED(romfs)) {
         visual::fatal_screen("RomFS failed: " + std::to_string(romfs));
@@ -1360,6 +1371,10 @@ int main(int argc, char **argv) {
                             app.document->root()->select_all("script").size(),
                             app.document->root()->select_all("style").size(),
                             app.document->root()->select_all("p").size());
+                    for (auto &weak : app.container.frames)
+                        if (auto frame = weak.lock())
+                            fprintf(stderr, "CAPTURE iframe loaded=%d status=%s\n", frame->loaded(),
+                                    frame->status().c_str());
                     for (const auto &issue : app.scripts->issues().entries())
                         fprintf(stderr, "CAPTURE issue %s/%s x%u\n", issue.category.c_str(),
                                 issue.code.c_str(), issue.count);

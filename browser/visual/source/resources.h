@@ -16,7 +16,7 @@ struct Resource {
     std::string url, effective, error;
     std::string method = "GET", current_url, location, post_body, form_source;
     std::vector<std::string> form_rules;
-    bool form_navigation = false, document_navigation = false;
+    bool form_navigation = false, document_navigation = false, frame_navigation = false;
     unsigned navigation_timeout_ms = 45000;
     size_t body_bytes = 0;
     uint64_t elapsed_ms = 0;
@@ -57,6 +57,9 @@ class Resources {
   public:
     static constexpr size_t script_limit = 2u * 1024u * 1024u;
     static constexpr size_t total_limit = 16u * 1024u * 1024u;
+    bool anonymous_context = false;
+    const std::string &asset_root() const { return local_root; }
+    Resource *navigate_frame(const std::string &);
     unsigned revision = 0, style_revision = 0, image_revision = 0;
     explicit Resources(std::string root);
     ~Resources();

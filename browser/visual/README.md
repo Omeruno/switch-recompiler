@@ -1,4 +1,4 @@
-# Switch visual browser — 0.15.0
+# Switch visual browser — 0.16.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -11,8 +11,10 @@ path; it is not a production engine selection or a playable Keldurn client.
 - Native asynchronous MessageChannel/MessagePort, transferable ports/ArrayBuffers,
   bounded structuredClone and window postMessage. Window source/origin derive from
   the native browsing-context group; separate QuickJS runtimes exchange cloned
-  wire data. **Iframe loading/painting is still absent**, so this does not yet make
-  a CAPTCHA widget usable. The offline demo includes a repeatable messaging check.
+  wire data. HTTPS iframe loading, separate documents/runtimes and clipped painting
+  are now implemented within the limits described in the 0.16.0 section. This does
+  not yet make a CAPTCHA widget usable. The offline demo includes repeatable
+  messaging and embedded-page checks.
 
 - Persistent TLS WebSocket connections (`wss:`), text/binary messages, subprotocols,
   buffered sends, ping/pong and close events. The event loop cancels old sockets
@@ -883,3 +885,59 @@ and runtimes, cyclic data/typed-buffer transfer, replies via event.source, acces
 restrictions, quotas, teardown and successful reuse after a rejected operation.
 The common positive/negative fixture is separately run in Chromium using
 `python3 browser/tests/https_fixture.py python3 browser/visual/tests/chromium_messaging.py`.
+
+
+## Embedded documents — 0.16.0
+
+An HTMLIFrameElement now owns a separate retained litehtml document, Resources
+loader, QuickJS runtime (32 MiB JS heap), software render target and native window
+ID. The parent paints the child's pixels inside the iframe content box and existing
+ancestor clips. Child CSS, images, scripts, native mouse down/up/click and checkbox
+input work; CSS resizing keeps the runtime, DOM, native window identity and state.
+postMessage/source and transferable MessagePorts use the 0.15.0 broker. Destruction,
+src/sandbox/srcdoc changes and detach cancel the old runtime, requests and messages.
+Src navigation keeps the WindowProxy identity; reinsertion gets a new context.
+DOMContentLoaded does not wait for frames; complete/load waits for initial child
+loads while tasks/messages continue to run. Dynamic frames do not fire a second
+parent load event. Nested frame depth is capped at two; the group allows four live
+child window reservations and a cumulative two-megapixel raster budget. Raster
+axes are at most 1536; backing targets start at least 640×512 and remain fixed
+while logical viewport dimensions resize, so extreme enlargement can lose detail.
+Offscreen frames keep their runtime but skip painting; visible frame painting is
+capped at 30 Hz. These are memory/performance limits, not full browser semantics.
+
+Before any document request or redirect hop, parent frame-src → child-src →
+default-src is matched. Source lists support self, exact HTTPS origins/paths, *
+and https:; unsupported patterns fail closed. Final response frame-ancestors checks
+every ancestor; an enforced frame-ancestors directive supersedes X-Frame-Options.
+XFO DENY/SAMEORIGIN is checked when no frame-ancestors applies; ambiguous XFO denies.
+Only text/html is parsed. CSP sandbox headers are currently rejected. An iframe
+sandbox without allow-same-origin is rejected before fetching; with it, allow-scripts
+controls execution. Opaque-origin frames, srcdoc, data/blob documents, initial
+about:blank DOM access and same-origin cross-document DOM access remain unavailable.
+WindowProxy restricts foreign DOM/location access even for matching origins.
+
+All iframe network transfers, including redirects and fetch/module subresources,
+are anonymous: no profile cookies are sent or stored. document.cookie reads empty
+and writes are ignored; profile local/sessionStorage and WebSocket are unavailable
+inside a frame. Native form submission, on-screen editing/select popups, inner
+wheel/drag scrolling, popup/top navigation and complete pointer/keyboard forwarding
+are not implemented. These limits also apply to sites which require third-party
+session state. No identity/cookie policy is weakened to obtain CAPTCHA acceptance.
+
+The only non-HTTPS exception is the exact packaged demo:/frame-demo.html, embedded
+by demo:/index.html. Both are owned RomFS assets, with an explicit resource allowlist;
+network pages cannot embed local demo assets. The Russian demo tests child clicks,
+parent replies and viewport resizing without resetting its counter or needing Wi-Fi.
+
+`frames-https` checks two real TLS origins, child CSS pixels/clipping, mouse input,
+checkboxes, viewport/state, native source/origin, anonymous HTML/CSS/JS/fetch and
+ignored Set-Cookie, redirect non-contact, CSP fallback/intersection, XFO/ancestor
+and sandbox rejection, srcdoc, removal/reinsert, disposal and the packaged offline
+iframe. Existing game, forms, rendering, messaging and network suites still run.
+The shared framing subset is also compared with Chromium using
+`python3 browser/tests/https_fixture.py python3 browser/visual/tests/chromium_frames.py`.
+Frame cookie/sandbox restrictions are checked by native-only negative tests.
+The public reCAPTCHA demo now loads and executes its anchor iframe, but its runtime
+reports SyntaxError and no usable checkbox is rendered. CAPTCHA completion and
+Keldurn GPU graphics remain unsupported; see CAPTCHA_AUDIT.md.

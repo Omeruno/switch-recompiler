@@ -130,7 +130,9 @@ Resource *Resources::request(const std::string &url, size_t limit) {
             name != "landscape.jpg" && name != "landscape.webp" && name != "interactions.js" &&
             name != "state.json" && name != "dynamic-demo.js" && name != "modules-demo.js" &&
             name != "module-state.js" && name != "module-step.js" && name != "game-demo.js" &&
-            name != "game-core.wasm" && name != "game-sidecar.wasm" && name != "messaging-demo.js") {
+            name != "game-core.wasm" && name != "game-sidecar.wasm" &&
+            name != "messaging-demo.js" && name != "frame-demo.html" && name != "frame-demo.js" &&
+            name != "frame-parent.js") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -151,6 +153,8 @@ Resource *Resources::request(const std::string &url, size_t limit) {
                 r.transfer_ok = true;
                 if (name == "game-core.wasm" || name == "game-sidecar.wasm")
                     r.response_headers["content-type"] = "application/wasm";
+                if (name == "frame-demo.html")
+                    r.response_headers["content-type"] = "text/html; charset=utf-8";
             }
         }
         completed(r);
@@ -168,6 +172,12 @@ Resource *Resources::navigate_document(const std::string &url, unsigned timeout_
         resource->navigation_timeout_ms = std::clamp(timeout_ms, 100u, 60000u);
     }
     return resource;
+}
+Resource *Resources::navigate_frame(const std::string &url) {
+    auto *r = navigate_document(url, 15000);
+    if (r)
+        r->frame_navigation = true;
+    return r;
 }
 Resource *Resources::navigate_form(const Submission &form, const std::string &source,
                                    const std::vector<std::string> &policies, size_t limit) {
@@ -233,6 +243,8 @@ Resource *Resources::network(const std::string &url, const std::string &method, 
                              WebRequest options) {
     if (items.size() >= 64)
         request_limit = true;
+    if (anonymous_context)
+        options.credentials = "omit";
     if (items.size() >= 64 || !valid_method(method) || body.size() > 65536 ||
         options.headers.size() > 32 || (options.mode != "cors" && options.mode != "same-origin") ||
         (options.credentials != "omit" && options.credentials != "same-origin" &&
@@ -414,7 +426,7 @@ void Resources::follow(Resource &r, bool permitted) {
         return;
     r.current_url = r.effective = r.pending_url;
     r.pending_url.clear();
-    if (!permitted || !prepare_web(r)) {
+    if (!permitted || (!r.frame_navigation && !prepare_web(r))) {
         r.policy_blocked = true;
         r.web_error = "TypeError";
         r.transfer_ok = false;
@@ -629,7 +641,7 @@ void Resources::start(Resource &r) {
 #endif
     curl_easy_setopt(r.handle, CURLOPT_DISALLOW_USERNAME_IN_URL, 1L);
     curl_easy_setopt(r.handle, CURLOPT_FOLLOWLOCATION,
-                     (r.form_navigation || r.web_request) ? 0L : 1L);
+                     (r.form_navigation || r.web_request || r.frame_navigation) ? 0L : 1L);
     curl_easy_setopt(r.handle, CURLOPT_MAXREDIRS, 5L);
     curl_easy_setopt(r.handle, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(r.handle, CURLOPT_TIMEOUT, 15L);
@@ -645,14 +657,15 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.15.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.16.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;
         curl_easy_setopt(r.handle, CURLOPT_TIMEOUT_MS, long(remaining));
     }
     bool credentials =
-        !r.web_request || (!r.preflight && !r.cors_tainted && r.web.credentials != "omit");
+        !anonymous_context &&
+        (!r.web_request || (!r.preflight && !r.cors_tainted && r.web.credentials != "omit"));
     CURLcode code = credentials ? browser_profile_configure(r.handle)
                                 : browser_profile_configure_anonymous(r.handle);
     if (!headers_ok)
@@ -707,10 +720,30 @@ bool Resources::pump() {
             curl_easy_getinfo(r.handle, CURLINFO_EFFECTIVE_URL, &effective);
             if (effective)
                 r.effective = effective;
-            if (!r.web_request && !r.form_navigation) {
+            if (!r.web_request && !r.form_navigation && !r.frame_navigation) {
                 long redirects = 0;
                 curl_easy_getinfo(r.handle, CURLINFO_REDIRECT_COUNT, &redirects);
                 r.redirects = unsigned(std::max(0L, redirects));
+            }
+            if (r.frame_navigation && msg->data.result == CURLE_OK &&
+                (http == 301 || http == 302 || http == 303 || http == 307 || http == 308)) {
+                r.http_status = http;
+                r.result = msg->data.result;
+                auto next = resolve(r.effective, r.location);
+                stop(r);
+                discard(r);
+                if (next.empty() || ++r.redirects > 5) {
+                    r.state = Resource::failed;
+                    r.transfer_ok = false;
+                    r.error = "Frame redirect blocked";
+                    r.policy_blocked = true;
+                    completed(r);
+                } else {
+                    r.pending_url = next;
+                    r.state = Resource::checking;
+                    ++revision;
+                }
+                continue;
             }
             if (r.web_request) {
                 browser_profile_log(r.current_url.c_str(), "web", http, msg->data.result);

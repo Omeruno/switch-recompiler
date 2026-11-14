@@ -54,6 +54,11 @@ JSValue message_operation(const std::string &op, int argc, JSValueConst *args) {
         JS_SetPropertyStr(context, result, "top", JS_NewUint32(context, messages->top(id)));
         JS_SetPropertyStr(context, result, "origin",
                           JS_NewString(context, w ? w->origin.c_str() : "null"));
+        auto children = JS_NewArray(context);
+        uint32_t index = 0;
+        for (auto child : messages->children(id))
+            JS_SetPropertyUint32(context, children, index++, JS_NewUint32(context, child));
+        JS_SetPropertyStr(context, result, "children", children);
         return result;
     }
     if (op == "msgChannel") {

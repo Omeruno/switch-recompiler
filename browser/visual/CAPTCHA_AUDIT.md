@@ -1,12 +1,14 @@
-# CAPTCHA compatibility audit — 0.15.0
+# CAPTCHA compatibility audit — 0.16.0
 
 ## Result
 
 **Interactive reCAPTCHA / Yandex SmartCaptcha completion is not supported yet.**
-This release fixes several confirmed loader and DOM failures. The browser still has no loaded/painted child iframe browsing contexts.
-0.15.0 adds native postMessage, MessageChannel/port transfer and cloning; the
-cross-runtime harness verifies the transport but does not render an iframe. A nonworking widget cannot be repaired by declaring those features
-supported. Sites can also independently reject an experimental browser.
+0.16.0 implements separate iframe documents/runtimes, anonymous HTTPS loading,
+clipped painting and native clicks, with embedding policy checks. The public Google
+demo's anchor iframe now loads and executes its scripts. Its runtime subsequently
+reports SyntaxError and no usable checkbox is displayed. The underlying cause of
+that provider exception has not yet been established. A loaded iframe does not
+establish challenge completion or service acceptance.
 
 The reason Google/Yandex request verification on the user's network is not
 established. Host observations do not reproduce the console's IP/session/service
@@ -35,7 +37,7 @@ HTMLCollection bindings remove that failure. At the 0.14.0 checkpoint, the subse
 `ReferenceError: MessageChannel is not defined`; the native iframe limitation
 message is visible. A checkbox/challenge is still not rendered.
 
-## Implemented changes
+## Earlier loader/API changes — 0.14.0
 
 - Classic scripts: 2 MiB per source and 8 MiB cumulative source budget per realm.
   Resource, script-count, JS heap, CSP and execution budgets remain bounded.
@@ -63,7 +65,7 @@ message is visible. A checkbox/challenge is still not rendered.
   trackers do not produce a visible panel. Reports list frame count and the absent
   cross-window capabilities. No child content executes in the parent's realm.
 
-## Required next architecture
+## Architecture recorded before 0.16.0
 
 Real iframe support needs separate documents and JS realms, per-frame URL/origin,
 clipped painting and native focus/input, lifecycle and navigation cancellation.
@@ -98,3 +100,30 @@ and script lifecycles, per-frame origins, clipped painting and input; parent CSP
 frame-src/child-src and child frame-ancestors/X-Frame-Options checks on every
 navigation; sandbox policy and an explicit credential/storage policy. The native
 broker is ready for this integration, but it does not replace these boundaries.
+
+
+## 0.16.0 iframe integration
+
+The owned two-origin TLS fixture verifies actual child HTML/CSS/script fetching,
+separate documents and QuickJS runtimes, clipped RGBA pixels, mouse coordinates and
+trusted native click events, checkbox state, resize without state reset, messaging,
+stable source identity during navigation and new identity after reinsertion.
+Transport counters verify no cookie leakage and no contact with a denied redirect
+target. Response frame-ancestors/XFO, CSP fallback/intersection and sandbox/srcdoc
+rejection are checked before child script execution. The packaged Russian offline
+iframe exercises the same renderer without an Internet connection.
+
+A host capture of https://www.google.com/recaptcha/api2/demo with a ten-second wait
+on 2026-11-13 reports iframe loaded=1 and SyntaxError from the anchor runtime.
+The frame is painted, but no usable checkbox is shown. The observed public runtime
+converts a caught RangeError into SyntaxError; its original cause is unconfirmed.
+No form submission, challenge answer or automated solving was performed. SmartCaptcha
+and the user's actual Google/Yandex verification sessions are not verified.
+
+Next investigation: isolate the provider JS execution/DOM compatibility failure
+using owned reproducers, without changing browser identity or raising stack/CPU
+limits blindly. Complete input/editing, same-origin DOM/initial blank contexts,
+opaque sandbox origins and an explicit partitioned credential/storage design remain
+separate requirements. The browser currently blocks unsupported embedding modes
+and uses anonymous frame requests; these restrictions can independently prevent
+some verification/login flows.

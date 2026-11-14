@@ -27,7 +27,7 @@ Chromium/Blink, Firefox/Gecko и WebKit разделяют несколько з
 | Подсистема | Реализовано | Чего существенно не хватает |
 |---|---|---|
 | Сеть | curl-multi, HTTPS/CA, cookies, Fetch/body/XHR, TLS WebSocket/Blob, анонимный CORS/preflight, навигационные POST, CSP | полная модель Fetch/CORS/cookies, streams, полные credentials WebSocket, HTTP-кэш, MIME/charset-политики |
-| Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, iframe, editing/selection/accessibility |
+| Документ | Gumbo + удерживаемый native DOM litehtml | полные Web IDL интерфейсы DOM, полный CSSOM, editing/selection/accessibility |
 | CSS/layout | каскад, обычный поток, таблицы, flex, media queries, размеры и поля | Grid, полное современное intrinsic sizing, дополнительные правила текста, transforms |
 | Paint | SDL, DejaVu, PNG/JPEG/WebP, заливки, часть границ и градиентов | SVG, web fonts/shaping/fallback, полные тени/outline/clip, display list/compositor |
 | JS | QuickJS, native DOM bridge, события, таймеры, Promise, buffered Fetch/XHR, classic async/defer, Mutation/Resize/IntersectionObserver | import maps/attributes, workers, множество остальных Web API |
@@ -402,3 +402,25 @@ WindowProxy/source, запрет доступа к чужому DOM, отмен�
 frame CSP/XFO/sandbox, компоновка, отрисовка и сенсорный ввод остаются в следующем
 блоке. Сама капча и WebGPU/WebGL не реализованы; наличие MessageChannel не
 объявляется достаточной совместимостью с сайтами проверки.
+
+
+## 0.16.0: отдельные iframe документы
+
+Добавлены ограниченные HTMLIFrameElement: собственные Resources/Container/document,
+QuickJS runtime, native window ID и SDL render target. Текстура ограничена content
+box и родительским clip; логический viewport изменяется с сохранением runtime.
+Проверяются parent CSP frame-src/child-src/default-src до запроса и каждого
+редиректа, все frame-ancestors и XFO конечного ответа, sandbox до исполнения.
+Неоднозначные/неподдержанные режимы блокируются. Удаление и навигация отменяют
+runtime, сеть и очередь; повторная вставка создаёт новый контекст.
+
+Frame requests и subresources анонимны; профиль cookies/storage не открыт.
+Документы и JS не объединяются с родителем. Стандартный frame WindowProxy не
+открывает чужой DOM/location. Не поддерживаются opaque sandbox, srcdoc/data/blob,
+начальный about:blank DOM, полноценный межоконный same-origin DOM, формы/редактирование
+и полная маршрутизация input внутри фрейма. HTTP CSP sandbox пока блокирует встраивание.
+
+Native тест проверяет реальные TLS origin, CSS-пиксели и клики, сообщения и resize,
+отказы политик, отсутствие cookies/запрещённого redirect-запроса и teardown.
+Публичный reCAPTCHA anchor уже загружается и исполняется, но заканчивается
+SyntaxError. Поддержка капчи и WebGPU/WebGL не объявляется.

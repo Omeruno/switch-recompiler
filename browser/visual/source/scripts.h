@@ -13,7 +13,7 @@ class Scripts {
   public:
     Scripts(const litehtml::document::ptr &, Container &, Resources &,
             std::vector<std::string> policies = {}, std::shared_ptr<MessageHub> messages = {},
-            uint32_t window_id = 0);
+            uint32_t window_id = 0, bool preserve_window = false);
     ~Scripts();
     Scripts(const Scripts &) = delete;
     Scripts &operator=(const Scripts &) = delete;
@@ -25,6 +25,7 @@ class Scripts {
                   const litehtml::element::ptr &submitter = {});
     bool eval(const std::string &, unsigned budget_ms = 50);
     bool click(const litehtml::element::ptr &, double client_x, double client_y);
+    bool mouse(const litehtml::element::ptr &, const std::string &type, double, double);
     bool key(const std::string &, const std::string &, const std::string &, bool repeat = false,
              unsigned modifiers = 0);
     bool pointer(const litehtml::element::ptr &, const std::string &, double, double, unsigned,
@@ -39,5 +40,6 @@ class Scripts {
     std::string error() const;
     const Issues &issues() const;
     bool ready() const;
+    bool allows_frame(const std::string &) const;
 };
 } // namespace visual

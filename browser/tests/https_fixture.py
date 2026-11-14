@@ -188,6 +188,35 @@ extendedKeyUsage=serverAuth
             if self.websocket():return
             if self.api():return
             route=urllib.parse.urlsplit(self.path).path
+            if route.startswith('/frame-'):
+                query=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                self.api_counts[route]=self.api_counts.get(route,0)+1
+                if self.headers.get('Cookie'):self.api_counts['frame-cookie-leak']=self.api_counts.get('frame-cookie-leak',0)+1
+                status=200;headers=[];mime='text/html; charset=utf-8'
+                if route=='/frame-state':body=json.dumps(self.api_counts).encode();mime='application/json'
+                elif route=='/frame-redirect':status=302;headers=[('Location',query.get('to',[f'https://localhost:{cross}/frame-forbidden'])[0])];body=b''
+                elif route=='/frame-code.js':
+                    mime='text/javascript';body=b"""
+                    globalThis.frameCounter=0;
+                    const send=(kind,extra={})=>parent.postMessage({kind,width:innerWidth,height:innerHeight,counter:frameCounter,...extra},'*');
+                    onmessage=e=>{if(e.data==='ping')e.source.postMessage({kind:'pong',counter:++frameCounter},e.origin);};
+                    document.getElementById('inner').onmousedown=e=>send('down',{trusted:e.isTrusted,x:e.clientX,y:e.clientY,buttons:e.buttons});document.getElementById('inner').onmouseup=e=>send('up',{trusted:e.isTrusted});document.getElementById('inner').onclick=e=>send('clicked',{trusted:e.isTrusted,x:e.clientX,y:e.clientY});document.getElementById('check').onchange=e=>send('checked',{checked:e.target.checked});
+                    addEventListener('resize',()=>send('resized'));
+                    let blocked=0;const cookieEmpty=document.cookie==='';document.cookie='frame_js=BAD; Path=/';try{localStorage.getItem('x');}catch{blocked++;}
+                    send('ready',{blocked,cookieEmpty});fetch('/frame-cookie',{credentials:'include'}).then(r=>r.text()).then(text=>send('fetched',{text}));
+                    """
+                elif route=='/frame-style.css':mime='text/css';body=b'body{margin:0;background:#123456}button{display:block;width:120px;height:60px;background:#abcdef;border:0}input{position:absolute;left:160px;top:10px;width:24px;height:24px;margin:0}'
+                elif route=='/frame-cookie':mime='text/plain';body=b'leak' if self.headers.get('Cookie') else b'anonymous';headers=[('Set-Cookie','frame_set=BAD; Path=/; Secure')]
+                else:
+                    body=b'<!doctype html><html><head><link rel="stylesheet" href="/frame-style.css"></head><body><button id="inner">Inside</button><input id="check" type="checkbox"><script src="/frame-code.js"></script></body></html>'
+                    if route=='/frame-deny':headers=[('X-Frame-Options','DENY')]
+                    if route=='/frame-same':headers=[('X-Frame-Options','SAMEORIGIN')]
+                    if route=='/frame-none':headers=[('Content-Security-Policy',"frame-ancestors 'none'")]
+                    if route=='/frame-allow':headers=[('Content-Security-Policy','frame-ancestors *'),('X-Frame-Options','DENY')]
+                    if route=='/frame-csp-sandbox':headers=[('Content-Security-Policy','frame-ancestors *; sandbox allow-scripts allow-same-origin')]
+                self.send_response(status)
+                for k,v in headers:self.send_header(k,v)
+                self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if route=='/nonce-source.js':
                 body=b'globalThis.nonceExternal=true;';self.send_response(200);self.send_header('Content-Length',str(len(body)));self.send_header('Content-Type','text/javascript');self.end_headers();self.wfile.write(body);return
             if route=='/partial-document':

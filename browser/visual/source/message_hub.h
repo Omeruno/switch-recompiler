@@ -46,6 +46,7 @@ class MessageHub {
     void quota(size_t, size_t) const;
 
   public:
+    size_t frame_pixels = 0; // Shared render-target budget, native code only.
     static constexpr size_t packet_limit = 256u * 1024u, byte_limit = 2u * 1024u * 1024u;
     uint32_t create_window(uint32_t parent = 0);
     Window *window(uint32_t);

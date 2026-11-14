@@ -2,6 +2,7 @@
 #include "forms.h"
 #include "game_canvas.h"
 #include "game_input.h"
+#include "message_hub.h"
 #include "resources.h"
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -10,6 +11,8 @@
 #include <string>
 #include <vector>
 namespace visual {
+class Scripts;
+class UnsupportedFrame;
 class Container final : public litehtml::document_container {
     SDL_Renderer *renderer;
     Resources &resources;
@@ -40,11 +43,25 @@ class Container final : public litehtml::document_container {
 
   public:
     static constexpr int width = 1280, height = 720, toolbar = 84;
+    int paint_width = width, paint_height = height, paint_toolbar = toolbar;
+    bool frame_context = false;
+    unsigned frame_depth = 0;
+    std::shared_ptr<MessageHub> messages;
+    uint32_t message_window = 0;
+    Scripts *script_runtime = nullptr;
+    std::vector<std::weak_ptr<UnsupportedFrame>> frames;
+    void poll_frames();
+    bool pending_frames() const;
+    bool frame_click(const litehtml::element::ptr &, double, double);
+    SDL_Renderer *drawing_renderer() const { return renderer; }
+    const std::string &font_file() const { return font_path; }
+    Resources &loader() { return resources; }
     GameInput game_input;
     Forms forms;
     std::shared_ptr<CanvasBudget> canvases = std::make_shared<CanvasBudget>();
     unsigned painted_canvases = 0, painted_frames = 0;
     void draw_canvas(SDL_Texture *, const litehtml::position &);
+    void draw_frame(SDL_Texture *, const litehtml::position &);
     unsigned style_passes = 0, layout_passes = 0;
     void restyle(const litehtml::document::ptr &);
     void relayout(const litehtml::document::ptr &);

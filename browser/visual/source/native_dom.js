@@ -169,6 +169,23 @@
   class HTMLFormElement extends HTMLElement {}
   class HTMLImageElement extends HTMLElement {}
   class HTMLCanvasElement extends HTMLElement {}
+  const frameSandboxLists=new WeakMap();
+  class HTMLIFrameElement extends HTMLElement {
+    get width(){return this.getAttribute('width')??'';}set width(v){this.setAttribute('width',String(v));}
+    get height(){return this.getAttribute('height')??'';}set height(v){this.setAttribute('height',String(v));}
+    get srcdoc(){return this.getAttribute('srcdoc')??'';}set srcdoc(v){this.setAttribute('srcdoc',String(v));}
+    get sandbox(){
+      let list=frameSandboxLists.get(this);if(list)return list;const element=this;
+      const tokens=()=>[...new Set((element.getAttribute('sandbox')??'').split(/[\t\n\f\r ]+/).filter(Boolean))];
+      const validate=token=>{token=String(token);if(!token)throw new DOMException('Empty token','SyntaxError');if(/[\t\n\f\r ]/.test(token))throw new DOMException('Invalid token','InvalidCharacterError');return token;};
+      list={get value(){return element.getAttribute('sandbox')??'';},set value(v){element.setAttribute('sandbox',String(v));},get length(){return tokens().length;},item(i){return tokens()[Number(i)>>>0]??null;},contains(t){return tokens().includes(validate(t));},add(...items){const checked=items.map(validate);this.value=[...new Set([...tokens(),...checked])].join(' ');},remove(...items){const checked=items.map(validate);this.value=tokens().filter(t=>!checked.includes(t)).join(' ');},toggle(t,force){t=validate(t);const yes=force===undefined?!this.contains(t):!!force;yes?this.add(t):this.remove(t);return yes;},supports(t){return ['allow-same-origin','allow-scripts'].includes(validate(t));},toString(){return this.value;},[Symbol.iterator](){return tokens()[Symbol.iterator]();}};
+      frameSandboxLists.set(this,list);return list;
+    }
+    set sandbox(v){this.sandbox.value=v;}
+
+    get contentWindow(){const id=bridge('frameWindow',this._key);return id?windowProxy(id):null;}
+    get contentDocument(){return null;}
+  }
   class HTMLAnchorElement extends HTMLElement {}
   class HTMLLinkElement extends HTMLElement {}
   class HTMLStyleElement extends HTMLElement {}
@@ -180,11 +197,11 @@
   class HTMLHtmlElement extends HTMLElement {}
   const htmlInterfaces={script:HTMLScriptElement,input:HTMLInputElement,textarea:HTMLTextAreaElement,
     select:HTMLSelectElement,option:HTMLOptionElement,button:HTMLButtonElement,form:HTMLFormElement,
-    canvas:HTMLCanvasElement,img:HTMLImageElement,a:HTMLAnchorElement,link:HTMLLinkElement,style:HTMLStyleElement,meta:HTMLMetaElement,
+    iframe:HTMLIFrameElement,canvas:HTMLCanvasElement,img:HTMLImageElement,a:HTMLAnchorElement,link:HTMLLinkElement,style:HTMLStyleElement,meta:HTMLMetaElement,
     div:HTMLDivElement,span:HTMLSpanElement,body:HTMLBodyElement,head:HTMLHeadElement,html:HTMLHtmlElement};
   const domInterfaces={EventTarget,Node,Element,HTMLElement,Document,HTMLDocument,DocumentFragment,CharacterData,Text,
     HTMLScriptElement,HTMLInputElement,HTMLTextAreaElement,HTMLSelectElement,HTMLOptionElement,
-    HTMLButtonElement,HTMLFormElement,HTMLCanvasElement,HTMLImageElement,HTMLAnchorElement,HTMLLinkElement,HTMLStyleElement,
+    HTMLButtonElement,HTMLFormElement,HTMLCanvasElement,HTMLIFrameElement,HTMLImageElement,HTMLAnchorElement,HTMLLinkElement,HTMLStyleElement,
     HTMLMetaElement,HTMLDivElement,HTMLSpanElement,HTMLBodyElement,HTMLHeadElement,HTMLHtmlElement};
   for(const [name,ctor] of Object.entries(domInterfaces))Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});
   for(const [name,value] of Object.entries({ELEMENT_NODE:1,ATTRIBUTE_NODE:2,TEXT_NODE:3,CDATA_SECTION_NODE:4,
@@ -250,7 +267,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.15.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.16.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -716,6 +733,8 @@
       if(key==='postMessage')return post;
       if(key==='self'||key==='window'||key==='frames')return proxy;
       if(key==='closed')return bridge('msgInfo',id).closed;
+      if(key==='length')return bridge('msgInfo',id).children.length;
+      if(typeof key==='string'&&/^(0|[1-9][0-9]*)$/.test(key)){const child=bridge('msgInfo',id).children[Number(key)];return child?windowProxy(child):undefined;}
       if(key==='parent'||key==='top')return windowProxy(bridge('msgInfo',id)[key]);
       if(key===Symbol.toStringTag)return 'Window';
       if(key==='then')return undefined;
@@ -730,6 +749,9 @@
     if(originOrOptions!==null&&typeof originOrOptions==='object'){targetOrigin=originOrOptions.targetOrigin??'/';transfer=originOrOptions.transfer;}
     targetOrigin=String(targetOrigin);validateTargetOrigin(targetOrigin);sendMessage('msgSend',localWindow,targetOrigin,value,transfer);
   };
+  defineNativeProperty(globalThis,'frames',{get:()=>globalThis,enumerable:true});
+  defineNativeProperty(globalThis,'length',{get:()=>bridge('msgInfo',0).children.length,enumerable:true});
+  defineNativeProperty(globalThis,'frameElement',{get:()=>null,enumerable:true});
   defineNativeProperty(globalThis,'parent',{get:()=>windowProxy(bridge('msgInfo',0).parent),enumerable:true});
   defineNativeProperty(globalThis,'top',{get:()=>windowProxy(bridge('msgInfo',0).top),enumerable:true});
   globalThis.structuredClone=function structuredClone(value,options={}){
@@ -1022,7 +1044,7 @@
     domReady(){uaDispatch(document,new Event('DOMContentLoaded',{bubbles:true}));},
     complete(){readyState='complete';uaDispatch(document,new Event('readystatechange'));},
     loaded(){uaDispatch(globalThis,new Event('load'));},
-    event(id,type,cancelable,submitter,x=0,y=0){const target=wrap(id),options={bubbles:!['focus','blur','load','error'].includes(type),cancelable};let event;if(['click','mousedown','mouseup','dblclick'].includes(type)){const rect=target.getBoundingClientRect();event=new MouseEvent(type,{...options,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,detail:1});}else event=new Event(type,options);if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return uaDispatch(target,event);},
+    event(id,type,cancelable,submitter,x=0,y=0){const target=wrap(id),options={bubbles:!['focus','blur','load','error'].includes(type),cancelable};let event;if(['click','mousedown','mouseup','dblclick'].includes(type)){const rect=target.getBoundingClientRect();event=new MouseEvent(type,{...options,clientX:x,clientY:y,pageX:x+scrollX,pageY:y+scrollY,offsetX:x-rect.left,offsetY:y-rect.top,detail:1,button:0,buttons:type==='mousedown'?1:0});}else event=new Event(type,options);if(type==='submit')event.submitter=submitter>=0?wrap(submitter):null;return uaDispatch(target,event);},
     inline(id,type,fn){wrap(id)['on'+type]=fn;},
     fetched,
     socket:socketEvent,
