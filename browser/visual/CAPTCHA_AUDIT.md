@@ -1,14 +1,14 @@
-# CAPTCHA compatibility audit — 0.16.0
+# CAPTCHA compatibility audit — 0.17.0
 
 ## Result
 
 **Interactive reCAPTCHA / Yandex SmartCaptcha completion is not supported yet.**
-0.16.0 implements separate iframe documents/runtimes, anonymous HTTPS loading,
-clipped painting and native clicks, with embedding policy checks. The public Google
-demo's anchor iframe now loads and executes its scripts. Its runtime subsequently
-reports SyntaxError and no usable checkbox is displayed. The underlying cause of
-that provider exception has not yet been established. A loaded iframe does not
-establish challenge completion or service acceptance.
+0.16.0 added actual child iframe documents/runtimes, anonymous HTTPS loading,
+clipped painting and native clicks. 0.17.0 identifies and removes the observed
+strict TextDecoder failure inside the provider runtime. A new public demo capture
+advances to `ReferenceError: Worker is not defined`. The original decoder SyntaxError
+is no longer the observed blocker. No usable checkbox or challenge completion is
+claimed; runtime loading does not establish provider acceptance.
 
 The reason Google/Yandex request verification on the user's network is not
 established. Host observations do not reproduce the console's IP/session/service
@@ -127,3 +127,26 @@ opaque sandbox origins and an explicit partitioned credential/storage design rem
 separate requirements. The browser currently blocks unsupported embedding modes
 and uses anonymous frame requests; these restrictions can independently prevent
 some verification/login flows.
+
+
+## 0.17.0 strict decoder diagnosis
+
+A temporary host-only QuickJS throw trace, enabled only for the public demo,
+observed RangeError `Only nonfatal UTF-8 decoding is supported` at our TextDecoder
+constructor before the provider converted it to SyntaxError. The current public
+asset release was `4i3aN5wAweL7i3ADI7BSX4B-`. Restoring the exact upstream QuickJS
+file and implementing strict/streaming encoding removed that observed failure.
+Stack size, interrupt budget and browser identity policy were not relaxed.
+
+The native host captured https://www.google.com/recaptcha/api2/demo again without
+submitting the form or clicking a challenge. The loaded anchor reports
+`ReferenceError: Worker is not defined`. Dedicated workers remain absent. This
+is an actual next API requirement; installing a no-op Worker or executing its code
+in the parent document would misrepresent support and break isolation.
+
+Owned encoding tests compare positive/negative cases and byte-index fingerprints
+with Chromium. They do not solve or submit provider challenges. SmartCaptcha and
+Google/Yandex verification on the user's network remain unverified. The required
+next architecture is a real dedicated-worker runtime with message transfer,
+script/Blob loading, CSP, origin/credentials policy, cancellation and bounded
+resources, followed by further provider compatibility checks.

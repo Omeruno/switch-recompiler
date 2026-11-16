@@ -267,7 +267,7 @@
   Object.assign(globalThis,eventMethods,domInterfaces,{window:globalThis,self:globalThis,document,Event,CustomEvent});
   const location={get search(){const q=bridge('urlPart',0,bridge('url',0),2);return q?'?'+q:'';},get hostname(){return bridge('urlPart',0,bridge('url',0),0);},get pathname(){return bridge('urlPart',0,bridge('url',0),1)||'/';},get origin(){return bridge('origin',0,bridge('url',0));},get href(){return bridge('url',0);},set href(v){bridge('navigate',0,String(v));},assign(v){this.href=v;},replace(v){this.href=v;},reload(){bridge('reload',0);}};
   Object.defineProperty(globalThis,'location',{get:()=>location,set:v=>location.href=v});
-  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.16.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
+  Object.assign(globalThis,{navigator:{language:'ru-RU',languages:['ru-RU','ru','en'],userAgent:'SwitchVisualBrowser/0.17.0'},console:{log(){},warn(){},error(){}},performance:{now:()=>bridge('now',0)}});
   class URLSearchParams {
     constructor(input='',changed=null){
       this._changed=typeof changed==='function'?changed:null;
@@ -558,11 +558,75 @@
   }
   const requestHeaders=init=>{const headers=new Headers();headerStates.get(headers).guard='request';for(const [name,value] of new Headers(init))headers.append(name,value);return headers;};
   const scalarText=value=>{const text=String(value);let out='';for(let i=0;i<text.length;i++){const c=text.charCodeAt(i);if(c>=0xd800&&c<=0xdbff){const next=text.charCodeAt(i+1);if(next>=0xdc00&&next<=0xdfff){out+=text[i]+text[++i];}else out+='\ufffd';}else if(c>=0xdc00&&c<=0xdfff)out+='\ufffd';else out+=text[i];}return out;};
-  class TextEncoder {get encoding(){return 'utf-8';}encode(text=''){return new Uint8Array(bridge('encode',0,scalarText(text)));}}
+  // Private slots are ArrayBuffers owned by the JS heap; no native decoder handles survive GC.
+  const CodecBytes=Uint8Array,CodecBuffer=ArrayBuffer,codecEmpty=new ArrayBuffer(0),codecIsView=ArrayBuffer.isView,
+    codecTypedPrototype=nativePrototype(Uint8Array.prototype),
+    codecBufferLength=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get,
+    codecBufferDetached=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'detached')?.get,
+    codecSharedLength=typeof SharedArrayBuffer==='function'?Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype,'byteLength').get:null,
+    codecTypedBuffer=Object.getOwnPropertyDescriptor(codecTypedPrototype,'buffer').get,
+    codecTypedOffset=Object.getOwnPropertyDescriptor(codecTypedPrototype,'byteOffset').get,
+    codecTypedLength=Object.getOwnPropertyDescriptor(codecTypedPrototype,'byteLength').get,
+    codecTypedTag=Object.getOwnPropertyDescriptor(codecTypedPrototype,Symbol.toStringTag).get,
+    codecTypedValues=codecTypedPrototype.values,
+    codecDataBuffer=Object.getOwnPropertyDescriptor(DataView.prototype,'buffer').get,
+    codecDataOffset=Object.getOwnPropertyDescriptor(DataView.prototype,'byteOffset').get,
+    codecDataLength=Object.getOwnPropertyDescriptor(DataView.prototype,'byteLength').get;
+  const encoderBrand=new WeakSet(),encoderAdd=encoderBrand.add.bind(encoderBrand),encoderHas=encoderBrand.has.bind(encoderBrand),
+    decoderStates=new WeakMap(),decoderGet=decoderStates.get.bind(decoderStates),decoderSet=decoderStates.set.bind(decoderStates);
+  const encodingNames=['utf-8','utf-16le','utf-16be','windows-1251','windows-1252'],encodingLabels=new Map();
+  for(const [index,labels] of [
+    [0,'unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8'],
+    [1,'csunicode iso-10646-ucs-2 ucs-2 unicode unicodefeff utf-16 utf-16le'],
+    [2,'unicodefffe utf-16be'],[3,'cp1251 windows-1251 x-cp1251'],
+    [4,'ansi_x3.4-1968 ascii cp1252 cp819 csisolatin1 ibm819 iso-8859-1 iso-ir-100 iso8859-1 iso88591 iso_8859-1 iso_8859-1:1987 l1 latin1 us-ascii windows-1252 x-cp1252']])for(const label of labels.split(' '))encodingLabels.set(label,index);
+  const encodingLabelGet=encodingLabels.get.bind(encodingLabels);
+  function encodingString(value){if(typeof value==='symbol')throw new TypeError('Expected string');return String(value);}
+  function encodingOptions(value){if(value==null)return {};if(typeof value!=='object'&&typeof value!=='function')throw new TypeError('Expected options dictionary');return value;}
+  function encodingBufferInfo(buffer){
+    try{return {size:nativeApply(codecBufferLength,buffer,[]),detached:codecBufferDetached?nativeApply(codecBufferDetached,buffer,[]):false};}
+    catch(error){if(!codecSharedLength)throw error;return {size:nativeApply(codecSharedLength,buffer,[]),detached:false};}
+  }
+  function encodingSource(input,destination=false){
+    if(input===undefined&&!destination)return [codecEmpty,0,0];
+    if(!codecIsView(input)){
+      if(destination)throw new TypeError('Expected Uint8Array destination');
+      const info=encodingBufferInfo(input);return info.detached?[codecEmpty,0,0]:[input,0,info.size];
+    }
+    const tag=nativeApply(codecTypedTag,input,[]);
+    if(destination&&tag!=='Uint8Array')throw new TypeError('Expected Uint8Array destination');
+    const buffer=nativeApply(tag?codecTypedBuffer:codecDataBuffer,input,[]),info=encodingBufferInfo(buffer);
+    if(info.detached)return [codecEmpty,0,0];
+    if(tag)nativeApply(codecTypedValues,input,[]); // Validate RAB bounds without invoking species.
+    return [buffer,nativeApply(tag?codecTypedOffset:codecDataOffset,input,[]),nativeApply(tag?codecTypedLength:codecDataLength,input,[])];
+  }
+  function encoderCheck(value){if(!encoderHas(value))throw new TypeError('Illegal invocation');}
+  function decoderCheck(value){const state=decoderGet(value);if(!state)throw new TypeError('Illegal invocation');return state;}
+  class TextEncoder {
+    constructor(){encoderAdd(this);}
+    get encoding(){encoderCheck(this);return 'utf-8';}
+    encode(text=''){encoderCheck(this);return new CodecBytes(bridge('codecEncode',0,encodingString(text)));}
+    encodeInto(source,destination){encoderCheck(this);if(arguments.length<2)throw new TypeError('encodeInto requires source and destination');const text=encodingString(source),view=encodingSource(destination,true);return bridge('codecEncodeInto',0,text,...view);}
+  }
   const byteBuffer=input=>{if(input instanceof ArrayBuffer)return input.slice(0);if(ArrayBuffer.isView(input))return input.buffer.slice(input.byteOffset,input.byteOffset+input.byteLength);throw new TypeError('Expected byte buffer');};
   class TextDecoder {
-    constructor(label='utf-8',options={}){options=options??{};if(!['utf-8','utf8','unicode-1-1-utf-8'].includes(String(label).trim().toLowerCase())||options.fatal)throw new RangeError('Only nonfatal UTF-8 decoding is supported');Object.defineProperties(this,{encoding:{value:'utf-8'},fatal:{value:false},ignoreBOM:{value:!!options.ignoreBOM}});}
-    decode(input=new ArrayBuffer(0),options={}){if(options.stream)throw new TypeError('Streaming decoding unavailable');let text=bridge('decode',0,byteBuffer(input));return !this.ignoreBOM&&text.charCodeAt(0)===0xfeff?text.slice(1):text;}
+    constructor(label='utf-8',options={}){
+      const normalized=encodingString(label).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g,'').toLowerCase(),index=encodingLabelGet(normalized);
+      options=encodingOptions(options);const fatal=!!options.fatal,ignoreBOM=!!options.ignoreBOM;
+      if(index===undefined)throw new RangeError('Unsupported encoding label');
+      decoderSet(this,{encoding:encodingNames[index],fatal,ignoreBOM,native:bridge('codecNew',0,index,fatal,ignoreBOM),pending:codecEmpty});
+    }
+    get encoding(){return decoderCheck(this).encoding;}
+    get fatal(){return decoderCheck(this).fatal;}
+    get ignoreBOM(){return decoderCheck(this).ignoreBOM;}
+    decode(input=undefined,options={}){
+      const state=decoderCheck(this);encodingSource(input); // IDL BufferSource validation precedes options getters.
+      const stream=!!encodingOptions(options).stream,view=encodingSource(input);
+      const result=bridge('codecDecode',0,state.native,state.pending,...view,stream);
+      state.native=result.state;state.pending=result.pending;
+      if(result.error)throw new TypeError('The encoded data is not valid for '+state.encoding);
+      return result.text;
+    }
   }
   const blobStates=new WeakMap();
   class Blob {
@@ -802,7 +866,7 @@
     else {state.readyState=3;state.remaining=buffered;sockets.delete(id);socket.dispatchEvent(new CloseEvent('close',{code,reason,wasClean:clean}));}
   }
   for(const [name,ctor] of Object.entries({Blob,MessageEvent,CloseEvent,WebSocket})){Object.defineProperty(ctor.prototype,Symbol.toStringTag,{value:name,configurable:true});globalThis[name]=ctor;}
-  const encodeBody=(value,headers)=>{if(value==null)return null;if(blobStates.has(value)){if(value.type&&!headers.has('content-type'))headers.set('content-type',value.type);return blobStates.get(value).bytes.buffer.slice(0);}if(value instanceof URLSearchParams){if(!headers.has('content-type'))headers.set('content-type','application/x-www-form-urlencoded;charset=UTF-8');return bridge('encode',0,value.toString());}if(typeof value==='string'){if(!headers.has('content-type'))headers.set('content-type','text/plain;charset=UTF-8');return bridge('encode',0,scalarText(value));}return byteBuffer(value);};
+  const encodeBody=(value,headers)=>{if(value==null)return null;if(blobStates.has(value)){if(value.type&&!headers.has('content-type'))headers.set('content-type',value.type);return blobStates.get(value).bytes.buffer.slice(0);}if(value instanceof URLSearchParams){if(!headers.has('content-type'))headers.set('content-type','application/x-www-form-urlencoded;charset=UTF-8');return bridge('codecEncode',0,value.toString());}if(typeof value==='string'){if(!headers.has('content-type'))headers.set('content-type','text/plain;charset=UTF-8');return bridge('codecEncode',0,value);}return byteBuffer(value);};
   function bodyObject(owner,bytes,signal=null){bodyStates.set(owner,{bytes,used:false,signal});}
   function consumeBody(owner,format){const state=bodyStates.get(owner);if(state.signal?.aborted)return Promise.reject(state.signal.reason);if(state.used)return Promise.reject(new TypeError('Body already consumed'));if(state.bytes!==null)state.used=true;return Promise.resolve().then(()=>{if(state.signal?.aborted)throw state.signal.reason;const bytes=state.bytes===null?new ArrayBuffer(0):state.bytes.slice(0);if(format==='arrayBuffer')return bytes;if(format==='blob')return new Blob([bytes],{type:owner.headers.get('content-type')??''});const text=new TextDecoder().decode(bytes);return format==='json'?JSON.parse(text):text;});}
   function addBodyMethods(ctor){Object.defineProperty(ctor.prototype,'bodyUsed',{get(){return bodyStates.get(this).used;},enumerable:true});for(const format of ['text','json','arrayBuffer','blob'])Object.defineProperty(ctor.prototype,format,{value:function(){return consumeBody(this,format);},writable:true,configurable:true});}

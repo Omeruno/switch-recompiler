@@ -3,6 +3,7 @@
 #include "game_wasm.h"
 #include "script_integrity.h"
 #include "secure_random.h"
+#include "text_codec.h"
 #include "unsupported_frame.h"
 #include "websocket.h"
 extern "C" {
@@ -90,6 +91,7 @@ std::string string(JSContext *ctx, JSValueConst v, size_t limit = 65536) {
     JS_FreeCString(ctx, s);
     return out;
 }
+// Module-source decoding keeps its existing non-streaming replacement policy.
 std::string decode_utf8(const uint8_t *bytes, size_t size) {
     std::string out;
     out.reserve(size);
@@ -1115,6 +1117,8 @@ struct Scripts::Impl {
             return value;
         };
         const std::string op = str(0, 32);
+        if (op.rfind("codec", 0) == 0)
+            return text_codec_operation(context, op, argc, a);
         if (op.rfind("wasm", 0) == 0) {
             if (op == "wasmCompile" && !allowed("script-src", "", true, "'wasm-unsafe-eval'"))
                 return game->operation("wasmBlocked", argc, a);
@@ -1325,19 +1329,6 @@ struct Scripts::Impl {
                 throw std::runtime_error("Invalid WebSocket close");
             sockets.close(id, code, bytes, size, argc > 5 && JS_ToBool(context, a[5]) > 0, now);
             return JS_UNDEFINED;
-        }
-        if (op == "encode") {
-            auto text = str(2, 512u * 1024u);
-            return JS_NewArrayBufferCopy(context, reinterpret_cast<const uint8_t *>(text.data()),
-                                         text.size());
-        }
-        if (op == "decode") {
-            size_t size = 0;
-            auto *bytes = argc > 2 ? JS_GetArrayBuffer(context, &size, a[2]) : nullptr;
-            if (!bytes || size > 512u * 1024u)
-                throw std::runtime_error("Invalid byte buffer");
-            auto text = decode_utf8(bytes, size);
-            return JS_NewStringLen(context, text.data(), text.size());
         }
         if (op == "cancelFetch" || op == "fetchTimeout") {
             for (auto it = fetches.begin(); it != fetches.end(); ++it)
@@ -2050,6 +2041,12 @@ struct Scripts::Impl {
                double client_y = 0) {
         if (!usable_runtime)
             return true;
+        // Host input may change focus/pseudo classes before dispatch. Finish that
+        // pending native layout before measuring guest handlers; the mouse-event
+        // wrapper reads the target rectangle. Layout forced by guest mutations
+        // during the handler still consumes its ordinary execution budget.
+        if (type == "click" || type == "mousedown" || type == "mouseup" || type == "dblclick")
+            flush_layout();
         budget(50);
         if (el && allowed("script-src-attr", "", true)) {
             for (auto n = el; n; n = n->parent()) {

@@ -1,4 +1,4 @@
-# Switch visual browser — 0.16.0
+# Switch visual browser — 0.17.0
 
 Experimental HTML/CSS rendering and touchscreen candidate, separate from the
 reader and WASM probe. It uses pinned litehtml with its bundled Gumbo parser and
@@ -941,3 +941,52 @@ Frame cookie/sandbox restrictions are checked by native-only negative tests.
 The public reCAPTCHA demo now loads and executes its anchor iframe, but its runtime
 reports SyntaxError and no usable checkbox is rendered. CAPTCHA completion and
 Keldurn GPU graphics remain unsupported; see CAPTCHA_AUDIT.md.
+
+
+## Text encoding and the verification runtime — 0.17.0
+
+The confirmed reCAPTCHA iframe SyntaxError originated in the old TextDecoder
+constructor: strict decoding (`fatal: true`) was rejected with RangeError. The
+provider's VM caught RangeError and threw SyntaxError. Temporary host-only throw
+tracing identified the original `Only nonfatal UTF-8 decoding is supported`
+message. The upstream QuickJS source was restored exactly after diagnosis; no
+tracing patch or changes to stack/CPU/memory limits are shipped.
+
+TextDecoder now supports strict and replacement UTF-8, UTF-16LE/BE and Windows
+1251/1252, with supported WHATWG aliases (ASCII/Latin1 mean Windows-1252). Other
+labels still throw RangeError. It handles streaming split sequences, BOM policy,
+flush/reset, malformed input and UTF-16 surrogate recovery. Fatal invalid input
+throws TypeError; valid strict input decodes normally. Private fixed decoder state
+and pending bytes reside in JS ArrayBuffers accounted by the realm heap, so there
+is no native decoder registry or instance leak. Call quotas are 512 KiB input or
+pending-plus-new input; output is bounded by Unicode replacement expansion.
+
+TextEncoder.encode and encodeInto replace isolated UTF-16 surrogates, preserve
+embedded NUL and encode only whole scalar values. encodeInto returns UTF-16 code
+units read and bytes written, respects destination view bounds and allows larger
+destinations while limiting the converted source to 512 KiB. BufferSource uses
+actual ArrayBuffer/TypedArray/DataView slots, without page species or property
+getters. Detached inputs/destinations are empty; out-of-bounds resizable views
+throw. Results use own data properties, so inherited setters cannot run while
+native buffer pointers are live. HTTP body encoding uses the same encoder; module
+source decoding retains its existing nonfatal policy.
+
+The shared owned fixture passes Chromium 151.0.7922.34: split UTF sequences,
+strict errors, BOM, labels, scalar-prefix counts, hostile getters/setters, detached
+and resizable views and complete 256-byte reference fingerprints. Separate native
+checks cover quotas, cleanup and WHATWG input-queue recovery after fatal streaming
+errors. Chromium's ICU implementation retains/drops different state after those
+errors, so that recovery is explicitly not claimed identical to Chromium. The
+normal shared cases and one-shot fatal recovery match the reference.
+
+The public reCAPTCHA demo now advances past that SyntaxError and stops at
+`ReferenceError: Worker is not defined`. No usable verification or challenge
+completion is claimed. Real workers, their loading/CSP/Blob URL/lifetime model and
+subsequent API gaps remain separate work; no fake Worker or challenge bypass is
+installed. The offline demo adds «Текст без искажений» for Russian/strict/streaming
+encoding checks without a network connection.
+
+Host-delivered mouse events now finish pending native focus/style layout before
+starting the guest handler budget. A full-page restyle could otherwise exhaust
+that budget and roll back radio activation under ASAN. Guest-forced layout inside
+handlers remains charged normally; execution limits are unchanged.

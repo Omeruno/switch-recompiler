@@ -132,7 +132,7 @@ Resource *Resources::request(const std::string &url, size_t limit) {
             name != "module-state.js" && name != "module-step.js" && name != "game-demo.js" &&
             name != "game-core.wasm" && name != "game-sidecar.wasm" &&
             name != "messaging-demo.js" && name != "frame-demo.html" && name != "frame-demo.js" &&
-            name != "frame-parent.js") {
+            name != "frame-parent.js" && name != "text-codec-demo.js") {
             r.state = Resource::failed;
             r.error = "Unknown demo asset";
         } else {
@@ -657,7 +657,7 @@ void Resources::start(Resource &r) {
     curl_easy_setopt(r.handle, CURLOPT_HEADERDATA, ctx);
     curl_easy_setopt(r.handle, CURLOPT_WRITEFUNCTION, receive);
     curl_easy_setopt(r.handle, CURLOPT_WRITEDATA, ctx);
-    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.16.0");
+    curl_easy_setopt(r.handle, CURLOPT_USERAGENT, "SwitchVisualBrowser/0.17.0");
     if (r.web_request) {
         auto now = network_clock();
         auto remaining = r.deadline_ms > now ? r.deadline_ms - now : 1;

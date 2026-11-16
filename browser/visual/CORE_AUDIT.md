@@ -424,3 +424,23 @@ Native тест проверяет реальные TLS origin, CSS-пиксел
 отказы политик, отсутствие cookies/запрещённого redirect-запроса и teardown.
 Публичный reCAPTCHA anchor уже загружается и исполняется, но заканчивается
 SyntaxError. Поддержка капчи и WebGPU/WebGL не объявляется.
+
+
+## 0.17.0: TextDecoder/TextEncoder
+
+Причина SyntaxError в reCAPTCHA установлена: старый facade бросал RangeError при
+создании строгого TextDecoder, а библиотека превращала его в SyntaxError. Добавлены
+реальные strict/streaming UTF-8, UTF-16LE/BE, Windows-1251/1252 и encodeInto с
+правильными границами scalar/view. Состояние и остаток очереди хранятся в JS heap;
+ошибки и квоты не оставляют native handles. Native результаты создают собственные
+свойства, без вызова сеттеров прототипа при удержании указателей на buffers.
+
+Временная host-диагностика QuickJS удалена, vendor source восстановлен побайтно.
+Лимиты стека/CPU/JS heap не повышены. Native/Chromium fixtures покрывают BOM,
+порции UTF, malformed/fatal, aliases, UTF-16 счётчики, views, RAB/detach и весь
+256-byte corpus для пяти кодировок. Различие с ICU после fatal stream error
+выделено отдельным native-only тестом.
+
+Теперь anchor runtime доходит до ReferenceError об отсутствующем Worker.
+DedicatedWorker, Blob URL и их политика/жизненный цикл не реализованы; капча,
+WebGPU/WebGL и запуск Keldurn не объявляются работающими.
