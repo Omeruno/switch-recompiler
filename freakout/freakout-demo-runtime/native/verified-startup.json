@@ -1,0 +1,311 @@
+{
+  "presents": 6,
+  "imports": 97909,
+  "api_counts": {
+    "KERNEL32.dll!GetModuleHandleA": 3,
+    "MSVCR71.dll!__set_app_type": 1,
+    "MSVCR71.dll!__p__fmode": 1,
+    "MSVCR71.dll!__p__commode": 1,
+    "MSVCR71.dll!_controlfp": 1,
+    "MSVCR71.dll!_initterm": 2,
+    "MSVCR71.dll!_onexit": 53,
+    "MSVCR71.dll!__getmainargs": 1,
+    "KERNEL32.dll!GetSystemTimeAsFileTime": 1,
+    "KERNEL32.dll!GetCurrentProcessId": 1,
+    "KERNEL32.dll!GetCurrentThreadId": 4625,
+    "KERNEL32.dll!GetTickCount": 1,
+    "KERNEL32.dll!QueryPerformanceCounter": 13,
+    "MSVCR71.dll!malloc": 14075,
+    "KERNEL32.dll!CreateSemaphoreA": 3,
+    "KERNEL32.dll!GetLastError": 3,
+    "KERNEL32.dll!EnterCriticalSection": 4639,
+    "MSVCR71.dll!strlen": 9,
+    "MSVCR71.dll!memcpy": 8081,
+    "KERNEL32.dll!LeaveCriticalSection": 4637,
+    "MSVCR71.dll!setlocale": 3,
+    "MSVCR71.dll!___unguarded_readlc_active_add_func": 2,
+    "KERNEL32.dll!InterlockedIncrement": 4585,
+    "MSVCR71.dll!___setlc_active_func": 1,
+    "MSVCR71.dll!___lc_handle_func": 1,
+    "MSVCR71.dll!___lc_codepage_func": 1,
+    "MSVCR71.dll!__pctype_func": 1,
+    "KERNEL32.dll!InterlockedDecrement": 2126,
+    "KERNEL32.dll!InitializeCriticalSection": 20,
+    "KERNEL32.dll!QueryPerformanceFrequency": 4,
+    "MSVCR71.dll!_ismbblead": 12,
+    "KERNEL32.dll!GetStartupInfoA": 1,
+    "MSVCR71.dll!??3@YAXPAX@Z": 5359,
+    "MSVCR71.dll!strchr": 5,
+    "MSVCR71.dll!tolower": 21,
+    "MSVCR71.dll!strstr": 470,
+    "MSVCR71.dll!fopen": 64,
+    "MSVCR71.dll!??_V@YAXPAX@Z": 462,
+    "MSVCR71.dll!fread": 81,
+    "MSVCR71.dll!atoi": 641,
+    "KERNEL32.dll!WaitForSingleObject": 18606,
+    "KERNEL32.dll!ReleaseSemaphore": 18606,
+    "MSVCR71.dll!fclose": 60,
+    "MSVCR71.dll!toupper": 2984,
+    "KERNEL32.dll!DeleteCriticalSection": 1,
+    "KERNEL32.dll!GetVersionExA": 2,
+    "MSVCR71.dll!strncpy": 230,
+    "fmod.dll!_FSOUND_SetPriority@8": 1,
+    "USER32.dll!ShowCursor": 1,
+    "USER32.dll!LoadIconA": 1,
+    "USER32.dll!LoadCursorA": 1,
+    "GDI32.dll!GetStockObject": 1,
+    "USER32.dll!RegisterClassA": 1,
+    "USER32.dll!AdjustWindowRect": 1,
+    "USER32.dll!CreateWindowExA": 2,
+    "USER32.dll!ShowWindow": 1,
+    "USER32.dll!UpdateWindow": 1,
+    "USER32.dll!SetCapture": 1,
+    "KERNEL32.dll!GetSystemTime": 2,
+    "MSVCR71.dll!srand": 1,
+    "KERNEL32.dll!LoadLibraryA": 3,
+    "KERNEL32.dll!GetProcAddress": 3,
+    "d3d9.dll!Direct3DCreate9": 2,
+    "IDirect3D9!GetAdapterCount": 1,
+    "IDirect3D9!GetAdapterIdentifier": 1,
+    "IDirect3D9!GetAdapterModeCount": 6,
+    "IDirect3D9!EnumAdapterModes": 2,
+    "IDirect3D9!GetAdapterDisplayMode": 1,
+    "IDirect3D9!GetDeviceCaps": 2,
+    "IDirect3D9!CheckDeviceType": 2,
+    "IDirect3D9!CheckDeviceFormat": 158,
+    "IDirect3D9!CheckDeviceMultiSampleType": 3521,
+    "IDirect3D9!CheckDepthStencilMatch": 99,
+    "IDirect3D9!Release": 1,
+    "IDirect3D9!CreateDevice": 1,
+    "IDirect3DDevice9!GetDeviceCaps": 1,
+    "IDirect3DDevice9!AddRef": 16,
+    "IDirect3DDevice9!GetRenderTarget": 1,
+    "IDirect3DSurface9!GetDesc": 5,
+    "IDirect3DDevice9!GetDepthStencilSurface": 1,
+    "IDirect3DDevice9!CreateTexture": 2,
+    "IDirect3DTexture9!GetType": 4,
+    "IDirect3DTexture9!GetSurfaceLevel": 4,
+    "IDirect3DSurface9!LockRect": 4,
+    "IDirect3DSurface9!UnlockRect": 4,
+    "IDirect3DSurface9!Release": 3,
+    "IDirect3DDevice9!SetRenderState": 112,
+    "IDirect3DDevice9!SetTextureStageState": 144,
+    "IDirect3DDevice9!SetSamplerState": 104,
+    "KERNEL32.dll!InterlockedExchange": 3,
+    "IDirect3DDevice9!TestCooperativeLevel": 9,
+    "IDirect3DDevice9!SetTransform": 2,
+    "IDirect3DDevice9!SetViewport": 3,
+    "IDirect3DDevice9!Clear": 2,
+    "MSVCR71.dll!sprintf": 65,
+    "fmod.dll!_FSOUND_GetVersion@0": 1,
+    "fmod.dll!_FSOUND_SetOutput@4": 1,
+    "fmod.dll!_FSOUND_SetDriver@4": 1,
+    "fmod.dll!_FSOUND_Init@12": 1,
+    "fmod.dll!_FSOUND_3D_SetDistanceFactor@4": 1,
+    "fmod.dll!_FSOUND_GetNumDrivers@0": 2,
+    "fmod.dll!_FSOUND_GetDriverName@4": 1,
+    "fmod.dll!_FSOUND_GetDriver@0": 1,
+    "dinput8.dll!DirectInput8Create": 2,
+    "IDirectInput8!EnumDevices": 2,
+    "IDirectInput8!CreateDevice": 3,
+    "IDirectInputDevice8!SetCooperativeLevel": 2,
+    "IDirectInputDevice8!SetDataFormat": 2,
+    "IDirectInputDevice8!Acquire": 2,
+    "USER32.dll!GetKeyboardState": 1,
+    "IDirectInput8!Release": 1,
+    "KERNEL32.dll!FreeLibrary": 1,
+    "KERNEL32.dll!FindFirstFileA": 3,
+    "KERNEL32.dll!GetFileAttributesA": 227,
+    "MSVCR71.dll!_splitpath": 285,
+    "MSVCR71.dll!_stricmp": 225,
+    "MSVCR71.dll!vsprintf": 179,
+    "KERNEL32.dll!FindNextFileA": 227,
+    "KERNEL32.dll!FindClose": 3,
+    "ole32.dll!CoCreateInstance": 1,
+    "IGraphBuilder!QueryInterface": 4,
+    "IMediaEventEx!SetNotifyWindow": 6,
+    "IMediaEventEx!SetNotifyFlags": 1,
+    "KERNEL32.dll!MultiByteToWideChar": 3,
+    "IGraphBuilder!RenderFile": 3,
+    "IDirect3DDevice9!Present": 6,
+    "USER32.dll!PeekMessageA": 5,
+    "IVideoWindow!put_Visible": 3,
+    "IVideoWindow!SetWindowForeground": 3,
+    "IMediaControl!Run": 3,
+    "USER32.dll!TranslateMessage": 3,
+    "USER32.dll!DispatchMessageA": 3,
+    "IMediaEventEx!GetEvent": 6,
+    "IMediaControl!Stop": 5,
+    "IMediaEventEx!FreeEventParams": 3,
+    "USER32.dll!DefWindowProcA": 3,
+    "IGraphBuilder!Abort": 2,
+    "IMediaPosition!get_Duration": 2,
+    "IMediaPosition!put_CurrentPosition": 2,
+    "IMediaPosition!Release": 1,
+    "IMediaEventEx!Release": 1,
+    "IMediaControl!Release": 1,
+    "IVideoWindow!Release": 1,
+    "IGraphBuilder!Release": 1,
+    "fmod.dll!_FSOUND_Update@0": 1,
+    "MSVCR71.dll!_mkdir": 1,
+    "MSVCR71.dll!ceil": 52,
+    "MSVCR71.dll!mbstowcs": 1,
+    "MSVCR71.dll!fseek": 5,
+    "MSVCR71.dll!wcslen": 897,
+    "MSVCR71.dll!wcstombs": 897,
+    "MSVCR71.dll!qsort": 1,
+    "MSVCR71.dll!_makepath": 1
+  },
+  "bytes_read": 1791332,
+  "archive_reads": {
+    "Data2.bnd": [
+      [
+        0,
+        32768,
+        "2d26735e233f71d077dc658e9a6dc4993d733c04a181d6086c9b074a250b996e"
+      ],
+      [
+        456479874,
+        5072,
+        "2a10d6f578401cb7a0cbfb9bd072d9493a2d2ec04b7dde071a9b015e7690d04f"
+      ],
+      [
+        7415687,
+        32768,
+        "70b12773280c04808c3d96b60912797c60cb06067be1d7fd3f31e818c8fdb50e"
+      ],
+      [
+        7415691,
+        32768,
+        "e40590c23622ca3485b8799c3ec79ba1823669ef292d84614e8645996f43a883"
+      ],
+      [
+        7448459,
+        32768,
+        "24fb4da12d691a20ba5268cacbc17647d67ddcd119e7e78fdbb0d201cd923bb3"
+      ],
+      [
+        7481227,
+        32768,
+        "1721c1154cc5ab6bb8f1217ff60526879ec29d619d0368a5aa5ce6e76503ab3a"
+      ],
+      [
+        12555677,
+        32768,
+        "d412f51b2bc0fb99295013c8df91c85eee7e18b165e8c2e5388dee1611c923b4"
+      ],
+      [
+        12588445,
+        32768,
+        "1ec5c758b4471b6dfa75a8bf6860582f1425fbc6f88ba1b0fb0d01c5f89ef6f3"
+      ],
+      [
+        12621213,
+        670996,
+        "ac9fd303d5034f8cc178bf10e87a0f8d0a3df5382edefa6e96e1f08c6ceb9149"
+      ],
+      [
+        13292209,
+        32768,
+        "f0e586de5fb1d3d8c2b259cb033ea86e05f99d5ef13602608d3ed088ec377289"
+      ],
+      [
+        13324977,
+        229523,
+        "6daf74ddbeab1be3e627ce5e8e244b39320b7176ef3ad00dfe96e579e9439ee6"
+      ],
+      [
+        13554500,
+        32768,
+        "ea9b65efedd82a4fbb8ff0556d8c59b9ca939061fd2cbc8e407abe459a12b3dc"
+      ],
+      [
+        13587268,
+        54880,
+        "a3b79713304f47ad912aa6bc1b953e49cd99589a5f9a7f8fdd004f9bdf32c6e8"
+      ],
+      [
+        13642148,
+        32768,
+        "960bc19dedb9b2698cfb415153edde5b86ed24c20eeddd6c77265e4fd2224f65"
+      ],
+      [
+        13674916,
+        59130,
+        "62aea8dff7be8e861626062523b7f0f1e9dbf3de54dd64f389efeb719b14824d"
+      ],
+      [
+        13734046,
+        32768,
+        "5b88bdd98c166e056bb759aa8ce311446edc8c08591094b8a2ae72637344cfd0"
+      ],
+      [
+        13766814,
+        32768,
+        "b9e52815fefa7ce9ff6def2dc638271ed27944c674f3d991efa51b2f3a80e635"
+      ],
+      [
+        13799582,
+        102840,
+        "a9f3bfc6084b1e0c01362737b81163aea3a2e116b312fd95bfef13848860b4e8"
+      ],
+      [
+        13902422,
+        32768,
+        "291e356986ccdd8c984792106ca55159d0b1ee516e1d0485b540fbbaf7995fa9"
+      ]
+    ]
+  },
+  "uploads": [
+    [
+      "DXT1",
+      0,
+      8,
+      "079eff4e15530d947b704514ee18d75a0441f06744c10265b7970f9a9f32e4bf"
+    ],
+    [
+      "DXT1",
+      1,
+      8,
+      "3f0351d2cae401cddc1251fcd47ff1d9f66409102d19bc26dd3465bbeb0adfd5"
+    ],
+    [
+      "DXT1",
+      2,
+      8,
+      "edc4c957ad0947276518e635b6e5f57ed3e2c9c8a771ad6b3472ec730f351a58"
+    ]
+  ],
+  "clear": [
+    [
+      "Clear",
+      [
+        [
+          0,
+          0,
+          1024,
+          768
+        ]
+      ],
+      3,
+      4278190080,
+      1065353216,
+      0
+    ],
+    [
+      "Clear",
+      [
+        [
+          0,
+          0,
+          1024,
+          768
+        ]
+      ],
+      3,
+      4278190080,
+      1065353216,
+      0
+    ]
+  ]
+}

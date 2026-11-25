@@ -1,0 +1,394 @@
+{
+  "archive": {
+    "stop": "archive checkpoint: Data2.bnd, 6 reads",
+    "imports_count": 90900,
+    "block_count": 7295,
+    "file_bytes": 411819,
+    "archive_reads": {
+      "Data2.bnd": [
+        [
+          0,
+          32768,
+          "2d26735e233f71d077dc658e9a6dc4993d733c04a181d6086c9b074a250b996e"
+        ],
+        [
+          456479874,
+          5072,
+          "2a10d6f578401cb7a0cbfb9bd072d9493a2d2ec04b7dde071a9b015e7690d04f"
+        ],
+        [
+          7415687,
+          32768,
+          "70b12773280c04808c3d96b60912797c60cb06067be1d7fd3f31e818c8fdb50e"
+        ],
+        [
+          7415691,
+          32768,
+          "e40590c23622ca3485b8799c3ec79ba1823669ef292d84614e8645996f43a883"
+        ],
+        [
+          7448459,
+          32768,
+          "24fb4da12d691a20ba5268cacbc17647d67ddcd119e7e78fdbb0d201cd923bb3"
+        ],
+        [
+          7481227,
+          32768,
+          "1721c1154cc5ab6bb8f1217ff60526879ec29d619d0368a5aa5ce6e76503ab3a"
+        ]
+      ]
+    },
+    "mip_uploads": [],
+    "window_messages": [
+      [
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ],
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ],
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ]
+      ],
+      2
+    ],
+    "video": [
+      [
+        "FilterGraph",
+        "diagnostic object"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/coldwood.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/JoWooD.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/dreamcatcher.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ]
+    ],
+    "presents": 6
+  },
+  "texture": {
+    "stop": "texture checkpoint: 3 compressed mip uploads",
+    "imports_count": 97909,
+    "block_count": 7633,
+    "file_bytes": 1791332,
+    "archive_reads": {
+      "Data2.bnd": [
+        [
+          0,
+          32768,
+          "2d26735e233f71d077dc658e9a6dc4993d733c04a181d6086c9b074a250b996e"
+        ],
+        [
+          456479874,
+          5072,
+          "2a10d6f578401cb7a0cbfb9bd072d9493a2d2ec04b7dde071a9b015e7690d04f"
+        ],
+        [
+          7415687,
+          32768,
+          "70b12773280c04808c3d96b60912797c60cb06067be1d7fd3f31e818c8fdb50e"
+        ],
+        [
+          7415691,
+          32768,
+          "e40590c23622ca3485b8799c3ec79ba1823669ef292d84614e8645996f43a883"
+        ],
+        [
+          7448459,
+          32768,
+          "24fb4da12d691a20ba5268cacbc17647d67ddcd119e7e78fdbb0d201cd923bb3"
+        ],
+        [
+          7481227,
+          32768,
+          "1721c1154cc5ab6bb8f1217ff60526879ec29d619d0368a5aa5ce6e76503ab3a"
+        ],
+        [
+          12555677,
+          32768,
+          "d412f51b2bc0fb99295013c8df91c85eee7e18b165e8c2e5388dee1611c923b4"
+        ],
+        [
+          12588445,
+          32768,
+          "1ec5c758b4471b6dfa75a8bf6860582f1425fbc6f88ba1b0fb0d01c5f89ef6f3"
+        ],
+        [
+          12621213,
+          670996,
+          "ac9fd303d5034f8cc178bf10e87a0f8d0a3df5382edefa6e96e1f08c6ceb9149"
+        ],
+        [
+          13292209,
+          32768,
+          "f0e586de5fb1d3d8c2b259cb033ea86e05f99d5ef13602608d3ed088ec377289"
+        ],
+        [
+          13324977,
+          229523,
+          "6daf74ddbeab1be3e627ce5e8e244b39320b7176ef3ad00dfe96e579e9439ee6"
+        ],
+        [
+          13554500,
+          32768,
+          "ea9b65efedd82a4fbb8ff0556d8c59b9ca939061fd2cbc8e407abe459a12b3dc"
+        ],
+        [
+          13587268,
+          54880,
+          "a3b79713304f47ad912aa6bc1b953e49cd99589a5f9a7f8fdd004f9bdf32c6e8"
+        ],
+        [
+          13642148,
+          32768,
+          "960bc19dedb9b2698cfb415153edde5b86ed24c20eeddd6c77265e4fd2224f65"
+        ],
+        [
+          13674916,
+          59130,
+          "62aea8dff7be8e861626062523b7f0f1e9dbf3de54dd64f389efeb719b14824d"
+        ],
+        [
+          13734046,
+          32768,
+          "5b88bdd98c166e056bb759aa8ce311446edc8c08591094b8a2ae72637344cfd0"
+        ],
+        [
+          13766814,
+          32768,
+          "b9e52815fefa7ce9ff6def2dc638271ed27944c674f3d991efa51b2f3a80e635"
+        ],
+        [
+          13799582,
+          102840,
+          "a9f3bfc6084b1e0c01362737b81163aea3a2e116b312fd95bfef13848860b4e8"
+        ],
+        [
+          13902422,
+          32768,
+          "291e356986ccdd8c984792106ca55159d0b1ee516e1d0485b540fbbaf7995fa9"
+        ]
+      ]
+    },
+    "mip_uploads": [
+      [
+        "DXT1",
+        0,
+        8,
+        "079eff4e15530d947b704514ee18d75a0441f06744c10265b7970f9a9f32e4bf"
+      ],
+      [
+        "DXT1",
+        1,
+        8,
+        "3f0351d2cae401cddc1251fcd47ff1d9f66409102d19bc26dd3465bbeb0adfd5"
+      ],
+      [
+        "DXT1",
+        2,
+        8,
+        "edc4c957ad0947276518e635b6e5f57ed3e2c9c8a771ad6b3472ec730f351a58"
+      ]
+    ],
+    "window_messages": [
+      [
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ],
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ],
+        [
+          "post",
+          1024,
+          0
+        ],
+        [
+          "peek",
+          1024,
+          true
+        ],
+        [
+          "dispatch",
+          1024,
+          512
+        ]
+      ],
+      2
+    ],
+    "video": [
+      [
+        "FilterGraph",
+        "diagnostic object"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/coldwood.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/JoWooD.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ],
+      [
+        "movie unavailable",
+        "Data/Common/dreamcatcher.wmv"
+      ],
+      [
+        "intro control",
+        "Run"
+      ],
+      [
+        "intro completion",
+        "diagnostic"
+      ],
+      [
+        "intro control",
+        "Stop"
+      ]
+    ],
+    "presents": 6
+  }
+}
