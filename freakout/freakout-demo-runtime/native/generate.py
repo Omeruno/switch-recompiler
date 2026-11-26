@@ -10,7 +10,7 @@ sys.path.insert(0, str(HOME.parent))
 
 from lift_boot import emit
 from trace_boot import Boot, load_demo
-from d3d_probe import ROOT_METHODS, DEVICE_METHODS, SURFACE_METHODS, TEXTURE_METHODS
+from d3d_probe import ROOT_METHODS, DEVICE_METHODS, SURFACE_METHODS, TEXTURE_METHODS, BUFFER_METHODS
 from input_probe import ROOT_METHODS as INPUT_ROOT, DEVICE_METHODS as INPUT_DEVICE
 from video_probe import CONTROL, EVENTS, GRAPH, POSITION, WINDOW
 
@@ -19,6 +19,8 @@ INTERFACES = (
     ('d3d_device', 'IDirect3DDevice9', DEVICE_METHODS),
     ('d3d_surface', 'IDirect3DSurface9', SURFACE_METHODS),
     ('d3d_texture', 'IDirect3DTexture9', TEXTURE_METHODS),
+    ('d3d_vertex_buffer', 'IDirect3DVertexBuffer9', BUFFER_METHODS),
+    ('d3d_index_buffer', 'IDirect3DIndexBuffer9', BUFFER_METHODS),
     ('di_root', 'IDirectInput8', INPUT_ROOT),
     ('di_device', 'IDirectInputDevice8', INPUT_DEVICE),
     ('video_graph', 'IGraphBuilder', GRAPH),
@@ -61,21 +63,28 @@ def main():
     args.add_argument('exe', type=Path)
     args.add_argument('pcrecomp', type=Path)
     args.add_argument('assets', type=Path)
+    args.add_argument('--checkpoint', choices=('draw', 'texture'), default='draw')
     args.add_argument('--out', type=Path, default=HOME / 'generated')
     options = args.parse_args()
     options.out.mkdir(parents=True, exist_ok=True)
     payload = load_demo(options.exe)
+    draw = options.checkpoint == 'draw'
     boot = Boot(*payload, stop_at_winmain=False, assets=options.assets.resolve(), probe_audio=True,
-                present_limit=12, compressed_upload_limit=3, instruction_limit=88_000_000)
+                present_limit=256 if draw else 12, compressed_upload_limit=0 if draw else 3,
+                frame_after_draw=draw, drawn_frame_limit=1, instruction_limit=900_000_000 if draw else 88_000_000)
     generate_header(boot, payload, options.out)
     result = boot.run()
     print(f'x86 reference: {result["status"]}, {len(boot.api_sequence)} imports, {boot.file_bytes} bytes read',
           flush=True)
-    if len(boot.d3d.uploads) != 3:
-        raise RuntimeError(f'x86 startup did not upload the texture: {result["status"]}')
-    reference = {'presents': boot.d3d.present_count, 'imports': len(boot.api_sequence),
+    stop = 'drawn frame checkpoint:' if draw else 'texture checkpoint:'
+    if not result['status'].startswith(stop):
+        raise RuntimeError(f'x86 startup did not reach the checkpoint: {result["status"]}')
+    reference = {'status': result['status'], 'draws': boot.d3d.draw_count,
+                 'threads': boot.thread.log, 'presents': boot.d3d.present_count, 'imports': len(boot.api_sequence),
                  'api_counts': dict(boot.api_calls), 'bytes_read': boot.file_bytes,
                  'archive_reads': boot.file_reads, 'uploads': boot.d3d.uploads,
+                 'd3d_api_counts': {key: value for key, value in boot.api_calls.items() if key.startswith('IDirect3D')},
+                 'draw_events': [event for event in boot.d3d.events if event[0] in ('draw', 'geometry')],
                  'clear': [event for event in boot.d3d.events if event[0] == 'Clear']}
     (options.out / 'reference.json').write_text(json.dumps(reference, indent=2) + '\n')
     emit(boot, options.pcrecomp.resolve(), options.out, standalone=False)

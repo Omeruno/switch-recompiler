@@ -264,6 +264,74 @@ static bool create_texture(Game *g, uint32_t width, uint32_t height)
     return false;
 }
 
+static Buffer *find_buffer(Game *g, uint32_t handle)
+{
+    for (unsigned i = 0; handle && i < MAX_BUFFERS; ++i)
+        if (g->buffers[i].handle == handle)
+            return &g->buffers[i];
+    return NULL;
+}
+
+static bool create_buffer(Game *g, bool vertex)
+{
+    uint32_t bytes = arg(g, 1), output = arg(g, 5);
+    if (!bytes || !output)
+        return result(g, INVALID_CALL, 28);
+    for (unsigned i = 0; i < MAX_BUFFERS; ++i) {
+        Buffer *b = &g->buffers[i];
+        if (b->handle)
+            continue;
+        uint32_t data = allocate(g, bytes);
+        if (!data)
+            return result(g, 0x8007000eu, 28);
+        uint32_t handle = make_interface(g, vertex ? &d3d_vertex_buffer : &d3d_index_buffer);
+        if (!handle) {
+            release(g, data);
+            return result(g, 0x8007000eu, 28);
+        }
+        *b = (Buffer){.handle = handle, .refs = 1, .bytes = bytes, .data = data,
+                      .usage = arg(g, 2), .format = arg(g, 3), .pool = arg(g, 4), .kind = vertex ? 6 : 7};
+        wr32(output, handle);
+        return result(g, S_OK, 28);
+    }
+    return result(g, 0x8007000eu, 28);
+}
+
+static bool buffer(Game *g, const char *name)
+{
+    Buffer *b = find_buffer(g, arg(g, 0));
+    if (!b)
+        return false;
+    if (IS("AddRef"))
+        return result(g, ++b->refs, 4);
+    if (IS("Release") && b->refs)
+        return result(g, --b->refs, 4);
+    if (IS("GetType"))
+        return result(g, b->kind, 4);
+    if (IS("GetDesc")) {
+        uint32_t desc[] = {b->kind == 6 ? 100 : b->format, b->kind, b->usage, b->pool, b->bytes, b->format};
+        memcpy(guest_pointer(arg(g, 1)), desc, (b->kind == 6 ? 6 : 5) * sizeof(uint32_t));
+        return result(g, S_OK, 8);
+    }
+    if (IS("Lock")) {
+        uint32_t offset = arg(g, 1), size = arg(g, 2), output = arg(g, 3);
+        if (b->locked || !output || offset > b->bytes || size > b->bytes - offset)
+            return result(g, INVALID_CALL, 20);
+        b->locked = true;
+        b->lock_start = offset;
+        b->lock_size = size ? size : b->bytes - offset;
+        wr32(output, b->data + offset);
+        return result(g, S_OK, 20);
+    }
+    if (IS("Unlock")) {
+        if (!b->locked)
+            return result(g, INVALID_CALL, 4);
+        b->locked = false;
+        return result(g, S_OK, 4);
+    }
+    return false;
+}
+
 static bool device(Game *g, const char *name)
 {
     if (arg(g, 0) != g->device || !g->device)
@@ -289,6 +357,52 @@ static bool device(Game *g, const char *name)
         wr32(a, g->depth_buffer);
         return result(g, S_OK, 8);
     }
+    if (IS("CreateVertexBuffer") || IS("CreateIndexBuffer"))
+        return create_buffer(g, IS("CreateVertexBuffer"));
+    if (IS("BeginScene") || IS("EndScene")) {
+        if (g->scene == IS("BeginScene"))
+            return result(g, INVALID_CALL, 4);
+        g->scene = IS("BeginScene");
+        return result(g, S_OK, 4);
+    }
+    if (IS("SetMaterial")) {
+        memcpy(g->material, guest_pointer(a), sizeof g->material);
+        return result(g, S_OK, 8);
+    }
+    if (IS("SetLight") && a < 8) {
+        memcpy(g->lights[a], guest_pointer(b), sizeof g->lights[a]);
+        return result(g, S_OK, 12);
+    }
+    if (IS("LightEnable") && a < 8) {
+        g->light_enabled[a] = b != 0;
+        return result(g, S_OK, 12);
+    }
+    if (IS("SetTexture") && a == 0 && (!b || find_texture(g, b))) {
+        g->texture0 = b;
+        return result(g, S_OK, 12);
+    }
+    if (IS("SetStreamSource") && a == 0 && (!b || find_buffer(g, b))) {
+        g->stream = b;
+        g->stream_offset = arg(g, 3);
+        g->stride = arg(g, 4);
+        return result(g, S_OK, 20);
+    }
+    if (IS("SetFVF")) {
+        g->fvf = a;
+        return result(g, S_OK, 8);
+    }
+    if (IS("SetIndices") && (!a || find_buffer(g, a))) {
+        g->indices = a;
+        return result(g, S_OK, 8);
+    }
+    if (IS("DrawIndexedPrimitive") && g->scene) {
+        Buffer *vb = find_buffer(g, g->stream), *ib = find_buffer(g, g->indices);
+        if (!vb || !ib || !render_indexed(g, vb, ib))
+            return false;
+        ++g->draws;
+        ++g->frame_draws;
+        return result(g, S_OK, 28);
+    }
     if (IS("CreateTexture"))
         return create_texture(g, a, b);
     if (IS("SetRenderState") && a < 256) {
@@ -303,8 +417,8 @@ static bool device(Game *g, const char *name)
         g->stages[a][b] = arg(g, 3);
         return result(g, S_OK, 16);
     }
-    if (IS("SetTransform") && a < 32) {
-        memcpy(g->transforms + 16 * a, guest_pointer(b), 64);
+    if (IS("SetTransform") && a < 257) {
+        memcpy(g->transforms[a], guest_pointer(b), 64);
         return result(g, S_OK, 12);
     }
     if (IS("SetViewport")) {
@@ -319,11 +433,15 @@ static bool device(Game *g, const char *name)
         }
         if (arg(g, 3) & 1)
             g->clear = arg(g, 4);
+        if (!render_clear(g, arg(g, 3), g->clear, rdf32(g->cpu.esp + 24)))
+            return false;
         g->clears++;
         return result(g, S_OK, 28);
     }
     if (IS("Present") && !a && !b && !arg(g, 3) && !arg(g, 4)) {
         ++g->presents;
+        g->presented_draws = g->frame_draws;
+        g->frame_draws = 0;
         fprintf(g->log, "Present #%u, Clear calls %u, ARGB %08x\n", g->presents, g->clears, g->clear);
         return result(g, S_OK, 20);
     }
@@ -355,6 +473,8 @@ bool d3d_dispatch(Game *g, const Import *call)
         return device(g, name);
     if (!strcmp(call->dll, d3d_surface.dll))
         return surface(g, name);
+    if (!strcmp(call->dll, d3d_vertex_buffer.dll) || !strcmp(call->dll, d3d_index_buffer.dll))
+        return buffer(g, name);
     if (!strcmp(call->dll, d3d_texture.dll))
         return texture(g, name);
     return false;

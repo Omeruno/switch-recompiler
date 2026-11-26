@@ -7,11 +7,12 @@
 
 enum {
     LOW_SIZE = 0x08000000, RUNTIME_BASE = 0x7c340000, RUNTIME_SIZE = 0xe0000,
-    API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010,
+    API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010, THREAD_RETURN = 0xff020,
     GAME_ENTRY = 0x67de70, PE_BASE = 0x400000, PE_ENTRY = 0x5af59e,
     STACK = 0xbe0000, BSS = 0xa00000, COMMAND = BSS + 0x100, ARGV = BSS + 0x180,
     HEAP_START = 0x01000000, MAX_IMPORTS = 4096, MAX_SPANS = 24000,
-    MAX_FILES = 64, MAX_SEARCHES = 8, MAX_LOCKS = 96, MAX_SEMAPHORES = 16, MAX_CTORS = 12, MAX_TEXTURES = 16, MAX_MIPS = 13,
+    MAX_FILES = 64, MAX_SEARCHES = 8, MAX_LOCKS = 96, MAX_SEMAPHORES = 16, MAX_CTORS = 12, MAX_TEXTURES = 512, MAX_MIPS = 13,
+    MAX_THREADS = 8, MAX_EVENTS = 32, MAX_BUFFERS = 512,
 };
 
 typedef struct { const char *dll, *name; } Import;
@@ -31,12 +32,28 @@ typedef struct {
 } Texture;
 
 typedef struct {
+    CPU cpu;
+    uint32_t seh, crt, wait, last_error, stack_base;
+    uint64_t deadline;
+    bool sleeping, suspended, exited, open;
+} GuestThread;
+
+typedef struct {
+    uint32_t handle, refs, bytes, data, usage, format, pool, kind, lock_start, lock_size;
+    bool locked;
+} Buffer;
+
+typedef struct {
     uint8_t *low, *runtime;
     CPU cpu;
     const char *assets;
     FILE *log;
     const char *stop;
-    unsigned calls, presents, clears;
+    unsigned calls, presents, clears, draws, frame_draws, presented_draws;
+    unsigned current_thread, thread_count, import_slice;
+    uint64_t clock;
+    GuestThread threads[MAX_THREADS];
+    struct { bool open, manual, signaled; } events[MAX_EVENTS];
     uint64_t file_bytes;
     bool winmain;
     Import imports[MAX_IMPORTS];
@@ -58,19 +75,26 @@ typedef struct {
     FreakOutMessageQueue messages;
     struct { uint32_t stack, ret; } window_callbacks[8];
     unsigned window_depth, idle_polls;
-    struct { uint32_t address, depth; } locks[MAX_LOCKS];
+    struct { uint32_t address, depth; unsigned owner; } locks[MAX_LOCKS];
     struct { uint32_t count, max; } semaphores[MAX_SEMAPHORES];
-    uint32_t last_error, random, cursor_count, window_count, window_proc;
+    uint32_t random, cursor_count, window_count, window_proc;
     uint32_t d3d, d3d_refs, device, device_refs, backbuffer, depth_buffer;
     Surface back, depth;
     Texture textures[MAX_TEXTURES];
-    uint32_t clear, raster[256], samplers[16][16], stages[8][64], transforms[512], viewport[6];
+    Buffer buffers[MAX_BUFFERS];
+    uint32_t clear, raster[256], samplers[16][16], stages[8][64], transforms[257][16], viewport[6];
+    uint32_t stream, stream_offset, stride, indices, fvf, texture0;
+    uint32_t material[17], lights[8][26];
+    bool scene, light_enabled[8];
+    uint32_t *pixels;
+    float *depth_pixels;
     uint32_t input, input_refs, keyboard, mouse, key_size, mouse_size;
     bool key_acquired, mouse_acquired;
     uint8_t keys[256];
 } Game;
 
 extern const Methods d3d_root, d3d_device, d3d_surface, d3d_texture, di_root, di_device, video_graph, video_events, video_control, video_position, video_window;
+extern const Methods d3d_vertex_buffer, d3d_index_buffer;
 uint32_t advance(uint8_t *guest, uint8_t *runtime, CPU *cpu);
 int has_block(uint32_t address);
 void hash_bytes(const void *data, size_t size, uint8_t digest[32]);
@@ -87,6 +111,12 @@ FILE *open_asset(const Game *game, const char *name);
 bool game_init(Game *game, const char *assets, FILE *log);
 bool game_step(Game *game);
 void game_close(Game *game);
+bool switch_thread(Game *g);
+uint32_t thread_crt(Game *g);
+bool thread_dispatch(Game *g, const Import *call);
+bool render_allocate(Game *g);
+bool render_clear(Game *g, unsigned flags, uint32_t color, float depth);
+bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib);
 bool win32_dispatch(Game *game, const Import *call);
 bool d3d_dispatch(Game *game, const Import *call);
 bool input_dispatch(Game *game, const Import *call);

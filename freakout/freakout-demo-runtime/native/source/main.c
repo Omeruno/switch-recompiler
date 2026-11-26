@@ -1,11 +1,12 @@
 #include "game.h"
 #include <stdlib.h>
+#include <string.h>
 #ifdef __SWITCH__
 #include <switch.h>
 #include "freakout_pad_nx.h"
 #endif
 
-typedef struct { uint32_t width, height, argb; } FirstFrame;
+typedef struct { uint32_t width, height, draws; uint32_t *pixels; } FirstFrame;
 typedef bool (*Poll)(Game *, void *);
 
 static bool run(const char *assets, FILE *log, FirstFrame *frame, Poll poll, void *data)
@@ -15,7 +16,7 @@ static bool run(const char *assets, FILE *log, FirstFrame *frame, Poll poll, voi
         return false;
     bool initialized = game_init(game, assets, log);
     if (initialized) {
-        for (unsigned step = 0; step < 1000000 && game->uploads < 3; ++step) {
+        for (unsigned step = 0; step < 2000000 && !game->presented_draws; ++step) {
             if (poll && !(step % 256) && !poll(game, data)) {
                 game->stop = "stopped by user";
                 break;
@@ -24,14 +25,15 @@ static bool run(const char *assets, FILE *log, FirstFrame *frame, Poll poll, voi
                 break;
         }
     }
-    bool accepted = game->presents == 6 && game->winmain && game->clears &&
-                    game->archive_reads >= 6 && game->uploads == 3;
-    fprintf(log, "%u presents, %u imports, %llu bytes read, %u archive reads, %u texture uploads, status: %s\n",
+    bool accepted = game->presented_draws && game->winmain && game->pixels;
+    fprintf(log, "%u presents, %u imports, %llu bytes read, %u archive reads, %u texture uploads, %u draws, status: %s\n",
             game->presents, game->calls, (unsigned long long)game->file_bytes,
-            game->archive_reads, game->uploads,
-            accepted ? "game archive and texture checkpoint" : game->stop ? game->stop : "step limit");
-    if (accepted)
-        *frame = (FirstFrame){game->back.width, game->back.height, game->clear};
+            game->archive_reads, game->uploads, game->presented_draws,
+            accepted ? "first game-rendered frame" : game->stop ? game->stop : "step limit");
+    if (accepted) {
+        *frame = (FirstFrame){game->back.width, game->back.height, game->presented_draws, game->pixels};
+        game->pixels = NULL;
+    }
     game_close(game);
     free(game);
     return accepted;
@@ -59,18 +61,14 @@ static void view_frame(PadState *pad, FirstFrame frame)
     if (R_SUCCEEDED(framebufferCreate(&fb, nwindowGetDefault(), frame.width, frame.height,
                                       PIXEL_FORMAT_RGBA_8888, 2))) {
         if (R_SUCCEEDED(framebufferMakeLinear(&fb))) {
-            uint32_t color = RGBA8_MAXALPHA(frame.argb >> 16, frame.argb >> 8, frame.argb);
             while (appletMainLoop()) {
                 padUpdate(pad);
                 if (padGetButtonsDown(pad) & (HidNpadButton_B | HidNpadButton_Plus))
                     break;
                 u32 stride;
                 uint8_t *pixels = framebufferBegin(&fb, &stride);
-                for (unsigned y = 0; y < frame.height; ++y) {
-                    uint32_t *row = (uint32_t *)(pixels + y * stride);
-                    for (unsigned x = 0; x < frame.width; ++x)
-                        row[x] = color;
-                }
+                for (unsigned y = 0; y < frame.height; ++y)
+                    memcpy(pixels + y * stride, frame.pixels + y * frame.width, frame.width * 4);
                 framebufferEnd(&fb);
             }
         }
@@ -93,14 +91,16 @@ int main(void)
     bool initialized = run(DEMO_PATH, log ? log : stdout, &frame, poll_switch, &pad);
     if (log)
         fclose(log);
+    if (initialized)
+        view_frame(&pad, frame);
     while (appletMainLoop()) {
         consoleClear();
         puts("FreakOut Extreme Freeride - ARM64 startup");
         if (initialized) {
-            printf("First live Present: %ux%u ARGB %08x\n", frame.width, frame.height, frame.argb);
-            puts("Read Data2.bnd and uploaded three original DXT1 mips.\nA: show the startup frame. B: return.");
+            printf("First game-rendered frame: %ux%u, %u draws\n", frame.width, frame.height, frame.draws);
+            puts("A: show the frame. B: return.");
         } else {
-            puts("The demo stopped before the texture checkpoint.");
+            puts("The demo stopped before drawing a frame.");
             if (!log)
                 puts("Check the demo path and SD card access.");
         }
@@ -121,13 +121,35 @@ int main(void)
         } while (appletMainLoop());
     }
 done:
+    free(frame.pixels);
     consoleExit(NULL);
     return 0;
 }
 #else
 int main(int argc, char **argv)
 {
-    FirstFrame frame;
-    return argc == 2 && run(argv[1], stdout, &frame, NULL, NULL) ? 0 : 1;
+    FirstFrame frame = {0};
+    if (argc < 2 || argc > 3 || !run(argv[1], stdout, &frame, NULL, NULL))
+        return 1;
+    if (argc == 3) {
+        FILE *image = fopen(argv[2], "wb");
+        if (!image) {
+            free(frame.pixels);
+            return 1;
+        }
+        fprintf(image, "P6\n%u %u\n255\n", frame.width, frame.height);
+        for (unsigned i = 0; i < frame.width * frame.height; ++i) {
+            uint32_t color = frame.pixels[i];
+            unsigned char rgb[] = {color, color >> 8, color >> 16};
+            fwrite(rgb, 1, sizeof rgb, image);
+        }
+        bool saved = !ferror(image);
+        if (fclose(image) || !saved) {
+            free(frame.pixels);
+            return 1;
+        }
+    }
+    free(frame.pixels);
+    return 0;
 }
 #endif

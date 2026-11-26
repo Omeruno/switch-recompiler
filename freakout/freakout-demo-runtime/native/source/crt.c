@@ -208,7 +208,29 @@ bool crt_dispatch(Game *g, const Import *call)
         char path[1024];
         if (strcasecmp(str(a), "Data\\User") && strcasecmp(str(a), "Data/User"))
             return false;
-        return result(g, asset_path(g, str(a), path) ? mkdir(path, 0777) : UINT32_MAX, 0);
+        return result(g, asset_path(g, str(a), path) ? (uint32_t)mkdir(path, 0777) : UINT32_MAX, 0);
+    }
+    if (IS("_errno") || IS("__doserrno")) {
+        uint32_t data = thread_crt(g);
+        return data && result(g, data + (IS("_errno") ? 8 : 12), 0);
+    }
+    if (IS("atof")) {
+        fpush(&g->cpu, strtod(str(a), NULL));
+        return result(g, 0, 0);
+    }
+    if (IS("_CIfmod")) {
+        double divisor = fpop(&g->cpu);
+        double dividend = fpop(&g->cpu);
+        fpush(&g->cpu, fmod(dividend, divisor));
+        return result(g, 0, 0);
+    }
+    if (IS("memchr")) {
+        uint32_t n = arg(g, 2);
+        const unsigned char *source = game_bytes(g, a, n);
+        if (!source)
+            return false;
+        const unsigned char *found = memchr(source, arg(g, 1), n);
+        return result(g, found ? a + (found - source) : 0, 0);
     }
     if (IS("ceil")) {
         fpush(&g->cpu, ceil(rdf64(g->cpu.esp + 4)));

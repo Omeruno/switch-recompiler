@@ -256,6 +256,7 @@ bool game_init(Game *game, const char *assets, FILE *log)
     game->cpu.esp = STACK;
     game->cpu.eip = PE_ENTRY;
     game->random = 1;
+    game->thread_count = 1;
     return true;
 }
 
@@ -292,6 +293,10 @@ bool game_step(Game *game)
                 arg(game, 0), arg(game, 1), guest_pointer(arg(game, 2)), arg(game, 3));
         return true;
     }
+    if (address == THREAD_RETURN) {
+        game->threads[game->current_thread].exited = true;
+        return switch_thread(game);
+    }
     if (address == CTOR_GATE && next_constructor(game))
         return true;
     if (address == WINDOW_RETURN && game->window_depth) {
@@ -303,6 +308,7 @@ bool game_step(Game *game)
     if (address >= API_BASE && !(address & 15) && (address - API_BASE) / 16 < game->import_count) {
         const Import *call = &game->imports[(address - API_BASE) / 16];
         game->calls++;
+        unsigned previous = game->current_thread;
         bool handled;
         if (!strcmp(call->name, "_initterm") && game->ctor_count < MAX_CTORS) {
             uint32_t first = arg(game, 0), end = arg(game, 1), stack = game->cpu.esp;
@@ -310,17 +316,23 @@ bool game_step(Game *game)
             handled = next_constructor(game);
         } else {
             handled = d3d_dispatch(game, call) || input_dispatch(game, call) ||
-                      win32_dispatch(game, call) || crt_dispatch(game, call) ||
+                      thread_dispatch(game, call) || win32_dispatch(game, call) || crt_dispatch(game, call) ||
                       media_dispatch(game, call) || file_dispatch(game, call);
         }
-        if (handled)
+        if (handled) {
+            if (game->thread_count > 1 && previous == game->current_thread && ++game->import_slice >= 8192) {
+                ++game->clock;
+                return switch_thread(game);
+            }
             return true;
+        }
         fprintf(game->log, "Unhandled import %s!%s at %08x from %08x\n",
                 call->dll, call->name, address, rd32(game->cpu.esp));
     } else {
         fprintf(game->log, "Untranslated code at %08x esp=%08x\n", address, game->cpu.esp);
     }
-    game->stop = "runtime stopped";
+    if (!game->stop)
+        game->stop = "runtime stopped";
     return false;
 }
 
@@ -331,6 +343,8 @@ void game_close(Game *game)
             fclose(game->files[i]);
     file_close_searches(game);
     media_close(game);
+    free(game->pixels);
+    free(game->depth_pixels);
     free(game->low);
     free(game->runtime);
 }

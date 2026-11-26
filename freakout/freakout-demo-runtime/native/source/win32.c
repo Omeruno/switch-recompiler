@@ -2,79 +2,6 @@
 #include <string.h>
 #include <strings.h>
 
-static bool critical(Game *g, const char *name, uint32_t address)
-{
-    size_t i = 0;
-    size_t empty = MAX_LOCKS;
-    for (; i < MAX_LOCKS; ++i) {
-        if (g->locks[i].address == address)
-            break;
-        if (!g->locks[i].address && empty == MAX_LOCKS)
-            empty = i;
-    }
-    if (i == MAX_LOCKS) {
-        if (empty == MAX_LOCKS || (strcmp(name, "InitializeCriticalSection") &&
-                                   strcmp(name, "EnterCriticalSection")))
-            return false;
-        i = empty;
-        g->locks[i].address = address;
-    }
-    if (!strcmp(name, "DeleteCriticalSection")) {
-        if (g->locks[i].depth)
-            return false;
-        g->locks[i].address = 0;
-    } else if (!strcmp(name, "EnterCriticalSection")) {
-        g->locks[i].depth++;
-    } else if (!strcmp(name, "LeaveCriticalSection")) {
-        if (!g->locks[i].depth)
-            return false;
-        g->locks[i].depth--;
-    }
-    return result(g, 0, 4);
-}
-
-static bool semaphore(Game *g, const char *name, uint32_t a, uint32_t b)
-{
-    if (!strcmp(name, "CreateSemaphoreA")) {
-        uint32_t maximum = arg(g, 2);
-        if (!maximum || b > maximum || arg(g, 3))
-            return result(g, 0, 16);
-        for (unsigned i = 0; i < MAX_SEMAPHORES; ++i) {
-            if (!g->semaphores[i].max) {
-                g->semaphores[i].count = b;
-                g->semaphores[i].max = maximum;
-                return result(g, 0x100 + i, 16);
-            }
-        }
-        return result(g, 0, 16);
-    }
-    unsigned i = a - 0x100;
-    if (i >= MAX_SEMAPHORES || !g->semaphores[i].max) {
-        g->last_error = 6;
-        return result(g, !strcmp(name, "WaitForSingleObject") ? UINT32_MAX : 0,
-                      !strcmp(name, "ReleaseSemaphore") ? 12 : !strcmp(name, "CloseHandle") ? 4 : 8);
-    }
-    if (!strcmp(name, "ReleaseSemaphore")) {
-        uint32_t current = g->semaphores[i].count;
-        if (!b || b > g->semaphores[i].max - current)
-            return result(g, 0, 12);
-        uint32_t previous = arg(g, 2);
-        if (previous)
-            wr32(previous, current);
-        g->semaphores[i].count += b;
-        return result(g, 1, 12);
-    }
-    if (!strcmp(name, "CloseHandle")) {
-        g->semaphores[i].max = 0;
-        return result(g, 1, 4);
-    }
-    if (g->semaphores[i].count) {
-        g->semaphores[i].count--;
-        return result(g, 0, 8);
-    }
-    return b == 0 && result(g, 258, 8);
-}
-
 bool win32_dispatch(Game *g, const Import *call)
 {
     const char *name = call->name;
@@ -82,14 +9,8 @@ bool win32_dispatch(Game *g, const Import *call)
     uint32_t a = arg(g, 0);
     if (IS("GetModuleHandleA") && !a)
         return result(g, PE_BASE, 4);
-    if (IS("GetCurrentThreadId") || IS("GetCurrentProcessId") || IS("GetTickCount"))
+    if (IS("GetCurrentProcessId") || IS("GetTickCount"))
         return result(g, 1, 0);
-    if (IS("GetLastError"))
-        return result(g, g->last_error, 0);
-    if (IS("SetLastError")) {
-        g->last_error = a;
-        return result(g, 0, 4);
-    }
     if (IS("GetSystemTimeAsFileTime") || IS("QueryPerformanceCounter") || IS("QueryPerformanceFrequency")) {
         wr64(a, IS("QueryPerformanceFrequency") ? 1000000 : 1);
         return result(g, 1, 4);
@@ -121,11 +42,6 @@ bool win32_dispatch(Game *g, const Import *call)
         wr32(a, next);
         return result(g, IS("InterlockedExchange") ? previous : next, IS("InterlockedExchange") ? 8 : 4);
     }
-    if (IS("InitializeCriticalSection") || IS("EnterCriticalSection") ||
-        IS("LeaveCriticalSection") || IS("DeleteCriticalSection"))
-        return critical(g, name, a);
-    if (IS("CreateSemaphoreA") || IS("WaitForSingleObject") || IS("ReleaseSemaphore") || IS("CloseHandle"))
-        return semaphore(g, name, a, arg(g, 1));
     if (IS("ShowCursor")) {
         g->cursor_count += a ? 1 : -1;
         return result(g, g->cursor_count, 4);
