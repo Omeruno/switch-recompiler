@@ -16,6 +16,13 @@ typedef struct {
     bool software_skin;
 } ShaderDraw;
 
+typedef struct {
+    uint32_t *color;
+    float *depth;
+    unsigned width, height, depth_width;
+    bool alpha;
+} DrawTarget;
+
 static uint32_t rgba(uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha)
 {
     return red | green << 8 | blue << 16 | alpha << 24;
@@ -37,19 +44,62 @@ bool render_allocate(Game *g)
     return true;
 }
 
+static bool draw_target(Game *g, DrawTarget *target, bool need_depth)
+{
+    Surface *color = d3d_surface_lookup(g, g->color_target, NULL);
+    if (!color || (color->format != 21 && color->format != 22))
+        return false;
+    *target = (DrawTarget){.width = color->width, .height = color->height, .alpha = color->format == 21};
+    if (color == &g->back) {
+        if (!render_allocate(g))
+            return false;
+        target->color = g->pixels;
+    } else {
+        if (!color->decoded)
+            color->decoded = calloc((size_t)color->width * color->height, sizeof *color->decoded);
+        if (!color->decoded)
+            return false;
+        target->color = color->decoded;
+    }
+    if (!need_depth)
+        return true;
+    Surface *depth = d3d_surface_lookup(g, g->depth_target, NULL);
+    if (!depth || depth->width < color->width || depth->height < color->height)
+        return false;
+    target->depth_width = depth->width;
+    if (depth == &g->depth) {
+        if (!render_allocate(g))
+            return false;
+        target->depth = g->depth_pixels;
+    } else {
+        if (!depth->depth_samples) {
+            size_t count = (size_t)depth->width * depth->height;
+            depth->depth_samples = malloc(count * sizeof(float));
+            if (!depth->depth_samples)
+                return false;
+            for (size_t i = 0; i < count; ++i)
+                depth->depth_samples[i] = 1.f;
+        }
+        target->depth = depth->depth_samples;
+    }
+    return true;
+}
+
 bool render_clear(Game *g, unsigned flags, uint32_t color, float depth)
 {
-    if (!render_allocate(g))
+    DrawTarget target;
+    if (!draw_target(g, &target, flags & 2))
         return false;
-    size_t count = (size_t)g->back.width * g->back.height;
+    size_t count = (size_t)target.width * target.height;
     if (flags & 1) {
-        uint32_t value = rgba((color >> 16) & 255, (color >> 8) & 255, color & 255, 255);
+        uint32_t value = rgba((color >> 16) & 255, (color >> 8) & 255, color & 255, target.alpha ? color >> 24 : 255);
         for (size_t i = 0; i < count; ++i)
-            g->pixels[i] = value;
+            target.color[i] = value;
     }
     if (flags & 2)
-        for (size_t i = 0; i < count; ++i)
-            g->depth_pixels[i] = depth;
+        for (unsigned y = 0; y < target.height; ++y)
+            for (unsigned x = 0; x < target.width; ++x)
+                target.depth[y * target.depth_width + x] = depth;
     return true;
 }
 
@@ -75,12 +125,12 @@ static uint16_t get16(const uint8_t *p)
     return (uint16_t)(p[0] | p[1] << 8);
 }
 
-static void decode_block(const uint8_t *data, bool bc3, uint32_t block[16])
+static void decode_block(const uint8_t *data, unsigned mode, uint32_t block[16])
 {
-    const uint8_t *rgb = data + (bc3 ? 8 : 0);
+    const uint8_t *rgb = data + (mode == 1 ? 0 : 8);
     unsigned first = get16(rgb), second = get16(rgb + 2);
     uint32_t palette[4] = {rgb565(first), rgb565(second)};
-    if (bc3 || first > second) {
+    if (mode != 1 || first > second) {
         palette[2] = mix_color(palette[0], palette[1], 2, 1);
         palette[3] = mix_color(palette[0], palette[1], 1, 2);
     } else {
@@ -88,7 +138,7 @@ static void decode_block(const uint8_t *data, bool bc3, uint32_t block[16])
     }
     unsigned alpha[8] = {data[0], data[1]};
     uint64_t codes = 0;
-    if (bc3) {
+    if (mode == 5) {
         unsigned steps = alpha[0] > alpha[1] ? 7 : 5;
         for (unsigned i = 1; i < steps; ++i)
             alpha[i + 1] = ((steps - i) * alpha[0] + i * alpha[1]) / steps;
@@ -99,32 +149,44 @@ static void decode_block(const uint8_t *data, bool bc3, uint32_t block[16])
     }
     for (unsigned i = 0; i < 16; ++i) {
         uint32_t color = palette[(rgb[4 + i / 4] >> ((i % 4) * 2)) & 3];
-        block[i] = bc3 ? (color & 0xffffff) | alpha[(codes >> (3 * i)) & 7] << 24 : color;
+        if (mode == 3)
+            color = (color & 0xffffff) | (((data[i / 2] >> ((i & 1) * 4) & 15) * 17u) << 24);
+        if (mode == 5)
+            color = (color & 0xffffff) | alpha[(codes >> (3 * i)) & 7] << 24;
+        block[i] = color;
     }
 }
 
-static uint32_t *decode_texture(Game *g, const Surface *s)
+uint32_t *decode_texture(Game *g, const Surface *s)
 {
     if (!s || !s->data || !s->width || !s->height)
         return NULL;
-    bool bc3 = s->format == 0x35545844u;
-    bool compressed = bc3 || s->format == 0x31545844u;
-    if (!compressed && s->format != 21 && s->format != 22)
+    unsigned mode = s->format == 0x31545844u ? 1 : s->format == 0x33545844u ? 3 :
+                    s->format == 0x35545844u ? 5 : 0;
+    if (!mode && s->format != 20 && s->format != 21 && s->format != 22)
         return NULL;
     uint32_t *pixels = malloc((size_t)s->width * s->height * sizeof *pixels);
     if (!pixels)
         return NULL;
-    const uint8_t *data = game_bytes(g, s->data, 1);
-    if (!compressed) {
-        for (size_t i = 0, count = (size_t)s->width * s->height; i < count; ++i, data += 4)
-            pixels[i] = rgba(data[2], data[1], data[0], s->format == 21 ? data[3] : 255);
+    const uint8_t *data = game_bytes(g, s->data, surface_bytes(s));
+    if (!data) {
+        free(pixels);
+        return NULL;
+    }
+    if (!mode) {
+        unsigned pitch = surface_pitch(s), bytes = s->format == 20 ? 3 : 4;
+        for (unsigned y = 0; y < s->height; ++y) {
+            const uint8_t *row = data + y * pitch;
+            for (unsigned x = 0; x < s->width; ++x, row += bytes)
+                pixels[y * s->width + x] = rgba(row[2], row[1], row[0], s->format == 21 ? row[3] : 255);
+        }
         return pixels;
     }
     for (unsigned y = 0; y < s->height; y += 4) {
         for (unsigned x = 0; x < s->width; x += 4) {
             uint32_t block[16];
-            decode_block(data, bc3, block);
-            data += bc3 ? 16 : 8;
+            decode_block(data, mode, block);
+            data += mode == 1 ? 8 : 16;
             for (unsigned dy = 0; dy < 4 && y + dy < s->height; ++dy)
                 for (unsigned dx = 0; dx < 4 && x + dx < s->width; ++dx)
                     pixels[(y + dy) * s->width + x + dx] = block[dy * 4 + dx];
@@ -290,7 +352,8 @@ static bool read_vertex(const Game *g, const uint8_t *source, ClipVertex *out)
     float position[] = {0, 0, 0, 1}, uv[] = {0, 0, 1, 0};
     memcpy(position, source, 12);
     bool colored = (g->fvf & 0x40) != 0;
-    unsigned offset = (g->fvf & 0x10) ? 24 : 12;
+    bool screen = (g->fvf & 0x0e) == 4;
+    unsigned offset = screen ? 16 : (g->fvf & 0x10) ? 24 : 12;
     memcpy(uv, source + offset + (colored ? 4 : 0), 8);
     uint32_t tint = UINT32_MAX;
     if (colored) {
@@ -298,9 +361,22 @@ static bool read_vertex(const Game *g, const uint8_t *source, ClipVertex *out)
         memcpy(&argb, source + offset, 4);
         tint = rgba(argb >> 16 & 255, argb >> 8 & 255, argb & 255, argb >> 24);
     }
-    transform(position, g->transforms[256]);
-    transform(position, g->transforms[2]);
-    transform(position, g->transforms[3]);
+    if (screen) {
+        float reciprocal, near, far;
+        memcpy(&reciprocal, source + 12, 4);
+        memcpy(&near, &g->viewport[4], 4);
+        memcpy(&far, &g->viewport[5], 4);
+        if (!(reciprocal > 0) || !g->viewport[2] || !g->viewport[3] || !(far > near))
+            return false;
+        position[3] = 1.f / reciprocal;
+        position[0] = ((position[0] + 0.5f - g->viewport[0]) * 2.f / g->viewport[2] - 1.f) * position[3];
+        position[1] = (1.f - (position[1] + 0.5f - g->viewport[1]) * 2.f / g->viewport[3]) * position[3];
+        position[2] = (position[2] - near) / (far - near) * position[3];
+    } else {
+        transform(position, g->transforms[256]);
+        transform(position, g->transforms[2]);
+        transform(position, g->transforms[3]);
+    }
     if (g->stages[0][24] == 2)
         transform(uv, g->transforms[16]);
     for (unsigned i = 0; i < 4; ++i) {
@@ -347,7 +423,7 @@ static unsigned blend_factor(unsigned code, unsigned src, unsigned dst, unsigned
 static uint32_t blend(const Game *g, uint32_t src, uint32_t dst)
 {
     uint32_t packed = 0;
-    for (unsigned shift = 0; shift < 24; shift += 8) {
+    for (unsigned shift = 0; shift < 32; shift += 8) {
         unsigned a = src >> shift & 255, b = dst >> shift & 255;
         unsigned sa = blend_factor(g->raster[19], a, b, src >> 24, dst >> 24);
         unsigned sb = blend_factor(g->raster[20], a, b, src >> 24, dst >> 24);
@@ -398,9 +474,9 @@ static ClipVertex interpolate(const ClipVertex *a, const ClipVertex *b, float we
     return out;
 }
 
-static void triangle(Game *g, const Surface *texture, ShaderDraw *shader, Vertex a, Vertex b, Vertex c);
+static void triangle(Game *g, const DrawTarget *target, const Surface *texture, ShaderDraw *shader, Vertex a, Vertex b, Vertex c);
 
-static void clip_triangle(Game *g, const Surface *surface, ShaderDraw *shader, const ClipVertex input[3])
+static void clip_triangle(Game *g, const DrawTarget *target, const Surface *surface, ShaderDraw *shader, const ClipVertex input[3])
 {
     enum { PLANES = 7, MAX_POLYGON = 3 + PLANES };
     ClipVertex records[2][MAX_POLYGON];
@@ -430,22 +506,26 @@ static void clip_triangle(Game *g, const Surface *surface, ShaderDraw *shader, c
     Vertex previous = viewport_vertex(g, &vertices[1], shader != NULL);
     for (unsigned i = 2; i < count; ++i) {
         Vertex current = viewport_vertex(g, &vertices[i], shader != NULL);
-        triangle(g, surface, shader, first, previous, current);
+        triangle(g, target, surface, shader, first, previous, current);
         previous = current;
     }
 }
 
-static void triangle(Game *g, const Surface *t, ShaderDraw *shader, Vertex a, Vertex b, Vertex c)
+static void triangle(Game *g, const DrawTarget *target, const Surface *t, ShaderDraw *shader, Vertex a, Vertex b, Vertex c)
 {
     float bx = b.x - a.x, by = b.y - a.y, cx = c.x - a.x, cy = c.y - a.y;
     float area = bx * cy - by * cx;
     if (!isfinite(area) || area == 0 || (g->raster[22] == 2 && area > 0) || (g->raster[22] == 3 && area < 0))
         return;
+    uint32_t color_mask = 0;
+    for (unsigned channel = 0; channel < 4; ++channel)
+        if (g->raster[D3D_COLOR_WRITE_ENABLE] & (1u << channel))
+            color_mask |= 255u << (channel * 8);
     float inverse = 1.0f / area;
-    int x0 = fmaxf(0, fminf(g->back.width, floorf(fminf(a.x, fminf(b.x, c.x)))));
-    int x1 = fmaxf(0, fminf(g->back.width, ceilf(fmaxf(a.x, fmaxf(b.x, c.x)))));
-    int y0 = fmaxf(0, fminf(g->back.height, floorf(fminf(a.y, fminf(b.y, c.y)))));
-    int y1 = fmaxf(0, fminf(g->back.height, ceilf(fmaxf(a.y, fmaxf(b.y, c.y)))));
+    int x0 = fmaxf(0, fminf(target->width, floorf(fminf(a.x, fminf(b.x, c.x)))));
+    int x1 = fmaxf(0, fminf(target->width, ceilf(fmaxf(a.x, fmaxf(b.x, c.x)))));
+    int y0 = fmaxf(0, fminf(target->height, floorf(fminf(a.y, fminf(b.y, c.y)))));
+    int y1 = fmaxf(0, fminf(target->height, ceilf(fmaxf(a.y, fmaxf(b.y, c.y)))));
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
             float dx = x + 0.5f - a.x, dy = y + 0.5f - a.y;
@@ -454,8 +534,8 @@ static void triangle(Game *g, const Surface *t, ShaderDraw *shader, Vertex a, Ve
             if (wa < 0 || wb < 0 || wc < 0)
                 continue;
             float z = a.z * wa + b.z * wb + c.z * wc;
-            unsigned pixel = y * g->back.width + x;
-            if (z < 0 || z > 1.000001f || (g->raster[7] && z > g->depth_pixels[pixel] + 0.0000001f))
+            unsigned pixel = y * target->width + x, depth_index = y * target->depth_width + x;
+            if (z < 0 || z > 1.000001f || (target->depth && z > target->depth[depth_index] + 0.0000001f))
                 continue;
             wa *= a.inv_w;
             wb *= b.inv_w;
@@ -472,8 +552,8 @@ static void triangle(Game *g, const Surface *t, ShaderDraw *shader, Vertex a, Ve
                              fminf(fmaxf(color[2], 0.f), 1.f) * 255.f,
                              fminf(fmaxf(color[3], 0.f), 1.f) * 255.f);
             } else {
-                value = sample(g, 0, t, t->decoded, (a.u * wa + b.u * wb + c.u * wc) * weight,
-                               (a.v * wa + b.v * wb + c.v * wc) * weight);
+                value = t ? sample(g, 0, t, t->decoded, (a.u * wa + b.u * wb + c.u * wc) * weight,
+                                   (a.v * wa + b.v * wb + c.v * wc) * weight) : UINT32_MAX;
                 if (g->fvf & 0x40)
                     value = modulate(value, a, b, c, wa * weight, wb * weight, wc * weight);
             }
@@ -487,43 +567,54 @@ static void triangle(Game *g, const Surface *t, ShaderDraw *shader, Vertex a, Ve
                     continue;
             }
             if (g->raster[27])
-                value = blend(g, value, g->pixels[pixel]);
-            g->pixels[pixel] = value | 0xff000000u;
+                value = blend(g, value, target->color[pixel]);
+            if (color_mask) {
+                value = (value & color_mask) | (target->color[pixel] & ~color_mask);
+                target->color[pixel] = target->alpha ? value : value | 0xff000000u;
+            }
             if (shader)
                 ++shader->fragments;
-            if (g->raster[14])
-                g->depth_pixels[pixel] = z;
+            if (target->depth && g->raster[14])
+                target->depth[depth_index] = z;
         }
     }
 }
 
-bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
+bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
 {
-    unsigned type = arg(g, 1), minimum = arg(g, 3), count = arg(g, 4), first = arg(g, 5), n = arg(g, 6);
-    int64_t base = (int32_t)arg(g, 2) + (int64_t)minimum;
-    unsigned stride = 20 + ((g->fvf & 0x10) ? 12 : 0) + ((g->fvf & 0x40) ? 4 : 0);
+    unsigned type = arg(g, 1), n = arg(g, ib ? 6 : 3);
+    if (type < 4 || type > 6 || !n || n > 65536)
+        return false;
+    unsigned index_count = type == 4 ? 3 * n : n + 2;
+    unsigned minimum = ib ? arg(g, 3) : 0, count = ib ? arg(g, 4) : index_count;
+    unsigned first = ib ? arg(g, 5) : 0;
+    int64_t base = ib ? (int32_t)arg(g, 2) + (int64_t)minimum : (int64_t)arg(g, 2);
+    bool screen = (g->fvf & 0x0e) == 4;
+    unsigned stride = 20 + (screen ? 4 : (g->fvf & 0x10) ? 12 : 0) + ((g->fvf & 0x40) ? 4 : 0);
+    bool fixed = (g->fvf & ~0x50) == 0x102 || ((g->fvf & ~0x40) == 0x104);
     bool programmable = g->vertex_shader || g->pixel_shader;
-    if (!g->pixels || !g->stride ||
-        (!programmable && ((g->fvf & ~0x50) != 0x102 || g->stride != stride)) ||
-        (ib->format != 101 && ib->format != 102) ||
-        (type < 4 || type > 6) || !count || count > 65536 || !n || n > 65536 || base < 0 ||
+    if (!g->stride ||
+        (!programmable && (!fixed || g->stride != stride)) ||
+        (ib && ib->format != 101 && ib->format != 102) || !count || count > 65536 || base < 0 ||
         (g->raster[7] && g->raster[23] != 4) ||
         (g->raster[27] && (g->raster[19] < 1 || g->raster[19] > 11 ||
                            g->raster[20] < 1 || g->raster[20] > 11 || g->raster[171] > 1)))
         return false;
     uint64_t start = g->stream_offset + base * g->stride, end = start + (uint64_t)count * g->stride;
-    unsigned index_count = type == 4 ? 3 * n : n + 2;
-    unsigned index_size = ib->format == 102 ? 4 : 2;
-    if (end > vb->bytes || ((uint64_t)first + index_count) * index_size > ib->bytes)
+    unsigned index_size = !ib ? 0 : ib->format == 102 ? 4 : 2;
+    if (end > vb->bytes || (ib && ((uint64_t)first + index_count) * index_size > ib->bytes))
+        return false;
+    DrawTarget target;
+    if (!draw_target(g, &target, g->raster[7]))
         return false;
     ShaderDraw shaders = {0};
     Surface *texture = programmable ? NULL : texture_at(g, 0);
-    if (programmable ? !prepare_shaders(g, &shaders) : !texture)
+    if (programmable ? !prepare_shaders(g, &shaders) : g->texture_slots[0] && !texture)
         return false;
 
-    const uint8_t *indices = game_bytes(g, ib->data + first * index_size, index_count * index_size);
+    const uint8_t *indices = ib ? game_bytes(g, ib->data + first * index_size, index_count * index_size) : NULL;
     const uint8_t *vertices = game_bytes(g, vb->data + (uint32_t)start, count * g->stride);
-    if (!vertices || !indices)
+    if (!vertices || (ib && !indices))
         return false;
 #ifdef __SWITCH__
     if (g->presents < 8)
@@ -531,8 +622,10 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
     {
         fprintf(g->log, "Draw #%u type=%u vertices=%u triangles=%u vb=", g->draws + 1, type, count, n);
         log_hash(g->log, vertices, count * g->stride);
-        fputs(" ib=", g->log);
-        log_hash(g->log, indices, index_count * index_size);
+        if (ib) {
+            fputs(" ib=", g->log);
+            log_hash(g->log, indices, index_count * index_size);
+        }
         fputc('\n', g->log);
     }
 
@@ -549,10 +642,13 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
         ClipVertex v[3] = {0};
         bool visible = true;
         for (unsigned k = 0; k < 3; ++k) {
-            const uint8_t *index = indices + position[k] * index_size;
-            uint32_t id = get16(index);
-            if (index_size == 4)
-                id |= (uint32_t)get16(index + 2) << 16;
+            uint32_t id = position[k];
+            if (ib) {
+                const uint8_t *index = indices + position[k] * index_size;
+                id = get16(index);
+                if (index_size == 4)
+                    id |= (uint32_t)get16(index + 2) << 16;
+            }
             if (id < minimum || id - minimum >= count) {
                 valid = false;
                 break;
@@ -571,7 +667,7 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
         if (!valid)
             break;
         if (visible)
-            clip_triangle(g, texture, programmable ? &shaders : NULL, v);
+            clip_triangle(g, &target, texture, programmable ? &shaders : NULL, v);
     }
     free(visible_cache);
     free(cache);

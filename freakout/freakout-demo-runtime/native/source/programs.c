@@ -313,6 +313,8 @@ static bool resource_call(Game *g, const Import *call, Program *program)
 bool program_dispatch(Game *g, const Import *call)
 {
     const char *name = call->name;
+    if (!strcasecmp(call->dll, "d3dx9_30.dll") && IS("D3DXLoadSurfaceFromSurface"))
+        return d3dx_load_surface(g);
     if (!strcasecmp(call->dll, "d3dx9_30.dll"))
         return IS("D3DXAssembleShaderFromFileA") ? assemble_file(g) : d3dx_math_dispatch(g, name);
     if (!strcmp(call->dll, d3d_device.dll) && g->device && arg(g, 0) == g->device)

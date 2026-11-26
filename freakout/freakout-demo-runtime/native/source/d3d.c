@@ -74,6 +74,12 @@ static bool root(Game *g, const char *name)
         g->device_refs = 1;
         g->back = (Surface){.format = p[2], .usage = 1, .width = p[0], .height = p[1], .refs = 1};
         g->depth = (Surface){.format = p[10], .usage = 2, .width = p[0], .height = p[1], .refs = 1};
+        g->color_target = g->backbuffer;
+        g->depth_target = g->depth_buffer;
+        g->raster[D3D_COLOR_WRITE_ENABLE] = 15;
+        ++g->back.refs;
+        if (g->depth_buffer)
+            ++g->depth.refs;
         wr32(arg(g, 6), g->device);
         fprintf(g->log, "CreateDevice %ux%u format=%u\n", p[0], p[1], p[2]);
         return result(g, S_OK, 28);
@@ -89,7 +95,7 @@ static Texture *find_texture(Game *g, uint32_t handle)
     return NULL;
 }
 
-static Surface *find_surface(Game *g, uint32_t handle, Texture **owner)
+Surface *d3d_surface_lookup(Game *g, uint32_t handle, Texture **owner)
 {
     if (!handle)
         return NULL;
@@ -97,11 +103,15 @@ static Surface *find_surface(Game *g, uint32_t handle, Texture **owner)
         return &g->back;
     if (handle == g->depth_buffer)
         return &g->depth;
+    for (unsigned i = 0; i < MAX_SURFACES; ++i)
+        if (g->surfaces[i].handle == handle)
+            return &g->surfaces[i].image;
     for (unsigned i = 0; i < MAX_TEXTURES; ++i) {
         Texture *t = &g->textures[i];
         for (unsigned mip = 0; t->handle && mip < t->levels; ++mip)
             if (t->surfaces[mip] == handle) {
-                *owner = t;
+                if (owner)
+                    *owner = t;
                 return &t->mip[mip];
             }
     }
@@ -114,6 +124,7 @@ static uint32_t drop_texture(Game *g, Texture *t)
     if (!refs) {
         for (unsigned level = 0; level < t->levels; ++level) {
             free(t->mip[level].decoded);
+            free(t->mip[level].depth_samples);
             release(g, t->mip[level].data);
             release(g, t->surfaces[level]);
         }
@@ -123,6 +134,88 @@ static uint32_t drop_texture(Game *g, Texture *t)
     return refs;
 }
 
+static uint32_t release_surface(Game *g, uint32_t handle, Surface *surface, Texture *owner)
+{
+    uint32_t refs = --surface->refs;
+    if (owner) {
+        drop_texture(g, owner);
+    } else if (!refs && surface != &g->back && surface != &g->depth) {
+        for (unsigned i = 0; i < MAX_SURFACES; ++i) {
+            if (g->surfaces[i].handle == handle) {
+                free(surface->decoded);
+                free(surface->depth_samples);
+                release(g, surface->data);
+                release(g, handle);
+                g->surfaces[i].handle = 0;
+                *surface = (Surface){0};
+                break;
+            }
+        }
+    }
+    return refs;
+}
+
+static bool create_surface(Game *g, bool depth)
+{
+    unsigned width = arg(g, 1), height = arg(g, 2), format = arg(g, 3);
+    uint32_t output = arg(g, 7);
+    bool format_valid = depth ? format >= 70 && format <= 83 : format == 21 || format == 22;
+    if (!width || !height || width > 4096 || height > 4096 || !format_valid ||
+        arg(g, 4) || arg(g, 5) || !output || !game_bytes(g, output, 4))
+        return result(g, INVALID_CALL, 36);
+    for (unsigned i = 0; i < MAX_SURFACES; ++i) {
+        if (g->surfaces[i].handle)
+            continue;
+        uint32_t handle = make_interface(g, &d3d_surface);
+        if (!handle)
+            break;
+        g->surfaces[i].handle = handle;
+        g->surfaces[i].image = (Surface){.format = format, .usage = depth ? 2 : 1,
+                                         .width = width, .height = height, .refs = 1};
+        wr32(output, handle);
+        return result(g, S_OK, 36);
+    }
+    return result(g, 0x8007000eu, 36);
+}
+
+static bool set_target(Game *g, uint32_t handle, bool depth)
+{
+    uint32_t *binding = depth ? &g->depth_target : &g->color_target;
+    Texture *new_owner = NULL, *old_owner = NULL;
+    Surface *next = d3d_surface_lookup(g, handle, &new_owner);
+    Surface *previous = d3d_surface_lookup(g, *binding, &old_owner);
+    unsigned pop = depth ? 8 : 12;
+    if ((!handle && !depth) || (handle && (!next || !(next->usage & (depth ? 2 : 1)))))
+        return result(g, INVALID_CALL, pop);
+    if (next)
+        ++next->refs;
+    if (new_owner)
+        ++new_owner->refs;
+    if (previous)
+        release_surface(g, *binding, previous, old_owner);
+    *binding = handle;
+    if (!depth) {
+        const uint32_t viewport[6] = {0, 0, next->width, next->height, 0, 0x3f800000u};
+        memcpy(g->viewport, viewport, sizeof viewport);
+    }
+    return result(g, S_OK, pop);
+}
+
+static bool get_target(Game *g, uint32_t handle, uint32_t output, unsigned pop)
+{
+    Texture *owner = NULL;
+    Surface *target = d3d_surface_lookup(g, handle, &owner);
+    if (!output || !game_bytes(g, output, 4))
+        return result(g, INVALID_CALL, pop);
+    wr32(output, handle);
+    if (!target)
+        return result(g, 0x88760866u, pop);
+    ++target->refs;
+    if (owner)
+        ++owner->refs;
+    return result(g, S_OK, pop);
+}
+
 static uint32_t block_bytes(uint32_t format)
 {
     if (format == 0x31545844u)
@@ -130,7 +223,7 @@ static uint32_t block_bytes(uint32_t format)
     return (format & 0x00ffffffu) == 0x00545844u && (format >> 24) >= '2' && (format >> 24) <= '5' ? 16 : 0;
 }
 
-static uint32_t surface_pitch(const Surface *s)
+uint32_t surface_pitch(const Surface *s)
 {
     static const uint8_t pixel_bytes[] = {3, 4, 4, 2, 2, 2, 2, 0, 1};
     uint32_t block = block_bytes(s->format);
@@ -140,7 +233,7 @@ static uint32_t surface_pitch(const Surface *s)
     return (s->width * bytes + 3) & ~3u;
 }
 
-static uint32_t surface_bytes(const Surface *s)
+uint32_t surface_bytes(const Surface *s)
 {
     uint32_t rows = block_bytes(s->format) ? (s->height + 3) / 4 : s->height;
     return rows * surface_pitch(s);
@@ -193,7 +286,7 @@ static void describe(const Surface *s, uint32_t output)
 static bool surface(Game *g, const char *name)
 {
     Texture *parent = NULL;
-    Surface *s = find_surface(g, arg(g, 0), &parent);
+    Surface *s = d3d_surface_lookup(g, arg(g, 0), &parent);
     if (!s)
         return false;
     if (IS("AddRef")) {
@@ -202,10 +295,7 @@ static bool surface(Game *g, const char *name)
         return result(g, ++s->refs, 4);
     }
     if (IS("Release") && s->refs) {
-        uint32_t refs = --s->refs;
-        if (parent)
-            drop_texture(g, parent);
-        return result(g, refs, 4);
+        return result(g, release_surface(g, arg(g, 0), s, parent), 4);
     }
     if (IS("GetDesc")) {
         describe(s, arg(g, 1));
@@ -407,16 +497,16 @@ static bool device(Game *g, const char *name)
         caps(a, 0, 1);
         return result(g, S_OK, 8);
     }
-    if (IS("GetRenderTarget") && !a) {
-        g->back.refs++;
-        wr32(b, g->backbuffer);
-        return result(g, S_OK, 12);
-    }
-    if (IS("GetDepthStencilSurface") && g->depth_buffer) {
-        g->depth.refs++;
-        wr32(a, g->depth_buffer);
-        return result(g, S_OK, 8);
-    }
+    if (IS("CreateDepthStencilSurface") || IS("CreateRenderTarget"))
+        return create_surface(g, IS("CreateDepthStencilSurface"));
+    if (IS("GetRenderTarget"))
+        return !a ? get_target(g, g->color_target, b, 12) : result(g, INVALID_CALL, 12);
+    if (IS("GetDepthStencilSurface"))
+        return get_target(g, g->depth_target, a, 8);
+    if (IS("SetRenderTarget"))
+        return !a ? set_target(g, b, false) : result(g, INVALID_CALL, 12);
+    if (IS("SetDepthStencilSurface"))
+        return set_target(g, a, true);
     if (IS("CreateVertexBuffer") || IS("CreateIndexBuffer"))
         return create_buffer(g, IS("CreateVertexBuffer"));
     if (IS("BeginScene") || IS("EndScene")) {
@@ -469,18 +559,22 @@ static bool device(Game *g, const char *name)
     if (IS("SetIndices") && bind_buffer(g, &g->indices, a, 7)) {
         return result(g, S_OK, 8);
     }
-    if (IS("DrawIndexedPrimitive") && g->scene) {
-        Buffer *vb = find_buffer(g, g->stream), *ib = find_buffer(g, g->indices);
-        if (!vb || !ib || !render_indexed(g, vb, ib)) {
+    if ((IS("DrawIndexedPrimitive") || IS("DrawPrimitive")) && g->scene) {
+        bool indexed = IS("DrawIndexedPrimitive");
+        Buffer *vb = find_buffer(g, g->stream), *ib = indexed ? find_buffer(g, g->indices) : NULL;
+        if (!vb || (indexed && !ib) || !render_geometry(g, vb, ib)) {
             fprintf(g->log, "DX9 draw rejected: type=%u vertices=%u triangles=%u FVF=%x stride=%u "
-                    "texture=%08x vertexShader=%08x pixelShader=%08x depth=%u/%u blend=%u/%u/%u\n",
-                    a, arg(g, 4), arg(g, 6), g->fvf, g->stride, g->texture_slots[0], g->vertex_shader, g->pixel_shader,
-                    g->raster[7], g->raster[23], g->raster[27], g->raster[19], g->raster[20]);
+                    "texture=%08x vertexShader=%08x pixelShader=%08x depth=%u/%u blend=%u/%u/%u "
+                    "colorMask=%x stencil=%u\n",
+                    a, indexed ? arg(g, 4) : 0, arg(g, indexed ? 6 : 3), g->fvf, g->stride,
+                    g->texture_slots[0], g->vertex_shader, g->pixel_shader,
+                    g->raster[7], g->raster[23], g->raster[27], g->raster[19], g->raster[20],
+                    g->raster[D3D_COLOR_WRITE_ENABLE], g->raster[52]);
             return false;
         }
         ++g->draws;
         ++g->frame_draws;
-        return result(g, S_OK, 28);
+        return result(g, S_OK, indexed ? 28 : 16);
     }
     if (IS("CreateTexture"))
         return create_texture(g, a, b);
@@ -505,9 +599,10 @@ static bool device(Game *g, const char *name)
         return result(g, S_OK, 8);
     }
     if (IS("Clear") && a <= 1) {
+        Surface *target = d3d_surface_lookup(g, g->color_target, NULL);
         if (a) {
             uint32_t *rect = (uint32_t *)guest_pointer(b);
-            if (rect[0] || rect[1] || rect[2] != g->back.width || rect[3] != g->back.height)
+            if (!target || rect[0] || rect[1] || rect[2] != target->width || rect[3] != target->height)
                 return false;
         }
         if (arg(g, 3) & 1)

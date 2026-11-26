@@ -16,7 +16,7 @@ from input_probe import ROOT_METHODS as INPUT_ROOT, DEVICE_METHODS as INPUT_DEVI
 from video_probe import CONTROL, EVENTS, GRAPH, POSITION, WINDOW
 from dx9_asm import assemble
 from menu_audio_trace import MenuAudioTrace
-from scene_demo import MenuInput, _DESCENT_KEYS
+from scene_demo import MenuInput, _KEYS, _DESCENT_KEYS
 from unicorn.x86_const import UC_X86_REG_EIP
 
 INTERFACES = (
@@ -86,12 +86,14 @@ def generate_shaders(assets, out):
                                                *catalog, '};')) + '\n', encoding='ascii')
 
 
-def trace_menu(boot, race):
-    if race:
+def trace_menu(boot, race, reload_profile=False):
+    if race or reload_profile:
         boot.d3d.vtables = {}
-        MenuInput(boot, MenuAudioTrace(boot), _DESCENT_KEYS)
-    else:
-        MenuInput(boot, MenuAudioTrace(boot))
+    actions = _DESCENT_KEYS if race else _KEYS
+    if reload_profile:
+        actions = {frame: event for frame, event in _KEYS.items() if frame <= 149 or frame in (263, 265)}
+    MenuInput(boot, MenuAudioTrace(boot), actions)
+
     def retain_recent_events(probe, _present, _draws):
         for events in (probe.events, boot.audio.events):
             if len(events) > 30000:
@@ -137,6 +139,15 @@ def main():
         generate_shaders(assets, options.out)
         if menu:
             trace_menu(boot, race)
+            if boot.status.startswith('frame boundary:') and (Path(scratch) / 'data/user/profile.pro').is_file():
+                reopened = Boot(*payload, stop_at_winmain=False, assets=assets, save_root=Path(scratch),
+                                probe_audio=True, present_limit=300, frame_after_draw=True,
+                                drawn_frame_limit=4096, guest_memory=0x20000000, trace_history=16384)
+                trace_menu(reopened, False, reload_profile=True)
+                if not reopened.status.startswith('frame boundary:'):
+                    raise RuntimeError(f'x86 profile reopen did not reach frame 300: {reopened.status}')
+                for address, length in reopened.block_sizes.items():
+                    boot.block_sizes[address] = max(boot.block_sizes.get(address, 0), length)
         else:
             boot.run()
     call_count = sum(boot.api_calls.values())

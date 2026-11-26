@@ -10,9 +10,9 @@ enum {
     API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010, THREAD_RETURN = 0xff020,
     GAME_ENTRY = 0x67de70, PE_BASE = 0x400000, PE_ENTRY = 0x5af59e,
     STACK = 0xbe0000, BSS = 0xa00000, COMMAND = BSS + 0x100, ARGV = BSS + 0x180,
-    HEAP_START = 0x01000000, RESOURCE_HEAP_START = 0x05000000, MAX_IMPORTS = 4096, MAX_SPANS = 131072,
+    HEAP_START = 0x01000000, RESOURCE_HEAP_START = 0x07000000, MAX_IMPORTS = 4096, MAX_SPANS = 131072,
     MAX_FILES = 64, MAX_SEARCHES = 8, MAX_LOCKS = 96, MAX_SEMAPHORES = 16, MAX_CTORS = 12, MAX_TEXTURES = 512, MAX_MIPS = 13,
-    MAX_THREADS = 8, MAX_EVENTS = 32, MAX_BUFFERS = 8192, MAX_WAIT = 64, MAX_PROGRAMS = 256,
+    MAX_THREADS = 8, MAX_EVENTS = 32, MAX_BUFFERS = 8192, MAX_WAIT = 64, MAX_PROGRAMS = 256, MAX_SURFACES = 32,
 };
 
 typedef struct { const char *dll, *name; } Import;
@@ -31,6 +31,7 @@ typedef struct {
     uint32_t format, usage, pool, width, height, data, refs;
     bool locked;
     uint32_t *decoded;
+    float *depth_samples;
 } Surface;
 typedef struct {
     uint32_t handle, refs, levels;
@@ -53,6 +54,7 @@ typedef struct {
     bool locked;
 } Buffer;
 typedef struct { uint32_t handle, refs, bytes, data, kind; } Program;
+enum { D3D_COLOR_WRITE_ENABLE = 168 };
 
 typedef struct {
     uint8_t *low, *runtime;
@@ -77,6 +79,7 @@ typedef struct {
     Constructors ctors[MAX_CTORS];
     unsigned ctor_count;
     FILE *files[MAX_FILES];
+    void *file_memory[MAX_FILES];
     char *pending_save[MAX_FILES], *save_path[MAX_FILES];
     bool archive_file[MAX_FILES];
     unsigned archive_reads, uploads;
@@ -103,7 +106,9 @@ typedef struct {
     struct { uint32_t count, max; } semaphores[MAX_SEMAPHORES];
     uint32_t random, cursor_count, window_count, window_proc;
     uint32_t d3d, d3d_refs, device, device_refs, backbuffer, depth_buffer;
+    uint32_t color_target, depth_target;
     Surface back, depth;
+    struct { uint32_t handle; Surface image; } surfaces[MAX_SURFACES];
     Texture textures[MAX_TEXTURES];
     Buffer buffers[MAX_BUFFERS];
     Program programs[MAX_PROGRAMS];
@@ -141,6 +146,7 @@ uint32_t add_import(Game *game, const char *dll, const char *name);
 uint32_t make_interface(Game *game, const Methods *methods);
 bool asset_path(const Game *game, const char *name, char path[1024]);
 FILE *open_asset(const Game *game, const char *name);
+FILE *open_level_script(Game *g, const char *name, bool text, void **memory);
 bool game_init(Game *game, const char *assets, FILE *log);
 bool game_step(Game *game);
 void game_close(Game *game);
@@ -149,10 +155,15 @@ uint32_t thread_crt(Game *g);
 bool thread_dispatch(Game *g, const Import *call);
 bool render_allocate(Game *g);
 bool render_clear(Game *g, unsigned flags, uint32_t color, float depth);
+Surface *d3d_surface_lookup(Game *g, uint32_t handle, Texture **owner);
+uint32_t surface_pitch(const Surface *s);
+uint32_t surface_bytes(const Surface *s);
+uint32_t *decode_texture(Game *g, const Surface *s);
+bool d3dx_load_surface(Game *g);
 void game_keys(Game *g, const uint8_t keys[256]);
 bool audio_bank_dispatch(Game *g, const Import *call);
 void audio_bank_close(Game *g);
-bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib);
+bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib);
 void skin_observe(Game *g);
 bool skin_constants(Game *g, void *constants, uint32_t vertex_shader);
 bool win32_dispatch(Game *game, const Import *call);

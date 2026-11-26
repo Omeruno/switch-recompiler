@@ -57,7 +57,7 @@ static uint32_t bank_open(Game *g, uint32_t path, uint32_t mode, bool stream)
     uint32_t count = u32(header + 4), headers = u32(header + 8), bytes = u32(header + 12);
     uint32_t version = u32(header + 16), flags = u32(header + 20);
     if (!count || count > 4096 || headers > 1024 * 1024 || count > headers / 8 ||
-        bytes > 64 * 1024 * 1024 || version != 0x30001 || flags & ~2u)
+        bytes > 192 * 1024 * 1024 || version != 0x30001 || flags & ~2u)
         goto fail;
     if (fseek(source, 0, SEEK_END) || ftell(source) != (long)(24 + headers + bytes) ||
         fseek(source, 24, SEEK_SET))
@@ -117,6 +117,7 @@ static uint32_t bank_open(Game *g, uint32_t path, uint32_t mode, bool stream)
     g->audio_payload_bytes += bytes;
     if (g->audio_payload_bytes > g->audio_peak_bytes)
         g->audio_peak_bytes = g->audio_payload_bytes;
+    fprintf(g->log, "Opened sound bank %s (%u samples)\n", name, count);
     return handles;
 fail:
     free(bank);

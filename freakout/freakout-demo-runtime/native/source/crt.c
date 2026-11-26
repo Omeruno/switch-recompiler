@@ -23,6 +23,7 @@ static bool open_file(Game *g, uint32_t name, uint32_t mode)
         return result(g, 0, 0);
     char path[1024], temp[1056];
     FILE *file = NULL;
+    void *memory = NULL;
     if (writing) {
         const char *eligible = !strcasecmp(filename, "language.cfg") ? "language.cfg" :
             (!strcasecmp(filename, "Data\\User\\profile.pro") ||
@@ -40,6 +41,8 @@ static bool open_file(Game *g, uint32_t name, uint32_t mode)
         }
     } else {
         file = open_asset(g, filename);
+        if (!file)
+            file = open_level_script(g, filename, !strcmp(method, "r"), &memory);
     }
     if (!file)
         return result(g, 0, 0);
@@ -59,6 +62,7 @@ static bool open_file(Game *g, uint32_t name, uint32_t mode)
             memset(guest_pointer(handle), 0, 32);
             wr32(handle + 12, writing ? 2 : 1);
             g->files[i] = file;
+            g->file_memory[i] = memory;
             g->archive_file[i] = !strcasecmp(str(name), "Data2.bnd");
             if (g->archive_file[i])
                 fprintf(g->log, "Opened game archive Data2.bnd\n");
@@ -66,6 +70,7 @@ static bool open_file(Game *g, uint32_t name, uint32_t mode)
         }
     }
     fclose(file);
+    free(memory);
     if (writing)
         unlink(temp);
     return result(g, 0, 0);
@@ -86,6 +91,8 @@ static bool file_call(Game *g, const char *name, uint32_t arguments, uint32_t ha
             saved = false;
         if (fclose(file))
             saved = false;
+        free(g->file_memory[slot]);
+        g->file_memory[slot] = NULL;
         if (pending) {
             if (saved && rename(pending, g->save_path[slot]))
                 saved = false;
@@ -342,7 +349,9 @@ bool crt_dispatch(Game *g, const Import *call)
     if (IS("malloc") || IS("??2@YAPAXI@Z")) {
         uint32_t pointer = allocate(g, a);
         if (!pointer)
-            fprintf(g->log, "Guest allocation failed: %u bytes\n", a);
+            fprintf(g->log, "Guest allocation failed: %u bytes, guest heap %u/%u, resource heap %u/%u\n",
+                    a, g->heap.top - HEAP_START, g->heap.limit - HEAP_START,
+                    g->resources.top - RESOURCE_HEAP_START, g->resources.limit - RESOURCE_HEAP_START);
         return result(g, pointer, 0);
     }
     if (IS("free") || IS("??3@YAXPAX@Z") || IS("??_V@YAXPAX@Z"))

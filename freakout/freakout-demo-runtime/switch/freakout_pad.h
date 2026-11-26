@@ -14,7 +14,7 @@ enum {
 };
 
 enum {
-    FO_DIK_ESCAPE = 0x01, FO_DIK_RETURN = 0x1C,
+    FO_DIK_ESCAPE = 0x01, FO_DIK_RETURN = 0x1C, FO_DIK_SPACE = 0x39,
     FO_DIK_UP = 0xC8, FO_DIK_LEFT = 0xCB, FO_DIK_RIGHT = 0xCD, FO_DIK_DOWN = 0xD0,
 };
 

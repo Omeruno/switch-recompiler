@@ -19,6 +19,54 @@ NATIVE_STACK = 0x31000000
 RETURN = 0x40000000
 
 
+def close_short_branches(lifter, read_va, sizes, base, end):
+    def follow(target, origin, remaining, pending):
+        if target in sizes:
+            return True
+        if target in pending:
+            return bool(pending[target])
+        if not base <= target < end or abs(target - origin) > 64:
+            return False
+        pending[target] = 0
+        for instruction in lifter.md.disasm(read_va(target, min(32, end - target)), target):
+            boundary = instruction.address + instruction.size
+            mnemonic = instruction.mnemonic.split()[-1]
+            if mnemonic in ('ret', 'retn'):
+                pending[target] = boundary - target
+                return True
+            if mnemonic.startswith(('call', 'int', 'loop')) or mnemonic == 'ud2':
+                break
+            if mnemonic.startswith('j'):
+                if not remaining or not instruction.op_str.startswith('0x'):
+                    break
+                edges = [int(instruction.op_str, 16)]
+                if mnemonic != 'jmp':
+                    edges.append(boundary)
+                if all(follow(edge, origin, remaining - 1, pending) for edge in edges):
+                    pending[target] = boundary - target
+                    return True
+                break
+            if boundary in sizes:
+                pending[target] = boundary - target
+                return True
+        return False
+
+    for address, length in list(sizes.items()):
+        inspected = list(lifter.md.disasm(read_va(address, length), address))
+        if not inspected:
+            continue
+        last = inspected[-1]
+        if not last.mnemonic.startswith('j') or not last.op_str.startswith('0x'):
+            continue
+        targets = [int(last.op_str, 16)]
+        if last.mnemonic != 'jmp':
+            targets.append(last.address + last.size)
+        for target in targets:
+            pending = {}
+            if follow(target, last.address, 2, pending):
+                sizes.update(pending)
+
+
 def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, native_memory=LOW_MEMORY):
     sys.path.insert(0, str(upstream / "tools/lift"))
     from lift32_cpu import Lifter
@@ -35,31 +83,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
             lifter.reloc_vas.update(base + e.rva for e in relocation.entries if e.type == 3)
         sizes = {address: length for address, length in boot.block_sizes.items() if base <= address < end}
         if close_local_branches:
-            # Include short alternate paths that rejoin traced code or return.
-            for address, length in list(sizes.items()):
-                inspected = list(lifter.md.disasm(read_va(address, length), address))
-                if not inspected:
-                    continue
-                last = inspected[-1]
-                if not last.mnemonic.startswith('j') or not last.op_str.startswith('0x'):
-                    continue
-                targets = [int(last.op_str, 16)]
-                if last.mnemonic != 'jmp':
-                    targets.append(last.address + last.size)
-                for target in targets:
-                    if target in sizes or not base <= target < end or abs(target - last.address) > 64:
-                        continue
-                    for instruction in lifter.md.disasm(read_va(target, min(32, end - target)), target):
-                        boundary = instruction.address + instruction.size
-                        mnemonic = instruction.mnemonic.split()[-1]
-                        if mnemonic in ('ret', 'retn'):
-                            sizes[target] = boundary - target
-                            break
-                        if mnemonic.startswith(('j', 'call', 'int', 'loop')) or mnemonic == 'ud2':
-                            break
-                        if boundary in sizes:
-                            sizes[target] = boundary - target
-                            break
+            close_short_branches(lifter, read_va, sizes, base, end)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
                 continue

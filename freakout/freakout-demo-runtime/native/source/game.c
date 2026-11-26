@@ -1,8 +1,10 @@
 #include "game.h"
+#include <dirent.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #ifdef __SWITCH__
 #include <switch.h>
 #else
@@ -320,7 +322,42 @@ bool asset_path(const Game *game, const char *name, char path[1024])
 FILE *open_asset(const Game *game, const char *name)
 {
     char path[1024];
-    return asset_path(game, name, path) ? fopen(path, "rb") : NULL;
+    if (!asset_path(game, name, path))
+        return NULL;
+    FILE *file = fopen(path, "rb");
+    if (file || errno != ENOENT)
+        return file;
+
+    char resolved[1024];
+    size_t root = strlen(game->assets), length = root;
+    memcpy(resolved, game->assets, root + 1);
+    for (const char *part = path + root + 1; *part;) {
+        size_t count = strcspn(part, "/");
+        DIR *directory = opendir(resolved);
+        if (!directory)
+            return NULL;
+        char candidate[1024] = {0};
+        unsigned matches = 0;
+        struct dirent *item;
+        while ((item = readdir(directory))) {
+            if (strlen(item->d_name) != count || strncasecmp(item->d_name, part, count))
+                continue;
+            memcpy(candidate, item->d_name, count + 1);
+            ++matches;
+            if (!memcmp(item->d_name, part, count)) {
+                matches = 1;
+                break;
+            }
+        }
+        closedir(directory);
+        if (matches != 1 || length + count + 1 >= sizeof resolved)
+            return NULL;
+        resolved[length++] = '/';
+        memcpy(resolved + length, candidate, count + 1);
+        length += count;
+        part += count + (part[count] != 0);
+    }
+    return fopen(resolved, "rb");
 }
 
 bool game_init(Game *game, const char *assets, FILE *log)
@@ -455,6 +492,7 @@ void game_close(Game *game)
         if (game->files[i])
             fclose(game->files[i]);
     for (size_t i = 0; i < MAX_FILES; ++i) {
+        free(game->file_memory[i]);
         if (game->pending_save[i])
             unlink(game->pending_save[i]);
         free(game->pending_save[i]);
@@ -464,8 +502,14 @@ void game_close(Game *game)
     audio_bank_close(game);
     media_close(game);
     for (unsigned i = 0; i < MAX_TEXTURES; ++i)
-        for (unsigned j = 0; j < game->textures[i].levels; ++j)
+        for (unsigned j = 0; j < game->textures[i].levels; ++j) {
             free(game->textures[i].mip[j].decoded);
+            free(game->textures[i].mip[j].depth_samples);
+        }
+    for (unsigned i = 0; i < MAX_SURFACES; ++i) {
+        free(game->surfaces[i].image.decoded);
+        free(game->surfaces[i].image.depth_samples);
+    }
     free(game->pixels);
     free(game->depth_pixels);
     free(game->low);

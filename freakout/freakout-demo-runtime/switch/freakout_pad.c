@@ -24,4 +24,5 @@ void fo_pad_keyboard(const FoXboxPad *pad, uint8_t keys[256])
     keys[FO_DIK_RIGHT] = directions & FO_XBOX_RIGHT ? 0x80 : 0;
     keys[FO_DIK_RETURN] = pad->buttons & FO_XBOX_A ? 0x80 : 0;
     keys[FO_DIK_ESCAPE] = pad->buttons & (FO_XBOX_B | FO_XBOX_START) ? 0x80 : 0;
+    keys[FO_DIK_SPACE] = (pad->buttons & FO_XBOX_X) || pad->right_trigger > 127 ? 0x80 : 0;
 }
