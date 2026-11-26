@@ -84,32 +84,87 @@ def add_race_blocks(lifter, read_va, sizes):
     if 0x493d45 in sizes:
         pending.append(0x493d69)
         ranges.append((0x493d69, 0x493dd3))
+    add_verified_blocks(lifter, read_va, sizes, pending, ranges)
+
+
+def add_input_blocks(lifter, read_va, sizes):
+    if 0x440ab0 not in sizes:
+        return
+    first, last = 0x4409a0, 0x440bb5
+    # Include the keyboard and action tables even if the trace uses only Enter.
+    tables = (
+        (0x4409d4, 0x440a94, 6, 0x85),
+        (0x440af4, 0x440bb8, 6, 0x85),
+        (0x440b40, 0x440bf0, 8, 0x8d),
+    )
+    dispatches = {}
+    for selector, table, count, sib in tables:
+        if read_va(selector, 7) != bytes((0xff, 0x24, sib)) + struct.pack("<I", table):
+            raise RuntimeError(f"unrecognized FreakOut input dispatch at {selector:#x}")
+        targets = struct.unpack(f"<{count}I", read_va(table, 4 * count))
+        if any(not first <= address < last or 0x440a92 <= address < 0x440ab0 for address in targets):
+            raise RuntimeError(f"invalid FreakOut input table at {table:#x}")
+        dispatches[selector] = targets
+    ranges = [(first, 0x440a92), (0x440ab0, last)]
+    pending = [address for targets in dispatches.values() for address in targets]
+    for address, length in sizes.items():
+        if not any(start <= address < end for start, end in ranges):
+            continue
+        instructions = list(lifter.md.disasm(read_va(address, length), address))
+        if instructions:
+            pending.extend(branch_targets(instructions[-1], dispatches))
+    # Repeated input on the loading screen can return through this separate epilogue.
+    if 0x48a490 in sizes:
+        pending.append(0x48a57b)
+        ranges.append((0x48a57b, 0x48a590))
+    # A button can request a UI sound before the original bank is open.
+    if 0x5263d5 in sizes:
+        pending.append(0x526434)
+        ranges.append((0x526434, 0x52643f))
+    add_verified_blocks(lifter, read_va, sizes, pending, ranges, dispatches)
+
+
+def branch_targets(ins, dispatches):
+    mnemonic = ins.mnemonic.split()[-1]
+    end = ins.address + ins.size
+    if mnemonic in ('ret', 'retn'):
+        return ()
+    if mnemonic.startswith(('call', 'j')):
+        if ins.op_str.startswith('0x'):
+            targets = (int(ins.op_str, 16),)
+        elif mnemonic == 'call':
+            targets = ()
+        elif ins.address in dispatches:
+            return dispatches[ins.address]
+        else:
+            raise RuntimeError(f"unexpected indirect FreakOut branch at {ins.address:#x}")
+        return targets if mnemonic == 'jmp' else (*targets, end)
+    return (end,)
+
+
+def add_verified_blocks(lifter, read_va, sizes, pending, ranges, dispatches=None):
+    dispatches = dispatches or {}
     while pending:
         address = pending.pop()
         if address in sizes:
             continue
         limit = next((end for start, end in ranges if start <= address < end), None)
         if limit is None:
-            raise RuntimeError(f"untraced FreakOut race target at {address:#x}")
+            raise RuntimeError(f"untraced FreakOut target at {address:#x}")
         for ins in lifter.md.disasm(read_va(address, limit - address), address):
             mnemonic = ins.mnemonic.split()[-1]
             end = ins.address + ins.size
             if mnemonic.startswith(('call', 'j')):
-                if ins.op_str.startswith('0x'):
-                    pending.append(int(ins.op_str, 16))
-                elif mnemonic != 'call':
-                    raise RuntimeError(f"unexpected indirect FreakOut race branch at {ins.address:#x}")
-                if mnemonic != 'jmp':
-                    pending.append(end)
+                pending.extend(branch_targets(ins, dispatches))
             elif mnemonic not in ('ret', 'retn'):
                 if mnemonic.startswith(('int', 'loop')) or mnemonic == 'ud2':
-                    raise RuntimeError(f"invalid FreakOut race instruction at {ins.address:#x}")
+                    raise RuntimeError(f"invalid FreakOut instruction at {ins.address:#x}")
                 if end not in sizes:
                     continue
             sizes[address] = end - address
             break
         else:
-            raise RuntimeError(f"unterminated FreakOut race block at {address:#x}")
+            raise RuntimeError(f"unterminated FreakOut block at {address:#x}")
 
 
 def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, native_memory=LOW_MEMORY):
@@ -130,6 +185,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
         if close_local_branches:
             close_short_branches(lifter, read_va, sizes, base, end)
             if module is boot.pe:
+                add_input_blocks(lifter, read_va, sizes)
                 add_race_blocks(lifter, read_va, sizes)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
