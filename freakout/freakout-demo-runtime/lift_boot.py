@@ -67,6 +67,51 @@ def close_short_branches(lifter, read_va, sizes, base, end):
                 sizes.update(pending)
 
 
+def add_race_blocks(lifter, read_va, sizes):
+    selector, table = 0x492875, 0x493214
+    if selector not in sizes:
+        return
+    if read_va(selector, 7) != b"\xff\x24\x85" + struct.pack("<I", table):
+        raise RuntimeError("unrecognized FreakOut race tip dispatch")
+    tips = struct.unpack("<10I", read_va(table, 40))
+    if any(not selector + 7 <= address < table for address in tips):
+        raise RuntimeError("invalid FreakOut race tip table")
+
+    # The tips are selected with rand(), so a reference descent need not visit each case.
+    pending = list(tips)
+    ranges = [(selector + 7, table), (0x415060, 0x415080)]
+    # This HUD update can take either path depending on the timer and the race score.
+    if 0x493d45 in sizes:
+        pending.append(0x493d69)
+        ranges.append((0x493d69, 0x493dd3))
+    while pending:
+        address = pending.pop()
+        if address in sizes:
+            continue
+        limit = next((end for start, end in ranges if start <= address < end), None)
+        if limit is None:
+            raise RuntimeError(f"untraced FreakOut race target at {address:#x}")
+        for ins in lifter.md.disasm(read_va(address, limit - address), address):
+            mnemonic = ins.mnemonic.split()[-1]
+            end = ins.address + ins.size
+            if mnemonic.startswith(('call', 'j')):
+                if ins.op_str.startswith('0x'):
+                    pending.append(int(ins.op_str, 16))
+                elif mnemonic != 'call':
+                    raise RuntimeError(f"unexpected indirect FreakOut race branch at {ins.address:#x}")
+                if mnemonic != 'jmp':
+                    pending.append(end)
+            elif mnemonic not in ('ret', 'retn'):
+                if mnemonic.startswith(('int', 'loop')) or mnemonic == 'ud2':
+                    raise RuntimeError(f"invalid FreakOut race instruction at {ins.address:#x}")
+                if end not in sizes:
+                    continue
+            sizes[address] = end - address
+            break
+        else:
+            raise RuntimeError(f"unterminated FreakOut race block at {address:#x}")
+
+
 def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, native_memory=LOW_MEMORY):
     sys.path.insert(0, str(upstream / "tools/lift"))
     from lift32_cpu import Lifter
@@ -84,6 +129,8 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
         sizes = {address: length for address, length in boot.block_sizes.items() if base <= address < end}
         if close_local_branches:
             close_short_branches(lifter, read_va, sizes, base, end)
+            if module is boot.pe:
+                add_race_blocks(lifter, read_va, sizes)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
                 continue

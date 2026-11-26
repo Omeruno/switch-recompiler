@@ -81,7 +81,8 @@ bool input_dispatch(Game *g, const Import *call)
 void game_keys(Game *g, const uint8_t keys[256])
 {
     static const struct { uint8_t scan, vk; } bindings[] = {
-        {0x01, 0x1b}, {0x1c, 0x0d}, {0xc8, 0x26}, {0xcb, 0x25}, {0xcd, 0x27}, {0xd0, 0x28},
+        {0x01, 0x1b}, {0x1c, 0x0d}, {0x39, 0x20},
+        {0xc8, 0x26}, {0xcb, 0x25}, {0xcd, 0x27}, {0xd0, 0x28},
     };
     for (unsigned i = 0; g->window_count && i < sizeof bindings / sizeof *bindings; ++i) {
         uint32_t scan = bindings[i].scan, vk = bindings[i].vk;
