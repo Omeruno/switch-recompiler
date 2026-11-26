@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <time.h>
 #include "exports.inc"
 #include <stdlib.h>
 #include <string.h>
@@ -99,6 +100,22 @@ static bool file_call(Game *g, const char *name, uint32_t arguments, uint32_t ha
     }
     if (!strcmp(name, "ftell"))
         return result(g, ftell(file), 0);
+    if (!strcmp(name, "getc") || !strcmp(name, "fgetc")) {
+        int value = fgetc(file);
+        if (value == EOF) {
+            uint32_t flags = (feof(file) ? 0x10 : 0) | (ferror(file) ? 0x20 : 0);
+            wr32(handle + 12, rd32(handle + 12) | flags);
+        } else {
+            ++g->file_bytes;
+        }
+        return result(g, value == EOF ? UINT32_MAX : (uint32_t)value, 0);
+    }
+    if (!strcmp(name, "ungetc")) {
+        int value = ungetc((int32_t)arguments, file);
+        if (value != EOF)
+            wr32(handle + 12, rd32(handle + 12) & ~0x10u);
+        return result(g, value == EOF ? UINT32_MAX : (uint32_t)value, 0);
+    }
     if (!strcmp(name, "fseek")) {
         int value = fseek(file, (int32_t)arg(g, 1), arg(g, 2));
         if (!value)
@@ -198,6 +215,85 @@ static bool format(Game *g, uint32_t output, uint32_t pattern, uint32_t argument
     return result(g, offset, 0);
 }
 
+static bool scan(Game *g, const char *input, const char *pattern)
+{
+    unsigned assigned = 0;
+    while (*pattern) {
+        if (isspace((unsigned char)*pattern)) {
+            while (isspace((unsigned char)*input))
+                ++input;
+            ++pattern;
+            continue;
+        }
+        if (*pattern != '%' || pattern[1] == '%') {
+            if (*pattern == '%')
+                ++pattern;
+            if (!*input)
+                return result(g, assigned ? assigned : UINT32_MAX, 0);
+            if (*input++ != *pattern++)
+                break;
+            continue;
+        }
+        ++pattern;
+        unsigned width = 0;
+        while (*pattern >= '0' && *pattern <= '9') {
+            width = width * 10 + (unsigned)(*pattern++ - '0');
+            if (width > 65536)
+                return false;
+        }
+        bool wide = *pattern == 'l';
+        if (wide)
+            ++pattern;
+        char conversion = *pattern++;
+        if (!conversion || !strchr("csfdiux", conversion) || (wide && conversion != 'f'))
+            return false;
+        if (conversion != 'c')
+            while (isspace((unsigned char)*input))
+                ++input;
+        if (!*input)
+            return result(g, assigned ? assigned : UINT32_MAX, 0);
+
+        uint32_t destination = arg(g, 2 + assigned);
+        if (conversion == 's' || conversion == 'c') {
+            size_t count = 0;
+            size_t limit = width ? width : conversion == 'c' ? 1 : 65536;
+            while (count < limit && input[count] && (conversion == 'c' || !isspace((unsigned char)input[count])))
+                ++count;
+            if (conversion == 'c' && count != limit)
+                return result(g, assigned ? assigned : UINT32_MAX, 0);
+            char *output = destination ? (char *)game_bytes(g, destination, count + (conversion == 's')) : NULL;
+            if (!output)
+                return false;
+            memcpy(output, input, count);
+            if (conversion == 's')
+                output[count] = 0;
+            input += count;
+        } else {
+            char spec[16];
+            if (width)
+                snprintf(spec, sizeof spec, "%%%u%s%c%%n", width, wide ? "l" : "", conversion);
+            else
+                snprintf(spec, sizeof spec, "%%%s%c%%n", wide ? "l" : "", conversion);
+            union { unsigned u; int i; float f; double d; } value;
+            int consumed = 0, matches;
+            if (wide) matches = sscanf(input, spec, &value.d, &consumed);
+            else if (conversion == 'f') matches = sscanf(input, spec, &value.f, &consumed);
+            else if (conversion == 'd' || conversion == 'i') matches = sscanf(input, spec, &value.i, &consumed);
+            else matches = sscanf(input, spec, &value.u, &consumed);
+            if (matches != 1 || consumed <= 0)
+                break;
+            size_t bytes = wide ? 8 : 4;
+            void *output = destination ? game_bytes(g, destination, bytes) : NULL;
+            if (!output)
+                return false;
+            memcpy(output, &value, bytes);
+            input += consumed;
+        }
+        ++assigned;
+    }
+    return result(g, assigned, 0);
+}
+
 bool crt_dispatch(Game *g, const Import *call)
 {
     if (strcmp(call->dll, "MSVCR71.dll") && strcmp(call->dll, "msvcr71.dll"))
@@ -251,10 +347,26 @@ bool crt_dispatch(Game *g, const Import *call)
     }
     if (IS("free") || IS("??3@YAXPAX@Z") || IS("??_V@YAXPAX@Z"))
         return release(g, a) && result(g, 0, 0);
+    if (IS("realloc"))
+        return result(g, reallocate(g, a, arg(g, 1)), 0);
     if (IS("fopen"))
         return open_file(g, a, arg(g, 1));
+    if (IS("sscanf"))
+        return scan(g, str(a), str(arg(g, 1)));
     if (IS("fread") || IS("fwrite") || IS("fseek") || IS("ftell") || IS("fclose"))
         return file_call(g, name, a, IS("fread") || IS("fwrite") ? arg(g, 3) : a);
+    if (IS("getc") || IS("fgetc") || IS("ungetc"))
+        return file_call(g, name, a, IS("ungetc") ? arg(g, 1) : a);
+    if (IS("time")) {
+        time_t now = time(NULL);
+        uint32_t value = now < 0 || now > INT32_MAX ? UINT32_MAX : (uint32_t)now;
+        if (a) {
+            if (!game_bytes(g, a, 4))
+                return false;
+            wr32(a, value);
+        }
+        return result(g, value, 0);
+    }
     if (IS("srand")) {
         g->random = a;
         return result(g, 0, 0);
@@ -265,6 +377,18 @@ bool crt_dispatch(Game *g, const Import *call)
     }
     if (IS("toupper") || IS("tolower"))
         return result(g, a > 255 ? a : (uint32_t)(IS("toupper") ? toupper(a) : tolower(a)), 0);
+    if (IS("isalnum") || IS("isalpha") || IS("iscntrl") || IS("isdigit") || IS("isprint") || IS("isspace")) {
+        if (a > 255)
+            return result(g, 0, 0);
+        bool matched;
+        if (IS("isalnum")) matched = isalnum(a);
+        else if (IS("isalpha")) matched = isalpha(a);
+        else if (IS("iscntrl")) matched = iscntrl(a);
+        else if (IS("isdigit")) matched = isdigit(a);
+        else if (IS("isprint")) matched = isprint(a);
+        else matched = isspace(a);
+        return result(g, matched, 0);
+    }
     if (IS("strlen"))
         return result(g, strlen(str(a)), 0);
     if (IS("atoi"))
@@ -276,6 +400,10 @@ bool crt_dispatch(Game *g, const Import *call)
     }
     if (IS("qsort") && has_block(guest_qsort)) {
         g->cpu.eip = guest_qsort;
+        return true;
+    }
+    if (IS("_setjmp3") && has_block(guest_setjmp3)) {
+        g->cpu.eip = guest_setjmp3;
         return true;
     }
     if (IS("_mkdir")) {
@@ -346,6 +474,11 @@ bool crt_dispatch(Game *g, const Import *call)
         fpush(&g->cpu, fmod(dividend, divisor));
         return result(g, 0, 0);
     }
+    if (IS("_CIasin") || IS("_CIacos")) {
+        double value = fpop(&g->cpu);
+        fpush(&g->cpu, IS("_CIasin") ? asin(value) : acos(value));
+        return result(g, 0, 0);
+    }
     if (IS("memchr")) {
         uint32_t n = arg(g, 2);
         const unsigned char *source = game_bytes(g, a, n);
@@ -364,9 +497,10 @@ bool crt_dispatch(Game *g, const Import *call)
             ++n;
         return n < 0x10000 && result(g, n, 0);
     }
-    if (IS("wcsncpy")) {
-        uint32_t source = arg(g, 1), count = arg(g, 2);
-        if (count > LOW_SIZE / 2 || !game_bytes(g, a, count * 2))
+    if (IS("wcsncpy") || IS("wcscpy")) {
+        bool bounded = IS("wcsncpy");
+        uint32_t source = arg(g, 1), count = bounded ? arg(g, 2) : 0x10000;
+        if (count > LOW_SIZE / 2 || (bounded && !game_bytes(g, a, count * 2)))
             return false;
         bool ended = false;
         for (uint32_t i = 0; i < count; ++i) {
@@ -374,9 +508,13 @@ bool crt_dispatch(Game *g, const Import *call)
                 return false;
             uint16_t value = ended ? 0 : rd16(source + i * 2);
             ended |= value == 0;
+            if (!bounded && !game_bytes(g, a, (i + 1) * 2))
+                return false;
             wr16(a + i * 2, value);
+            if (ended && !bounded)
+                return result(g, a, 0);
         }
-        return result(g, a, 0);
+        return bounded && result(g, a, 0);
     }
     if (IS("wcstombs") || IS("mbstowcs")) {
         uint32_t source = arg(g, 1), limit = a ? arg(g, 2) : 0x10000;
@@ -414,6 +552,18 @@ bool crt_dispatch(Game *g, const Import *call)
     }
     if (IS("_stricmp"))
         return result(g, strcasecmp(str(a), str(arg(g, 1))), 0);
+    if (IS("strncmp"))
+        return result(g, strncmp(str(a), str(arg(g, 1)), arg(g, 2)), 0);
+    if (IS("strncat")) {
+        const char *text = str(arg(g, 1));
+        size_t count = strnlen(text, arg(g, 2)), offset = strlen(str(a));
+        void *destination = game_bytes(g, a, offset + count + 1);
+        if (!destination)
+            return false;
+        memcpy((char *)destination + offset, text, count);
+        ((char *)destination)[offset + count] = 0;
+        return result(g, a, 0);
+    }
     if (IS("_splitpath")) {
         const char *path = str(a);
         size_t drive_size = path[0] && path[1] == ':' ? 2 : 0;

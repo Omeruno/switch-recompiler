@@ -207,6 +207,29 @@ uint32_t allocate(Game *g, uint32_t size)
     return heap_allocate(&g->heap, size);
 }
 
+uint32_t reallocate(Game *g, uint32_t address, uint32_t size)
+{
+    if (!address)
+        return allocate(g, size);
+    Heap *heap = &g->heap;
+    size_t i = span_index(heap, address);
+    if (i == heap->span_count || heap->spans[i].start != address || !heap->spans[i].used)
+        return 0;
+    if (!size) {
+        heap_release(heap, address);
+        return 0;
+    }
+    uint32_t previous = heap->spans[i].size;
+    if (size <= previous)
+        return address;
+    uint32_t next = heap_allocate(heap, size);
+    if (!next)
+        return 0;
+    memcpy(guest_pointer(next), guest_pointer(address), previous);
+    heap_release(heap, address);
+    return next;
+}
+
 uint32_t resource_allocate(Game *g, uint32_t size)
 {
     return heap_allocate(&g->resources, size);
@@ -366,9 +389,11 @@ static bool next_constructor(Game *game)
 bool game_step(Game *game)
 {
     game->recent[game->recent_count++ % COUNT(game->recent)] = game->cpu.eip;
+    if (game->cpu.eip == FO_SKIN_DEFORM || game->cpu.eip == FO_SKIN_MATRICES)
+        skin_observe(game);
     // WinMain is recognized in the generated dispatcher once without skipping its body.
     uint32_t address = advance(game->low, game->runtime, &game->cpu);
-    if (!address)
+    if (!address || ((address == FO_SKIN_DEFORM || address == FO_SKIN_MATRICES) && has_block(address)))
         return true;
     if (address == GAME_ENTRY && !game->winmain && has_block(address)) {
         game->winmain = true;

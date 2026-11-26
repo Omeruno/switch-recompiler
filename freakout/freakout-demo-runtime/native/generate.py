@@ -59,7 +59,8 @@ def generate_header(boot, payload, out):
     (out / 'game_data.inc').write_text(data + '\n' + lines[0] + '\nstatic const Module modules[] = {\n'
                                       + '\n'.join(lines[1:]) + '\n};\n', encoding='ascii')
     (out / 'exports.inc').write_text(
-        f'static const uint32_t guest_qsort = 0x{boot.crt_guest["qsort"]:x}u;\n', encoding='ascii')
+        f'static const uint32_t guest_qsort = 0x{boot.crt_guest["qsort"]:x}u;\n'
+        f'static const uint32_t guest_setjmp3 = 0x{boot.crt_guest["_setjmp3"]:x}u;\n', encoding='ascii')
     (out / 'interfaces.inc').write_text('\n'.join(extras) + '\n', encoding='ascii')
 
 
@@ -87,6 +88,7 @@ def generate_shaders(assets, out):
 
 def trace_menu(boot, race):
     if race:
+        boot.d3d.vtables = {}
         MenuInput(boot, MenuAudioTrace(boot), _DESCENT_KEYS)
     else:
         MenuInput(boot, MenuAudioTrace(boot))
@@ -151,7 +153,8 @@ def main():
                  'draw_events': [event for event in boot.d3d.events if event[0] in ('draw', 'geometry')],
                  'clear': [event for event in boot.d3d.events if event[0] == 'Clear']}
     (options.out / 'reference.json').write_text(json.dumps(reference, indent=2) + '\n')
-    emit(boot, options.pcrecomp.resolve(), options.out, standalone=False, close_local_branches=menu)
+    emit(boot, options.pcrecomp.resolve(), options.out, standalone=False, close_local_branches=menu,
+         native_memory=0x0c000000 if menu else 0x08000000)
 
 
 if __name__ == '__main__':

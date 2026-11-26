@@ -100,6 +100,7 @@ class D3DProbe:
         self.targets = {}
         self.backbuffer = 0
         self.depth = 0
+        self.vtables = None
         self.programs = Dx9Programs(self)
 
     def stop(self, status):
@@ -108,10 +109,15 @@ class D3DProbe:
 
     def make_interface(self, interface, methods):
         instance = self.boot.allocate(4)
-        table = self.boot.allocate(4 * len(methods))
+        key = (interface, methods)
+        table = self.vtables.get(key) if self.vtables is not None else None
+        if not table:
+            table = self.boot.allocate(4 * len(methods))
+            for index, method in enumerate(methods):
+                self.boot.put(table + index * 4, self.boot.add_host_api(interface, method))
+            if self.vtables is not None:
+                self.vtables[key] = table
         self.boot.put(instance, table)
-        for index, method in enumerate(methods):
-            self.boot.put(table + index * 4, self.boot.add_host_api(interface, method))
         return instance
 
     def handle(self, dll, name, arg, finish):

@@ -19,7 +19,7 @@ NATIVE_STACK = 0x31000000
 RETURN = 0x40000000
 
 
-def emit(boot, upstream, out, *, standalone=True, close_local_branches=False):
+def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, native_memory=LOW_MEMORY):
     sys.path.insert(0, str(upstream / "tools/lift"))
     from lift32_cpu import Lifter
     routines = []
@@ -35,8 +35,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False):
             lifter.reloc_vas.update(base + e.rva for e in relocation.entries if e.type == 3)
         sizes = {address: length for address, length in boot.block_sizes.items() if base <= address < end}
         if close_local_branches:
-            # Cover short untraced paths that immediately rejoin traced code. This
-            # includes language-dependent text layout branches between traced blocks.
+            # Include short alternate paths that rejoin traced code or return.
             for address, length in list(sizes.items()):
                 inspected = list(lifter.md.disasm(read_va(address, length), address))
                 if not inspected:
@@ -52,7 +51,11 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False):
                         continue
                     for instruction in lifter.md.disasm(read_va(target, min(32, end - target)), target):
                         boundary = instruction.address + instruction.size
-                        if instruction.mnemonic.startswith(('j', 'call', 'ret', 'int', 'loop')) or instruction.mnemonic == 'ud2':
+                        mnemonic = instruction.mnemonic.split()[-1]
+                        if mnemonic in ('ret', 'retn'):
+                            sizes[target] = boundary - target
+                            break
+                        if mnemonic.startswith(('j', 'call', 'int', 'loop')) or mnemonic == 'ud2':
                             break
                         if boundary in sizes:
                             sizes[target] = boundary - target
@@ -88,7 +91,10 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False):
     runtime, count = re.subn(r"\(uintptr_t\)a\b", "guest_pointer(a)", runtime)
     if not count:
         raise RuntimeError("PCRecomp memory helpers changed")
-    (out / "cpu.h").write_text("""#include <stdint.h>
+    (out / "cpu.h").write_text(f"""#include <stdint.h>
+#define FO_GUEST_MEMORY 0x{native_memory:08x}u
+#define FO_SKIN_DEFORM 0x006430f0u
+#define FO_SKIN_MATRICES 0x005c777du
 uint8_t *guest_pointer(uint32_t address);
 """ + runtime)
     entries = "\n".join(f"    {{ 0x{address:08x}u, L_{address:08X} }},"
@@ -96,8 +102,10 @@ uint8_t *guest_pointer(uint32_t address);
     boundary = ""
     if not boot.stop_at_winmain:
         boundary = f"if (c->eip == 0x{GAME_ENTRY:08x}u && !seen_winmain++) return c->eip;"
+    if not standalone:
+        boundary += "\n        if (count && (c->eip == FO_SKIN_DEFORM || c->eip == FO_SKIN_MATRICES)) return c->eip;"
     own_main = "int main(void) { return 0; }" if standalone else ""
-    winmain_state = "static unsigned seen_winmain;" if boundary else ""
+    winmain_state = "static unsigned seen_winmain;" if not boot.stop_at_winmain else ""
     (out / "blocks.c").write_text("""#include "cpu.h"
 #include <stddef.h>
 #include <stdlib.h>
@@ -113,7 +121,7 @@ uint32_t g_image_delta;
 
 uint8_t *guest_pointer(uint32_t address)
 {
-    if (address < 0x08000000u)
+    if (address < FO_GUEST_MEMORY)
         return low_mem + address;
     if (address >= 0x7C340000u && address < 0x7C420000u)
         return runtime_mem + (address - 0x7C340000u);

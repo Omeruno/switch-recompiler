@@ -46,6 +46,13 @@ static Program *lookup(Game *g, uint32_t handle)
     return NULL;
 }
 
+const void *program_data(Game *g, uint32_t handle, size_t *bytes)
+{
+    const Program *program = lookup(g, handle);
+    *bytes = program ? program->bytes : 0;
+    return program ? game_bytes(g, program->data, program->bytes) : NULL;
+}
+
 static uint32_t drop(Game *g, Program *program)
 {
     uint32_t refs = --program->refs;

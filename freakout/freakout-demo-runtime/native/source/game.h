@@ -6,7 +6,7 @@
 #include "freakout_messages.h"
 
 enum {
-    LOW_SIZE = 0x08000000, RUNTIME_BASE = 0x7c340000, RUNTIME_SIZE = 0xe0000,
+    LOW_SIZE = FO_GUEST_MEMORY, RUNTIME_BASE = 0x7c340000, RUNTIME_SIZE = 0xe0000,
     API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010, THREAD_RETURN = 0xff020,
     GAME_ENTRY = 0x67de70, PE_BASE = 0x400000, PE_ENTRY = 0x5af59e,
     STACK = 0xbe0000, BSS = 0xa00000, COMMAND = BSS + 0x100, ARGV = BSS + 0x180,
@@ -62,7 +62,7 @@ typedef struct {
     const char *stop;
     uint32_t recent[8];
     unsigned recent_count;
-    unsigned calls, presents, clears, draws, frame_draws, presented_draws;
+    unsigned calls, presents, clears, draws, frame_draws, presented_draws, program_draws;
     unsigned current_thread, thread_count, import_slice;
     uint64_t clock;
     GuestThread threads[MAX_THREADS];
@@ -84,10 +84,13 @@ typedef struct {
     unsigned sound_driver, sound_output;
     uint32_t distance_factor, audio_rate, audio_channels;
     bool audio_open;
+    unsigned audio_listener;
+    struct { float position[3], velocity[3], forward[3], up[3]; } listeners[8];
     struct AudioBank *banks;
     unsigned audio_payload_bytes, audio_peak_bytes;
     struct AudioVoice {
         uint32_t source, sample, duration, start, frequency, mode, volume, pan;
+        float distance[2], position[3], velocity[3];
         bool paused;
     } voices[64];
     uint32_t video_objects[5], video_refs[5], notify_window, notify_message, notify_arg, notify_flags;
@@ -106,8 +109,11 @@ typedef struct {
     Program programs[MAX_PROGRAMS];
     uint32_t declaration, vertex_shader, pixel_shader;
     uint32_t vertex_constants[256][4], pixel_constants[32][4];
+    unsigned deformed_frame, deformed_count, software_skin_draw;
+    uint32_t deformed_skins[64];
+    float software_skin_constants[7][4];
     uint32_t clear, raster[256], samplers[16][16], stages[8][64], transforms[257][16], viewport[6];
-    uint32_t stream, stream_offset, stride, indices, fvf, texture0;
+    uint32_t stream, stream_offset, stride, indices, fvf, texture_slots[16];
     uint32_t material[17];
     struct { uint32_t index, values[26]; bool defined, enabled; } lights[64];
     bool scene;
@@ -126,6 +132,7 @@ void hash_bytes(const void *data, size_t size, uint8_t digest[32]);
 void log_hash(FILE *log, const void *data, size_t size);
 uint8_t *game_bytes(Game *game, uint32_t address, size_t length);
 uint32_t allocate(Game *game, uint32_t size);
+uint32_t reallocate(Game *g, uint32_t address, uint32_t size);
 uint32_t resource_allocate(Game *g, uint32_t size);
 bool release(Game *game, uint32_t address);
 uint32_t arg(Game *game, unsigned index);
@@ -146,9 +153,12 @@ void game_keys(Game *g, const uint8_t keys[256]);
 bool audio_bank_dispatch(Game *g, const Import *call);
 void audio_bank_close(Game *g);
 bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib);
+void skin_observe(Game *g);
+bool skin_constants(Game *g, void *constants, uint32_t vertex_shader);
 bool win32_dispatch(Game *game, const Import *call);
 bool d3d_dispatch(Game *game, const Import *call);
 bool program_dispatch(Game *g, const Import *call);
+const void *program_data(Game *g, uint32_t handle, size_t *bytes);
 void program_clear_declaration(Game *g);
 bool d3dx_math_dispatch(Game *g, const char *name);
 bool input_dispatch(Game *game, const Import *call);

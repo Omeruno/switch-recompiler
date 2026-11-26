@@ -89,7 +89,7 @@ static Texture *find_texture(Game *g, uint32_t handle)
     return NULL;
 }
 
-static Surface *find_surface(Game *g, uint32_t handle)
+static Surface *find_surface(Game *g, uint32_t handle, Texture **owner)
 {
     if (!handle)
         return NULL;
@@ -100,10 +100,27 @@ static Surface *find_surface(Game *g, uint32_t handle)
     for (unsigned i = 0; i < MAX_TEXTURES; ++i) {
         Texture *t = &g->textures[i];
         for (unsigned mip = 0; t->handle && mip < t->levels; ++mip)
-            if (t->surfaces[mip] == handle)
+            if (t->surfaces[mip] == handle) {
+                *owner = t;
                 return &t->mip[mip];
+            }
     }
     return NULL;
+}
+
+static uint32_t drop_texture(Game *g, Texture *t)
+{
+    uint32_t refs = --t->refs;
+    if (!refs) {
+        for (unsigned level = 0; level < t->levels; ++level) {
+            free(t->mip[level].decoded);
+            release(g, t->mip[level].data);
+            release(g, t->surfaces[level]);
+        }
+        release(g, t->handle);
+        *t = (Texture){0};
+    }
+    return refs;
 }
 
 static uint32_t block_bytes(uint32_t format)
@@ -132,12 +149,18 @@ static uint32_t surface_bytes(const Surface *s)
 static bool lock(Game *g, Surface *s, uint32_t output, uint32_t rectangle, unsigned pop)
 {
     uint32_t size = surface_bytes(s);
-    if (rectangle || !size || s->locked)
+    if (rectangle || !size || s->locked || !output || !game_bytes(g, output, 8)) {
+        fprintf(g->log, "DX9 lock rejected: %ux%u format=%08x rectangle=%08x locked=%d\n",
+                s->width, s->height, s->format, rectangle, s->locked);
         return result(g, INVALID_CALL, pop);
+    }
     if (!s->data)
         s->data = resource_allocate(g, size);
-    if (!s->data)
+    if (!s->data) {
+        fprintf(g->log, "DX9 texture allocation failed: %u bytes, resource heap %u/%u bytes\n",
+                size, g->resources.top - RESOURCE_HEAP_START, g->resources.limit - RESOURCE_HEAP_START);
         return result(g, INVALID_CALL, pop);
+    }
     s->locked = true;
     wr32(output, surface_pitch(s));
     wr32(output + 4, s->data);
@@ -169,13 +192,21 @@ static void describe(const Surface *s, uint32_t output)
 
 static bool surface(Game *g, const char *name)
 {
-    Surface *s = find_surface(g, arg(g, 0));
+    Texture *parent = NULL;
+    Surface *s = find_surface(g, arg(g, 0), &parent);
     if (!s)
         return false;
-    if (IS("AddRef"))
+    if (IS("AddRef")) {
+        if (parent)
+            ++parent->refs;
         return result(g, ++s->refs, 4);
-    if (IS("Release") && s->refs)
-        return result(g, --s->refs, 4);
+    }
+    if (IS("Release") && s->refs) {
+        uint32_t refs = --s->refs;
+        if (parent)
+            drop_texture(g, parent);
+        return result(g, refs, 4);
+    }
     if (IS("GetDesc")) {
         describe(s, arg(g, 1));
         return result(g, S_OK, 8);
@@ -202,7 +233,7 @@ static bool texture(Game *g, const char *name)
     if (IS("AddRef"))
         return result(g, ++t->refs, 4);
     if (IS("Release") && t->refs)
-        return result(g, --t->refs, 4);
+        return result(g, drop_texture(g, t), 4);
     if (IS("GetType"))
         return result(g, 3, 4);
     if (IS("GetLevelCount"))
@@ -219,6 +250,7 @@ static bool texture(Game *g, const char *name)
             return false;
         wr32(arg(g, 2), *handle);
         s->refs++;
+        t->refs++;
         return result(g, S_OK, 12);
     }
     if (IS("GetLevelDesc")) {
@@ -412,8 +444,16 @@ static bool device(Game *g, const char *name)
             g->lights[slot].enabled = b != 0;
         return result(g, S_OK, 12);
     }
-    if (IS("SetTexture") && a == 0 && (!b || find_texture(g, b))) {
-        g->texture0 = b;
+    if (IS("SetTexture") && a < 16) {
+        Texture *next = find_texture(g, b);
+        if (b && !next)
+            return result(g, INVALID_CALL, 12);
+        Texture *previous = find_texture(g, g->texture_slots[a]);
+        if (next)
+            ++next->refs;
+        if (previous)
+            drop_texture(g, previous);
+        g->texture_slots[a] = b;
         return result(g, S_OK, 12);
     }
     if (IS("SetStreamSource") && a == 0 && bind_buffer(g, &g->stream, b, 6)) {
@@ -434,7 +474,7 @@ static bool device(Game *g, const char *name)
         if (!vb || !ib || !render_indexed(g, vb, ib)) {
             fprintf(g->log, "DX9 draw rejected: type=%u vertices=%u triangles=%u FVF=%x stride=%u "
                     "texture=%08x vertexShader=%08x pixelShader=%08x depth=%u/%u blend=%u/%u/%u\n",
-                    a, arg(g, 4), arg(g, 6), g->fvf, g->stride, g->texture0, g->vertex_shader, g->pixel_shader,
+                    a, arg(g, 4), arg(g, 6), g->fvf, g->stride, g->texture_slots[0], g->vertex_shader, g->pixel_shader,
                     g->raster[7], g->raster[23], g->raster[27], g->raster[19], g->raster[20]);
             return false;
         }
