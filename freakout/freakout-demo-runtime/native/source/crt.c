@@ -144,10 +144,16 @@ static bool file_call(Game *g, const char *name, uint32_t arguments, uint32_t ha
             wr32(handle + 12, rd32(handle + 12) | 0x20);
         return result(g, written, 0);
     }
-    long offset = g->archive_file[slot] ? ftell(file) : -1;
+    bool archive = g->archive_file[slot];
+    bool detail = archive;
+#ifdef __SWITCH__
+    detail = archive && g->presents < 8;
+#endif
+    long offset = detail ? ftell(file) : -1;
     size_t read = fread(output, 1, requested, file);
-    if (offset >= 0 && read) {
+    if (archive && read)
         ++g->archive_reads;
+    if (offset >= 0 && read) {
         fprintf(g->log, "Archive read #%u offset=%ld size=%zu sha256=", g->archive_reads, offset, read);
         log_hash(g->log, output, read);
         fputc('\n', g->log);

@@ -65,6 +65,8 @@ typedef struct {
     uint32_t recent[8];
     unsigned recent_count;
     unsigned calls, presents, clears, draws, frame_draws, presented_draws, program_draws;
+    uint64_t render_ns;
+    unsigned frame_width, frame_height, raster_divisor;
     unsigned current_thread, thread_count, import_slice;
     uint64_t clock;
     GuestThread threads[MAX_THREADS];
@@ -148,6 +150,7 @@ bool asset_path(const Game *game, const char *name, char path[1024]);
 FILE *open_asset(const Game *game, const char *name);
 FILE *open_level_script(Game *g, const char *name, bool text, void **memory);
 bool game_init(Game *game, const char *assets, FILE *log);
+uint64_t native_now_ns(void);
 bool game_step(Game *game);
 void game_close(Game *game);
 bool switch_thread(Game *g);

@@ -1,6 +1,7 @@
 #include "game.h"
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef __SWITCH__
 #include <switch.h>
 #include "freakout_pad_nx.h"
@@ -8,12 +9,25 @@
 
 typedef bool (*FrameHandler)(Game *, void *);
 
+uint64_t native_now_ns(void)
+{
+#ifdef __SWITCH__
+    return armTicksToNs(armGetSystemTick());
+#else
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec;
+#endif
+}
+
 static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
-                FrameHandler on_frame, FrameHandler poll, void *data)
+                FrameHandler on_frame, FrameHandler poll, void *data, unsigned raster_divisor)
 {
     if (!game_init(g, assets, log))
         return false;
+    g->raster_divisor = raster_divisor;
     unsigned progress = 0;
+    uint64_t sample_start = native_now_ns(), sample_render = 0;
     while (!limit || g->presents < limit) {
         if (poll && !(progress % 256) && !poll(g, data)) {
             g->stop = "stopped by user";
@@ -27,6 +41,14 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
             if (on_frame && !on_frame(g, data)) {
                 g->stop = "stopped by user";
                 break;
+            }
+            if (!(g->presents % 30)) {
+                uint64_t now = native_now_ns();
+                fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU raster, %ux%u\n",
+                        g->presents, (now - sample_start) / 30000000.0,
+                        (g->render_ns - sample_render) / 30000000.0, g->frame_width, g->frame_height);
+                sample_start = now;
+                sample_render = g->render_ns;
             }
         } else if (++progress >= 2000000) {
             g->stop = "no Present within the dispatch budget";
@@ -73,7 +95,7 @@ static bool present_switch(Game *game, void *data)
         return true;
     if (!out->started) {
         consoleExit(NULL);
-        if (R_FAILED(framebufferCreate(&out->fb, nwindowGetDefault(), game->back.width, game->back.height,
+        if (R_FAILED(framebufferCreate(&out->fb, nwindowGetDefault(), game->frame_width, game->frame_height,
                                        PIXEL_FORMAT_RGBA_8888, 2))) {
             consoleInit(NULL);
             return false;
@@ -87,8 +109,8 @@ static bool present_switch(Game *game, void *data)
     }
     u32 stride;
     uint8_t *pixels = framebufferBegin(&out->fb, &stride);
-    for (unsigned y = 0; y < game->back.height; ++y)
-        memcpy(pixels + y * stride, game->pixels + y * game->back.width, game->back.width * 4);
+    for (unsigned y = 0; y < game->frame_height; ++y)
+        memcpy(pixels + y * stride, game->pixels + y * game->frame_width, game->frame_width * 4);
     framebufferEnd(&out->fb);
     return poll_switch(game, out);
 }
@@ -105,7 +127,7 @@ int main(void)
     FILE *log = fopen(LOG_PATH, "w");
     Game *game = calloc(1, sizeof *game);
     if (game) {
-        run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out);
+        run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out, 2);
         game_close(game);
     }
     if (log)
@@ -135,8 +157,8 @@ static bool save_ppm(const Game *game, const char *path)
     FILE *image = fopen(path, "wb");
     if (!image)
         return false;
-    fprintf(image, "P6\n%u %u\n255\n", game->back.width, game->back.height);
-    for (unsigned i = 0; i < game->back.width * game->back.height; ++i) {
+    fprintf(image, "P6\n%u %u\n255\n", game->frame_width, game->frame_height);
+    for (unsigned i = 0; i < game->frame_width * game->frame_height; ++i) {
         uint32_t color = game->pixels[i];
         unsigned char rgb[] = {color, color >> 8, color >> 16};
         fwrite(rgb, 1, sizeof rgb, image);
@@ -191,7 +213,9 @@ int main(int argc, char **argv)
         return 1;
     }
     read_input(&script);
-    bool passed = run(game, argv[1], stdout, frames, script_frame, NULL, &script);
+    const char *half_resolution = getenv("FREAKOUT_HALF_RESOLUTION");
+    unsigned divisor = half_resolution && !strcmp(half_resolution, "1") ? 2 : 1;
+    bool passed = run(game, argv[1], stdout, frames, script_frame, NULL, &script, divisor);
     if (passed && argc >= 3)
         passed = save_ppm(game, argv[2]);
     if (script.fp)

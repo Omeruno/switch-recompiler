@@ -19,7 +19,7 @@ typedef struct {
 typedef struct {
     uint32_t *color;
     float *depth;
-    unsigned width, height, depth_width;
+    unsigned width, height, depth_width, depth_clear_width, depth_clear_height, sample_step;
     bool alpha;
 } DrawTarget;
 
@@ -34,8 +34,11 @@ bool render_allocate(Game *g)
         return true;
     if (!g->back.width || !g->back.height || g->back.width > 1920 || g->back.height > 1080)
         return false;
+    unsigned step = g->raster_divisor ? g->raster_divisor : 1;
+    g->frame_width = (g->back.width + step - 1) / step;
+    g->frame_height = (g->back.height + step - 1) / step;
     size_t count = (size_t)g->back.width * g->back.height;
-    g->pixels = calloc(count, sizeof *g->pixels);
+    g->pixels = calloc((size_t)g->frame_width * g->frame_height, sizeof *g->pixels);
     g->depth_pixels = malloc(count * sizeof *g->depth_pixels);
     if (!g->pixels || !g->depth_pixels)
         return false;
@@ -49,11 +52,16 @@ static bool draw_target(Game *g, DrawTarget *target, bool need_depth)
     Surface *color = d3d_surface_lookup(g, g->color_target, NULL);
     if (!color || (color->format != 21 && color->format != 22))
         return false;
-    *target = (DrawTarget){.width = color->width, .height = color->height, .alpha = color->format == 21};
+    *target = (DrawTarget){.width = color->width, .height = color->height, .sample_step = 1,
+                          .alpha = color->format == 21};
     if (color == &g->back) {
         if (!render_allocate(g))
             return false;
         target->color = g->pixels;
+        target->width = g->frame_width;
+        target->height = g->frame_height;
+        if (g->raster_divisor)
+            target->sample_step = g->raster_divisor;
     } else {
         if (!color->decoded)
             color->decoded = calloc((size_t)color->width * color->height, sizeof *color->decoded);
@@ -67,6 +75,8 @@ static bool draw_target(Game *g, DrawTarget *target, bool need_depth)
     if (!depth || depth->width < color->width || depth->height < color->height)
         return false;
     target->depth_width = depth->width;
+    target->depth_clear_width = color->width;
+    target->depth_clear_height = color->height;
     if (depth == &g->depth) {
         if (!render_allocate(g))
             return false;
@@ -97,8 +107,8 @@ bool render_clear(Game *g, unsigned flags, uint32_t color, float depth)
             target.color[i] = value;
     }
     if (flags & 2)
-        for (unsigned y = 0; y < target.height; ++y)
-            for (unsigned x = 0; x < target.width; ++x)
+        for (unsigned y = 0; y < target.depth_clear_height; ++y)
+            for (unsigned x = 0; x < target.depth_clear_width; ++x)
                 target.depth[y * target.depth_width + x] = depth;
     return true;
 }
@@ -199,11 +209,22 @@ static int coord(int value, int size, unsigned mode)
 {
     if (mode == 3)
         return value < 0 ? 0 : value >= size ? size - 1 : value;
+    if (mode != 2 && !(size & (size - 1)))
+        return (unsigned)value & (unsigned)(size - 1);
     int period = size * (mode == 2 ? 2 : 1);
     int remainder = value % period;
     if (remainder < 0)
         remainder += period;
     return remainder < size ? remainder : period - remainder - 1;
+}
+
+static uint32_t filter_pair(uint32_t a, uint32_t b, unsigned weight)
+{
+    const uint32_t channels = 0x00ff00ff;
+    unsigned inverse = 256 - weight;
+    uint32_t red_blue = (a & channels) * inverse + (b & channels) * weight;
+    uint32_t green_alpha = ((a >> 8) & channels) * inverse + ((b >> 8) & channels) * weight;
+    return ((red_blue >> 8) & channels) | (green_alpha & ~channels);
 }
 
 static uint32_t sample(const Game *g, unsigned slot, const Surface *t, const uint32_t *image, float u, float v)
@@ -214,9 +235,9 @@ static uint32_t sample(const Game *g, unsigned slot, const Surface *t, const uin
     unsigned ax = coord(ix, t->width, u_mode), bx = coord(ix + 1, t->width, u_mode);
     unsigned ay = coord(iy, t->height, v_mode) * t->width, by = coord(iy + 1, t->height, v_mode) * t->width;
     unsigned fx = (x - ix) * 256, fy = (y - iy) * 256;
-    uint32_t top = mix_color(image[ay + ax], image[ay + bx], 256 - fx, fx);
-    uint32_t bottom = mix_color(image[by + ax], image[by + bx], 256 - fx, fx);
-    return mix_color(top, bottom, 256 - fy, fy);
+    uint32_t top = filter_pair(image[ay + ax], image[ay + bx], fx);
+    uint32_t bottom = filter_pair(image[by + ax], image[by + bx], fx);
+    return filter_pair(top, bottom, fy);
 }
 
 static Surface *texture_at(Game *g, unsigned slot)
@@ -433,12 +454,12 @@ static uint32_t blend(const Game *g, uint32_t src, uint32_t dst)
     return packed;
 }
 
-static Vertex viewport_vertex(const Game *g, const ClipVertex *input, bool programmable)
+static Vertex viewport_vertex(const Game *g, const ClipVertex *input, float scale, bool programmable)
 {
     const float *p = input->position;
     float inv = 1.0f / p[3];
-    Vertex out = {.x = g->viewport[0] + (p[0] * inv * 0.5f + 0.5f) * g->viewport[2],
-                  .y = g->viewport[1] + (0.5f - p[1] * inv * 0.5f) * g->viewport[3],
+    Vertex out = {.x = (g->viewport[0] + (p[0] * inv * 0.5f + 0.5f) * g->viewport[2]) * scale,
+                  .y = (g->viewport[1] + (0.5f - p[1] * inv * 0.5f) * g->viewport[3]) * scale,
                   .z = p[2] * inv, .inv_w = inv, .u = input->u, .v = input->v};
     memcpy(out.tint, input->tint, sizeof out.tint);
     if (programmable)
@@ -502,10 +523,11 @@ static void clip_triangle(Game *g, const DrawTarget *target, const Surface *surf
     if (count < 3)
         return;
     const ClipVertex *vertices = records[PLANES & 1];
-    Vertex first = viewport_vertex(g, &vertices[0], shader != NULL);
-    Vertex previous = viewport_vertex(g, &vertices[1], shader != NULL);
+    float scale = 1.f / target->sample_step;
+    Vertex first = viewport_vertex(g, &vertices[0], scale, shader != NULL);
+    Vertex previous = viewport_vertex(g, &vertices[1], scale, shader != NULL);
     for (unsigned i = 2; i < count; ++i) {
-        Vertex current = viewport_vertex(g, &vertices[i], shader != NULL);
+        Vertex current = viewport_vertex(g, &vertices[i], scale, shader != NULL);
         triangle(g, target, surface, shader, first, previous, current);
         previous = current;
     }
@@ -534,7 +556,8 @@ static void triangle(Game *g, const DrawTarget *target, const Surface *t, Shader
             if (wa < 0 || wb < 0 || wc < 0)
                 continue;
             float z = a.z * wa + b.z * wb + c.z * wc;
-            unsigned pixel = y * target->width + x, depth_index = y * target->depth_width + x;
+            unsigned pixel = y * target->width + x;
+            unsigned depth_index = (y * target->depth_width + x) * target->sample_step;
             if (z < 0 || z > 1.000001f || (target->depth && z > target->depth[depth_index] + 0.0000001f))
                 continue;
             wa *= a.inv_w;

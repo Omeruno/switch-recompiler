@@ -562,7 +562,10 @@ static bool device(Game *g, const char *name)
     if ((IS("DrawIndexedPrimitive") || IS("DrawPrimitive")) && g->scene) {
         bool indexed = IS("DrawIndexedPrimitive");
         Buffer *vb = find_buffer(g, g->stream), *ib = indexed ? find_buffer(g, g->indices) : NULL;
-        if (!vb || (indexed && !ib) || !render_geometry(g, vb, ib)) {
+        uint64_t start = native_now_ns();
+        bool rendered = vb && (!indexed || ib) && render_geometry(g, vb, ib);
+        g->render_ns += native_now_ns() - start;
+        if (!rendered) {
             fprintf(g->log, "DX9 draw rejected: type=%u vertices=%u triangles=%u FVF=%x stride=%u "
                     "texture=%08x vertexShader=%08x pixelShader=%08x depth=%u/%u blend=%u/%u/%u "
                     "colorMask=%x stencil=%u\n",
@@ -607,7 +610,10 @@ static bool device(Game *g, const char *name)
         }
         if (arg(g, 3) & 1)
             g->clear = arg(g, 4);
-        if (!render_clear(g, arg(g, 3), g->clear, rdf32(g->cpu.esp + 24)))
+        uint64_t start = native_now_ns();
+        bool cleared = render_clear(g, arg(g, 3), g->clear, rdf32(g->cpu.esp + 24));
+        g->render_ns += native_now_ns() - start;
+        if (!cleared)
             return false;
         g->clears++;
         return result(g, S_OK, 28);

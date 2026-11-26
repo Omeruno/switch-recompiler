@@ -34,7 +34,14 @@ def close_short_branches(lifter, read_va, sizes, base, end):
             if mnemonic in ('ret', 'retn'):
                 pending[target] = boundary - target
                 return True
-            if mnemonic.startswith(('call', 'int', 'loop')) or mnemonic == 'ud2':
+            if mnemonic == 'call':
+                if (remaining and instruction.op_str.startswith('0x') and
+                        int(instruction.op_str, 16) in sizes and
+                        follow(boundary, origin, remaining - 1, pending)):
+                    pending[target] = boundary - target
+                    return True
+                break
+            if mnemonic.startswith(('int', 'loop')) or mnemonic == 'ud2':
                 break
             if mnemonic.startswith('j'):
                 if not remaining or not instruction.op_str.startswith('0x'):
@@ -107,12 +114,6 @@ def add_input_blocks(lifter, read_va, sizes):
         dispatches[selector] = targets
     ranges = [(first, 0x440a92), (0x440ab0, last)]
     pending = [address for targets in dispatches.values() for address in targets]
-    for address, length in sizes.items():
-        if not any(start <= address < end for start, end in ranges):
-            continue
-        instructions = list(lifter.md.disasm(read_va(address, length), address))
-        if instructions:
-            pending.extend(branch_targets(instructions[-1], dispatches))
     # Repeated input on the loading screen can return through this separate epilogue.
     if 0x48a490 in sizes:
         pending.append(0x48a57b)
@@ -121,6 +122,35 @@ def add_input_blocks(lifter, read_va, sizes):
     if 0x5263d5 in sizes:
         pending.append(0x526434)
         ranges.append((0x526434, 0x52643f))
+    collect_verified_edges(lifter, read_va, sizes, pending, ranges, dispatches)
+
+
+def add_frontend_blocks(lifter, read_va, sizes):
+    # The language-choice handler and loading-screen input have alternate paths
+    # that an English confirmation and a neutral loading trace do not execute.
+    if 0x471450 in sizes:
+        ranges = [(0x471503, 0x471541), (0x4c1950, 0x4c19f8)]
+        collect_verified_edges(lifter, read_va, sizes, [0x471503], ranges, {})
+    if 0x472210 not in sizes:
+        return
+    selector, table = 0x472230, 0x4722e8
+    if read_va(selector, 7) != b"\xff\x24\x85" + struct.pack("<I", table):
+        raise RuntimeError("unrecognized FreakOut loading input dispatch")
+    targets = struct.unpack("<8I", read_va(table, 32))
+    if any(not selector + 7 <= address < table for address in targets):
+        raise RuntimeError("invalid FreakOut loading input table")
+    ranges = [(0x472210, 0x4722e6), (0x472310, 0x472541),
+              (0x4d2820, 0x4d2852), (0x4d2870, 0x4d2877)]
+    collect_verified_edges(lifter, read_va, sizes, [0x472310, *targets], ranges, {selector: targets})
+
+
+def collect_verified_edges(lifter, read_va, sizes, pending, ranges, dispatches):
+    for address, length in sizes.items():
+        if not any(start <= address < end for start, end in ranges):
+            continue
+        instructions = list(lifter.md.disasm(read_va(address, length), address))
+        if instructions:
+            pending.extend(branch_targets(instructions[-1], dispatches))
     add_verified_blocks(lifter, read_va, sizes, pending, ranges, dispatches)
 
 
@@ -186,6 +216,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
             close_short_branches(lifter, read_va, sizes, base, end)
             if module is boot.pe:
                 add_input_blocks(lifter, read_va, sizes)
+                add_frontend_blocks(lifter, read_va, sizes)
                 add_race_blocks(lifter, read_va, sizes)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
@@ -226,6 +257,18 @@ uint8_t *guest_pointer(uint32_t address);
 """ + runtime)
     entries = "\n".join(f"    {{ 0x{address:08x}u, L_{address:08X} }},"
                         for address, _ in sorted(routines))
+    game_addresses = [address for address, _ in routines if address < RUNTIME_BASE]
+    crt_addresses = [address for address, _ in routines if address >= RUNTIME_BASE]
+    game_start = min(game_addresses, default=IMAGE_BASE)
+    crt_start = min(crt_addresses, default=RUNTIME_BASE)
+    game_span = max(game_addresses, default=game_start) - game_start + 1
+    crt_span = max(crt_addresses, default=crt_start) - crt_start + 1
+    index_type = "uint16_t" if len(routines) <= 65535 else "uint32_t"
+    lookup_data = f"""
+#define GAME_CODE_START 0x{game_start:x}u
+#define RUNTIME_CODE_START 0x{crt_start:x}u
+static {index_type} game_index[{game_span}], runtime_index[{crt_span}];
+"""
     boundary = ""
     if not boot.stop_at_winmain:
         boundary = f"if (c->eip == 0x{GAME_ENTRY:08x}u && !seen_winmain++) return c->eip;"
@@ -286,24 +329,37 @@ struct Block { uint32_t address; void (*run)(CPU *); };
 static const struct Block blocks[] = {
 """ + entries + """
 };
+""" + lookup_data + """
+static int lookup_ready;
 
-static const struct Block *lookup(uint32_t address)
+static void init_lookup(void)
 {
-    size_t lo = 0, hi = sizeof blocks / sizeof blocks[0];
-    while (lo < hi) {
-        size_t mid = lo + (hi - lo) / 2;
-        if (blocks[mid].address == address)
-            return &blocks[mid];
-        if (blocks[mid].address < address)
-            lo = mid + 1;
+    for (size_t i = 0; i < sizeof blocks / sizeof blocks[0]; ++i) {
+        uint32_t offset = blocks[i].address - GAME_CODE_START;
+        if (offset < sizeof game_index / sizeof game_index[0])
+            game_index[offset] = i + 1;
         else
-            hi = mid;
+            runtime_index[blocks[i].address - RUNTIME_CODE_START] = i + 1;
     }
-    return NULL;
+    lookup_ready = 1;
+}
+
+static inline const struct Block *lookup(uint32_t address)
+{
+    uint32_t game_offset = address - GAME_CODE_START;
+    uint32_t runtime_offset = address - RUNTIME_CODE_START;
+    size_t index = 0;
+    if (game_offset < sizeof game_index / sizeof game_index[0])
+        index = game_index[game_offset];
+    else if (runtime_offset < sizeof runtime_index / sizeof runtime_index[0])
+        index = runtime_index[runtime_offset];
+    return index ? &blocks[index - 1] : NULL;
 }
 
 uint32_t advance(uint8_t *guest, uint8_t *runtime, CPU *c)
 {
+    if (!lookup_ready)
+        init_lookup();
     low_mem = guest;
     runtime_mem = runtime;
     for (unsigned count = 0; count < 2048; count++) {
@@ -318,6 +374,8 @@ uint32_t advance(uint8_t *guest, uint8_t *runtime, CPU *c)
 
 int has_block(uint32_t address)
 {
+    if (!lookup_ready)
+        init_lookup();
     return lookup(address) != NULL;
 }
 """)
