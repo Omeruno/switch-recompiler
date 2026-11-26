@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { float x, y, z, inv_w, u, v; } Vertex;
+typedef struct { float position[4], u, v, tint[4]; } ClipVertex;
+typedef struct { float x, y, z, inv_w, u, v, tint[4]; } Vertex;
 
 static uint32_t rgba(uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha)
 {
@@ -153,33 +154,126 @@ static void transform(float vertex[4], const uint32_t *state)
     memcpy(vertex, result, sizeof result);
 }
 
-static bool read_vertex(const Game *g, const uint8_t *source, Vertex *out)
+static bool read_vertex(const Game *g, const uint8_t *source, ClipVertex *out)
 {
     float position[] = {0, 0, 0, 1}, uv[] = {0, 0, 1, 0};
     memcpy(position, source, 12);
-    memcpy(uv, source + 24, 8);
+    bool colored = g->fvf == 0x152;
+    memcpy(uv, source + (colored ? 28 : 24), 8);
+    uint32_t tint = UINT32_MAX;
+    if (colored) {
+        uint32_t argb;
+        memcpy(&argb, source + 24, 4);
+        tint = rgba(argb >> 16 & 255, argb >> 8 & 255, argb & 255, argb >> 24);
+    }
     transform(position, g->transforms[256]);
     transform(position, g->transforms[2]);
     transform(position, g->transforms[3]);
     if (g->stages[0][24] == 2)
         transform(uv, g->transforms[16]);
-    if (position[3] <= 0 || !isfinite(position[3]))
-        return false;
-    float inv = 1.0f / position[3];
-    *out = (Vertex){
-        g->viewport[0] + (position[0] * inv * 0.5f + 0.5f) * g->viewport[2],
-        g->viewport[1] + (0.5f - position[1] * inv * 0.5f) * g->viewport[3],
-        position[2] * inv, inv, uv[0], uv[1],
+    for (unsigned i = 0; i < 4; ++i) {
+        if (!isfinite(position[i]))
+            return false;
+        out->position[i] = position[i];
+        out->tint[i] = (tint >> (i * 8)) & 255;
+    }
+    out->u = uv[0];
+    out->v = uv[1];
+    return isfinite(out->u) && isfinite(out->v) && fabsf(out->u) < 4096 && fabsf(out->v) < 4096;
+}
+
+static uint32_t modulate(uint32_t color, const Vertex a, const Vertex b, const Vertex c,
+                         float wa, float wb, float wc)
+{
+    uint32_t out = 0;
+    for (unsigned lane = 0; lane < 4; ++lane) {
+        unsigned shift = 8 * lane;
+        float tint = a.tint[lane] * wa + b.tint[lane] * wb + c.tint[lane] * wc;
+        unsigned value = ((color >> shift) & 255) * fminf(tint, 255.0f) * (1.0f / 255);
+        out |= value << shift;
+    }
+    return out;
+}
+
+static Vertex viewport_vertex(const Game *g, const ClipVertex *input)
+{
+    const float *p = input->position;
+    float inv = 1.0f / p[3];
+    Vertex out = {
+        g->viewport[0] + (p[0] * inv * 0.5f + 0.5f) * g->viewport[2],
+        g->viewport[1] + (0.5f - p[1] * inv * 0.5f) * g->viewport[3],
+        p[2] * inv, inv, input->u, input->v, {0},
     };
-    return isfinite(out->x) && isfinite(out->y) && isfinite(out->z) &&
-           isfinite(out->u) && isfinite(out->v) && fabsf(out->u) < 4096 && fabsf(out->v) < 4096;
+    memcpy(out.tint, input->tint, sizeof out.tint);
+    return out;
+}
+
+static float plane_distance(const ClipVertex *vertex, unsigned plane)
+{
+    const float *p = vertex->position;
+    switch (plane) {
+    case 0: return p[3] - 0.000001f;
+    case 1: return p[3] + p[0];
+    case 2: return p[3] - p[0];
+    case 3: return p[3] + p[1];
+    case 4: return p[3] - p[1];
+    case 5: return p[2];
+    default: return p[3] - p[2];
+    }
+}
+
+static ClipVertex interpolate(const ClipVertex *a, const ClipVertex *b, float weight)
+{
+    ClipVertex out = {.u = a->u + (b->u - a->u) * weight,
+                      .v = a->v + (b->v - a->v) * weight};
+    for (unsigned i = 0; i < 4; ++i) {
+        out.position[i] = a->position[i] + (b->position[i] - a->position[i]) * weight;
+        out.tint[i] = a->tint[i] + (b->tint[i] - a->tint[i]) * weight;
+    }
+    return out;
+}
+
+static void triangle(Game *g, const Surface *texture, const uint32_t *image, Vertex a, Vertex b, Vertex c);
+
+static void clip_triangle(Game *g, const Surface *surface, const uint32_t *image, const ClipVertex input[3])
+{
+    enum { PLANES = 7, MAX_POLYGON = 3 + PLANES };
+    ClipVertex records[2][MAX_POLYGON];
+    memcpy(records[0], input, 3 * sizeof *input);
+    unsigned count = 3;
+    for (unsigned plane = 0; plane < PLANES && count >= 3; ++plane) {
+        ClipVertex *vertices = records[plane & 1], *next = records[(plane + 1) & 1];
+        unsigned used = 0;
+        const ClipVertex *previous = &vertices[count - 1];
+        float previous_distance = plane_distance(previous, plane);
+        for (unsigned i = 0; i < count; ++i) {
+            const ClipVertex *current = &vertices[i];
+            float distance = plane_distance(current, plane);
+            if ((distance < 0) != (previous_distance < 0))
+                next[used++] = interpolate(previous, current, previous_distance / (previous_distance - distance));
+            if (distance >= 0)
+                next[used++] = *current;
+            previous = current;
+            previous_distance = distance;
+        }
+        count = used;
+    }
+    if (count < 3)
+        return;
+    const ClipVertex *vertices = records[PLANES & 1];
+    Vertex first = viewport_vertex(g, &vertices[0]), previous = viewport_vertex(g, &vertices[1]);
+    for (unsigned i = 2; i < count; ++i) {
+        Vertex current = viewport_vertex(g, &vertices[i]);
+        triangle(g, surface, image, first, previous, current);
+        previous = current;
+    }
 }
 
 static void triangle(Game *g, const Surface *t, const uint32_t *image, Vertex a, Vertex b, Vertex c)
 {
     float bx = b.x - a.x, by = b.y - a.y, cx = c.x - a.x, cy = c.y - a.y;
     float area = bx * cy - by * cx;
-    if (area == 0 || (g->raster[22] == 2 && area > 0) || (g->raster[22] == 3 && area < 0))
+    if (!isfinite(area) || area == 0 || (g->raster[22] == 2 && area > 0) || (g->raster[22] == 3 && area < 0))
         return;
     float inverse = 1.0f / area;
     int x0 = fmaxf(0, fminf(g->back.width, floorf(fminf(a.x, fminf(b.x, c.x)))));
@@ -203,6 +297,17 @@ static void triangle(Game *g, const Surface *t, const uint32_t *image, Vertex a,
             float weight = 1.0f / (wa + wb + wc);
             uint32_t value = sample(g, t, image, (a.u * wa + b.u * wb + c.u * wc) * weight,
                                    (a.v * wa + b.v * wb + c.v * wc) * weight);
+            if (g->fvf == 0x152)
+                value = modulate(value, a, b, c, wa * weight, wb * weight, wc * weight);
+            if (g->raster[15]) {
+                unsigned alpha = value >> 24, reference = g->raster[24] & 255;
+                unsigned equality = g->raster[25];
+                if (equality == 1 || (equality == 2 && alpha >= reference) ||
+                    (equality == 3 && alpha != reference) || (equality == 4 && alpha > reference) ||
+                    (equality == 5 && alpha <= reference) || (equality == 6 && alpha == reference) ||
+                    (equality == 7 && alpha < reference))
+                    continue;
+            }
             if (g->raster[27]) {
                 unsigned alpha = value >> 24;
                 value = mix_color(value, g->pixels[pixel], alpha, 255 - alpha);
@@ -218,7 +323,8 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
 {
     unsigned type = arg(g, 1), minimum = arg(g, 3), count = arg(g, 4), first = arg(g, 5), n = arg(g, 6);
     int64_t base = (int32_t)arg(g, 2) + (int64_t)minimum;
-    if (!g->pixels || g->fvf != 0x112 || g->stride != 32 || ib->format != 101 ||
+    if (!g->pixels || !((g->fvf == 0x112 && g->stride == 32) || (g->fvf == 0x152 && g->stride == 36)) ||
+        ib->format != 101 ||
         (type != 4 && type != 5) || !count || count > 65536 || !n || n > 65536 || base < 0 ||
         (g->raster[7] && g->raster[23] != 4) ||
         (g->raster[27] && (g->raster[19] != 5 || g->raster[20] != 6)))
@@ -227,13 +333,17 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
     unsigned index_count = type == 4 ? 3 * n : n + 2;
     if (end > vb->bytes || ((uint64_t)first + index_count) * 2 > ib->bytes)
         return false;
-    const Surface *texture = NULL;
+    Surface *texture = NULL;
     for (unsigned i = 0; i < MAX_TEXTURES; ++i)
         if (g->texture0 && g->textures[i].handle == g->texture0) {
             texture = &g->textures[i].mip[0];
             break;
         }
-    uint32_t *image = decode_texture(g, texture);
+    if (!texture)
+        return false;
+    if (!texture->decoded)
+        texture->decoded = decode_texture(g, texture);
+    const uint32_t *image = texture->decoded;
     if (!image)
         return false;
 
@@ -249,23 +359,23 @@ bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib)
     for (unsigned i = 0; i < 32; ++i)
         fprintf(g->log, "%02x", (unsigned)index_hash[i]);
     fputc('\n', g->log);
-    bool valid = true;
-    for (unsigned i = 0; i < n && valid; ++i) {
+    for (unsigned i = 0; i < n; ++i) {
         unsigned offset = type == 4 ? i * 3 : i;
         unsigned j = type == 5 ? i & 1 : 0;
         unsigned id[] = {get16(indices + 2 * (offset + j)), get16(indices + 2 * (offset + (1 ^ j))),
                          get16(indices + 2 * (offset + 2))};
-        Vertex v[3];
+        ClipVertex v[3];
+        bool visible = true;
         for (unsigned k = 0; k < 3; ++k) {
-            if (id[k] < minimum || id[k] - minimum >= count ||
-                !read_vertex(g, vertices + (id[k] - minimum) * g->stride, &v[k])) {
-                valid = false;
+            if (id[k] < minimum || id[k] - minimum >= count)
+                return false;
+            if (!read_vertex(g, vertices + (id[k] - minimum) * g->stride, &v[k])) {
+                visible = false;
                 break;
             }
         }
-        if (valid)
-            triangle(g, texture, image, v[0], v[1], v[2]);
+        if (visible)
+            clip_triangle(g, texture, image, v);
     }
-    free(image);
-    return valid;
+    return true;
 }

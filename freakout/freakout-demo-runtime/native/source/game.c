@@ -1,5 +1,6 @@
 #include "game.h"
 #include <errno.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef __SWITCH__
@@ -99,55 +100,121 @@ static bool load_image(Game *game, const Module *module)
     return valid;
 }
 
-uint32_t allocate(Game *game, uint32_t size)
+static size_t span_index(const Heap *g, uint32_t start)
 {
-    if (size > LOW_SIZE - HEAP_START - 15)
-        return 0;
-    size = ((size ? size : 1) + 15) & ~15u;
-    size_t best = game->span_count;
-    for (size_t i = 0; i < game->span_count; ++i) {
-        Span *span = &game->spans[i];
-        if (!span->used && span->size >= size &&
-            (best == game->span_count || span->size < game->spans[best].size))
-            best = i;
+    size_t lo = 0, hi = g->span_count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (g->spans[mid].start < start)
+            lo = mid + 1;
+        else
+            hi = mid;
     }
-    if (best == game->span_count)
-        return 0;
-    Span *span = &game->spans[best];
-    if (span->size > size) {
-        if (game->span_count == MAX_SPANS)
-            return 0;
-        memmove(span + 2, span + 1, (game->span_count - best - 1) * sizeof *span);
-        span[1] = (Span){span->start + size, span->size - size, false};
-        game->span_count++;
-    }
-    span->size = size;
-    span->used = true;
-    return span->start;
+    return lo;
 }
 
-bool release(Game *game, uint32_t address)
+static size_t free_span_index(const Heap *g, uint32_t start, uint32_t size)
+{
+    size_t lo = 0, hi = g->free_span_count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        uint32_t bytes = g->free_spans[mid].size;
+        if (bytes < size || (bytes == size && g->free_spans[mid].start < start))
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static void remove_free_span(Heap *g, size_t i)
+{
+    memmove(g->free_spans + i, g->free_spans + i + 1,
+            (--g->free_span_count - i) * sizeof *g->free_spans);
+}
+
+static void insert_free_span(Heap *g, uint32_t start, uint32_t size)
+{
+    size_t i = free_span_index(g, start, size);
+    memmove(g->free_spans + i + 1, g->free_spans + i,
+            (g->free_span_count++ - i) * sizeof *g->free_spans);
+    g->free_spans[i].start = start;
+    g->free_spans[i].size = size;
+}
+
+static uint32_t heap_allocate(Heap *g, uint32_t size)
+{
+    if (size > LOW_SIZE - HEAP_START)
+        return 0;
+    size = ((size ? size : 1) + 15) & ~15u;
+    size_t fit = free_span_index(g, 0, size);
+    if (fit == g->free_span_count) {
+        if (g->span_count == MAX_SPANS || size > g->limit - g->top)
+            return 0;
+        uint32_t address = g->top;
+        g->spans[g->span_count++] = (Span){address, size, true};
+        g->top += size;
+        return address;
+    }
+    uint32_t address = g->free_spans[fit].start;
+    size_t index = span_index(g, address);
+    Span *span = g->spans + index;
+    uint32_t remaining = span->size - size;
+    if (remaining && g->span_count == MAX_SPANS)
+        return 0;
+    remove_free_span(g, fit);
+    *span = (Span){address, size, true};
+    if (remaining) {
+        memmove(span + 2, span + 1, (g->span_count++ - index - 1) * sizeof *span);
+        span[1] = (Span){address + size, remaining, false};
+        insert_free_span(g, address + size, remaining);
+    }
+    return address;
+}
+
+static bool heap_release(Heap *g, uint32_t address)
 {
     if (!address)
         return true;
-    for (size_t i = 0; i < game->span_count; ++i) {
-        Span *span = &game->spans[i];
-        if (span->start != address || !span->used)
-            continue;
-        span->used = false;
-        if (i && !span[-1].used) {
-            --i;
-            --span;
-            span->size += span[1].size;
-            memmove(span + 1, span + 2, (--game->span_count - i - 1) * sizeof *span);
-        }
-        if (i + 1 < game->span_count && !span[1].used) {
-            span->size += span[1].size;
-            memmove(span + 1, span + 2, (--game->span_count - i - 1) * sizeof *span);
-        }
-        return true;
+    size_t i = span_index(g, address);
+    Span *span = g->spans + i;
+    if (i == g->span_count || span->start != address || !span->used)
+        return false;
+    span->used = false;
+    if (i && !span[-1].used) {
+        --i;
+        --span;
+        remove_free_span(g, free_span_index(g, span->start, span->size));
+        span->size += span[1].size;
+        memmove(span + 1, span + 2, (--g->span_count - i - 1) * sizeof *span);
     }
-    return false;
+    if (i + 1 < g->span_count && !span[1].used) {
+        remove_free_span(g, free_span_index(g, span[1].start, span[1].size));
+        span->size += span[1].size;
+        memmove(span + 1, span + 2, (--g->span_count - i - 1) * sizeof *span);
+    }
+    if (i + 1 == g->span_count) {
+        g->top = span->start;
+        --g->span_count;
+    } else {
+        insert_free_span(g, span->start, span->size);
+    }
+    return true;
+}
+
+uint32_t allocate(Game *g, uint32_t size)
+{
+    return heap_allocate(&g->heap, size);
+}
+
+uint32_t resource_allocate(Game *g, uint32_t size)
+{
+    return heap_allocate(&g->resources, size);
+}
+
+bool release(Game *g, uint32_t address)
+{
+    return heap_release(address < RESOURCE_HEAP_START ? &g->heap : &g->resources, address);
 }
 
 uint32_t arg(Game *game, unsigned index)
@@ -175,18 +242,29 @@ uint32_t add_import(Game *game, const char *dll, const char *name)
 
 uint32_t make_interface(Game *game, const Methods *methods)
 {
-    if (methods->count > MAX_IMPORTS - game->import_count)
+    uint32_t object = resource_allocate(game, 4);
+    if (!object)
         return 0;
-    uint32_t object = allocate(game, 4);
-    uint32_t table = allocate(game, 4 * methods->count);
-    if (!object || !table) {
+    for (size_t i = 0; i < game->vtable_count; ++i) {
+        if (game->vtables[i].methods == methods) {
+            wr32(object, game->vtables[i].address);
+            return object;
+        }
+    }
+    if (game->vtable_count == COUNT(game->vtables) || methods->count > MAX_IMPORTS - game->import_count) {
         release(game, object);
-        release(game, table);
+        return 0;
+    }
+    uint32_t table = resource_allocate(game, 4 * methods->count);
+    if (!table) {
+        release(game, object);
         return 0;
     }
     wr32(object, table);
     for (size_t i = 0; i < methods->count; ++i)
         wr32(table + 4 * i, add_import(game, methods->dll, methods->names[i]));
+    game->vtables[game->vtable_count].methods = methods;
+    game->vtables[game->vtable_count++].address = table;
     return object;
 }
 
@@ -208,7 +286,9 @@ bool asset_path(const Game *game, const char *name, char path[1024])
             if (name[count])
                 path[length++] = '/';
         }
-        name += count + (name[count] != 0);
+        name += count;
+        while (*name == '/' || *name == '\\')
+            ++name;
     }
     path[length] = 0;
     return true;
@@ -251,8 +331,10 @@ bool game_init(Game *game, const char *assets, FILE *log)
     memcpy(game->low + COMMAND, "FreakOut.exe", sizeof "FreakOut.exe");
     memcpy(game->low + ARGV, &command, 4);
     memcpy(game->low + BSS + 0x402, ctype_table, sizeof ctype_table);
-    game->spans[0] = (Span){HEAP_START, LOW_SIZE - HEAP_START, false};
-    game->span_count = 1;
+    game->heap.top = HEAP_START;
+    game->heap.limit = RESOURCE_HEAP_START;
+    game->resources.top = RESOURCE_HEAP_START;
+    game->resources.limit = LOW_SIZE;
     game->cpu.esp = STACK;
     game->cpu.eip = PE_ENTRY;
     game->random = 1;
@@ -283,6 +365,7 @@ static bool next_constructor(Game *game)
 
 bool game_step(Game *game)
 {
+    game->recent[game->recent_count++ % COUNT(game->recent)] = game->cpu.eip;
     // WinMain is recognized in the generated dispatcher once without skipping its body.
     uint32_t address = advance(game->low, game->runtime, &game->cpu);
     if (!address)
@@ -330,6 +413,11 @@ bool game_step(Game *game)
                 call->dll, call->name, address, rd32(game->cpu.esp));
     } else {
         fprintf(game->log, "Untranslated code at %08x esp=%08x\n", address, game->cpu.esp);
+        fputs("Recent dispatcher entries:", game->log);
+        unsigned count = game->recent_count < COUNT(game->recent) ? game->recent_count : COUNT(game->recent);
+        for (unsigned i = game->recent_count - count; i < game->recent_count; ++i)
+            fprintf(game->log, " %08x", game->recent[i % COUNT(game->recent)]);
+        fputc('\n', game->log);
     }
     if (!game->stop)
         game->stop = "runtime stopped";
@@ -341,8 +429,18 @@ void game_close(Game *game)
     for (size_t i = 0; i < MAX_FILES; ++i)
         if (game->files[i])
             fclose(game->files[i]);
+    for (size_t i = 0; i < MAX_FILES; ++i) {
+        if (game->pending_save[i])
+            unlink(game->pending_save[i]);
+        free(game->pending_save[i]);
+        free(game->save_path[i]);
+    }
     file_close_searches(game);
+    audio_bank_close(game);
     media_close(game);
+    for (unsigned i = 0; i < MAX_TEXTURES; ++i)
+        for (unsigned j = 0; j < game->textures[i].levels; ++j)
+            free(game->textures[i].mip[j].decoded);
     free(game->pixels);
     free(game->depth_pixels);
     free(game->low);

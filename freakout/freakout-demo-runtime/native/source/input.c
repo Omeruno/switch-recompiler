@@ -77,3 +77,25 @@ bool input_dispatch(Game *g, const Import *call)
     }
     return false;
 }
+
+void game_keys(Game *g, const uint8_t keys[256])
+{
+    static const struct { uint8_t scan, vk; } bindings[] = {
+        {0x01, 0x1b}, {0x1c, 0x0d}, {0xc8, 0x26}, {0xcb, 0x25}, {0xcd, 0x27}, {0xd0, 0x28},
+    };
+    for (unsigned i = 0; g->window_count && i < sizeof bindings / sizeof *bindings; ++i) {
+        uint32_t scan = bindings[i].scan, vk = bindings[i].vk;
+        if (keys[scan] == g->virtual_keys[vk])
+            continue;
+        bool pressed = keys[scan] != 0;
+        uint32_t flags = 1 | (scan & 127) << 16 | (scan & 128 ? 0x01000000 : 0);
+        flags |= pressed ? 0 : 0xc0000000;
+        FreakOutMessage message = {
+            .hwnd = 0x200, .message = pressed ? 0x100 : 0x101,
+            .wparam = vk, .lparam = flags, .time = g->idle_polls,
+        };
+        if (freakout_post_message(&g->messages, message))
+            g->virtual_keys[vk] = keys[scan];
+    }
+    memcpy(g->keys, keys, sizeof g->keys);
+}

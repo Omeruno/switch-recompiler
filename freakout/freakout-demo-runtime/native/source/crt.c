@@ -1,5 +1,7 @@
 #include "game.h"
 #include <ctype.h>
+#include <errno.h>
+#include <unistd.h>
 #include <math.h>
 #include <sys/stat.h>
 #include "exports.inc"
@@ -14,16 +16,47 @@ static const char *str(uint32_t address)
 
 static bool open_file(Game *g, uint32_t name, uint32_t mode)
 {
-    if (strcmp(str(mode), "rb") && strcmp(str(mode), "r"))
-        return false;
-    FILE *file = open_asset(g, str(name));
+    const char *filename = str(name), *method = str(mode);
+    bool writing = !strcmp(method, "wb") || !strcmp(method, "w");
+    if (!writing && strcmp(method, "rb") && strcmp(method, "r"))
+        return result(g, 0, 0);
+    char path[1024], temp[1056];
+    FILE *file = NULL;
+    if (writing) {
+        const char *eligible = !strcasecmp(filename, "language.cfg") ? "language.cfg" :
+            (!strcasecmp(filename, "Data\\User\\profile.pro") ||
+             !strcasecmp(filename, "Data/User/profile.pro")) ? "Data/User/profile.pro" : NULL;
+        if (!eligible || !asset_path(g, eligible, path))
+            return result(g, 0, 0);
+        snprintf(temp, sizeof temp, "%s.tmp.XXXXXX", path);
+        int descriptor = mkstemp(temp);
+        if (descriptor < 0)
+            return result(g, 0, 0);
+        file = fdopen(descriptor, "wb");
+        if (!file) {
+            close(descriptor);
+            unlink(temp);
+        }
+    } else {
+        file = open_asset(g, filename);
+    }
     if (!file)
         return result(g, 0, 0);
     for (unsigned i = 0; i < MAX_FILES; ++i) {
         if (!g->files[i]) {
+            if (writing) {
+                char *pending = strdup(temp), *final = strdup(path);
+                if (!pending || !final) {
+                    free(pending);
+                    free(final);
+                    break;
+                }
+                g->pending_save[i] = pending;
+                g->save_path[i] = final;
+            }
             uint32_t handle = BSS + 0x1000 + 32 * i;
             memset(guest_pointer(handle), 0, 32);
-            wr32(handle + 12, 1);
+            wr32(handle + 12, writing ? 2 : 1);
             g->files[i] = file;
             g->archive_file[i] = !strcasecmp(str(name), "Data2.bnd");
             if (g->archive_file[i])
@@ -32,6 +65,8 @@ static bool open_file(Game *g, uint32_t name, uint32_t mode)
         }
     }
     fclose(file);
+    if (writing)
+        unlink(temp);
     return result(g, 0, 0);
 }
 
@@ -40,11 +75,30 @@ static bool file_call(Game *g, const char *name, uint32_t arguments, uint32_t ha
     uint32_t slot = handle - (BSS + 0x1000);
     if (slot % 32 || slot / 32 >= MAX_FILES || !g->files[slot / 32])
         return false;
-    FILE *file = g->files[slot / 32];
+    slot /= 32;
+    FILE *file = g->files[slot];
+    const char *pending = g->pending_save[slot];
     if (!strcmp(name, "fclose")) {
-        g->files[slot / 32] = NULL;
-        return result(g, fclose(file), 0);
+        g->files[slot] = NULL;
+        bool saved = !ferror(file);
+        if (pending && (fflush(file) || fsync(fileno(file))))
+            saved = false;
+        if (fclose(file))
+            saved = false;
+        if (pending) {
+            if (saved && rename(pending, g->save_path[slot]))
+                saved = false;
+            if (!saved)
+                unlink(pending);
+            fprintf(g->log, "%s %s\n", saved ? "Saved" : "Could not save", g->save_path[slot]);
+            free(g->pending_save[slot]);
+            free(g->save_path[slot]);
+            g->pending_save[slot] = g->save_path[slot] = NULL;
+        }
+        return result(g, saved ? 0 : UINT32_MAX, 0);
     }
+    if (!strcmp(name, "ftell"))
+        return result(g, ftell(file), 0);
     if (!strcmp(name, "fseek")) {
         int value = fseek(file, (int32_t)arg(g, 1), arg(g, 2));
         if (!value)
@@ -58,7 +112,15 @@ static bool file_call(Game *g, const char *name, uint32_t arguments, uint32_t ha
     void *output = requested <= LOW_SIZE ? game_bytes(g, arguments, requested) : NULL;
     if (!output)
         return false;
-    long offset = g->archive_file[slot / 32] ? ftell(file) : -1;
+    if (!strcmp(name, "fwrite")) {
+        if (!pending)
+            return result(g, 0, 0);
+        size_t written = fwrite(output, size, count, file);
+        if (written != count)
+            wr32(handle + 12, rd32(handle + 12) | 0x20);
+        return result(g, written, 0);
+    }
+    long offset = g->archive_file[slot] ? ftell(file) : -1;
     size_t read = fread(output, 1, requested, file);
     if (offset >= 0 && read) {
         ++g->archive_reads;
@@ -88,11 +150,14 @@ static bool format(Game *g, uint32_t output, uint32_t pattern, uint32_t argument
         char spec[32];
         const char *start = p++;
         p += strspn(p, "-+ #0.123456789");
-        if (!*p || (size_t)(p - start) + 2 > sizeof spec)
+        size_t length = p - start;
+        if (*p == 'l' && p[1] && strchr("diouxX", p[1]))
+            ++p; // MSVCR71 long is 32 bits.
+        if (!*p || length + 2 > sizeof spec)
             return false;
         const char conversion = *p++;
-        size_t length = p - start;
         memcpy(spec, start, length);
+        spec[length++] = conversion;
         spec[length] = 0;
         int written;
         char *dest = data + offset;
@@ -112,6 +177,7 @@ static bool format(Game *g, uint32_t output, uint32_t pattern, uint32_t argument
             written = snprintf(dest, available, spec, rdf64(arguments));
             arguments += 4;
         } else {
+            fprintf(g->log, "Unsupported CRT format: %s\n", str(pattern));
             return false;
         }
         if (conversion != '%')
@@ -121,6 +187,10 @@ static bool format(Game *g, uint32_t output, uint32_t pattern, uint32_t argument
         offset += written;
     }
     data[offset] = 0;
+    if (!output) {
+        fputs(data, g->log);
+        return result(g, offset, 0);
+    }
     void *destination = game_bytes(g, output, offset + 1);
     if (!destination)
         return false;
@@ -173,14 +243,18 @@ bool crt_dispatch(Game *g, const Import *call)
         memcpy(guest_pointer(BSS + 0x200), "C", 2);
         return result(g, BSS + 0x200, 0);
     }
-    if (IS("malloc") || IS("??2@YAPAXI@Z"))
-        return result(g, allocate(g, a), 0);
+    if (IS("malloc") || IS("??2@YAPAXI@Z")) {
+        uint32_t pointer = allocate(g, a);
+        if (!pointer)
+            fprintf(g->log, "Guest allocation failed: %u bytes\n", a);
+        return result(g, pointer, 0);
+    }
     if (IS("free") || IS("??3@YAXPAX@Z") || IS("??_V@YAXPAX@Z"))
         return release(g, a) && result(g, 0, 0);
     if (IS("fopen"))
         return open_file(g, a, arg(g, 1));
-    if (IS("fread") || IS("fseek") || IS("fclose"))
-        return file_call(g, name, a, IS("fread") ? arg(g, 3) : a);
+    if (IS("fread") || IS("fwrite") || IS("fseek") || IS("ftell") || IS("fclose"))
+        return file_call(g, name, a, IS("fread") || IS("fwrite") ? arg(g, 3) : a);
     if (IS("srand")) {
         g->random = a;
         return result(g, 0, 0);
@@ -214,9 +288,57 @@ bool crt_dispatch(Game *g, const Import *call)
         uint32_t data = thread_crt(g);
         return data && result(g, data + (IS("_errno") ? 8 : 12), 0);
     }
-    if (IS("atof")) {
-        fpush(&g->cpu, strtod(str(a), NULL));
+    if (IS("__uncaught_exception")) {
+        uint32_t data = thread_crt(g);
+        return data && result(g, rd32(data + 0x84) != 0, 0);
+    }
+    if (IS("localeconv")) {
+        uint32_t table = BSS + 0x800, decimal = table + 64;
+        memset(guest_pointer(table), 127, 48);
+        memcpy(guest_pointer(decimal), ".", 2);
+        wr32(table, decimal);
+        for (unsigned i = 1; i < 10; ++i)
+            wr32(table + i * 4, decimal + 1);
+        return result(g, table, 0);
+    }
+    if (IS("atof") || IS("strtod")) {
+        char *end;
+        errno = 0;
+        fpush(&g->cpu, strtod(str(a), &end));
+        if (IS("strtod") && arg(g, 1))
+            wr32(arg(g, 1), a + (end - str(a)));
+        if (errno == ERANGE) {
+            uint32_t data = thread_crt(g);
+            if (data)
+                wr32(data + 8, 34);
+        }
         return result(g, 0, 0);
+    }
+    if (IS("strtol") || IS("strtoul")) {
+        char *end = (char *)str(a);
+        uint32_t base = arg(g, 2);
+        if (base == 1 || base > 36)
+            return result(g, 0, 0);
+        errno = 0;
+        long long value = strtoll(str(a), &end, base);
+        int64_t lower = IS("strtoul") ? -(int64_t)UINT32_MAX : INT32_MIN;
+        int64_t upper = IS("strtoul") ? UINT32_MAX : INT32_MAX;
+        if (value < lower || value > upper || errno == ERANGE) {
+            uint32_t data = thread_crt(g);
+            if (data)
+                wr32(data + 8, 34);
+            value = IS("strtoul") ? upper : value < lower ? lower : upper;
+        }
+        if (arg(g, 1))
+            wr32(arg(g, 1), a + (end - str(a)));
+        return result(g, (uint32_t)value, 0);
+    }
+    if (IS("memset")) {
+        void *target = game_bytes(g, a, arg(g, 2));
+        if (!target)
+            return false;
+        memset(target, arg(g, 1), arg(g, 2));
+        return result(g, a, 0);
     }
     if (IS("_CIfmod")) {
         double divisor = fpop(&g->cpu);
@@ -241,6 +363,20 @@ bool crt_dispatch(Game *g, const Import *call)
         while (n < 0x10000 && rd16(a + 2 * n))
             ++n;
         return n < 0x10000 && result(g, n, 0);
+    }
+    if (IS("wcsncpy")) {
+        uint32_t source = arg(g, 1), count = arg(g, 2);
+        if (count > LOW_SIZE / 2 || !game_bytes(g, a, count * 2))
+            return false;
+        bool ended = false;
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!ended && (!source || !game_bytes(g, source, (i + 1) * 2)))
+                return false;
+            uint16_t value = ended ? 0 : rd16(source + i * 2);
+            ended |= value == 0;
+            wr16(a + i * 2, value);
+        }
+        return result(g, a, 0);
     }
     if (IS("wcstombs") || IS("mbstowcs")) {
         uint32_t source = arg(g, 1), limit = a ? arg(g, 2) : 0x10000;
@@ -312,6 +448,8 @@ bool crt_dispatch(Game *g, const Import *call)
             memmove(target, source, n);
         return result(g, a, 0);
     }
+    if (IS("printf"))
+        return format(g, 0, a, g->cpu.esp + 8);
     if (IS("sprintf") || IS("vsprintf"))
         return format(g, a, arg(g, 1), IS("vsprintf") ? arg(g, 2) : g->cpu.esp + 12);
     return false;

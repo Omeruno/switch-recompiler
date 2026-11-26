@@ -19,7 +19,7 @@ NATIVE_STACK = 0x31000000
 RETURN = 0x40000000
 
 
-def emit(boot, upstream, out, *, standalone=True):
+def emit(boot, upstream, out, *, standalone=True, close_local_branches=False):
     sys.path.insert(0, str(upstream / "tools/lift"))
     from lift32_cpu import Lifter
     routines = []
@@ -33,7 +33,31 @@ def emit(boot, upstream, out, *, standalone=True):
         lifter.reloc_vas = set()
         for relocation in module.DIRECTORY_ENTRY_BASERELOC:
             lifter.reloc_vas.update(base + e.rva for e in relocation.entries if e.type == 3)
-        for address, length in sorted(boot.block_sizes.items()):
+        sizes = {address: length for address, length in boot.block_sizes.items() if base <= address < end}
+        if close_local_branches:
+            # Cover short untraced paths that immediately rejoin traced code. This
+            # includes language-dependent text layout branches between traced blocks.
+            for address, length in list(sizes.items()):
+                inspected = list(lifter.md.disasm(read_va(address, length), address))
+                if not inspected:
+                    continue
+                last = inspected[-1]
+                if not last.mnemonic.startswith('j') or not last.op_str.startswith('0x'):
+                    continue
+                targets = [int(last.op_str, 16)]
+                if last.mnemonic != 'jmp':
+                    targets.append(last.address + last.size)
+                for target in targets:
+                    if target in sizes or not base <= target < end or abs(target - last.address) > 64:
+                        continue
+                    for instruction in lifter.md.disasm(read_va(target, min(32, end - target)), target):
+                        boundary = instruction.address + instruction.size
+                        if instruction.mnemonic.startswith(('j', 'call', 'ret', 'int', 'loop')) or instruction.mnemonic == 'ud2':
+                            break
+                        if boundary in sizes:
+                            sizes[target] = boundary - target
+                            break
+        for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
                 continue
             instructions = list(lifter.md.disasm(read_va(address, length), address))

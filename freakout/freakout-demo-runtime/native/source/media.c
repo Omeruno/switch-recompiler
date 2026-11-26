@@ -98,7 +98,7 @@ bool media_dispatch(Game *g, const Import *call)
 {
     const char *name = call->name;
     if (!strcasecmp(call->dll, "fmod.dll"))
-        return sound(g, name);
+        return sound(g, name) || audio_bank_dispatch(g, call);
     if (IS("MultiByteToWideChar"))
         return multibyte(g);
     if (IS("CoCreateInstance")) {

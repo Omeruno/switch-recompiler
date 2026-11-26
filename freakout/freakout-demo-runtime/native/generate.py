@@ -1,18 +1,23 @@
-"""Generate portable startup blocks and the demo's PE import map."""
+"""Generate native blocks, import bindings and DX9 shader bytecode for the demo."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
 
 HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME.parent))
 
 from lift_boot import emit
-from trace_boot import Boot, load_demo
+from trace_boot import Boot, IMAGE_BASE, load_demo
 from d3d_probe import ROOT_METHODS, DEVICE_METHODS, SURFACE_METHODS, TEXTURE_METHODS, BUFFER_METHODS
 from input_probe import ROOT_METHODS as INPUT_ROOT, DEVICE_METHODS as INPUT_DEVICE
 from video_probe import CONTROL, EVENTS, GRAPH, POSITION, WINDOW
+from dx9_asm import assemble
+from menu_audio_trace import MenuAudioTrace
+from scene_demo import MenuInput, _DESCENT_KEYS
+from unicorn.x86_const import UC_X86_REG_EIP
 
 INTERFACES = (
     ('d3d_root', 'IDirect3D9', ROOT_METHODS),
@@ -58,36 +63,95 @@ def generate_header(boot, payload, out):
     (out / 'interfaces.inc').write_text('\n'.join(extras) + '\n', encoding='ascii')
 
 
+def generate_shaders(assets, out):
+    directory = assets / 'Data' / 'Common' / 'Shaders' / 'DX9'
+    declarations, catalog = [], []
+    for path in sorted(directory.iterdir()):
+        if path.suffix.lower() not in ('.vsh', '.psh'):
+            continue
+        raw = path.read_bytes()
+        label = f'shader_{len(catalog)}'
+        shader = assemble(raw.decode('latin1'))
+        tokens = ',\n    '.join(', '.join(f'0x{value:08x}u' for value in shader.tokens[i:i + 8])
+                                for i in range(0, len(shader.tokens), 8))
+        declarations.append(f'static const uint32_t {label}[] = {{\n    {tokens},\n}};')
+        digest = ', '.join(str(value) for value in hashlib.sha256(raw).digest())
+        catalog.append(f'    {{{json.dumps(path.relative_to(assets).as_posix())}, {label}, '
+                       f'sizeof {label}, {len(raw)}, {{{digest}}}}},')
+    if not catalog:
+        raise ValueError(f'no D3D9 assembly shader sources found in {directory}')
+    (out / 'shaders.inc').write_text('\n'.join((*declarations,
+                                               'static const ShaderSource sources[] = {',
+                                               *catalog, '};')) + '\n', encoding='ascii')
+
+
+def trace_menu(boot, race):
+    if race:
+        MenuInput(boot, MenuAudioTrace(boot), _DESCENT_KEYS)
+    else:
+        MenuInput(boot, MenuAudioTrace(boot))
+    def retain_recent_events(probe, _present, _draws):
+        for events in (probe.events, boot.audio.events):
+            if len(events) > 30000:
+                del events[:-4096]
+
+    boot.d3d.frame_sink = retain_recent_events
+    address = IMAGE_BASE + boot.pe.OPTIONAL_HEADER.AddressOfEntryPoint
+    try:
+        for _ in range(16 if race else 10):
+            boot.status = 'instruction limit'
+            boot.cpu.emu_start(address, 0, count=900_000_000)
+            if boot.status != 'instruction limit':
+                break
+            address = boot.cpu.reg_read(UC_X86_REG_EIP)
+    finally:
+        boot.close_files()
+
+
 def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument('exe', type=Path)
     args.add_argument('pcrecomp', type=Path)
     args.add_argument('assets', type=Path)
-    args.add_argument('--checkpoint', choices=('draw', 'texture'), default='draw')
+    args.add_argument('--checkpoint', choices=('race', 'menu', 'draw', 'texture'), default='menu')
     args.add_argument('--out', type=Path, default=HOME / 'generated')
     options = args.parse_args()
     options.out.mkdir(parents=True, exist_ok=True)
     payload = load_demo(options.exe)
     draw = options.checkpoint == 'draw'
-    boot = Boot(*payload, stop_at_winmain=False, assets=options.assets.resolve(), probe_audio=True,
-                present_limit=256 if draw else 12, compressed_upload_limit=0 if draw else 3,
-                frame_after_draw=draw, drawn_frame_limit=1, instruction_limit=900_000_000 if draw else 88_000_000)
-    generate_header(boot, payload, options.out)
-    result = boot.run()
-    print(f'x86 reference: {result["status"]}, {len(boot.api_sequence)} imports, {boot.file_bytes} bytes read',
+    race = options.checkpoint == 'race'
+    menu = options.checkpoint == 'menu' or race
+    assets = options.assets.resolve()
+    with tempfile.TemporaryDirectory(prefix='freakout-trace-') as scratch:
+        boot = Boot(*payload, stop_at_winmain=False, assets=assets, save_root=Path(scratch), probe_audio=True,
+                    present_limit=1220 if race else 270 if menu else 256 if draw else 12,
+                    compressed_upload_limit=0 if menu or draw else 3,
+                    frame_after_draw=menu or draw, drawn_frame_limit=4096 if menu else 1,
+                    draw_after_worker=menu,
+                    guest_memory=0x20000000 if menu else 0x08000000,
+                    trace_history=16384 if menu else None,
+                    instruction_limit=900_000_000 if draw else 88_000_000)
+        generate_header(boot, payload, options.out)
+        generate_shaders(assets, options.out)
+        if menu:
+            trace_menu(boot, race)
+        else:
+            boot.run()
+    call_count = sum(boot.api_calls.values())
+    print(f'x86 reference: {boot.status}, {call_count} imports, {boot.file_bytes} bytes read',
           flush=True)
-    stop = 'drawn frame checkpoint:' if draw else 'texture checkpoint:'
-    if not result['status'].startswith(stop):
-        raise RuntimeError(f'x86 startup did not reach the checkpoint: {result["status"]}')
-    reference = {'status': result['status'], 'draws': boot.d3d.draw_count,
-                 'threads': boot.thread.log, 'presents': boot.d3d.present_count, 'imports': len(boot.api_sequence),
+    stop = ('frame boundary:' if menu else 'drawn frame checkpoint:' if draw else 'texture checkpoint:')
+    if not boot.status.startswith(stop):
+        raise RuntimeError(f'x86 startup did not reach the checkpoint: {boot.status}')
+    reference = {'status': boot.status, 'draws': boot.d3d.draw_count,
+                 'threads': boot.thread.log, 'presents': boot.d3d.present_count, 'imports': call_count,
                  'api_counts': dict(boot.api_calls), 'bytes_read': boot.file_bytes,
                  'archive_reads': boot.file_reads, 'uploads': boot.d3d.uploads,
                  'd3d_api_counts': {key: value for key, value in boot.api_calls.items() if key.startswith('IDirect3D')},
                  'draw_events': [event for event in boot.d3d.events if event[0] in ('draw', 'geometry')],
                  'clear': [event for event in boot.d3d.events if event[0] == 'Clear']}
     (options.out / 'reference.json').write_text(json.dumps(reference, indent=2) + '\n')
-    emit(boot, options.pcrecomp.resolve(), options.out, standalone=False)
+    emit(boot, options.pcrecomp.resolve(), options.out, standalone=False, close_local_branches=menu)
 
 
 if __name__ == '__main__':

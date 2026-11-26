@@ -7,7 +7,7 @@
 #define EVENT_HANDLE 0x10000u
 #define SEM_HANDLE 0x100u
 
-static int test_wait(Game *g, unsigned thread, uint32_t handle)
+static int test_wait(Game *g, unsigned thread, uint32_t handle, bool consume)
 {
     if (handle & LOCK_FLAG) {
         unsigned i = handle & ~LOCK_FLAG;
@@ -15,22 +15,25 @@ static int test_wait(Game *g, unsigned thread, uint32_t handle)
             return -1;
         if (g->locks[i].depth && g->locks[i].owner != thread)
             return 0;
-        g->locks[i].owner = thread;
-        ++g->locks[i].depth;
+        if (consume) {
+            g->locks[i].owner = thread;
+            ++g->locks[i].depth;
+        }
         return 1;
     }
     unsigned i = handle - SEM_HANDLE;
     if (i < MAX_SEMAPHORES && g->semaphores[i].max) {
         if (!g->semaphores[i].count)
             return 0;
-        --g->semaphores[i].count;
+        if (consume)
+            --g->semaphores[i].count;
         return 1;
     }
     i = handle - EVENT_HANDLE;
     if (i < MAX_EVENTS && g->events[i].open) {
         if (!g->events[i].signaled)
             return 0;
-        if (!g->events[i].manual)
+        if (consume && !g->events[i].manual)
             g->events[i].signaled = false;
         return 1;
     }
@@ -38,6 +41,30 @@ static int test_wait(Game *g, unsigned thread, uint32_t handle)
     if (i < g->thread_count && g->threads[i].open)
         return g->threads[i].exited ? 1 : 0;
     return -1;
+}
+
+// Poll first so WAIT_ALL never consumes a subset of resources.
+static int wait_status(Game *g, unsigned thread, const uint32_t *handles, unsigned count, bool all)
+{
+    int ready = -1;
+    for (unsigned i = 0; i < count; ++i) {
+        int state = test_wait(g, thread, handles[i], false);
+        if (state < 0)
+            return -2;
+        if (state && ready == -1)
+            ready = i;
+        if (all && !state)
+            ready = -3;
+    }
+    if (ready < 0)
+        return -1;
+    if (all) {
+        for (unsigned i = 0; i < count; ++i)
+            test_wait(g, thread, handles[i], true);
+        return 0;
+    }
+    test_wait(g, thread, handles[ready], true);
+    return ready;
 }
 
 bool switch_thread(Game *g)
@@ -54,16 +81,16 @@ bool switch_thread(Game *g)
             GuestThread *t = &g->threads[i];
             if (t->exited || t->suspended)
                 continue;
-            if (t->wait) {
-                int status = test_wait(g, i, t->wait);
-                if (!status && t->deadline > g->clock) {
+            if (t->wait_count) {
+                int status = wait_status(g, i, t->wait, t->wait_count, t->wait_all);
+                if (status == -1 && t->deadline > g->clock) {
                     if (t->deadline < next)
                         next = t->deadline;
                     continue;
                 }
-                t->wait = 0;
-                t->cpu.eax = status == 1 ? 0 : status == 0 ? 258 : UINT32_MAX;
-                if (status < 0)
+                t->wait_count = 0;
+                t->cpu.eax = status == -1 ? 258 : status == -2 ? UINT32_MAX : (uint32_t)status;
+                if (status == -2)
                     t->last_error = 6;
             } else if (t->sleeping && t->deadline > g->clock) {
                 if (t->deadline < next)
@@ -99,22 +126,41 @@ uint32_t thread_crt(Game *g)
     return current->crt;
 }
 
-static bool wait_one(Game *g, uint32_t handle, uint32_t timeout, unsigned pop)
+static bool wait_many(Game *g, const uint32_t *handles, unsigned count, bool all, uint32_t timeout, unsigned pop)
 {
-    int ready = test_wait(g, g->current_thread, handle);
     GuestThread *active = &g->threads[g->current_thread];
-    if (ready == 1)
-        return result(g, 0, pop);
-    if (ready < 0) {
+    if (!count || count > MAX_WAIT) {
+        active->last_error = 87;
+        return result(g, UINT32_MAX, pop);
+    }
+    for (unsigned i = 1; i < count; ++i) {
+        for (unsigned j = 0; j < i; ++j) {
+            if (handles[i] == handles[j]) {
+                active->last_error = 87;
+                return result(g, UINT32_MAX, pop);
+            }
+        }
+    }
+    int ready = wait_status(g, g->current_thread, handles, count, all);
+    if (ready >= 0)
+        return result(g, (uint32_t)ready, pop);
+    if (ready == -2) {
         active->last_error = 6;
         return result(g, UINT32_MAX, pop);
     }
     if (!timeout)
         return result(g, 258, pop);
     result(g, 0, pop);
-    active->wait = handle;
+    memcpy(active->wait, handles, count * sizeof *handles);
+    active->wait_count = count;
+    active->wait_all = all;
     active->deadline = timeout == UINT32_MAX ? UINT64_MAX : g->clock + timeout;
     return switch_thread(g);
+}
+
+static bool wait_one(Game *g, uint32_t handle, uint32_t timeout, unsigned pop)
+{
+    return wait_many(g, &handle, 1, false, timeout, pop);
 }
 
 static bool critical(Game *g, const char *name, uint32_t address)
@@ -206,6 +252,13 @@ bool thread_dispatch(Game *g, const Import *call)
         return critical(g, name, a);
     if (IS("WaitForSingleObject"))
         return wait_one(g, a, arg(g, 1), 8);
+    if (IS("WaitForMultipleObjects")) {
+        uint32_t handles[MAX_WAIT];
+        const uint8_t *list = a <= MAX_WAIT ? game_bytes(g, arg(g, 1), a * sizeof(uint32_t)) : NULL;
+        if (list)
+            memcpy(handles, list, a * sizeof(uint32_t));
+        return wait_many(g, handles, list ? a : 0, arg(g, 2) != 0, arg(g, 3), 16);
+    }
     if (IS("CreateSemaphoreA")) {
         uint32_t initial = arg(g, 1), maximum = arg(g, 2);
         if (!maximum || initial > maximum || arg(g, 3))

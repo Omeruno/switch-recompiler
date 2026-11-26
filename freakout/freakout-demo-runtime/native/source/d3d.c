@@ -1,4 +1,5 @@
 #include "game.h"
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -134,7 +135,7 @@ static bool lock(Game *g, Surface *s, uint32_t output, uint32_t rectangle, unsig
     if (rectangle || !size || s->locked)
         return result(g, INVALID_CALL, pop);
     if (!s->data)
-        s->data = allocate(g, size);
+        s->data = resource_allocate(g, size);
     if (!s->data)
         return result(g, INVALID_CALL, pop);
     s->locked = true;
@@ -148,6 +149,8 @@ static bool unlock(Game *g, Surface *s, unsigned level, unsigned pop)
     if (!s->locked)
         return result(g, INVALID_CALL, pop);
     s->locked = false;
+    free(s->decoded);
+    s->decoded = NULL;
     if (block_bytes(s->format)) {
         ++g->uploads;
         unsigned size = surface_bytes(s);
@@ -272,6 +275,31 @@ static Buffer *find_buffer(Game *g, uint32_t handle)
     return NULL;
 }
 
+static uint32_t drop_buffer(Game *g, Buffer *buffer)
+{
+    uint32_t refs = --buffer->refs;
+    if (!refs) {
+        release(g, buffer->data);
+        release(g, buffer->handle);
+        *buffer = (Buffer){0};
+    }
+    return refs;
+}
+
+static bool bind_buffer(Game *g, uint32_t *binding, uint32_t handle, uint32_t kind)
+{
+    Buffer *next = find_buffer(g, handle);
+    if (handle && (!next || next->kind != kind))
+        return false;
+    Buffer *previous = find_buffer(g, *binding);
+    if (next)
+        ++next->refs;
+    if (previous)
+        drop_buffer(g, previous);
+    *binding = handle;
+    return true;
+}
+
 static bool create_buffer(Game *g, bool vertex)
 {
     uint32_t bytes = arg(g, 1), output = arg(g, 5);
@@ -281,7 +309,7 @@ static bool create_buffer(Game *g, bool vertex)
         Buffer *b = &g->buffers[i];
         if (b->handle)
             continue;
-        uint32_t data = allocate(g, bytes);
+        uint32_t data = resource_allocate(g, bytes);
         if (!data)
             return result(g, 0x8007000eu, 28);
         uint32_t handle = make_interface(g, vertex ? &d3d_vertex_buffer : &d3d_index_buffer);
@@ -305,7 +333,7 @@ static bool buffer(Game *g, const char *name)
     if (IS("AddRef"))
         return result(g, ++b->refs, 4);
     if (IS("Release") && b->refs)
-        return result(g, --b->refs, 4);
+        return result(g, drop_buffer(g, b), 4);
     if (IS("GetType"))
         return result(g, b->kind, 4);
     if (IS("GetDesc")) {
@@ -369,36 +397,47 @@ static bool device(Game *g, const char *name)
         memcpy(g->material, guest_pointer(a), sizeof g->material);
         return result(g, S_OK, 8);
     }
-    if (IS("SetLight") && a < 8) {
-        memcpy(g->lights[a], guest_pointer(b), sizeof g->lights[a]);
-        return result(g, S_OK, 12);
-    }
-    if (IS("LightEnable") && a < 8) {
-        g->light_enabled[a] = b != 0;
+    if (IS("SetLight") || IS("LightEnable")) {
+        size_t slot = 0, length = sizeof g->lights / sizeof *g->lights;
+        while (slot < length && g->lights[slot].defined && g->lights[slot].index != a)
+            ++slot;
+        const void *data = IS("SetLight") && b ? game_bytes(g, b, sizeof g->lights[0].values) : NULL;
+        if (slot == length || (IS("SetLight") && !data))
+            return result(g, INVALID_CALL, 12);
+        g->lights[slot].index = a;
+        g->lights[slot].defined = true;
+        if (data)
+            memcpy(g->lights[slot].values, data, sizeof g->lights[slot].values);
+        else
+            g->lights[slot].enabled = b != 0;
         return result(g, S_OK, 12);
     }
     if (IS("SetTexture") && a == 0 && (!b || find_texture(g, b))) {
         g->texture0 = b;
         return result(g, S_OK, 12);
     }
-    if (IS("SetStreamSource") && a == 0 && (!b || find_buffer(g, b))) {
-        g->stream = b;
+    if (IS("SetStreamSource") && a == 0 && bind_buffer(g, &g->stream, b, 6)) {
         g->stream_offset = arg(g, 3);
         g->stride = arg(g, 4);
         return result(g, S_OK, 20);
     }
     if (IS("SetFVF")) {
+        program_clear_declaration(g);
         g->fvf = a;
         return result(g, S_OK, 8);
     }
-    if (IS("SetIndices") && (!a || find_buffer(g, a))) {
-        g->indices = a;
+    if (IS("SetIndices") && bind_buffer(g, &g->indices, a, 7)) {
         return result(g, S_OK, 8);
     }
     if (IS("DrawIndexedPrimitive") && g->scene) {
         Buffer *vb = find_buffer(g, g->stream), *ib = find_buffer(g, g->indices);
-        if (!vb || !ib || !render_indexed(g, vb, ib))
+        if (!vb || !ib || !render_indexed(g, vb, ib)) {
+            fprintf(g->log, "DX9 draw rejected: type=%u vertices=%u triangles=%u FVF=%x stride=%u "
+                    "texture=%08x vertexShader=%08x pixelShader=%08x depth=%u/%u blend=%u/%u/%u\n",
+                    a, arg(g, 4), arg(g, 6), g->fvf, g->stride, g->texture0, g->vertex_shader, g->pixel_shader,
+                    g->raster[7], g->raster[23], g->raster[27], g->raster[19], g->raster[20]);
             return false;
+        }
         ++g->draws;
         ++g->frame_draws;
         return result(g, S_OK, 28);
@@ -442,7 +481,8 @@ static bool device(Game *g, const char *name)
         ++g->presents;
         g->presented_draws = g->frame_draws;
         g->frame_draws = 0;
-        fprintf(g->log, "Present #%u, Clear calls %u, ARGB %08x\n", g->presents, g->clears, g->clear);
+        if (g->presents <= 7 || !(g->presents % 60))
+            fprintf(g->log, "Present #%u, Clear calls %u, ARGB %08x\n", g->presents, g->clears, g->clear);
         return result(g, S_OK, 20);
     }
     return false;
@@ -451,6 +491,8 @@ static bool device(Game *g, const char *name)
 bool d3d_dispatch(Game *g, const Import *call)
 {
     const char *name = call->name;
+    if (program_dispatch(g, call))
+        return true;
     if (IS("LoadLibraryA") && !strcasecmp((const char *)guest_pointer(arg(g, 0)), "d3d9.dll"))
         return result(g, MODULE, 4);
     if (IS("GetProcAddress") && arg(g, 0) == MODULE) {

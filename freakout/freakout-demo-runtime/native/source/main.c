@@ -6,36 +6,38 @@
 #include "freakout_pad_nx.h"
 #endif
 
-typedef struct { uint32_t width, height, draws; uint32_t *pixels; } FirstFrame;
-typedef bool (*Poll)(Game *, void *);
+typedef bool (*FrameHandler)(Game *, void *);
 
-static bool run(const char *assets, FILE *log, FirstFrame *frame, Poll poll, void *data)
+static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
+                FrameHandler on_frame, FrameHandler poll, void *data)
 {
-    Game *game = calloc(1, sizeof *game);
-    if (!game)
+    if (!game_init(g, assets, log))
         return false;
-    bool initialized = game_init(game, assets, log);
-    if (initialized) {
-        for (unsigned step = 0; step < 2000000 && !game->presented_draws; ++step) {
-            if (poll && !(step % 256) && !poll(game, data)) {
-                game->stop = "stopped by user";
+    unsigned progress = 0;
+    while (!limit || g->presents < limit) {
+        if (poll && !(progress % 256) && !poll(g, data)) {
+            g->stop = "stopped by user";
+            break;
+        }
+        unsigned before = g->presents;
+        if (!game_step(g))
+            break;
+        if (g->presents != before) {
+            progress = 0;
+            if (on_frame && !on_frame(g, data)) {
+                g->stop = "stopped by user";
                 break;
             }
-            if (!game_step(game))
-                break;
+        } else if (++progress >= 2000000) {
+            g->stop = "no Present within the dispatch budget";
+            break;
         }
     }
-    bool accepted = game->presented_draws && game->winmain && game->pixels;
+    bool accepted = !g->stop && g->presented_draws && g->winmain && g->pixels;
     fprintf(log, "%u presents, %u imports, %llu bytes read, %u archive reads, %u texture uploads, %u draws, status: %s\n",
-            game->presents, game->calls, (unsigned long long)game->file_bytes,
-            game->archive_reads, game->uploads, game->presented_draws,
-            accepted ? "first game-rendered frame" : game->stop ? game->stop : "step limit");
-    if (accepted) {
-        *frame = (FirstFrame){game->back.width, game->back.height, game->presented_draws, game->pixels};
-        game->pixels = NULL;
-    }
-    game_close(game);
-    free(game);
+            g->presents, g->calls, (unsigned long long)g->file_bytes,
+            g->archive_reads, g->uploads, g->presented_draws,
+            accepted ? "first game-rendered frame" : g->stop ? g->stop : "no rendered frame");
     return accepted;
 }
 
@@ -43,113 +45,159 @@ static bool run(const char *assets, FILE *log, FirstFrame *frame, Poll poll, voi
 #define DEMO_PATH "sdmc:/switch/FreakOutNative/demo"
 #define LOG_PATH "sdmc:/switch/FreakOutNative/boot.log"
 
+typedef struct {
+    PadState pad;
+    Framebuffer fb;
+    bool started;
+} Output;
+
 static bool poll_switch(Game *game, void *data)
 {
-    PadState *pad = data;
+    Output *out = data;
     if (!appletMainLoop())
         return false;
-    padUpdate(pad);
-    FoXboxPad xbox = fo_nx_pad(pad);
-    fo_pad_keyboard(&xbox, game->keys);
+    padUpdate(&out->pad);
+    FoXboxPad xbox = fo_nx_pad(&out->pad);
+    if ((xbox.buttons & (FO_XBOX_BACK | FO_XBOX_START)) == (FO_XBOX_BACK | FO_XBOX_START))
+        return false;
+    uint8_t keys[256];
+    fo_pad_keyboard(&xbox, keys);
+    game_keys(game, keys);
     return true;
 }
 
-static void view_frame(PadState *pad, FirstFrame frame)
+static bool present_switch(Game *game, void *data)
 {
-    consoleExit(NULL);
-    Framebuffer fb = {0};
-    if (R_SUCCEEDED(framebufferCreate(&fb, nwindowGetDefault(), frame.width, frame.height,
-                                      PIXEL_FORMAT_RGBA_8888, 2))) {
-        if (R_SUCCEEDED(framebufferMakeLinear(&fb))) {
-            while (appletMainLoop()) {
-                padUpdate(pad);
-                if (padGetButtonsDown(pad) & (HidNpadButton_B | HidNpadButton_Plus))
-                    break;
-                u32 stride;
-                uint8_t *pixels = framebufferBegin(&fb, &stride);
-                for (unsigned y = 0; y < frame.height; ++y)
-                    memcpy(pixels + y * stride, frame.pixels + y * frame.width, frame.width * 4);
-                framebufferEnd(&fb);
-            }
+    Output *out = data;
+    if (!game->presented_draws)
+        return true;
+    if (!out->started) {
+        consoleExit(NULL);
+        if (R_FAILED(framebufferCreate(&out->fb, nwindowGetDefault(), game->back.width, game->back.height,
+                                       PIXEL_FORMAT_RGBA_8888, 2))) {
+            consoleInit(NULL);
+            return false;
         }
-        framebufferClose(&fb);
+        if (R_FAILED(framebufferMakeLinear(&out->fb))) {
+            framebufferClose(&out->fb);
+            consoleInit(NULL);
+            return false;
+        }
+        out->started = true;
     }
-    consoleInit(NULL);
+    u32 stride;
+    uint8_t *pixels = framebufferBegin(&out->fb, &stride);
+    for (unsigned y = 0; y < game->back.height; ++y)
+        memcpy(pixels + y * stride, game->pixels + y * game->back.width, game->back.width * 4);
+    framebufferEnd(&out->fb);
+    return poll_switch(game, out);
 }
 
 int main(void)
 {
     consoleInit(NULL);
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    PadState pad;
-    padInitializeDefault(&pad);
-    puts("FreakOut Extreme Freeride - ARM64 startup");
+    Output out = {0};
+    padInitializeDefault(&out.pad);
+    puts("FreakOut Extreme Freeride - ARM64");
     puts("Starting the recompiled Windows demo.");
     consoleUpdate(NULL);
     FILE *log = fopen(LOG_PATH, "w");
-    FirstFrame frame = {0};
-    bool initialized = run(DEMO_PATH, log ? log : stdout, &frame, poll_switch, &pad);
+    Game *game = calloc(1, sizeof *game);
+    if (game) {
+        run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out);
+        game_close(game);
+    }
     if (log)
         fclose(log);
-    if (initialized)
-        view_frame(&pad, frame);
-    while (appletMainLoop()) {
-        consoleClear();
-        puts("FreakOut Extreme Freeride - ARM64 startup");
-        if (initialized) {
-            printf("First game-rendered frame: %ux%u, %u draws\n", frame.width, frame.height, frame.draws);
-            puts("A: show the frame. B: return.");
-        } else {
-            puts("The demo stopped before drawing a frame.");
-            if (!log)
-                puts("Check the demo path and SD card access.");
-        }
-        if (log)
-            puts("Details: /switch/FreakOutNative/boot.log");
-        puts("Press + to exit.");
-        consoleUpdate(NULL);
-        do {
-            padUpdate(&pad);
-            u64 keys = padGetButtonsDown(&pad);
-            if (keys & HidNpadButton_Plus)
-                goto done;
-            if (initialized && keys & HidNpadButton_A) {
-                view_frame(&pad, frame);
-                break;
-            }
-            svcSleepThread(16000000);
-        } while (appletMainLoop());
+    if (out.started) {
+        framebufferClose(&out.fb);
+        consoleInit(NULL);
     }
-done:
-    free(frame.pixels);
+    printf("FreakOut stopped at Present #%u.\n", game ? game->presents : 0);
+    if (game && game->stop)
+        printf("%s\n", game->stop);
+    free(game);
+    puts("Details: /switch/FreakOutNative/boot.log");
+    puts("Press + to exit.");
+    while (appletMainLoop()) {
+        padUpdate(&out.pad);
+        if (padGetButtonsDown(&out.pad) & HidNpadButton_Plus)
+            break;
+        consoleUpdate(NULL);
+    }
     consoleExit(NULL);
     return 0;
 }
 #else
+static bool save_ppm(const Game *game, const char *path)
+{
+    FILE *image = fopen(path, "wb");
+    if (!image)
+        return false;
+    fprintf(image, "P6\n%u %u\n255\n", game->back.width, game->back.height);
+    for (unsigned i = 0; i < game->back.width * game->back.height; ++i) {
+        uint32_t color = game->pixels[i];
+        unsigned char rgb[] = {color, color >> 8, color >> 16};
+        fwrite(rgb, 1, sizeof rgb, image);
+    }
+    bool saved = !ferror(image);
+    return fclose(image) == 0 && saved;
+}
+
+typedef struct {
+    FILE *fp;
+    unsigned frame, scan;
+    bool pressed, active;
+    uint8_t keys[256];
+} Script;
+
+static void read_input(Script *script)
+{
+    if (!script->fp) {
+        script->active = false;
+        return;
+    }
+    unsigned pressed;
+    script->active = fscanf(script->fp, "%u %x %u", &script->frame, &script->scan, &pressed) == 3 &&
+                     script->scan < 256 && pressed <= 1;
+    script->pressed = script->active && pressed;
+}
+
+static bool script_frame(Game *game, void *data)
+{
+    Script *script = data;
+    while (script->active && script->frame <= game->presents) {
+        script->keys[script->scan] = script->pressed ? 128 : 0;
+        game_keys(game, script->keys);
+        read_input(script);
+    }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
-    FirstFrame frame = {0};
-    if (argc < 2 || argc > 3 || !run(argv[1], stdout, &frame, NULL, NULL))
+    if (argc < 2 || argc > 5)
         return 1;
-    if (argc == 3) {
-        FILE *image = fopen(argv[2], "wb");
-        if (!image) {
-            free(frame.pixels);
-            return 1;
-        }
-        fprintf(image, "P6\n%u %u\n255\n", frame.width, frame.height);
-        for (unsigned i = 0; i < frame.width * frame.height; ++i) {
-            uint32_t color = frame.pixels[i];
-            unsigned char rgb[] = {color, color >> 8, color >> 16};
-            fwrite(rgb, 1, sizeof rgb, image);
-        }
-        bool saved = !ferror(image);
-        if (fclose(image) || !saved) {
-            free(frame.pixels);
-            return 1;
-        }
+    unsigned frames = argc >= 4 ? strtoul(argv[3], NULL, 10) : 7;
+    if (!frames)
+        return 1;
+    Game *game = calloc(1, sizeof *game);
+    if (!game)
+        return 1;
+    Script script = {.fp = argc >= 5 ? fopen(argv[4], "r") : NULL};
+    if (argc >= 5 && !script.fp) {
+        free(game);
+        return 1;
     }
-    free(frame.pixels);
-    return 0;
+    read_input(&script);
+    bool passed = run(game, argv[1], stdout, frames, script_frame, NULL, &script);
+    if (passed && argc >= 3)
+        passed = save_ppm(game, argv[2]);
+    if (script.fp)
+        fclose(script.fp);
+    game_close(game);
+    free(game);
+    return passed ? 0 : 1;
 }
 #endif

@@ -62,7 +62,7 @@ LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*
 LIBS	:= -lnx -lm
 APP_TITLE := FreakOut Native Demo
 APP_AUTHOR := FreakOut Port Project
-APP_VERSION := 0.9.1
+APP_VERSION := 0.9.2
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -209,6 +209,9 @@ endif
 $(OUTPUT).elf	:	$(OFILES)
 
 $(OFILES_SRC)	: $(HFILES_BIN)
+
+# The generated translation unit contains thousands of tiny dispatch blocks.
+blocks.o: CFLAGS += -O1 -g0
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data

@@ -10,9 +10,9 @@ enum {
     API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010, THREAD_RETURN = 0xff020,
     GAME_ENTRY = 0x67de70, PE_BASE = 0x400000, PE_ENTRY = 0x5af59e,
     STACK = 0xbe0000, BSS = 0xa00000, COMMAND = BSS + 0x100, ARGV = BSS + 0x180,
-    HEAP_START = 0x01000000, MAX_IMPORTS = 4096, MAX_SPANS = 24000,
+    HEAP_START = 0x01000000, RESOURCE_HEAP_START = 0x05000000, MAX_IMPORTS = 4096, MAX_SPANS = 131072,
     MAX_FILES = 64, MAX_SEARCHES = 8, MAX_LOCKS = 96, MAX_SEMAPHORES = 16, MAX_CTORS = 12, MAX_TEXTURES = 512, MAX_MIPS = 13,
-    MAX_THREADS = 8, MAX_EVENTS = 32, MAX_BUFFERS = 512,
+    MAX_THREADS = 8, MAX_EVENTS = 32, MAX_BUFFERS = 8192, MAX_WAIT = 64, MAX_PROGRAMS = 256,
 };
 
 typedef struct { const char *dll, *name; } Import;
@@ -20,10 +20,17 @@ typedef struct { const char *dll; const char *const *names; size_t count; } Meth
 typedef struct { uint32_t slot, target; } ImportBinding;
 typedef struct { const char *name; uint32_t base, size; uint8_t sha256[32]; } Module;
 typedef struct { uint32_t start, size; bool used; } Span;
+typedef struct {
+    size_t span_count, free_span_count;
+    Span spans[MAX_SPANS];
+    struct { uint32_t start, size; } free_spans[MAX_SPANS];
+    uint32_t top, limit;
+} Heap;
 typedef struct { uint32_t next, end, stack, ret; } Constructors;
 typedef struct {
     uint32_t format, usage, pool, width, height, data, refs;
     bool locked;
+    uint32_t *decoded;
 } Surface;
 typedef struct {
     uint32_t handle, refs, levels;
@@ -33,7 +40,10 @@ typedef struct {
 
 typedef struct {
     CPU cpu;
-    uint32_t seh, crt, wait, last_error, stack_base;
+    uint32_t seh, crt, last_error, stack_base;
+    uint32_t wait[MAX_WAIT];
+    unsigned wait_count;
+    bool wait_all;
     uint64_t deadline;
     bool sleeping, suspended, exited, open;
 } GuestThread;
@@ -42,6 +52,7 @@ typedef struct {
     uint32_t handle, refs, bytes, data, usage, format, pool, kind, lock_start, lock_size;
     bool locked;
 } Buffer;
+typedef struct { uint32_t handle, refs, bytes, data, kind; } Program;
 
 typedef struct {
     uint8_t *low, *runtime;
@@ -49,6 +60,8 @@ typedef struct {
     const char *assets;
     FILE *log;
     const char *stop;
+    uint32_t recent[8];
+    unsigned recent_count;
     unsigned calls, presents, clears, draws, frame_draws, presented_draws;
     unsigned current_thread, thread_count, import_slice;
     uint64_t clock;
@@ -58,17 +71,25 @@ typedef struct {
     bool winmain;
     Import imports[MAX_IMPORTS];
     size_t import_count;
-    size_t span_count;
-    Span spans[MAX_SPANS];
+    struct { const Methods *methods; uint32_t address; } vtables[32];
+    size_t vtable_count;
+    Heap heap, resources;
     Constructors ctors[MAX_CTORS];
     unsigned ctor_count;
     FILE *files[MAX_FILES];
+    char *pending_save[MAX_FILES], *save_path[MAX_FILES];
     bool archive_file[MAX_FILES];
     unsigned archive_reads, uploads;
     struct Search *searches[MAX_SEARCHES];
     unsigned sound_driver, sound_output;
     uint32_t distance_factor, audio_rate, audio_channels;
     bool audio_open;
+    struct AudioBank *banks;
+    unsigned audio_payload_bytes, audio_peak_bytes;
+    struct AudioVoice {
+        uint32_t source, sample, duration, start, frequency, mode, volume, pan;
+        bool paused;
+    } voices[64];
     uint32_t video_objects[5], video_refs[5], notify_window, notify_message, notify_arg, notify_flags;
     bool video_unavailable, video_complete, video_visible, video_foreground;
     double video_position_value;
@@ -82,15 +103,19 @@ typedef struct {
     Surface back, depth;
     Texture textures[MAX_TEXTURES];
     Buffer buffers[MAX_BUFFERS];
+    Program programs[MAX_PROGRAMS];
+    uint32_t declaration, vertex_shader, pixel_shader;
+    uint32_t vertex_constants[256][4], pixel_constants[32][4];
     uint32_t clear, raster[256], samplers[16][16], stages[8][64], transforms[257][16], viewport[6];
     uint32_t stream, stream_offset, stride, indices, fvf, texture0;
-    uint32_t material[17], lights[8][26];
-    bool scene, light_enabled[8];
+    uint32_t material[17];
+    struct { uint32_t index, values[26]; bool defined, enabled; } lights[64];
+    bool scene;
     uint32_t *pixels;
     float *depth_pixels;
     uint32_t input, input_refs, keyboard, mouse, key_size, mouse_size;
     bool key_acquired, mouse_acquired;
-    uint8_t keys[256];
+    uint8_t keys[256], virtual_keys[256];
 } Game;
 
 extern const Methods d3d_root, d3d_device, d3d_surface, d3d_texture, di_root, di_device, video_graph, video_events, video_control, video_position, video_window;
@@ -101,6 +126,7 @@ void hash_bytes(const void *data, size_t size, uint8_t digest[32]);
 void log_hash(FILE *log, const void *data, size_t size);
 uint8_t *game_bytes(Game *game, uint32_t address, size_t length);
 uint32_t allocate(Game *game, uint32_t size);
+uint32_t resource_allocate(Game *g, uint32_t size);
 bool release(Game *game, uint32_t address);
 uint32_t arg(Game *game, unsigned index);
 bool result(Game *game, uint32_t eax, unsigned pop);
@@ -116,9 +142,15 @@ uint32_t thread_crt(Game *g);
 bool thread_dispatch(Game *g, const Import *call);
 bool render_allocate(Game *g);
 bool render_clear(Game *g, unsigned flags, uint32_t color, float depth);
+void game_keys(Game *g, const uint8_t keys[256]);
+bool audio_bank_dispatch(Game *g, const Import *call);
+void audio_bank_close(Game *g);
 bool render_indexed(Game *g, const Buffer *vb, const Buffer *ib);
 bool win32_dispatch(Game *game, const Import *call);
 bool d3d_dispatch(Game *game, const Import *call);
+bool program_dispatch(Game *g, const Import *call);
+void program_clear_declaration(Game *g);
+bool d3dx_math_dispatch(Game *g, const char *name);
 bool input_dispatch(Game *game, const Import *call);
 bool crt_dispatch(Game *game, const Import *call);
 bool file_dispatch(Game *game, const Import *call);

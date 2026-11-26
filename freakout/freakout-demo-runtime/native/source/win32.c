@@ -9,10 +9,13 @@ bool win32_dispatch(Game *g, const Import *call)
     uint32_t a = arg(g, 0);
     if (IS("GetModuleHandleA") && !a)
         return result(g, PE_BASE, 4);
-    if (IS("GetCurrentProcessId") || IS("GetTickCount"))
+    if (IS("GetCurrentProcessId"))
         return result(g, 1, 0);
+    uint64_t ticks = g->presents < 136 ? 1 : 1 + (uint64_t)(g->presents - 136) * 16667;
+    if (IS("GetTickCount"))
+        return result(g, g->presents < 136 ? 1 : (uint32_t)(ticks / 1000), 0);
     if (IS("GetSystemTimeAsFileTime") || IS("QueryPerformanceCounter") || IS("QueryPerformanceFrequency")) {
-        wr64(a, IS("QueryPerformanceFrequency") ? 1000000 : 1);
+        wr64(a, IS("QueryPerformanceFrequency") ? 1000000 : IS("QueryPerformanceCounter") ? ticks : 1);
         return result(g, 1, 4);
     }
     if (IS("GetSystemTime") || IS("GetLocalTime")) {
@@ -69,8 +72,8 @@ bool win32_dispatch(Game *g, const Import *call)
                                             arg(g, 4) & 1, &message);
         if (present)
             memcpy(guest_pointer(a), &message, sizeof message);
-        else if (++g->idle_polls == 10000)
-            return false;
+        else
+            ++g->idle_polls;
         return result(g, present, 20);
     }
     if (IS("TranslateMessage"))
@@ -94,9 +97,11 @@ bool win32_dispatch(Game *g, const Import *call)
     if (IS("DefWindowProcA"))
         return result(g, 0, 16);
     if (IS("GetKeyboardState")) {
-        memcpy(guest_pointer(a), g->keys, sizeof g->keys);
+        memcpy(guest_pointer(a), g->virtual_keys, sizeof g->virtual_keys);
         return result(g, 1, 4);
     }
+    if (IS("GetAsyncKeyState") || IS("GetKeyState"))
+        return result(g, a < 256 && g->virtual_keys[a] ? 0x8000 : 0, 4);
     if (IS("_FSOUND_SetPriority@8"))
         return result(g, 0, 8); // No channel exists until the audio backend initializes.
     return false;
