@@ -38,6 +38,16 @@ typedef struct {
 } ShaderSource;
 #include "shaders.inc"
 
+int program_source_index(Game *g, uint32_t handle)
+{
+    size_t bytes;
+    const void *data = program_data(g, handle, &bytes);
+    for (unsigned i = 0; data && i < sizeof sources / sizeof *sources; ++i)
+        if (bytes == sources[i].bytes && !memcmp(data, sources[i].tokens, bytes))
+            return i;
+    return -1;
+}
+
 static Program *lookup(Game *g, uint32_t handle)
 {
     for (unsigned i = 0; handle && i < MAX_PROGRAMS; ++i)

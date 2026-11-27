@@ -5,6 +5,7 @@
 #ifdef __SWITCH__
 #include <switch.h>
 #include "freakout_pad_nx.h"
+#include "gpu.h"
 #endif
 
 typedef bool (*FrameHandler)(Game *, void *);
@@ -21,11 +22,12 @@ uint64_t native_now_ns(void)
 }
 
 static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
-                FrameHandler on_frame, FrameHandler poll, void *data, unsigned raster_divisor)
+                FrameHandler on_frame, FrameHandler poll, void *data, unsigned raster_divisor, bool use_gpu)
 {
     if (!game_init(g, assets, log))
         return false;
     g->raster_divisor = raster_divisor;
+    g->gpu_requested = use_gpu;
     unsigned progress = 0;
     uint64_t sample_start = native_now_ns(), sample_render = 0;
     while (!limit || g->presents < limit) {
@@ -44,9 +46,10 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
             }
             if (!(g->presents % 30)) {
                 uint64_t now = native_now_ns();
-                fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU raster, %ux%u\n",
+                fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU %s, %ux%u\n",
                         g->presents, (now - sample_start) / 30000000.0,
-                        (g->render_ns - sample_render) / 30000000.0, g->frame_width, g->frame_height);
+                        (g->render_ns - sample_render) / 30000000.0, g->gpu ? "render setup" : "raster",
+                        g->frame_width, g->frame_height);
                 sample_start = now;
                 sample_render = g->render_ns;
             }
@@ -93,6 +96,10 @@ static bool present_switch(Game *game, void *data)
     Output *out = data;
     if (!game->presented_draws)
         return true;
+    if (game->gpu && !gpu_present(game)) {
+        game->stop = "deko3d could not submit the live frame";
+        return false;
+    }
     if (!out->started) {
         consoleExit(NULL);
         if (R_FAILED(framebufferCreate(&out->fb, nwindowGetDefault(), game->frame_width, game->frame_height,
@@ -121,13 +128,20 @@ int main(void)
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     Output out = {0};
     padInitializeDefault(&out.pad);
+    padUpdate(&out.pad);
+    bool use_gpu = (padGetButtons(&out.pad) & HidNpadButton_ZL) != 0;
     puts("FreakOut Extreme Freeride - ARM64");
     puts("Starting the recompiled Windows demo.");
+    if (use_gpu)
+        puts("Experimental GPU renderer requested.");
     consoleUpdate(NULL);
     FILE *log = fopen(LOG_PATH, "w");
     Game *game = calloc(1, sizeof *game);
     if (game) {
-        run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out, 2);
+        if (log)
+            fprintf(log, "FreakOut 0.9.9 startup renderer: %s\n", use_gpu ? "deko3d" : "CPU");
+        run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out, 2, use_gpu);
+        gpu_close(game);
         game_close(game);
     }
     if (log)
@@ -215,7 +229,7 @@ int main(int argc, char **argv)
     read_input(&script);
     const char *half_resolution = getenv("FREAKOUT_HALF_RESOLUTION");
     unsigned divisor = half_resolution && !strcmp(half_resolution, "1") ? 2 : 1;
-    bool passed = run(game, argv[1], stdout, frames, script_frame, NULL, &script, divisor);
+    bool passed = run(game, argv[1], stdout, frames, script_frame, NULL, &script, divisor, false);
     if (passed && argc >= 3)
         passed = save_ppm(game, argv[2]);
     if (script.fp)

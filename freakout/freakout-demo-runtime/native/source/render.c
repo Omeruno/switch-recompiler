@@ -1,5 +1,6 @@
 #include "game.h"
 #include "shader.h"
+#include "gpu.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,6 +101,19 @@ bool render_clear(Game *g, unsigned flags, uint32_t color, float depth)
     DrawTarget target;
     if (!draw_target(g, &target, flags & 2))
         return false;
+#ifdef __SWITCH__
+    bool main_target = g->color_target == g->backbuffer && g->depth_target == g->depth_buffer;
+    if (g->gpu_requested && !g->gpu && main_target && !gpu_start(g)) {
+        g->gpu_requested = false;
+        fputs("Live deko3d initialization failed, using CPU renderer\n", g->log);
+    }
+    if (g->gpu && main_target && !(flags & 4)) {
+        gpu_clear(g, flags, color | 0xff000000u, depth);
+        return true;
+    }
+    if (g->gpu && !gpu_fallback(g, "offscreen or stencil clear"))
+        return false;
+#endif
     size_t count = (size_t)target.width * target.height;
     if (flags & 1) {
         uint32_t value = rgba((color >> 16) & 255, (color >> 8) & 255, color & 255, target.alpha ? color >> 24 : 255);
@@ -246,8 +260,11 @@ static Surface *texture_at(Game *g, unsigned slot)
     for (unsigned i = 0; handle && i < MAX_TEXTURES; ++i) {
         if (g->textures[i].handle == handle) {
             Surface *surface = &g->textures[i].mip[0];
-            if (!surface->decoded)
+            if (!surface->decoded) {
                 surface->decoded = decode_texture(g, surface);
+                if (surface->decoded)
+                    surface->gpu_generation = ++g->texture_generation;
+            }
             return surface->decoded ? surface : NULL;
         }
     }
@@ -658,7 +675,15 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
         for (unsigned i = 0; i < count; ++i)
             visible_cache[i] = read_program_vertex(&shaders, vertices + i * g->stride, &cache[i]);
     bool valid = true;
-    for (unsigned i = 0; i < n; ++i) {
+#ifdef __SWITCH__
+    if (g->gpu && (g->color_target != g->backbuffer || g->depth_target != g->depth_buffer || g->raster[52]))
+        valid = gpu_fallback(g, "offscreen target or stencil state");
+    GpuVertex *gpu_vertices = valid && g->gpu ? malloc((size_t)n * 3 * sizeof *gpu_vertices) : NULL;
+    unsigned gpu_count = 0;
+    if (valid && g->gpu && !gpu_vertices)
+        valid = gpu_fallback(g, "vertex staging allocation failed");
+#endif
+    for (unsigned i = 0; valid && i < n; ++i) {
         unsigned offset = type == 4 ? i * 3 : i;
         unsigned j = type == 5 ? i & 1 : 0;
         unsigned position[] = {type == 6 ? 0 : offset + j, offset + (1 ^ j), offset + 2};
@@ -689,9 +714,50 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
         }
         if (!valid)
             break;
-        if (visible)
-            clip_triangle(g, &target, texture, programmable ? &shaders : NULL, v);
+        if (!visible)
+            continue;
+#ifdef __SWITCH__
+        if (gpu_vertices) {
+            for (unsigned k = 0; k < 3; ++k) {
+                GpuVertex *vertex = &gpu_vertices[gpu_count++];
+                memcpy(vertex->position, v[k].position, sizeof vertex->position);
+                if (programmable)
+                    vertex->varying = v[k].varying;
+                else {
+                    vertex->varying = (ShaderVaryings){0};
+                    for (unsigned lane = 0; lane < 4; ++lane)
+                        vertex->varying.value[0][lane] = v[k].tint[lane] / 255.f;
+                    vertex->varying.value[2] = (ShaderVec){v[k].u, v[k].v, 0, 1};
+                }
+            }
+            continue;
+        }
+#endif
+        clip_triangle(g, &target, texture, programmable ? &shaders : NULL, v);
     }
+#ifdef __SWITCH__
+    if (valid && gpu_vertices) {
+        const Surface *fixed_textures[16] = {texture};
+        if (!gpu_draw(g, gpu_vertices, gpu_count, programmable ? shaders.textures : fixed_textures,
+                      programmable ? shaders.pixel.samplers : texture != NULL)) {
+            valid = gpu_fallback(g, "unsupported shader or GPU upload limit");
+            for (unsigned i = 0; valid && i < gpu_count; i += 3) {
+                ClipVertex triangle[3] = {0};
+                for (unsigned k = 0; k < 3; ++k) {
+                    const GpuVertex *source = &gpu_vertices[i + k];
+                    memcpy(triangle[k].position, source->position, sizeof triangle[k].position);
+                    triangle[k].varying = source->varying;
+                    triangle[k].u = source->varying.value[2][0];
+                    triangle[k].v = source->varying.value[2][1];
+                    for (unsigned lane = 0; lane < 4; ++lane)
+                        triangle[k].tint[lane] = source->varying.value[0][lane] * 255.f;
+                }
+                clip_triangle(g, &target, texture, programmable ? &shaders : NULL, triangle);
+            }
+        }
+    }
+    free(gpu_vertices);
+#endif
     free(visible_cache);
     free(cache);
     if (!valid)

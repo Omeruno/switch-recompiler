@@ -144,6 +144,19 @@ def add_frontend_blocks(lifter, read_va, sizes):
     collect_verified_edges(lifter, read_va, sizes, [0x472310, *targets], ranges, {selector: targets})
 
 
+def add_profile_blocks(lifter, read_va, sizes):
+    if 0x4d68d0 not in sizes:
+        return
+    # Keyboard focus can return to the profile name before the user confirms Done.
+    if read_va(0x5af3da, 6) != b"\xff\x25\x48\x54\x6a\x00":
+        raise RuntimeError("unrecognized FreakOut C++ exception import")
+    sizes.setdefault(0x5af3da, 6)
+    ranges = [(0x4019b0, 0x401aa9), (0x401d90, 0x401e16), (0x4872cf, 0x4873aa),
+              (0x4c5630, 0x4c56eb), (0x4c5750, 0x4c5773), (0x4d3510, 0x4d36fd), (0x4d4ce0, 0x4d5108),
+              (0x4d5110, 0x4d515e), (0x4d5160, 0x4d5495), (0x4d68e5, 0x4d6924)]
+    collect_verified_edges(lifter, read_va, sizes, [0x4872cf, 0x4d5110, 0x4d68e5], ranges, {})
+
+
 def collect_verified_edges(lifter, read_va, sizes, pending, ranges, dispatches):
     for address, length in sizes.items():
         if not any(start <= address < end for start, end in ranges):
@@ -217,6 +230,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
             if module is boot.pe:
                 add_input_blocks(lifter, read_va, sizes)
                 add_frontend_blocks(lifter, read_va, sizes)
+                add_profile_blocks(lifter, read_va, sizes)
                 add_race_blocks(lifter, read_va, sizes)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):

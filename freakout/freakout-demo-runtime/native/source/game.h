@@ -32,6 +32,7 @@ typedef struct {
     bool locked;
     uint32_t *decoded;
     float *depth_samples;
+    uint32_t gpu_generation;
 } Surface;
 typedef struct {
     uint32_t handle, refs, levels;
@@ -67,6 +68,9 @@ typedef struct {
     unsigned calls, presents, clears, draws, frame_draws, presented_draws, program_draws;
     uint64_t render_ns;
     unsigned frame_width, frame_height, raster_divisor;
+    struct NativeGpu *gpu;
+    uint32_t texture_generation;
+    bool gpu_requested;
     unsigned current_thread, thread_count, import_slice;
     uint64_t clock;
     GuestThread threads[MAX_THREADS];
@@ -173,6 +177,7 @@ bool win32_dispatch(Game *game, const Import *call);
 bool d3d_dispatch(Game *game, const Import *call);
 bool program_dispatch(Game *g, const Import *call);
 const void *program_data(Game *g, uint32_t handle, size_t *bytes);
+int program_source_index(Game *g, uint32_t handle);
 void program_clear_declaration(Game *g);
 bool d3dx_math_dispatch(Game *g, const char *name);
 bool input_dispatch(Game *game, const Import *call);
