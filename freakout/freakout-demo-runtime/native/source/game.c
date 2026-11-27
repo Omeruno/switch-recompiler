@@ -444,6 +444,11 @@ bool game_step(Game *game)
     }
     if (address == CTOR_GATE && next_constructor(game))
         return true;
+    if (address == AUDIO_RETURN && game->audio_callback_active) {
+        game->audio_callback_active = false;
+        game->cpu = game->audio_callback_cpu;
+        return true;
+    }
     if (address == WINDOW_RETURN && game->window_depth) {
         unsigned depth = --game->window_depth;
         game->cpu.esp = game->window_callbacks[depth].stack + 8;
@@ -499,8 +504,9 @@ void game_close(Game *game)
         free(game->save_path[i]);
     }
     file_close_searches(game);
-    audio_bank_close(game);
     media_close(game);
+    audio_bank_close(game);
+    render_close(game);
     for (unsigned i = 0; i < MAX_TEXTURES; ++i)
         for (unsigned j = 0; j < game->textures[i].levels; ++j) {
             free(game->textures[i].mip[j].decoded);

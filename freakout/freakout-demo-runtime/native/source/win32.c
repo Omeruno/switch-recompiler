@@ -102,8 +102,6 @@ bool win32_dispatch(Game *g, const Import *call)
     }
     if (IS("GetAsyncKeyState") || IS("GetKeyState"))
         return result(g, a < 256 && g->virtual_keys[a] ? 0x8000 : 0, 4);
-    if (IS("_FSOUND_SetPriority@8"))
-        return result(g, 0, 8); // No channel exists until the audio backend initializes.
     return false;
     #undef IS
 }

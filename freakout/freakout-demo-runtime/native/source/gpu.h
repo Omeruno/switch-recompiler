@@ -20,6 +20,7 @@ unsigned gpu_output_width(const Game *game);
 unsigned gpu_output_height(const Game *game);
 bool gpu_fallback(Game *game, const char *reason);
 bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
+              const uint16_t *indices, unsigned index_count,
               const Surface *const textures[16], unsigned sampler_mask);
 #endif
 

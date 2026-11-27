@@ -8,6 +8,7 @@
 enum {
     LOW_SIZE = FO_GUEST_MEMORY, RUNTIME_BASE = 0x7c340000, RUNTIME_SIZE = 0xe0000,
     API_BASE = 0x100000, CTOR_GATE = 0xff000, WINDOW_RETURN = 0xff010, THREAD_RETURN = 0xff020,
+    AUDIO_RETURN = 0xff030,
     GAME_ENTRY = 0x67de70, PE_BASE = 0x400000, PE_ENTRY = 0x5af59e,
     STACK = 0xbe0000, BSS = 0xa00000, COMMAND = BSS + 0x100, ARGV = BSS + 0x180,
     HEAP_START = 0x01000000, RESOURCE_HEAP_START = 0x07000000, MAX_IMPORTS = 4096, MAX_SPANS = 131072,
@@ -67,6 +68,7 @@ typedef struct {
     unsigned recent_count;
     unsigned calls, presents, clears, draws, frame_draws, presented_draws, program_draws;
     uint64_t render_ns;
+    struct RenderScratch *render_scratch;
     unsigned frame_width, frame_height, raster_divisor;
     struct NativeGpu *gpu;
     uint32_t texture_generation;
@@ -92,15 +94,20 @@ typedef struct {
     struct Search *searches[MAX_SEARCHES];
     unsigned sound_driver, sound_output;
     uint32_t distance_factor, audio_rate, audio_channels;
-    bool audio_open;
+    bool audio_open, audio_dirty;
+    struct AudioMixer *audio_mixer;
+    uint32_t audio_serial, audio_seek;
+    bool audio_callback_active;
+    CPU audio_callback_cpu;
     unsigned audio_listener;
     struct { float position[3], velocity[3], forward[3], up[3]; } listeners[8];
     struct AudioBank *banks;
     unsigned audio_payload_bytes, audio_peak_bytes;
     struct AudioVoice {
         uint32_t source, sample, duration, start, frequency, mode, volume, pan;
+        uint32_t serial, seek_id, seek_frame, priority;
         float distance[2], position[3], velocity[3];
-        bool paused;
+        bool paused, spatial, notified;
     } voices[64];
     uint32_t video_objects[5], video_refs[5], notify_window, notify_message, notify_arg, notify_flags;
     bool video_unavailable, video_complete, video_visible, video_foreground;
@@ -170,7 +177,12 @@ bool d3dx_load_surface(Game *g);
 void game_keys(Game *g, const uint8_t keys[256]);
 bool audio_bank_dispatch(Game *g, const Import *call);
 void audio_bank_close(Game *g);
+bool audio_output_open(Game *g);
+void audio_output_close(Game *g);
+void audio_frame(Game *g);
+bool audio_update(Game *g);
 bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib);
+void render_close(Game *g);
 void skin_observe(Game *g);
 bool skin_constants(Game *g, void *constants, uint32_t vertex_shader);
 bool win32_dispatch(Game *game, const Import *call);

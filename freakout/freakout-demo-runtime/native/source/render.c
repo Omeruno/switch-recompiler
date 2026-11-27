@@ -8,6 +8,58 @@
 typedef struct { float position[4], u, v, tint[4]; ShaderVaryings varying; } ClipVertex;
 typedef struct { float x, y, z, inv_w, u, v, tint[4]; ShaderVaryings varying; } Vertex;
 
+struct RenderScratch {
+    void *cache;
+    unsigned rows;
+#ifdef __SWITCH__
+    GpuVertex *vertices;
+    uint16_t *indices;
+    unsigned vertex_capacity, index_capacity;
+#endif
+};
+
+static void *grow(void *buffer, unsigned *capacity, unsigned count, size_t size)
+{
+    if (count <= *capacity)
+        return buffer;
+    unsigned next = *capacity ? *capacity : 64;
+    while (next < count)
+        next *= 2;
+    void *larger = realloc(buffer, next * size);
+    if (larger)
+        *capacity = next;
+    return larger;
+}
+
+void render_close(Game *g)
+{
+    struct RenderScratch *scratch = g->render_scratch;
+    if (!scratch)
+        return;
+#ifdef __SWITCH__
+    free(scratch->vertices);
+    free(scratch->indices);
+#endif
+    free(scratch->cache);
+    free(scratch);
+    g->render_scratch = NULL;
+}
+
+#ifdef __SWITCH__
+static void stage_vertex(GpuVertex *vertex, const ClipVertex *source, bool programmable)
+{
+    memcpy(vertex->position, source->position, sizeof vertex->position);
+    if (programmable) {
+        vertex->varying = source->varying;
+        return;
+    }
+    vertex->varying = (ShaderVaryings){0};
+    for (unsigned lane = 0; lane < 4; ++lane)
+        vertex->varying.value[0][lane] = source->tint[lane] / 255.f;
+    vertex->varying.value[2] = (ShaderVec){source->u, source->v, 0, 1};
+}
+#endif
+
 typedef struct {
     Shader vertex, pixel;
     struct { uint16_t offset; uint8_t type; bool present; } attributes[16];
@@ -673,19 +725,36 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
         fputc('\n', g->log);
     }
 
-    ClipVertex *cache = programmable ? calloc(count, sizeof *cache) : NULL;
-    uint8_t *visible_cache = cache ? malloc(count) : NULL;
-    if (cache && visible_cache)
-        for (unsigned i = 0; i < count; ++i)
-            visible_cache[i] = read_program_vertex(&shaders, vertices + i * g->stride, &cache[i]);
+    if (!g->render_scratch)
+        g->render_scratch = calloc(1, sizeof *g->render_scratch);
+    struct RenderScratch *scratch = g->render_scratch;
+    ClipVertex *cache = scratch ? grow(scratch->cache, &scratch->rows, count,
+                                      sizeof *cache + sizeof(uint32_t)) : NULL;
+    uint32_t *row_map = NULL;
+    if (cache) {
+        scratch->cache = cache;
+        row_map = (uint32_t *)(cache + scratch->rows);
+        memset(row_map, 0, count * sizeof *row_map);
+    }
     bool valid = true;
 #ifdef __SWITCH__
     if (g->gpu && (g->raster[52] || !gpu_set_target(g, target.surface, target.depth_surface)))
         valid = gpu_fallback(g, "unsupported draw target or stencil state");
-    GpuVertex *gpu_vertices = valid && g->gpu ? malloc((size_t)n * 3 * sizeof *gpu_vertices) : NULL;
-    unsigned gpu_count = 0;
-    if (valid && g->gpu && !gpu_vertices)
-        valid = gpu_fallback(g, "vertex staging allocation failed");
+    unsigned gpu_count = 0, draw_count = 0;
+    bool staged = false;
+    if (valid && g->gpu) {
+        if (row_map) {
+            GpuVertex *gpu_vertices = grow(scratch->vertices, &scratch->vertex_capacity, count, sizeof *gpu_vertices);
+            uint16_t *gpu_indices = grow(scratch->indices, &scratch->index_capacity, n * 3, sizeof *gpu_indices);
+            if (gpu_vertices)
+                scratch->vertices = gpu_vertices;
+            if (gpu_indices)
+                scratch->indices = gpu_indices;
+            staged = gpu_vertices && gpu_indices;
+        }
+        if (!staged)
+            valid = gpu_fallback(g, "indexed staging allocation failed");
+    }
 #endif
     for (unsigned i = 0; valid && i < n; ++i) {
         unsigned offset = type == 4 ? i * 3 : i;
@@ -693,6 +762,9 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
         unsigned position[] = {type == 6 ? 0 : offset + j, offset + (1 ^ j), offset + 2};
         ClipVertex v[3] = {0};
         bool visible = true;
+#ifdef __SWITCH__
+        uint16_t triangle_indices[3];
+#endif
         for (unsigned k = 0; k < 3; ++k) {
             uint32_t id = position[k];
             if (ib) {
@@ -706,49 +778,55 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
                 break;
             }
             unsigned row = id - minimum;
-            if (visible_cache) {
-                visible &= visible_cache[row] != 0;
-                v[k] = cache[row];
-                continue;
+            unsigned entry = row_map ? row_map[row] : 0;
+            if (!entry) {
+                const uint8_t *vertex = vertices + row * g->stride;
+                ClipVertex *output = row_map ? &cache[row] : &v[k];
+                *output = (ClipVertex){0};
+                bool decoded = programmable ? read_program_vertex(&shaders, vertex, output) : read_vertex(g, vertex, output);
+                entry = decoded ? 2 : 1;
+#ifdef __SWITCH__
+                if (decoded && staged) {
+                    entry += gpu_count;
+                    stage_vertex(&scratch->vertices[gpu_count++], output, programmable);
+                }
+#endif
+                if (row_map)
+                    row_map[row] = entry;
             }
-            const uint8_t *vertex = vertices + row * g->stride;
-            if (!(programmable ? read_program_vertex(&shaders, vertex, &v[k]) : read_vertex(g, vertex, &v[k]))) {
+            if (entry == 1)
                 visible = false;
-            }
+#ifdef __SWITCH__
+            else if (staged)
+                triangle_indices[k] = entry - 2;
+#endif
+            else if (row_map)
+                v[k] = cache[row];
         }
         if (!valid)
             break;
         if (!visible)
             continue;
 #ifdef __SWITCH__
-        if (gpu_vertices) {
-            for (unsigned k = 0; k < 3; ++k) {
-                GpuVertex *vertex = &gpu_vertices[gpu_count++];
-                memcpy(vertex->position, v[k].position, sizeof vertex->position);
-                if (programmable)
-                    vertex->varying = v[k].varying;
-                else {
-                    vertex->varying = (ShaderVaryings){0};
-                    for (unsigned lane = 0; lane < 4; ++lane)
-                        vertex->varying.value[0][lane] = v[k].tint[lane] / 255.f;
-                    vertex->varying.value[2] = (ShaderVec){v[k].u, v[k].v, 0, 1};
-                }
-            }
+        if (staged) {
+            memcpy(scratch->indices + draw_count, triangle_indices, sizeof triangle_indices);
+            draw_count += 3;
             continue;
         }
 #endif
         clip_triangle(g, &target, texture, programmable ? &shaders : NULL, v);
     }
 #ifdef __SWITCH__
-    if (valid && gpu_vertices) {
+    if (valid && staged && draw_count) {
         const Surface *fixed_textures[16] = {texture};
-        if (!gpu_draw(g, gpu_vertices, gpu_count, programmable ? shaders.textures : fixed_textures,
+        if (!gpu_draw(g, scratch->vertices, gpu_count, scratch->indices, draw_count,
+                      programmable ? shaders.textures : fixed_textures,
                       programmable ? shaders.pixel.samplers : texture != NULL)) {
             valid = gpu_fallback(g, "unsupported shader or GPU upload limit");
-            for (unsigned i = 0; valid && i < gpu_count; i += 3) {
+            for (unsigned i = 0; valid && i < draw_count; i += 3) {
                 ClipVertex triangle[3] = {0};
                 for (unsigned k = 0; k < 3; ++k) {
-                    const GpuVertex *source = &gpu_vertices[i + k];
+                    const GpuVertex *source = &scratch->vertices[scratch->indices[i + k]];
                     memcpy(triangle[k].position, source->position, sizeof triangle[k].position);
                     triangle[k].varying = source->varying;
                     triangle[k].u = source->varying.value[2][0];
@@ -760,10 +838,7 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
             }
         }
     }
-    free(gpu_vertices);
 #endif
-    free(visible_cache);
-    free(cache);
     if (!valid)
         return false;
     if (!g->gpu && target.surface != &g->back)

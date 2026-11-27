@@ -144,6 +144,23 @@ def add_race_blocks(lifter, read_va, sizes):
         collect_verified_edges(lifter, read_va, sizes, [0x4a6a75], [(0x4a6a50, 0x4a6ba9)], {})
     if 0x4b4fc4 in sizes:
         collect_verified_edges(lifter, read_va, sizes, [0x4b4fb3], [(0x4b4f89, 0x4b4fee)], {})
+    if 0x5ad311 in sizes:
+        ranges = [(0x5ac680, 0x5ac6e7), (0x5ad31a, 0x5ad340)]
+        collect_verified_edges(lifter, read_va, sizes, [0x5ad31a], ranges, {})
+    if 0x53872d in sizes:
+        collect_verified_edges(lifter, read_va, sizes, [0x538734], [(0x53872d, 0x538772)], {})
+
+
+def add_audio_blocks(lifter, read_va, sizes):
+    # These functions are reached through FMOD, outside the original boot trace.
+    for registration, callback in ((0x402d20, 0x4027b0), (0x547ba9, 0x5479c0)):
+        if read_va(registration, 5) != b'\x68' + struct.pack('<I', callback):
+            raise RuntimeError("unexpected FreakOut stream end callback")
+        add_verified_blocks(lifter, read_va, sizes, [callback], [(callback, callback + 10)])
+    # The menu consumes its end notification to advance the playlist.
+    if 0x547bd0 in sizes:
+        ranges = [(0x547810, 0x5478d8), (0x547bd0, 0x547c06)]
+        collect_verified_edges(lifter, read_va, sizes, [0x547be0], ranges, {})
 
 
 def add_input_blocks(lifter, read_va, sizes):
@@ -284,6 +301,7 @@ def emit(boot, upstream, out, *, standalone=True, close_local_branches=False, na
                 add_frontend_blocks(lifter, read_va, sizes)
                 add_profile_blocks(lifter, read_va, sizes)
                 add_race_blocks(lifter, read_va, sizes)
+                add_audio_blocks(lifter, read_va, sizes)
         for address, length in sorted(sizes.items()):
             if not base <= address < end or (address == GAME_ENTRY and boot.stop_at_winmain):
                 continue

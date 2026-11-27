@@ -51,6 +51,7 @@ struct NativeGpu {
     bool target_alpha, target_dirty;
     unsigned scene_x, scene_y, scene_width, scene_height;
     unsigned arena, cursor, submitted_draws, frames;
+    uint64_t geometry_bytes, expanded_bytes;
 };
 
 static unsigned align_up(unsigned size, unsigned alignment)
@@ -242,6 +243,9 @@ void gpu_close(Game *game)
     struct NativeGpu *gpu = game->gpu;
     if (!gpu)
         return;
+    if (gpu->expanded_bytes)
+        fprintf(game->log, "GPU geometry: %llu bytes uploaded, %llu with expanded triangles\n",
+                (unsigned long long)gpu->geometry_bytes, (unsigned long long)gpu->expanded_bytes);
     if (gpu->queue)
         dkQueueWaitIdle(gpu->queue);
     if (gpu->swapchain)
@@ -599,6 +603,7 @@ void gpu_release_surface(Game *game, const Surface *surface)
 }
 
 bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
+              const uint16_t *indices, unsigned index_count,
               const Surface *const textures[16], unsigned sampler_mask)
 {
     if (!count)
@@ -628,18 +633,20 @@ bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
         handles[slot] = dkMakeTextureHandle(index, sampler);
     }
 
-    unsigned bytes = count * sizeof *vertices, geometry = align_up(bytes, 256), offset;
-    if (!reserve(gpu, geometry + sizeof game->pixel_constants, &offset))
+    unsigned bytes = count * sizeof *vertices, index_bytes = index_count * sizeof *indices;
+    unsigned index_offset = align_up(bytes, 256), constants_offset = align_up(index_offset + index_bytes, 256), offset;
+    if (!reserve(gpu, constants_offset + sizeof game->pixel_constants, &offset))
         return false;
     uint8_t *upload = dkMemBlockGetCpuAddr(gpu->upload);
     memcpy(upload + offset, vertices, bytes);
-    memcpy(upload + offset + geometry, game->pixel_constants, sizeof game->pixel_constants);
+    memcpy(upload + offset + index_offset, indices, index_bytes);
+    memcpy(upload + offset + constants_offset, game->pixel_constants, sizeof game->pixel_constants);
     DkGpuAddr address = dkMemBlockGetGpuAddr(gpu->upload) + offset;
     DkCmdBuf commands = gpu->commands;
     const DkShader *programs[] = {&gpu->programs[0], &gpu->programs[program]};
     dkCmdBufBindShaders(commands, DkStageFlag_GraphicsMask, programs, 2);
     if (game->pixel_shader)
-        dkCmdBufBindUniformBuffer(commands, DkStage_Fragment, 0, address + geometry, sizeof game->pixel_constants);
+        dkCmdBufBindUniformBuffer(commands, DkStage_Fragment, 0, address + constants_offset, sizeof game->pixel_constants);
     if (sampler_mask)
         dkCmdBufBindTextures(commands, DkStage_Fragment, 0, handles, 16);
     DkVtxAttribState attributes[SHADER_VARYINGS + 1];
@@ -689,7 +696,10 @@ bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
     unsigned channels = gpu->target_alpha ? DkColorMask_RGBA : DkColorMask_RGB;
     dkColorWriteStateSetMask(&mask, 0, game->raster[D3D_COLOR_WRITE_ENABLE] & channels);
     dkCmdBufBindColorWriteState(commands, &mask);
-    dkCmdBufDraw(commands, DkPrimitive_Triangles, count, 1, 0, 0);
+    dkCmdBufBindIdxBuffer(commands, DkIdxFormat_Uint16, address + index_offset);
+    dkCmdBufDrawIndexed(commands, DkPrimitive_Triangles, index_count, 1, 0, 0, 0);
+    gpu->geometry_bytes += bytes + index_bytes;
+    gpu->expanded_bytes += index_count * sizeof *vertices;
     ++gpu->submitted_draws;
     return true;
 }

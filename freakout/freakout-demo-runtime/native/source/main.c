@@ -10,6 +10,12 @@
 
 typedef bool (*FrameHandler)(Game *, void *);
 
+static int compare_frame_times(const void *left, const void *right)
+{
+    uint64_t a = *(const uint64_t *)left, b = *(const uint64_t *)right;
+    return (a > b) - (a < b);
+}
+
 uint64_t native_now_ns(void)
 {
 #ifdef __SWITCH__
@@ -29,7 +35,9 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
     g->raster_divisor = raster_divisor;
     g->gpu_requested = use_gpu;
     unsigned progress = 0;
-    uint64_t sample_start = native_now_ns(), sample_render = 0;
+    uint64_t sample_start = native_now_ns(), sample_render = 0, last_frame = sample_start;
+    uint64_t frame_ns[30];
+    unsigned over_budget = 0;
     while (!limit || g->presents < limit) {
         if (poll && !(progress % 256) && !poll(g, data)) {
             g->stop = "stopped by user";
@@ -40,25 +48,33 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
             break;
         if (g->presents != before) {
             progress = 0;
+            audio_frame(g);
             if (on_frame && !on_frame(g, data)) {
                 if (!g->stop)
                     g->stop = "stopped by user";
                 break;
             }
-            if (!(g->presents % 30)) {
-                uint64_t now = native_now_ns();
+            uint64_t now = native_now_ns();
+            unsigned frame = (g->presents - 1) % 30;
+            frame_ns[frame] = now - last_frame;
+            over_budget += frame_ns[frame] > 33333334;
+            last_frame = now;
+            if (frame == 29) {
+                qsort(frame_ns, 30, sizeof frame_ns[0], compare_frame_times);
                 unsigned width = g->frame_width, height = g->frame_height;
 #ifdef __SWITCH__
                 width = gpu_output_width(g);
                 height = gpu_output_height(g);
 #endif
-                fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU %s, %ux%u\n",
+                fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU %s, %ux%u, "
+                        "p95 %.1f ms, max %.1f ms, %u/30 above 33.3 ms\n",
                         g->presents, (now - sample_start) / 30000000.0,
                         (g->render_ns - sample_render) / 30000000.0, g->gpu ? "render setup" : "raster",
-                        width, height);
+                        width, height, frame_ns[28] / 1e6, frame_ns[29] / 1e6, over_budget);
                 fflush(log);
                 sample_start = now;
                 sample_render = g->render_ns;
+                over_budget = 0;
             }
         } else if (++progress >= 2000000) {
             g->stop = "no Present within the dispatch budget";
@@ -153,7 +169,7 @@ int main(void)
     Game *game = calloc(1, sizeof *game);
     if (game) {
         if (log)
-            fprintf(log, "FreakOut 1.0.0 startup renderer: %s\n", use_gpu ? "deko3d" : "CPU");
+            fprintf(log, "FreakOut 1.1.0 startup renderer: %s\n", use_gpu ? "deko3d" : "CPU");
         run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out, 2, use_gpu);
         gpu_close(game);
         game_close(game);

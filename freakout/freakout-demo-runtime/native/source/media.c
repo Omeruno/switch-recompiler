@@ -1,9 +1,6 @@
 #include "game.h"
 #include <string.h>
 #include <strings.h>
-#ifdef __SWITCH__
-#include <switch.h>
-#endif
 
 #define IS(s) (!strcmp(name, (s)))
 
@@ -28,14 +25,8 @@ static bool sound(Game *g, const char *name)
     if (IS("_FSOUND_Init@12")) {
         if (g->audio_open || !arg(g, 0) || !arg(g, 1))
             return result(g, 0, 12);
-#ifdef __SWITCH__
-        if (R_FAILED(audoutInitialize()))
+        if (!audio_output_open(g))
             return result(g, 0, 12);
-        if (R_FAILED(audoutStartAudioOut())) {
-            audoutExit();
-            return result(g, 0, 12);
-        }
-#endif
         g->audio_open = true;
         g->audio_rate = arg(g, 0);
         g->audio_channels = arg(g, 1);
@@ -50,7 +41,14 @@ static bool sound(Game *g, const char *name)
         return result(g, arg(g, 0) ? 0 : BSS + 0x700, 4);
     }
     if (IS("_FSOUND_Update@0") && g->audio_open)
+        return audio_update(g);
+    if (IS("_FSOUND_GetOutputRate@0"))
+        return result(g, g->audio_rate, 0);
+    if (IS("_FSOUND_Close@0")) {
+        audio_output_close(g);
+        audio_bank_close(g);
         return result(g, 0, 0);
+    }
     if (IS("_FSOUND_3D_SetDistanceFactor@4")) {
         g->distance_factor = arg(g, 0);
         return result(g, 0, 4);
@@ -228,11 +226,5 @@ bool media_dispatch(Game *g, const Import *call)
 
 void media_close(Game *g)
 {
-#ifdef __SWITCH__
-    if (g->audio_open) {
-        audoutStopAudioOut();
-        audoutExit();
-    }
-#endif
-    g->audio_open = false;
+    audio_output_close(g);
 }
