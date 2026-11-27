@@ -92,6 +92,37 @@ def add_race_blocks(lifter, read_va, sizes):
         pending.append(0x493d69)
         ranges.append((0x493d69, 0x493dd3))
     add_verified_blocks(lifter, read_va, sizes, pending, ranges)
+    # The first race HUD update also varies with the countdown state.
+    selector, table = 0x43adf6, 0x43b3c0
+    if selector in sizes:
+        if read_va(selector, 7) != b"\xff\x24\x85" + struct.pack("<I", table):
+            raise RuntimeError("unrecognized FreakOut race HUD dispatch")
+        targets = struct.unpack("<13I", read_va(table, 52))
+        if any(not selector + 7 <= address < table for address in targets):
+            raise RuntimeError("invalid FreakOut race HUD table")
+        add_verified_blocks(lifter, read_va, sizes, list(targets), [(selector + 7, table)])
+    # The HUD text builder chooses a different glyph path for the live timer.
+    if 0x4c5060 in sizes:
+        ranges = [(0x4c4410, 0x4c45cf), (0x4c5060, 0x4c5366), (0x4c60d5, 0x4c6139)]
+        collect_verified_edges(lifter, read_va, sizes, [0x4c50bd], ranges, {})
+    # Live race messages select text by numeric ID using a byte-to-index table.
+    if 0x574b4e in sizes:
+        selector, table, index = 0x574b55, 0x57752c, 0x5776c4
+        if read_va(selector, 7) != b'\xff\x24\x85' + struct.pack('<I', table):
+            raise RuntimeError("unexpected FreakOut race message dispatch")
+        count = (index - table) // 4
+        if max(read_va(index, 224)) >= count:
+            raise RuntimeError("invalid FreakOut race message index")
+        targets = struct.unpack(f"<{count}I", read_va(table, count * 4))
+        if any(not selector + 7 <= address < table for address in targets):
+            raise RuntimeError("invalid FreakOut race message table")
+        add_verified_blocks(lifter, read_va, sizes, list(targets), [(selector + 7, table)])
+    # Course geometry uses the other floating-point branch after the run starts.
+    if 0x5101b5 in sizes:
+        collect_verified_edges(lifter, read_va, sizes, [0x5101bb], [(0x510110, 0x5102b3)], {})
+    if 0x5377d2 in sizes:
+        ranges = [(0x535c90, 0x535d7b), (0x5377d2, 0x5379a6)]
+        collect_verified_edges(lifter, read_va, sizes, [0x5377f5], ranges, {})
 
 
 def add_input_blocks(lifter, read_va, sizes):

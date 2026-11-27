@@ -3,10 +3,12 @@
 #include <deko3d.h>
 #include <stdlib.h>
 #include <string.h>
+#include <switch.h>
 
 enum {
     COMMAND_BYTES = 1024 * 1024, UPLOAD_BYTES = 16 * 1024 * 1024,
-    MAX_GPU_TEXTURES = MAX_TEXTURES, SAMPLER_COUNT = 18,
+    MAX_GPU_TEXTURES = MAX_TEXTURES + MAX_SURFACES, SAMPLER_COUNT = 18,
+    HD_WIDTH = 1280, HD_HEIGHT = 720, FRAME_COUNT = 2,
 };
 static const uint32_t upload_flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
 
@@ -18,17 +20,37 @@ typedef struct {
     DkImage image;
     const Surface *surface;
     uint32_t generation;
+    unsigned width, height;
+    bool target, rendered;
 } GpuTexture;
+
+typedef struct {
+    DkMemBlock memory;
+    DkImage image;
+    Surface *surface;
+    unsigned width, height;
+    bool rendered;
+} GpuDepth;
 
 struct NativeGpu {
     DkDevice device;
     DkQueue queue;
+    DkSwapchain swapchain;
     DkCmdBuf commands;
     DkMemBlock commands_memory, upload, readback, code, descriptors, color_memory, depth_memory;
-    DkImage color, depth;
+    DkMemBlock output_memory[FRAME_COUNT];
+    DkImage color, depth, output[FRAME_COUNT];
+    DkFence frame_fences[FRAME_COUNT];
+    bool frame_pending[FRAME_COUNT];
+    bool target_initialized;
     DkShader programs[COUNT(gpu_programs)];
     GpuTexture textures[MAX_GPU_TEXTURES];
-    unsigned width, height, cursor, submitted_draws, frames;
+    GpuDepth offscreen_depth[MAX_SURFACES];
+    const DkImage *target_color, *target_depth;
+    DkScissor target_area;
+    bool target_alpha, target_dirty;
+    unsigned scene_x, scene_y, scene_width, scene_height;
+    unsigned arena, cursor, submitted_draws, frames;
 };
 
 static unsigned align_up(unsigned size, unsigned alignment)
@@ -67,16 +89,32 @@ static unsigned sampler_offset(void)
     return align_up(MAX_GPU_TEXTURES * sizeof(DkImageDescriptor), DK_IMAGE_DESCRIPTOR_ALIGNMENT);
 }
 
+static void bind_target(struct NativeGpu *gpu)
+{
+    DkImageView color, depth;
+    dkImageViewDefaults(&color, gpu->target_color);
+    if (gpu->target_depth)
+        dkImageViewDefaults(&depth, gpu->target_depth);
+    dkCmdBufBindRenderTarget(gpu->commands, &color, gpu->target_depth ? &depth : NULL);
+    dkCmdBufSetScissors(gpu->commands, 0, &gpu->target_area, 1);
+    gpu->target_dirty = false;
+}
+
 static void begin(struct NativeGpu *gpu)
 {
     dkCmdBufClear(gpu->commands);
-    dkCmdBufAddMemory(gpu->commands, gpu->commands_memory, 0, COMMAND_BYTES);
-    DkImageView color, depth;
-    dkImageViewDefaults(&color, &gpu->color);
-    dkImageViewDefaults(&depth, &gpu->depth);
-    dkCmdBufBindRenderTarget(gpu->commands, &color, &depth);
-    DkScissor scissor = {0, 0, gpu->width, gpu->height};
-    dkCmdBufSetScissors(gpu->commands, 0, &scissor, 1);
+    dkCmdBufAddMemory(gpu->commands, gpu->commands_memory, gpu->arena * COMMAND_BYTES, COMMAND_BYTES);
+    dkCmdBufBarrier(gpu->commands, DkBarrier_Full, 0);
+    bind_target(gpu);
+    if (!gpu->target_initialized) {
+        const DkScissor full = {0, 0, HD_WIDTH, HD_HEIGHT};
+        const float black[] = {0, 0, 0, 1};
+        dkCmdBufSetScissors(gpu->commands, 0, &full, 1);
+        dkCmdBufClearColor(gpu->commands, 0, DkColorMask_RGBA, black);
+        dkCmdBufClearDepthStencil(gpu->commands, true, 1.f, 0, 0);
+        gpu->target_initialized = true;
+    }
+    dkCmdBufSetScissors(gpu->commands, 0, &gpu->target_area, 1);
     DkGpuAddr descriptors = dkMemBlockGetGpuAddr(gpu->descriptors);
     dkCmdBufBindImageDescriptorSet(gpu->commands, descriptors, MAX_GPU_TEXTURES);
     dkCmdBufBindSamplerDescriptorSet(gpu->commands, descriptors + sampler_offset(), SAMPLER_COUNT);
@@ -94,6 +132,23 @@ static bool submit(struct NativeGpu *gpu)
     gpu->cursor = 0;
     begin(gpu);
     return true;
+}
+
+static bool create_output(struct NativeGpu *gpu)
+{
+    const DkImage *images[FRAME_COUNT];
+    for (unsigned i = 0; i < FRAME_COUNT; ++i) {
+        gpu->output_memory[i] = image(gpu, &gpu->output[i], HD_WIDTH, HD_HEIGHT,
+                                      DkImageFormat_RGBA8_Unorm,
+                                      DkImageFlags_UsagePresent | DkImageFlags_UsageRender);
+        if (!gpu->output_memory[i])
+            return false;
+        images[i] = &gpu->output[i];
+    }
+    DkSwapchainMaker swapchain;
+    dkSwapchainMakerDefaults(&swapchain, gpu->device, nwindowGetDefault(), images, FRAME_COUNT);
+    gpu->swapchain = dkSwapchainCreate(&swapchain);
+    return gpu->swapchain != NULL;
 }
 
 static bool init_programs(struct NativeGpu *gpu)
@@ -127,8 +182,17 @@ bool gpu_start(Game *game)
     if (!gpu)
         return false;
     game->gpu = gpu;
-    gpu->width = game->frame_width;
-    gpu->height = game->frame_height;
+    gpu->scene_width = HD_WIDTH;
+    gpu->scene_height = HD_WIDTH * game->back.height / game->back.width;
+    if (gpu->scene_height > HD_HEIGHT) {
+        gpu->scene_height = HD_HEIGHT;
+        gpu->scene_width = HD_HEIGHT * game->back.width / game->back.height;
+    }
+    gpu->scene_x = (HD_WIDTH - gpu->scene_width) / 2;
+    gpu->scene_y = (HD_HEIGHT - gpu->scene_height) / 2;
+    gpu->target_color = &gpu->color;
+    gpu->target_depth = &gpu->depth;
+    gpu->target_area = (DkScissor){gpu->scene_x, gpu->scene_y, gpu->scene_width, gpu->scene_height};
     DkDeviceMaker device;
     dkDeviceMakerDefaults(&device);
     gpu->device = dkDeviceCreate(&device);
@@ -141,15 +205,14 @@ bool gpu_start(Game *game)
     dkCmdBufMakerDefaults(&commands, gpu->device);
     gpu->queue = dkQueueCreate(&queue);
     gpu->commands = dkCmdBufCreate(&commands);
-    gpu->commands_memory = memory(gpu, COMMAND_BYTES, upload_flags);
-    gpu->upload = memory(gpu, UPLOAD_BYTES, upload_flags);
-    gpu->readback = memory(gpu, 2 * gpu->width * gpu->height * 4 + 256, upload_flags);
+    gpu->commands_memory = memory(gpu, COMMAND_BYTES * FRAME_COUNT, upload_flags);
+    gpu->upload = memory(gpu, UPLOAD_BYTES * FRAME_COUNT, upload_flags);
     gpu->descriptors = memory(gpu, sampler_offset() + SAMPLER_COUNT * sizeof(DkSamplerDescriptor), upload_flags);
-    gpu->color_memory = image(gpu, &gpu->color, gpu->width, gpu->height, DkImageFormat_RGBA8_Unorm,
+    gpu->color_memory = image(gpu, &gpu->color, HD_WIDTH, HD_HEIGHT, DkImageFormat_RGBA8_Unorm,
                               DkImageFlags_UsageRender);
-    gpu->depth_memory = image(gpu, &gpu->depth, gpu->width, gpu->height, DkImageFormat_ZF32,
+    gpu->depth_memory = image(gpu, &gpu->depth, HD_WIDTH, HD_HEIGHT, DkImageFormat_ZF32,
                               DkImageFlags_UsageRender);
-    if (!gpu->queue || !gpu->commands || !gpu->commands_memory || !gpu->upload || !gpu->readback ||
+    if (!gpu->queue || !gpu->commands || !gpu->commands_memory || !gpu->upload ||
         !gpu->descriptors || !gpu->color_memory || !gpu->depth_memory || !init_programs(gpu))
         goto fail;
 
@@ -166,8 +229,8 @@ bool gpu_start(Game *game)
         memcpy(table + sampler_offset() + i * sizeof descriptor, &descriptor, sizeof descriptor);
     }
     begin(gpu);
-    gpu_clear(game, 3, 0xff000000u, 1.f);
-    fprintf(game->log, "Live deko3d rasterizer initialized at %ux%u\n", gpu->width, gpu->height);
+    fprintf(game->log, "Live deko3d initialized: %ux%u output, %ux%u game viewport\n",
+            HD_WIDTH, HD_HEIGHT, gpu->scene_width, gpu->scene_height);
     return true;
 fail:
     gpu_close(game);
@@ -181,6 +244,8 @@ void gpu_close(Game *game)
         return;
     if (gpu->queue)
         dkQueueWaitIdle(gpu->queue);
+    if (gpu->swapchain)
+        dkSwapchainDestroy(gpu->swapchain);
     if (gpu->commands)
         dkCmdBufDestroy(gpu->commands);
     if (gpu->queue)
@@ -188,6 +253,12 @@ void gpu_close(Game *game)
     for (unsigned i = 0; i < MAX_GPU_TEXTURES; ++i)
         if (gpu->textures[i].memory)
             dkMemBlockDestroy(gpu->textures[i].memory);
+    for (unsigned i = 0; i < COUNT(gpu->offscreen_depth); ++i)
+        if (gpu->offscreen_depth[i].memory)
+            dkMemBlockDestroy(gpu->offscreen_depth[i].memory);
+    for (unsigned i = 0; i < FRAME_COUNT; ++i)
+        if (gpu->output_memory[i])
+            dkMemBlockDestroy(gpu->output_memory[i]);
     const DkMemBlock blocks[] = {gpu->commands_memory, gpu->upload, gpu->readback, gpu->code,
                                  gpu->descriptors, gpu->color_memory, gpu->depth_memory};
     for (unsigned i = 0; i < COUNT(blocks); ++i)
@@ -211,53 +282,131 @@ void gpu_clear(Game *game, unsigned flags, uint32_t color, float depth)
         dkCmdBufClearDepthStencil(commands, true, depth, 0, 0);
 }
 
-static bool read_frame(Game *game, bool copy_depth)
+static bool read_frame(Game *game)
 {
     struct NativeGpu *gpu = game->gpu;
-    unsigned pixels = gpu->width * gpu->height, bytes = pixels * 4;
+    unsigned bytes = gpu->scene_width * gpu->scene_height * 4;
     unsigned depth_offset = align_up(bytes, 256);
+    gpu->readback = memory(gpu, depth_offset + bytes, upload_flags);
+    if (!gpu->readback)
+        return false;
     DkGpuAddr address = dkMemBlockGetGpuAddr(gpu->readback);
-    DkImageRect rect = {0, 0, 0, gpu->width, gpu->height, 1};
+    DkImageRect rect = {gpu->scene_x, gpu->scene_y, 0, gpu->scene_width, gpu->scene_height, 1};
     DkImageView view;
     dkCmdBufBarrier(gpu->commands, DkBarrier_Full, 0);
     dkImageViewDefaults(&view, &gpu->color);
     const DkCopyBuf color = {.addr = address};
     dkCmdBufCopyImageToBuffer(gpu->commands, &view, &rect, &color, 0);
-    if (copy_depth) {
-        dkImageViewDefaults(&view, &gpu->depth);
-        const DkCopyBuf depth = {.addr = address + depth_offset};
-        dkCmdBufCopyImageToBuffer(gpu->commands, &view, &rect, &depth, 0);
-    }
+    dkImageViewDefaults(&view, &gpu->depth);
+    const DkCopyBuf depth = {.addr = address + depth_offset};
+    dkCmdBufCopyImageToBuffer(gpu->commands, &view, &rect, &depth, 0);
     dkCmdBufBarrier(gpu->commands, DkBarrier_Full, DkInvalidateFlags_L2Cache);
     if (!submit(gpu))
         return false;
     const uint8_t *data = dkMemBlockGetCpuAddr(gpu->readback);
-    memcpy(game->pixels, data, bytes);
-    if (copy_depth) {
-        unsigned step = game->raster_divisor, stride = game->back.width;
-        const float *depth = (const float *)(data + depth_offset);
-        for (unsigned y = 0; y < gpu->height; ++y)
-            for (unsigned x = 0; x < gpu->width; ++x)
-                game->depth_pixels[(y * stride + x) * step] = depth[y * gpu->width + x];
+    const uint32_t *colors = (const uint32_t *)data;
+    const float *depths = (const float *)(data + depth_offset);
+    unsigned step = game->raster_divisor, stride = game->back.width;
+    for (unsigned y = 0; y < game->frame_height; ++y) {
+        unsigned src_y = (2 * y + 1) * gpu->scene_height / (2 * game->frame_height);
+        for (unsigned x = 0; x < game->frame_width; ++x) {
+            unsigned src_x = (2 * x + 1) * gpu->scene_width / (2 * game->frame_width);
+            unsigned source = src_y * gpu->scene_width + src_x;
+            game->pixels[y * game->frame_width + x] = colors[source];
+            game->depth_pixels[(y * stride + x) * step] = depths[source];
+        }
     }
     return true;
 }
 
+static bool download(struct NativeGpu *gpu, const DkImage *image, unsigned width, unsigned height, void *destination)
+{
+    if (!destination)
+        return false;
+    size_t bytes = (size_t)width * height * 4;
+    DkMemBlock storage = memory(gpu, bytes, upload_flags);
+    if (!storage)
+        return false;
+    DkImageView view;
+    dkImageViewDefaults(&view, image);
+    const DkImageRect rect = {0, 0, 0, width, height, 1};
+    const DkCopyBuf buffer = {.addr = dkMemBlockGetGpuAddr(storage)};
+    dkCmdBufBarrier(gpu->commands, DkBarrier_Full, 0);
+    dkCmdBufCopyImageToBuffer(gpu->commands, &view, &rect, &buffer, 0);
+    dkCmdBufBarrier(gpu->commands, DkBarrier_Full, DkInvalidateFlags_L2Cache);
+    bool copied = submit(gpu);
+    if (copied)
+        memcpy(destination, dkMemBlockGetCpuAddr(storage), bytes);
+    dkMemBlockDestroy(storage);
+    return copied;
+}
+
 bool gpu_present(Game *game)
 {
-    if (!read_frame(game, false))
-        return false;
     struct NativeGpu *gpu = game->gpu;
+    if (!gpu->swapchain && !create_output(gpu))
+        return gpu_fallback(game, "could not create the 720p swapchain");
+    int slot = dkQueueAcquireImage(gpu->queue, gpu->swapchain);
+    if (slot < 0 || slot >= FRAME_COUNT)
+        return gpu_fallback(game, "could not acquire a 720p output image");
+
+    DkImageView src, dst;
+    dkImageViewDefaults(&src, &gpu->color);
+    dkImageViewDefaults(&dst, &gpu->output[slot]);
+    DkImageRect full = {0, 0, 0, HD_WIDTH, HD_HEIGHT, 1};
+    dkCmdBufBarrier(gpu->commands, DkBarrier_Full, 0);
+    dkCmdBufCopyImage(gpu->commands, &src, &full, &dst, &full, 0);
+    DkCmdList list = dkCmdBufFinishList(gpu->commands);
+    if (!list)
+        return false;
+    dkQueueSubmitCommands(gpu->queue, list);
+    if (dkQueueIsInErrorState(gpu->queue))
+        return false;
+    dkQueueSignalFence(gpu->queue, &gpu->frame_fences[gpu->arena], false);
+    gpu->frame_pending[gpu->arena] = true;
+    dkQueuePresentImage(gpu->queue, gpu->swapchain, slot);
+    if (dkQueueIsInErrorState(gpu->queue))
+        return false;
+    gpu->arena = (gpu->arena + 1) % FRAME_COUNT;
+    if (gpu->frame_pending[gpu->arena]) {
+        if (dkFenceWait(&gpu->frame_fences[gpu->arena], -1) != DkResult_Success)
+            return false;
+        gpu->frame_pending[gpu->arena] = false;
+    }
+    gpu->cursor = 0;
+    begin(gpu);
     ++gpu->frames;
     if (gpu->frames == 1 || !(gpu->frames % 30))
-        fprintf(game->log, "Live deko3d frame #%u: %u draws\n", game->presents, gpu->submitted_draws);
+        fprintf(game->log, "Live deko3d frame #%u: %u draws, 1280x720 swapchain\n",
+                game->presents, gpu->submitted_draws);
     gpu->submitted_draws = 0;
     return true;
 }
 
+unsigned gpu_output_width(const Game *game)
+{
+    return game->gpu ? HD_WIDTH : game->frame_width;
+}
+
+unsigned gpu_output_height(const Game *game)
+{
+    return game->gpu ? HD_HEIGHT : game->frame_height;
+}
+
 bool gpu_fallback(Game *game, const char *reason)
 {
-    bool copied = read_frame(game, true);
+    struct NativeGpu *gpu = game->gpu;
+    bool copied = read_frame(game);
+    for (unsigned i = 0; copied && i < MAX_GPU_TEXTURES; ++i) {
+        const GpuTexture *entry = &gpu->textures[i];
+        if (entry->rendered)
+            copied = download(gpu, &entry->image, entry->width, entry->height, entry->surface->decoded);
+    }
+    for (unsigned i = 0; copied && i < COUNT(gpu->offscreen_depth); ++i) {
+        const GpuDepth *entry = &gpu->offscreen_depth[i];
+        if (entry->rendered)
+            copied = download(gpu, &entry->image, entry->width, entry->height, entry->surface->depth_samples);
+    }
     fprintf(game->log, "Live deko3d switched to CPU at Present #%u: %s\n", game->presents, reason);
     gpu_close(game);
     game->gpu_requested = false;
@@ -275,47 +424,178 @@ static bool reserve(struct NativeGpu *gpu, unsigned bytes, unsigned *offset)
         *offset = 0;
     }
     gpu->cursor = *offset + bytes;
+    *offset += gpu->arena * UPLOAD_BYTES;
     return true;
 }
 
-static int texture(struct NativeGpu *gpu, const Surface *source)
+static int texture(struct NativeGpu *gpu, const Surface *source, bool as_target)
 {
-    unsigned i = 0;
-    while (i < MAX_GPU_TEXTURES && gpu->textures[i].surface && gpu->textures[i].surface != source)
-        ++i;
-    if (i == MAX_GPU_TEXTURES || !source->gpu_generation || !source->decoded)
+    unsigned i, available = MAX_GPU_TEXTURES;
+    for (i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        if (gpu->textures[i].surface == source)
+            break;
+        if (!gpu->textures[i].surface && available == MAX_GPU_TEXTURES)
+            available = i;
+    }
+    if (i == MAX_GPU_TEXTURES)
+        i = available;
+    if (i == MAX_GPU_TEXTURES || !source->decoded)
         return -1;
     GpuTexture *entry = &gpu->textures[i];
-    if (entry->generation == source->gpu_generation)
+    if (entry->surface == source && (entry->rendered ||
+        (source->gpu_generation && entry->generation == source->gpu_generation)))
         return i;
-    if (entry->memory) {
+    if (!as_target && !source->gpu_generation)
+        return -1;
+    bool target = (source->usage & 1) != 0;
+    if (entry->memory && (entry->target != target || entry->width != source->width || entry->height != source->height)) {
         if (!submit(gpu))
             return -1;
         dkMemBlockDestroy(entry->memory);
         entry->memory = NULL;
         entry->generation = 0;
     }
-    unsigned bytes = source->width * source->height * 4, offset;
-    if (!reserve(gpu, bytes, &offset))
+    unsigned bytes = source->width * source->height * 4, offset = 0;
+    uint32_t generation = source->gpu_generation;
+    if (generation && !reserve(gpu, bytes, &offset))
         return -1;
-    entry->memory = image(gpu, &entry->image, source->width, source->height, DkImageFormat_RGBA8_Unorm, 0);
-    if (!entry->memory)
-        return -1;
+    bool fresh = !entry->memory;
+    if (fresh) {
+        entry->memory = image(gpu, &entry->image, source->width, source->height, DkImageFormat_RGBA8_Unorm,
+                              target ? DkImageFlags_UsageRender : 0);
+        if (!entry->memory)
+            return -1;
+        entry->width = source->width;
+        entry->height = source->height;
+        entry->target = target;
+    }
     entry->surface = source;
-    entry->generation = source->gpu_generation;
-    uint8_t *upload = dkMemBlockGetCpuAddr(gpu->upload);
-    memcpy(upload + offset, source->decoded, bytes);
-    const DkCopyBuf buffer = {.addr = dkMemBlockGetGpuAddr(gpu->upload) + offset};
+    entry->generation = generation;
     DkImageView view;
     dkImageViewDefaults(&view, &entry->image);
-    const DkImageRect rect = {0, 0, 0, source->width, source->height, 1};
-    dkCmdBufCopyBufferToImage(gpu->commands, &buffer, &view, &rect, 0);
+    if (generation) {
+        uint8_t *upload = dkMemBlockGetCpuAddr(gpu->upload);
+        memcpy(upload + offset, source->decoded, bytes);
+        const DkCopyBuf buffer = {.addr = dkMemBlockGetGpuAddr(gpu->upload) + offset};
+        const DkImageRect rect = {0, 0, 0, source->width, source->height, 1};
+        if (!fresh)
+            dkCmdBufBarrier(gpu->commands, DkBarrier_Full, 0);
+        dkCmdBufCopyBufferToImage(gpu->commands, &buffer, &view, &rect, 0);
+    }
+    if (fresh) {
+        DkImageDescriptor descriptor;
+        dkImageDescriptorInitialize(&descriptor, &view, false, false);
+        uint8_t *table = dkMemBlockGetCpuAddr(gpu->descriptors);
+        memcpy(table + i * sizeof descriptor, &descriptor, sizeof descriptor);
+    }
     dkCmdBufBarrier(gpu->commands, DkBarrier_Full, DkInvalidateFlags_Image | DkInvalidateFlags_Descriptors);
-    DkImageDescriptor descriptor;
-    dkImageDescriptorInitialize(&descriptor, &view, false, false);
-    uint8_t *table = dkMemBlockGetCpuAddr(gpu->descriptors);
-    memcpy(table + i * sizeof descriptor, &descriptor, sizeof descriptor);
     return i;
+}
+
+static GpuDepth *depth_target(struct NativeGpu *gpu, Surface *surface)
+{
+    GpuDepth *entry = NULL;
+    for (unsigned i = 0; i < COUNT(gpu->offscreen_depth); ++i) {
+        GpuDepth *current = &gpu->offscreen_depth[i];
+        if (current->surface == surface)
+            return current;
+        if (!entry && !current->surface)
+            entry = current;
+    }
+    if (!entry)
+        return NULL;
+    if (entry->memory && (entry->width != surface->width || entry->height != surface->height)) {
+        if (!submit(gpu))
+            return NULL;
+        dkMemBlockDestroy(entry->memory);
+        entry->memory = NULL;
+    }
+    if (!entry->memory) {
+        entry->memory = image(gpu, &entry->image, surface->width, surface->height,
+                              DkImageFormat_ZF32, DkImageFlags_UsageRender);
+        if (!entry->memory)
+            return NULL;
+        entry->width = surface->width;
+        entry->height = surface->height;
+    }
+    entry->surface = surface;
+    return entry;
+}
+
+bool gpu_set_target(Game *game, Surface *color, Surface *depth)
+{
+    struct NativeGpu *gpu = game->gpu;
+    bool primary = color == &game->back;
+    if ((depth == &game->depth && !primary) || (depth && depth != &game->depth && primary))
+        return false;
+    if (!primary && depth && (color->width != depth->width || color->height != depth->height))
+        return false;
+    GpuTexture *color_entry = NULL;
+    GpuDepth *depth_entry = NULL;
+    if (!primary) {
+        int index = texture(gpu, color, true);
+        if (index < 0)
+            return false;
+        color_entry = &gpu->textures[index];
+        if (depth && !(depth_entry = depth_target(gpu, depth)))
+            return false;
+    }
+    const DkImage *color_image = primary ? &gpu->color : &color_entry->image;
+    const DkImage *depth_image = depth ? (primary ? &gpu->depth : &depth_entry->image) : NULL;
+    if (gpu->target_dirty || color_image != gpu->target_color || depth_image != gpu->target_depth) {
+        dkCmdBufBarrier(gpu->commands, DkBarrier_Full, DkInvalidateFlags_Image);
+        gpu->target_color = color_image;
+        gpu->target_depth = depth_image;
+        gpu->target_area = primary ? (DkScissor){gpu->scene_x, gpu->scene_y, gpu->scene_width, gpu->scene_height}
+                                   : (DkScissor){0, 0, color->width, color->height};
+        gpu->target_alpha = color->format == 21;
+        bind_target(gpu);
+    }
+    if (color_entry && !color_entry->rendered) {
+        if (!color_entry->generation) {
+            const float black[4] = {0, 0, 0, !gpu->target_alpha};
+            dkCmdBufClearColor(gpu->commands, 0, DkColorMask_RGBA, black);
+        }
+        color_entry->rendered = true;
+        fprintf(game->log, "Live deko3d offscreen target: %ux%u\n", color->width, color->height);
+    }
+    if (depth_entry && !depth_entry->rendered) {
+        dkCmdBufClearDepthStencil(gpu->commands, true, 1.f, 0, 0);
+        depth_entry->rendered = true;
+    }
+    return true;
+}
+
+void gpu_release_surface(Game *game, const Surface *surface)
+{
+    struct NativeGpu *gpu = game->gpu;
+    bool bound = false;
+    for (unsigned i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        GpuTexture *entry = &gpu->textures[i];
+        if (entry->surface == surface) {
+            entry->surface = NULL;
+            entry->generation = 0;
+            entry->rendered = false;
+            bound = gpu->target_color == &entry->image;
+            break;
+        }
+    }
+    for (unsigned i = 0; i < COUNT(gpu->offscreen_depth); ++i) {
+        GpuDepth *entry = &gpu->offscreen_depth[i];
+        if (entry->surface == surface) {
+            entry->surface = NULL;
+            entry->rendered = false;
+            bound |= gpu->target_depth == &entry->image;
+            break;
+        }
+    }
+    if (bound) {
+        gpu->target_color = &gpu->color;
+        gpu->target_depth = &gpu->depth;
+        gpu->target_area = (DkScissor){gpu->scene_x, gpu->scene_y, gpu->scene_width, gpu->scene_height};
+        gpu->target_alpha = false;
+        gpu->target_dirty = true;
+    }
 }
 
 bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
@@ -339,8 +619,8 @@ bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
         unsigned u = game->samplers[slot][1], v = game->samplers[slot][2];
         if (u > 3 || v > 3 || !textures[slot])
             return false;
-        int index = texture(gpu, textures[slot]);
-        if (index < 0)
+        int index = texture(gpu, textures[slot], false);
+        if (index < 0 || &gpu->textures[index].image == gpu->target_color)
             return false;
         unsigned sampler = (u > 1 ? u - 1 : 0) + 3 * (v > 1 ? v - 1 : 0);
         if (game->pixel_shader && game->samplers[slot][5] == 1 && game->samplers[slot][6] == 1)
@@ -371,9 +651,12 @@ bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
     dkCmdBufBindVtxBufferState(commands, &buffer, 1);
     dkCmdBufBindVtxBuffer(commands, 0, address, bytes);
 
-    float scale = 1.f / game->raster_divisor;
-    const DkViewport viewport = {game->viewport[0] * scale, game->viewport[1] * scale,
-                                 game->viewport[2] * scale, game->viewport[3] * scale, 0.f, 1.f};
+    bool main_target = gpu->target_color == &gpu->color;
+    float sx = main_target ? (float)gpu->scene_width / game->back.width : 1.f;
+    float sy = main_target ? (float)gpu->scene_height / game->back.height : 1.f;
+    const DkViewport viewport = {gpu->target_area.x + game->viewport[0] * sx,
+                                 gpu->target_area.y + game->viewport[1] * sy,
+                                 game->viewport[2] * sx, game->viewport[3] * sy, 0.f, 1.f};
     dkCmdBufSetViewports(commands, 0, &viewport, 1);
     DkRasterizerState rasterizer;
     dkRasterizerStateDefaults(&rasterizer);
@@ -403,7 +686,8 @@ bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
     }
     DkColorWriteState mask;
     dkColorWriteStateDefaults(&mask);
-    dkColorWriteStateSetMask(&mask, 0, game->raster[D3D_COLOR_WRITE_ENABLE] & DkColorMask_RGB);
+    unsigned channels = gpu->target_alpha ? DkColorMask_RGBA : DkColorMask_RGB;
+    dkColorWriteStateSetMask(&mask, 0, game->raster[D3D_COLOR_WRITE_ENABLE] & channels);
     dkCmdBufBindColorWriteState(commands, &mask);
     dkCmdBufDraw(commands, DkPrimitive_Triangles, count, 1, 0, 0);
     ++gpu->submitted_draws;

@@ -41,15 +41,22 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
         if (g->presents != before) {
             progress = 0;
             if (on_frame && !on_frame(g, data)) {
-                g->stop = "stopped by user";
+                if (!g->stop)
+                    g->stop = "stopped by user";
                 break;
             }
             if (!(g->presents % 30)) {
                 uint64_t now = native_now_ns();
+                unsigned width = g->frame_width, height = g->frame_height;
+#ifdef __SWITCH__
+                width = gpu_output_width(g);
+                height = gpu_output_height(g);
+#endif
                 fprintf(log, "Performance at Present #%u: %.1f ms/frame, %.1f ms CPU %s, %ux%u\n",
                         g->presents, (now - sample_start) / 30000000.0,
                         (g->render_ns - sample_render) / 30000000.0, g->gpu ? "render setup" : "raster",
-                        g->frame_width, g->frame_height);
+                        width, height);
+                fflush(log);
                 sample_start = now;
                 sample_render = g->render_ns;
             }
@@ -73,7 +80,7 @@ static bool run(Game *g, const char *assets, FILE *log, unsigned limit,
 typedef struct {
     PadState pad;
     Framebuffer fb;
-    bool started;
+    bool framebuffer_open, console_open;
 } Output;
 
 static bool poll_switch(Game *game, void *data)
@@ -96,23 +103,30 @@ static bool present_switch(Game *game, void *data)
     Output *out = data;
     if (!game->presented_draws)
         return true;
-    if (game->gpu && !gpu_present(game)) {
-        game->stop = "deko3d could not submit the live frame";
-        return false;
-    }
-    if (!out->started) {
+    if (out->console_open) {
         consoleExit(NULL);
+        out->console_open = false;
+    }
+    if (game->gpu) {
+        if (!gpu_present(game)) {
+            game->stop = "deko3d could not present the live frame";
+            return false;
+        }
+        if (game->gpu)
+            return poll_switch(game, out);
+    }
+    if (!out->framebuffer_open) {
         if (R_FAILED(framebufferCreate(&out->fb, nwindowGetDefault(), game->frame_width, game->frame_height,
                                        PIXEL_FORMAT_RGBA_8888, 2))) {
-            consoleInit(NULL);
+            game->stop = "could not open the CPU framebuffer";
             return false;
         }
         if (R_FAILED(framebufferMakeLinear(&out->fb))) {
             framebufferClose(&out->fb);
-            consoleInit(NULL);
+            game->stop = "could not map the CPU framebuffer";
             return false;
         }
-        out->started = true;
+        out->framebuffer_open = true;
     }
     u32 stride;
     uint8_t *pixels = framebufferBegin(&out->fb, &stride);
@@ -126,30 +140,30 @@ int main(void)
 {
     consoleInit(NULL);
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    Output out = {0};
+    Output out = {.console_open = true};
     padInitializeDefault(&out.pad);
     padUpdate(&out.pad);
-    bool use_gpu = (padGetButtons(&out.pad) & HidNpadButton_ZL) != 0;
+    bool use_gpu = !(padGetButtons(&out.pad) & HidNpadButton_L);
     puts("FreakOut Extreme Freeride - ARM64");
     puts("Starting the recompiled Windows demo.");
     if (use_gpu)
-        puts("Experimental GPU renderer requested.");
+        puts("Starting the deko3d 720p renderer.");
     consoleUpdate(NULL);
     FILE *log = fopen(LOG_PATH, "w");
     Game *game = calloc(1, sizeof *game);
     if (game) {
         if (log)
-            fprintf(log, "FreakOut 0.9.9 startup renderer: %s\n", use_gpu ? "deko3d" : "CPU");
+            fprintf(log, "FreakOut 1.0.0 startup renderer: %s\n", use_gpu ? "deko3d" : "CPU");
         run(game, DEMO_PATH, log ? log : stdout, 0, present_switch, poll_switch, &out, 2, use_gpu);
         gpu_close(game);
         game_close(game);
     }
     if (log)
         fclose(log);
-    if (out.started) {
+    if (out.framebuffer_open)
         framebufferClose(&out.fb);
+    if (!out.console_open)
         consoleInit(NULL);
-    }
     printf("FreakOut stopped at Present #%u.\n", game ? game->presents : 0);
     if (game && game->stop)
         printf("%s\n", game->stop);

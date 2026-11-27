@@ -1,4 +1,5 @@
 #include "game.h"
+#include "gpu.h"
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -123,6 +124,10 @@ static uint32_t drop_texture(Game *g, Texture *t)
     uint32_t refs = --t->refs;
     if (!refs) {
         for (unsigned level = 0; level < t->levels; ++level) {
+#ifdef __SWITCH__
+            if (g->gpu && (t->mip[level].gpu_generation || (t->mip[level].usage & 1)))
+                gpu_release_surface(g, &t->mip[level]);
+#endif
             free(t->mip[level].decoded);
             free(t->mip[level].depth_samples);
             release(g, t->mip[level].data);
@@ -142,6 +147,10 @@ static uint32_t release_surface(Game *g, uint32_t handle, Surface *surface, Text
     } else if (!refs && surface != &g->back && surface != &g->depth) {
         for (unsigned i = 0; i < MAX_SURFACES; ++i) {
             if (g->surfaces[i].handle == handle) {
+#ifdef __SWITCH__
+                if (g->gpu)
+                    gpu_release_surface(g, surface);
+#endif
                 free(surface->decoded);
                 free(surface->depth_samples);
                 release(g, surface->data);

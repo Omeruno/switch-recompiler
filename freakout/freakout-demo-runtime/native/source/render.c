@@ -18,6 +18,7 @@ typedef struct {
 } ShaderDraw;
 
 typedef struct {
+    Surface *surface, *depth_surface;
     uint32_t *color;
     float *depth;
     unsigned width, height, depth_width, depth_clear_width, depth_clear_height, sample_step;
@@ -53,7 +54,7 @@ static bool draw_target(Game *g, DrawTarget *target, bool need_depth)
     Surface *color = d3d_surface_lookup(g, g->color_target, NULL);
     if (!color || (color->format != 21 && color->format != 22))
         return false;
-    *target = (DrawTarget){.width = color->width, .height = color->height, .sample_step = 1,
+    *target = (DrawTarget){.surface = color, .width = color->width, .height = color->height, .sample_step = 1,
                           .alpha = color->format == 21};
     if (color == &g->back) {
         if (!render_allocate(g))
@@ -75,6 +76,7 @@ static bool draw_target(Game *g, DrawTarget *target, bool need_depth)
     Surface *depth = d3d_surface_lookup(g, g->depth_target, NULL);
     if (!depth || depth->width < color->width || depth->height < color->height)
         return false;
+    target->depth_surface = depth;
     target->depth_width = depth->width;
     target->depth_clear_width = color->width;
     target->depth_clear_height = color->height;
@@ -102,16 +104,16 @@ bool render_clear(Game *g, unsigned flags, uint32_t color, float depth)
     if (!draw_target(g, &target, flags & 2))
         return false;
 #ifdef __SWITCH__
-    bool main_target = g->color_target == g->backbuffer && g->depth_target == g->depth_buffer;
+    bool main_target = target.surface == &g->back && (!target.depth_surface || target.depth_surface == &g->depth);
     if (g->gpu_requested && !g->gpu && main_target && !gpu_start(g)) {
         g->gpu_requested = false;
         fputs("Live deko3d initialization failed, using CPU renderer\n", g->log);
     }
-    if (g->gpu && main_target && !(flags & 4)) {
-        gpu_clear(g, flags, color | 0xff000000u, depth);
+    if (g->gpu && !(flags & 4) && gpu_set_target(g, target.surface, target.depth_surface)) {
+        gpu_clear(g, flags, target.alpha ? color : color | 0xff000000u, depth);
         return true;
     }
-    if (g->gpu && !gpu_fallback(g, "offscreen or stencil clear"))
+    if (g->gpu && !gpu_fallback(g, "unsupported render-target clear"))
         return false;
 #endif
     size_t count = (size_t)target.width * target.height;
@@ -119,6 +121,8 @@ bool render_clear(Game *g, unsigned flags, uint32_t color, float depth)
         uint32_t value = rgba((color >> 16) & 255, (color >> 8) & 255, color & 255, target.alpha ? color >> 24 : 255);
         for (size_t i = 0; i < count; ++i)
             target.color[i] = value;
+        if (target.surface != &g->back)
+            target.surface->gpu_generation = ++g->texture_generation;
     }
     if (flags & 2)
         for (unsigned y = 0; y < target.depth_clear_height; ++y)
@@ -676,8 +680,8 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
             visible_cache[i] = read_program_vertex(&shaders, vertices + i * g->stride, &cache[i]);
     bool valid = true;
 #ifdef __SWITCH__
-    if (g->gpu && (g->color_target != g->backbuffer || g->depth_target != g->depth_buffer || g->raster[52]))
-        valid = gpu_fallback(g, "offscreen target or stencil state");
+    if (g->gpu && (g->raster[52] || !gpu_set_target(g, target.surface, target.depth_surface)))
+        valid = gpu_fallback(g, "unsupported draw target or stencil state");
     GpuVertex *gpu_vertices = valid && g->gpu ? malloc((size_t)n * 3 * sizeof *gpu_vertices) : NULL;
     unsigned gpu_count = 0;
     if (valid && g->gpu && !gpu_vertices)
@@ -762,6 +766,8 @@ bool render_geometry(Game *g, const Buffer *vb, const Buffer *ib)
     free(cache);
     if (!valid)
         return false;
+    if (!g->gpu && target.surface != &g->back)
+        target.surface->gpu_generation = ++g->texture_generation;
     if (programmable) {
         ++g->program_draws;
         if (g->program_draws <= 8)

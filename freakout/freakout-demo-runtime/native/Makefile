@@ -62,7 +62,7 @@ LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*
 LIBS	:= -ldeko3d -lnx -lm
 APP_TITLE := FreakOut Native Demo
 APP_AUTHOR := FreakOut Port Project
-APP_VERSION := 0.9.9
+APP_VERSION := 1.0.0
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing

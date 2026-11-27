@@ -12,8 +12,12 @@ typedef struct {
 
 bool gpu_start(Game *game);
 void gpu_close(Game *game);
+bool gpu_set_target(Game *game, Surface *color, Surface *depth);
+void gpu_release_surface(Game *game, const Surface *surface);
 void gpu_clear(Game *game, unsigned flags, uint32_t color, float depth);
 bool gpu_present(Game *game);
+unsigned gpu_output_width(const Game *game);
+unsigned gpu_output_height(const Game *game);
 bool gpu_fallback(Game *game, const char *reason);
 bool gpu_draw(Game *game, const GpuVertex *vertices, unsigned count,
               const Surface *const textures[16], unsigned sampler_mask);
