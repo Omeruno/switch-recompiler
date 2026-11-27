@@ -142,6 +142,8 @@ def add_race_blocks(lifter, read_va, sizes):
         add_verified_blocks(lifter, read_va, sizes, [0x4a8163], [(0x4a8163, 0x4a81ed)])
     if 0x4a6a50 in sizes:
         collect_verified_edges(lifter, read_va, sizes, [0x4a6a75], [(0x4a6a50, 0x4a6ba9)], {})
+    if 0x4b4fc4 in sizes:
+        collect_verified_edges(lifter, read_va, sizes, [0x4b4fb3], [(0x4b4f89, 0x4b4fee)], {})
 
 
 def add_input_blocks(lifter, read_va, sizes):
