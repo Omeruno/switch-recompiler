@@ -137,6 +137,9 @@ def add_race_blocks(lifter, read_va, sizes):
                   (0x43c116, 0x43c16f), (0x490260, 0x490293), (0x49cec0, table),
                   (0x49dba0, 0x49de02), (0x578500, 0x57852e)]
         collect_verified_edges(lifter, read_va, sizes, list(handlers), ranges, {selector: targets})
+    # Steering at nonzero input uses the original signed correction and clamp.
+    if 0x4a815a in sizes:
+        add_verified_blocks(lifter, read_va, sizes, [0x4a8163], [(0x4a8163, 0x4a81ed)])
 
 
 def add_input_blocks(lifter, read_va, sizes):
