@@ -123,6 +123,20 @@ def add_race_blocks(lifter, read_va, sizes):
     if 0x5377d2 in sizes:
         ranges = [(0x535c90, 0x535d7b), (0x5377d2, 0x5379a6)]
         collect_verified_edges(lifter, read_va, sizes, [0x5377f5], ranges, {})
+    if 0x43c116 in sizes:
+        handlers = (0x436810, 0x43a1a0, 0x436c70, 0x436850)
+        if struct.unpack('<4I', read_va(0x6a8dc8, 16)) != handlers:
+            raise RuntimeError("unexpected FreakOut live input handlers")
+        selector, table = 0x49cf09, 0x49db70
+        if read_va(selector, 7) != b'\xff\x24\x8d' + struct.pack('<I', table):
+            raise RuntimeError("unexpected FreakOut live input event table")
+        targets = struct.unpack('<12I', read_va(table, 48))
+        if any(not selector + 7 <= address < table for address in targets):
+            raise RuntimeError("invalid FreakOut live input event table")
+        ranges = [(0x410460, 0x410486), (0x436850, 0x436874), (0x436c70, 0x436cbc), (0x43a1a0, 0x43a34b),
+                  (0x43c116, 0x43c16f), (0x490260, 0x490293), (0x49cec0, table),
+                  (0x49dba0, 0x49de02), (0x578500, 0x57852e)]
+        collect_verified_edges(lifter, read_va, sizes, list(handlers), ranges, {selector: targets})
 
 
 def add_input_blocks(lifter, read_va, sizes):
